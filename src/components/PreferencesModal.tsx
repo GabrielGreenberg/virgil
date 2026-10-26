@@ -14,6 +14,7 @@ import { Button } from "./Button";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
 import { iconHint } from "@/components/Hint";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 import {
   SUPPRESSIBLE_CONFIRM_LABELS,
   restoreAllConfirms,
@@ -285,14 +286,13 @@ function PreferencesHeader({ onClose }: { onClose: () => void }) {
         Preferences
       </h2>
       <button
+        type="button"
         onClick={onClose}
         onMouseDown={(e) => e.stopPropagation()}
         className="iconbtn-md"
         {...iconHint({ label: "Close" })}
       >
-        <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M3 3l8 8M11 3l-8 8" />
-        </svg>
+        <CloseIcon size={16} />
       </button>
     </div>
   );

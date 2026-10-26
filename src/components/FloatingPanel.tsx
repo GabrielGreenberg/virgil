@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useDialogFocusRestore, useNonModalDialogKeys } from "./dialog-contract";
 import type { DockSlotKey, PanelId, Side } from "@/hooks/useViewPrefs";
 import {
   setDockDragTarget,
@@ -232,6 +233,20 @@ interface FloatingPanelProps {
    *  `redockPanel(id, target.side, target.index)`). */
   onMaybeRedock?: (target: { side: Side; index: number }) => void;
   onFocus?: () => void;
+  /**
+   * Opt-in DIALOG behaviour contract (task 1304) for a tool window hosted here
+   * (the Fonts… window) rather than in `SystemDialog`: `role="dialog"` named by
+   * `labelledBy`, a non-modal place on the open-dialog stack so Escape CANCELS
+   * it only when it is the key owner, and focus given back on close. Opt-in,
+   * never default: a popped CARD float is not a dialog and must not close on
+   * Escape. The chrome stays the caller's — this is behaviour only.
+   */
+  dialog?: {
+    /** DOM id of the window's title element. */
+    labelledBy: string;
+    /** Escape's door. A window that commits live cancels by closing. */
+    onCancel: () => void;
+  };
 }
 
 /**
@@ -349,6 +364,7 @@ function FloatingPanelInner({
   onUndock,
   onMaybeRedock,
   onFocus,
+  dialog,
 }: FloatingPanelProps, handleRef: React.ForwardedRef<FloatingPanelHandle>) {
   // Keep-alive invariant: a hidden (display:none) kept-alive pane must render NO
   // floating/docked panels. FloatingPanel is the single portal-escape chokepoint
@@ -382,6 +398,16 @@ function FloatingPanelInner({
     return typeof window === "undefined" ? seed : clampFloatPos(seed, readFloatViewportBounds());
   });
   const rootRef = useRef<HTMLDivElement>(null);
+  // The opt-in dialog contract (task 1304). Gated on `isVisible` as well: a
+  // hidden kept-alive pane renders no shell (below), so it must hold no stack
+  // entry either — an invisible window would own Escape.
+  const isDialog = !!dialog && isVisible;
+  useNonModalDialogKeys({
+    active: isDialog,
+    getFrame: () => rootRef.current,
+    onCancel: () => dialog?.onCancel(),
+  });
+  useDialogFocusRestore(isDialog);
   // Drag state covers both move and resize gestures. While docked, only
   // "move" can start (header drag → undock). While floating, both are
   // available. The same ref is used across mode flips so the gesture is
@@ -1338,6 +1364,8 @@ function FloatingPanelInner({
       // window rules in globals.css gate on `data-float-surface="card"` so a
       // whole-panel float keeps its tier's shadow + per-card outlines.
       data-float-surface={surface}
+      role={dialog ? "dialog" : undefined}
+      aria-labelledby={dialog?.labelledBy}
       className={`flex flex-col overflow-hidden${viewPrefRoot.className ? ` ${viewPrefRoot.className}` : ""}`}
       {...viewPrefAttrs}
       style={

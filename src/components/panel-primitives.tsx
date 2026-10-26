@@ -48,6 +48,7 @@ import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
 import { MenuCaret } from "./icons/MenuCaret";
 import { ICON_STROKE, ICON_STROKE_SMALL } from "./icons/icon-stroke";
+import { CloseIcon } from "./icons/CloseIcon";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import type { InlineAtomCardKind } from "./drop-mode/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -2459,19 +2460,7 @@ export function PanelClose() {
       className="iconbtn-sm -mr-1"
       {...iconHint({ label: "Close panel" })}
     >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={ICON_STROKE_SMALL}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <line x1="6" y1="6" x2="18" y2="18" />
-        <line x1="18" y1="6" x2="6" y2="18" />
-      </svg>
+      <CloseIcon size={14} />
     </button>
   );
 }

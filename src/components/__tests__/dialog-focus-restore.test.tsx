@@ -544,10 +544,16 @@ describe("CENSUS — a dialog body claims initial focus through the SHELL", () =
   it("the SHELL is the only place a focus restore is spelled", () => {
     // The shell was never the part that could misbehave; a dialog that re-forks
     // the restore in its own `onClose` is — which is the shape that produced this
-    // finding, one site patched and the rest not.
+    // finding, one site patched and the rest not. Since task 1304 the restore's
+    // body lives in `dialog-contract.ts` so the non-shell host (FloatingPanel's
+    // opt-in `dialog`, the Fonts… window) runs the SAME code: the shell CALLS it.
+    const door = readFileSync(join(SRC_ROOT, "components/dialog-contract.ts"), "utf8");
+    expect(door).toContain("preventScroll: true");
+    expect(door).toMatch(/document\.activeElement/);
     const shell = readFileSync(join(SRC_ROOT, "components/system-dialog.tsx"), "utf8");
-    expect(shell).toContain("preventScroll: true");
-    expect(shell).toMatch(/document\.activeElement/);
+    expect(shell).toMatch(/useDialogFocusRestore\(open\)/);
+    const panel = readFileSync(join(SRC_ROOT, "components/FloatingPanel.tsx"), "utf8");
+    expect(panel).toMatch(/useDialogFocusRestore\(/);
   });
 
   it("CollaboratorIdentityDialog takes the shell's door, not a raw autoFocus", () => {
