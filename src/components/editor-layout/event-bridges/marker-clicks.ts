@@ -15,7 +15,9 @@ import { cardEntrySelector } from "../panel-selection";
 import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
-import { panelForCardKind } from "@/cards/predicates";
+import { CARD_KINDS, panelForCardKind } from "@/cards/predicates";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import { MODE_B_CARD_KINDS } from "@/cards/mode-b-collections";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
@@ -45,59 +47,40 @@ import {
 } from "@/lib/pane-click-origin";
 
 /** The card kinds that route through the shared anchor-click body
- *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
- *  `useTextHoverBridge` when a `.linked-anchor` span is clicked) plus the
- *  four Mode-A paragraph-anchored kinds (dispatched by EditorPane's margin
- *  marker builder — R15: margin clicks ride the same live bridge as in-text
- *  anchor clicks). Inline atoms (footnote, citation) use their own dedicated
- *  `virgil-*-click` events; `error` isn't a card and gets its own small
- *  bridge (`virgil-error-marker-click`) below. */
-type AnchorClickKind =
-  | "note"
-  | "cutter-comment"
-  | "cutter-suggestion"
-  | "revision-comment"
-  | "revision-suggestion"
-  | "archive"
-  | "todo"
-  | "report"
-  | "report-request";
+ *  (`routeAnchorClick`), DERIVED from the registry — never hand-listed (task
+ *  1296: a hand-kept nine-kind union omitted `highlight`, so a click on
+ *  highlighted text was dispatched and silently swallowed). Two dispatchers
+ *  feed it, and the set is exactly their union:
+ *   - the in-text `.linked-anchor` span click (`useTextHoverBridge`) — every
+ *     Mode-B kind (`MODE_B_CARD_KINDS`, the hover bridge's own SSOT);
+ *   - the margin marker click (EditorPane's marker builder — R15: margin
+ *     clicks ride the same live bridge) — every kind whose
+ *     `CARD_REGISTRY[kind].markerType` paints a card marker.
+ *  Inline atoms (footnote, citation) use their own dedicated `virgil-*-click`
+ *  events; `error` isn't a card and gets its own small bridge
+ *  (`virgil-error-marker-click`) below. */
+export const ANCHOR_CLICK_KINDS: readonly CardKind[] = CARD_KINDS.filter((kind) => {
+  const marker = CARD_REGISTRY[kind].markerType;
+  return MODE_B_CARD_KINDS.includes(kind) || (marker != null && marker !== "error");
+});
 
-/** `AnchorClickKind` → routing config, DERIVED: `cardKind` is the kind itself
+/** Anchor-click kind → routing config, DERIVED: `cardKind` is the kind itself
  *  and `panelId` is `panelForCardKind(kind)` (the registry SSOT); the entry's
  *  DOM address is `cardEntrySelector(kind, id)`, resolved at click time. A
- *  pin-test asserts these derived routes ≡ frozen literals. */
-export const ANCHOR_CLICK_ROUTES: Record<
-  AnchorClickKind,
-  { panelId: PanelId; cardKind: CardKind }
+ *  pin-test asserts these derived routes ≡ frozen literals AND that the key
+ *  set ≡ both dispatchers' kinds. */
+export const ANCHOR_CLICK_ROUTES: Readonly<
+  Partial<Record<CardKind, { panelId: PanelId; cardKind: CardKind }>>
 > = Object.fromEntries(
-  (
-    [
-      "note",
-      "cutter-comment",
-      "cutter-suggestion",
-      "revision-comment",
-      "revision-suggestion",
-      "archive",
-      "todo",
-      "report",
-      "report-request",
-    ] as const
-  ).map((kind) => {
+  ANCHOR_CLICK_KINDS.map((kind) => {
     const panel = panelForCardKind(kind);
-    // All five routed kinds own a panel; the registry can't return null here.
+    // Every routed kind owns a panel; the registry can't return null here.
     if (panel == null) {
       throw new Error(`[marker-clicks] no owning panel for anchor-click kind "${kind}"`);
     }
-    return [
-      kind,
-      {
-        panelId: panel as PanelId,
-        cardKind: kind,
-      },
-    ];
+    return [kind, { panelId: panel as PanelId, cardKind: kind }];
   }),
-) as Record<AnchorClickKind, { panelId: PanelId; cardKind: CardKind }>;
+);
 
 /** Everything `routeAnchorClick` needs: the `openForCard` routing env (prefs
  *  read live at click time) plus the omni click-pin publisher. Built from the
@@ -131,7 +114,7 @@ function routeAnchorClick(
   detail: Omit<LinkedAnchorClickDetail, "docId">,
   env: AnchorClickEnv,
 ): void {
-  const route = ANCHOR_CLICK_ROUTES[detail.kind as AnchorClickKind];
+  const route = ANCHOR_CLICK_ROUTES[detail.kind as CardKind];
   if (!route) return;
   routeCardClick(route, detail, env);
 }

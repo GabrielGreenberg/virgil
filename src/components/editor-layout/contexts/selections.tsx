@@ -7,6 +7,8 @@ import {
   type CardStore,
 } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
+import { STORED_KIND_BY_PANEL, type PolymorphicPanel } from "@/cards/predicates";
+import { resolveStoredKind } from "@/links/_shared/stored-kind-resolver";
 
 /**
  * "Which card is selected" state — one slot per panel kind that has a
@@ -86,14 +88,47 @@ function primarySelectionFor(store: CardStore, kind: EntityKind): { kind: Entity
   return s && s.kind === kind ? s : null;
 }
 
-/** Like `primarySelectionFor` but matches any of a set of kinds — for the
- *  polymorphic Cutter and Revisions slots that accept two kinds each. */
-function polymorphicFocusFor(
+/** The card kinds panel `P`'s one collection holds — READ from the
+ *  stored-kind table, first row first (its fallback kind). */
+function panelKinds(panel: PolymorphicPanel): readonly EntityKind[] {
+  return Object.values(STORED_KIND_BY_PANEL[panel]) as EntityKind[];
+}
+
+/** The selected id when the selection is one of `kinds`, else null. */
+function idForKinds(
+  sel: { kind: EntityKind; id: string } | null,
+  kinds: readonly EntityKind[],
+): string | null {
+  return sel && kinds.includes(sel.kind) ? sel.id : null;
+}
+
+/** The slot setter for a panel whose collection holds several card kinds
+ *  (`STORED_KIND_BY_PANEL`: notes, revisions, cutter, reports). An id alone
+ *  does not say which kind the card is, so a select RESOLVES it through the
+ *  owning pane's registered resolver (`resolveStoredKind`) — a highlight is
+ *  selected as `highlight`, a cut suggestion as `cutter-suggestion` (task
+ *  1296). Without a resolver (no pane mounted, an id it does not hold) it
+ *  keeps the current kind when re-selecting the SAME card, and only then
+ *  falls back to the panel's first kind. Clearing clears only a selection
+ *  that belongs to this panel. */
+function makePanelSlotSetter(
   store: CardStore,
-  kinds: ReadonlyArray<EntityKind>,
-): { kind: EntityKind; id: string } | null {
-  const s = store.getState().selected;
-  return s && kinds.includes(s.kind) ? s : null;
+  panel: PolymorphicPanel,
+): Dispatch<SetStateAction<string | null>> {
+  const kinds = panelKinds(panel);
+  return (action) => {
+    const s = store.getState().selected;
+    const focused = s && kinds.includes(s.kind) ? s : null;
+    const nextId = typeof action === "function" ? action(focused ? focused.id : null) : action;
+    if (nextId == null) {
+      if (focused) store.clearSelection();
+      return;
+    }
+    const kind: EntityKind =
+      resolveStoredKind(store, panel, nextId) ??
+      (focused && focused.id === nextId ? focused.kind : kinds[0]);
+    store.select({ kind, id: nextId });
+  };
 }
 
 /** Public hook for components that own per-kind selection slots in their
@@ -144,84 +179,27 @@ function useSelectionsValue(
 
   // Setters are stable per store — the store reads "current" state at call
   // time, so they only recreate when the doc's store instance changes.
-  const setSelectedNoteId = useCallback(makeKindSetter(store, "note"), [store]);
+  const setSelectedNoteId = useCallback(makePanelSlotSetter(store, "notes"), [store]);
   const setSelectedFootnoteId = useCallback(makeKindSetter(store, "footnote"), [store]);
   const setSelectedCitationId = useCallback(makeKindSetter(store, "citation"), [store]);
   const setSelectedTodoId = useCallback(makeKindSetter(store, "todo"), [store]);
   const setSelectedArchiveId = useCallback(makeKindSetter(store, "archive"), [store]);
   const setSelectedExampleId = useCallback(makeKindSetter(store, "example"), [store]);
-  // Cutter and Revisions still share one slot per panel until U7 splits
-  // their polymorphic kinds. Both slots accept any of the panel's two
-  // kinds; the slot setter routes to whichever is currently in the store
-  // or defaults to the comment kind on a fresh select.
-  const setSelectedCutterCardId = useCallback<Dispatch<SetStateAction<string | null>>>(
-    (action) => {
-      const focused = polymorphicFocusFor(store, ["cutter-comment", "cutter-suggestion"]);
-      const curId = focused ? focused.id : null;
-      const nextId = typeof action === "function" ? action(curId) : action;
-      if (nextId == null) {
-        const s = store.getState().selected;
-        if (s && (s.kind === "cutter-comment" || s.kind === "cutter-suggestion")) {
-          store.clearSelection();
-        }
-        return;
-      }
-      // Preserve the kind discriminator if the store already has a cutter
-      // card focused; otherwise default to "cutter-comment". (Polymorphic
-      //-aware callers should set the store directly with the right kind.)
-      const kind: EntityKind =
-        focused?.kind ?? "cutter-comment";
-      store.select({ kind, id: nextId });
-    },
-    [store],
-  );
-  // Reports shares one slot for its two polymorphic kinds (report +
-  // report-request), mirroring the Cutter slot above.
-  const setSelectedReportCardId = useCallback<Dispatch<SetStateAction<string | null>>>(
-    (action) => {
-      const focused = polymorphicFocusFor(store, ["report", "report-request"]);
-      const curId = focused ? focused.id : null;
-      const nextId = typeof action === "function" ? action(curId) : action;
-      if (nextId == null) {
-        const s = store.getState().selected;
-        if (s && (s.kind === "report" || s.kind === "report-request")) {
-          store.clearSelection();
-        }
-        return;
-      }
-      const kind: EntityKind =
-        focused?.kind ?? "report";
-      store.select({ kind, id: nextId });
-    },
-    [store],
-  );
-  const setSelectedCommentId = useCallback<Dispatch<SetStateAction<string | null>>>(
-    (action) => {
-      const focused = polymorphicFocusFor(store, ["revision-comment", "revision-suggestion"]);
-      const curId = focused ? focused.id : null;
-      const nextId = typeof action === "function" ? action(curId) : action;
-      if (nextId == null) {
-        const s = store.getState().selected;
-        if (s && (s.kind === "revision-comment" || s.kind === "revision-suggestion")) {
-          store.clearSelection();
-        }
-        return;
-      }
-      const kind: EntityKind =
-        focused?.kind ?? "revision-comment";
-      store.select({ kind, id: nextId });
-    },
-    [store],
-  );
+  // The four panels whose one collection holds several kinds share ONE
+  // factory, read from `STORED_KIND_BY_PANEL` — never a hand-listed pair.
+  const setSelectedCutterCardId = useCallback(makePanelSlotSetter(store, "cutter"), [store]);
+  const setSelectedReportCardId = useCallback(makePanelSlotSetter(store, "reports"), [store]);
+  const setSelectedCommentId = useCallback(makePanelSlotSetter(store, "revisions"), [store]);
 
-  const cutterId = sel && (sel.kind === "cutter-comment" || sel.kind === "cutter-suggestion") ? sel.id : null;
-  const reportId = sel && (sel.kind === "report" || sel.kind === "report-request") ? sel.id : null;
-  const commentId = sel && (sel.kind === "revision-comment" || sel.kind === "revision-suggestion") ? sel.id : null;
+  const noteId = idForKinds(sel, panelKinds("notes"));
+  const cutterId = idForKinds(sel, panelKinds("cutter"));
+  const reportId = idForKinds(sel, panelKinds("reports"));
+  const commentId = idForKinds(sel, panelKinds("revisions"));
 
   return useMemo<SelectionsContextValue>(
     () => ({
       selected: sel ? { kind: sel.kind, id: sel.id } : null,
-      selectedNoteId: idFor("note"),
+      selectedNoteId: noteId,
       setSelectedNoteId,
       selectedFootnoteId: idFor("footnote"),
       setSelectedFootnoteId,
@@ -243,7 +221,7 @@ function useSelectionsValue(
       setSelectedBibKey: inputs.setSelectedBibKey,
     }),
     // sel changing covers all per-kind id changes; setters are stable.
-    [sel, cutterId, reportId, commentId, inputs.selectedBibKey, inputs.setSelectedBibKey,
+    [sel, noteId, cutterId, reportId, commentId, inputs.selectedBibKey, inputs.setSelectedBibKey,
       setSelectedNoteId, setSelectedFootnoteId, setSelectedCitationId,
       setSelectedTodoId, setSelectedArchiveId, setSelectedCutterCardId,
       setSelectedReportCardId,

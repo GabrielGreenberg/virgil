@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { ANCHOR_CLICK_ROUTES } from "@/components/editor-layout/event-bridges/marker-clicks";
+import {
+  ANCHOR_CLICK_KINDS,
+  ANCHOR_CLICK_ROUTES,
+} from "@/components/editor-layout/event-bridges/marker-clicks";
+import { MODE_B_CARD_KINDS } from "@/cards/mode-b-collections";
+import { MARGIN_MARKER_SOURCES } from "@/cards/margin-markers";
 import { cardEntrySelector } from "@/components/editor-layout/panel-selection";
 import { cardDomSelector } from "@/panels/panel-registry";
 
@@ -15,11 +20,12 @@ import { cardDomSelector } from "@/panels/panel-registry";
  * in A10 Commit G — that mapper had no remaining consumers.)
  */
 
-// The exact literals the hand-kept ANCHOR_CLICK_ROUTES table held pre-A2
-// (the five Mode-B kinds), plus the four Mode-A paragraph-anchored kinds A6
-// added when margin clicks unified onto the same bridge (R15).
+// The pre-A2 literals plus the margin's kinds A6 added (R15), plus
+// `highlight` — a Mode-B kind whose span became live in task 666 but which the
+// old hand-kept union omitted, so its click was swallowed (task 1296).
 const EXPECTED_ROUTES = {
   note: { panelId: "notes", cardKind: "note" },
+  highlight: { panelId: "notes", cardKind: "highlight" },
   "cutter-comment": { panelId: "cutter", cardKind: "cutter-comment" },
   "cutter-suggestion": { panelId: "cutter", cardKind: "cutter-suggestion" },
   "revision-comment": { panelId: "revisions", cardKind: "revision-comment" },
@@ -36,10 +42,21 @@ describe("ANCHOR_CLICK_ROUTES derived ≡ the frozen literals", () => {
     expect(ANCHOR_CLICK_ROUTES).toEqual(EXPECTED_ROUTES);
   });
 
-  it("exactly the nine routed kinds — five Mode-B + four Mode-A (no extra/missing keys)", () => {
+  it("exactly the ten routed kinds (no extra/missing keys)", () => {
     expect(Object.keys(ANCHOR_CLICK_ROUTES).sort()).toEqual(
       Object.keys(EXPECTED_ROUTES).sort(),
     );
+  });
+
+  // Task 1296: the routed set ≡ the union of what the two dispatchers can
+  // send — every Mode-B span kind (the hover bridge's SSOT) and every kind a
+  // margin marker source paints. A newly-live span or marker kind can no
+  // longer be dispatched into a route table that does not know it.
+  it("routes every kind either dispatcher can send — and nothing else", () => {
+    const marginKinds = Object.values(MARGIN_MARKER_SOURCES).flatMap((s) => s.kinds);
+    const dispatchable = new Set<string>([...MODE_B_CARD_KINDS, ...marginKinds]);
+    expect([...ANCHOR_CLICK_KINDS].sort()).toEqual([...dispatchable].sort());
+    for (const kind of dispatchable) expect(ANCHOR_CLICK_ROUTES).toHaveProperty(kind);
   });
 });
 

@@ -237,6 +237,7 @@ import {
   finalizeProposal,
   withProposalFinalize,
 } from "@/links/proposal-finalize";
+import { registerStoredKindResolver } from "@/links/_shared/stored-kind-resolver";
 import {
   panelForCardKind,
   archiveRemovesAtom,
@@ -1800,6 +1801,34 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [convertCardWithRemap],
   );
+  // "Which kind is card `id`?" for each panel whose ONE collection holds two
+  // kinds (`STORED_KIND_BY_PANEL`) — read off the LIVE collection through the
+  // one read classifier. The unbridging deletes below ask it directly; the
+  // selection slots ask it through the doc store's resolver registry, so an
+  // id-only select of a highlight / a suggestion stores its real kind (task
+  // 1296). A pane releases only its own registration (shared doc stores).
+  const storedKindOf = useMemo(() => {
+    const of =
+      (getCards: () => ReadonlyArray<{ id: string; kind?: string }>, panel: PolymorphicPanel) =>
+      (id: string): CardKind | null => {
+        const c = getCards().find((r) => r.id === id);
+        return c ? cardKindFromRecord(c, panel) : null;
+      };
+    return {
+      notes: of(notesHookRaw.getCards, "notes"),
+      revisions: of(revisionsHookRaw.getCards, "revisions"),
+      cutter: of(cutterHookRaw.getCards, "cutter"),
+      reports: of(reportsHookRaw.getCards, "reports"),
+    } satisfies Record<PolymorphicPanel, (id: string) => CardKind | null>;
+  }, [notesHookRaw.getCards, revisionsHookRaw.getCards, cutterHookRaw.getCards, reportsHookRaw.getCards]);
+  useEffect(() => {
+    const releases = (Object.keys(storedKindOf) as PolymorphicPanel[]).map((panel) =>
+      registerStoredKindResolver(cardStoreInst, panel, storedKindOf[panel]),
+    );
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [cardStoreInst, storedKindOf]);
   // Each panel hook threaded to its consumers (cardCtx, PaneRail/PaneRailBody,
   // omni-host) with `convertCard` swapped for the popout-key-remapping adapter —
   // one chokepoint per pair, so the morph survives regardless of which surface
@@ -1817,10 +1846,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const deleteRevisionCard = useMemo(
     () =>
       makeUnbridgingDelete({
-        resolveKind: (id) => {
-          const c = revisionsHookRaw.getCards().find((r) => r.id === id);
-          return c ? cardKindFromRecord(c, "revisions") : null;
-        },
+        resolveKind: storedKindOf.revisions,
         rawDelete: revisionsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
@@ -1828,15 +1854,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         resolveCard: (id) => revisionsHookRaw.getCards().find((r) => r.id === id),
         finalizeLeavingProposal: onProposalLeave,
       }),
-    [revisionsHookRaw.getCards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
+    [storedKindOf.revisions, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
   );
   const deleteCutterCard = useMemo(
     () =>
       makeUnbridgingDelete({
-        resolveKind: (id) => {
-          const c = cutterHookRaw.getCards().find((r) => r.id === id);
-          return c ? cardKindFromRecord(c, "cutter") : null;
-        },
+        resolveKind: storedKindOf.cutter,
         rawDelete: cutterHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
@@ -1844,7 +1867,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         resolveCard: (id) => cutterHookRaw.getCards().find((r) => r.id === id),
         finalizeLeavingProposal: onProposalLeave,
       }),
-    [cutterHookRaw.getCards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
+    [storedKindOf.cutter, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: morphCard, deleteCard: deleteRevisionCard }),
@@ -1892,16 +1915,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const deleteReportCard = useMemo(
     () =>
       makeUnbridgingDelete({
-        resolveKind: (id) => {
-          const c = reportsHookRaw.getCards().find((r) => r.id === id);
-          return c ? cardKindFromRecord(c, "reports") : null;
-        },
+        resolveKind: storedKindOf.reports,
         rawDelete: reportsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [reportsHookRaw.getCards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [storedKindOf.reports, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1917,16 +1937,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const deleteNoteCard = useMemo(
     () =>
       makeUnbridgingDelete({
-        resolveKind: (id) => {
-          const c = notesHookRaw.getCards().find((n) => n.id === id);
-          return c ? (c.kind as CardKind) : null;
-        },
+        resolveKind: storedKindOf.notes,
         rawDelete: notesHookRaw.deleteNote,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [notesHookRaw.getCards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [storedKindOf.notes, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: morphCard, deleteNote: deleteNoteCard }),
