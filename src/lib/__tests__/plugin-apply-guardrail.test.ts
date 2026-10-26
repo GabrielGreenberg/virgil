@@ -101,6 +101,7 @@ const PLUGIN_SITE_VERDICTS: Record<string, "door" | "tagged" | "clean"> = {
   // RENEGOTIATED (task 878): "tagged" → "clean". Both orphan guards now read
   // liveness off the observer snapshot (`hasLiveAnchor` / `hasLiveBlock`, O(1)
   // per removed id) instead of a deferred `doc.descendants` walk per join.
+  "src/lib/tiptap/archive-holdings.ts#apply": "clean", // archive replay tracker (task 1302) — depth compares only
   "src/lib/tiptap/linked-anchor.ts#appendTransaction": "clean", // orphan guard (anchors)
   "src/lib/tiptap/linked-anchor.ts#appendTransaction[2]": "clean", // orphan guard (blocks)
   "src/lib/tiptap/linked-anchor.ts#appendTransaction[3]": "clean", // resurrection guard
