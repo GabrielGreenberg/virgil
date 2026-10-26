@@ -73,7 +73,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join, posix } from "node:path";
-import { diskPathFor } from "../lib/skill-bundle-layout.mjs";
+import { diskPathFor, scriptsDirFor } from "../lib/skill-bundle-layout.mjs";
 
 /** Every subsystem the meta-manifest carries, in `diskPathFor`'s vocabulary. */
 export const SUBSYSTEMS = ["library", "editor", "virgil", "manifest"];
@@ -231,8 +231,8 @@ export async function shippedPathMap(repoRoot) {
 // path prefix, so it leaves the no-slash resolver fallback (`... editor/scripts;`
 // in the answer-bib-review / sync-bib-to-library dual-path loops) intact.
 const PAPER_SCRIPT_PREFIXES = [
-  ["editor/scripts/", `${diskPathFor("editor", "scripts/")}`],
-  ["library/scripts/", `${diskPathFor("library", "scripts/")}`],
+  ["editor/scripts/", `${scriptsDirFor("editor")}/`],
+  ["library/scripts/", `${scriptsDirFor("library")}/`],
 ];
 
 /** Rewrite repo-relative helper-script paths to their synced-paper location. */

@@ -8,10 +8,15 @@ which is exactly how a June-4 bundle held the dev-dream capture layer out of
 the busiest paper for ten weeks. This script gives a terminal session the same
 sync, from the same served bundle, with the same on-disk layout.
 
-CONTRACT TWIN NOTICE: the path-routing table below (`disk_path_for`) and the
-stamp shape mirror library/lib/skill-sync.ts (`diskPathFor`, `OnDiskVersion`)
-byte-for-byte in behavior. skill-sync.ts is the SSOT; a change there must be
-mirrored here (test_sync_skills.py pins the routing table against fixtures).
+CONTRACT TWIN NOTICE: the path-routing table below (`disk_path_for`, with its
+containment rule `_contained`) mirrors library/lib/skill-bundle-layout.mjs
+(`diskPathFor`) — the layout SSOT, which skill-sync.ts only re-exports — and
+the stamp shape mirrors skill-sync.ts (`OnDiskVersion`: `files` = EVERY
+manifest entry, routed or not). This script is the import-free bootstrap (it
+may be replacing its own files mid-run), so it keeps a copy rather than
+reading the .mjs; library/lib/__tests__/skill-bundle-layout-twin.test.ts runs
+both over one case list and pins their prefix vocabularies equal, so a rule
+added on one side only goes red.
 Unlike the app, this script never touches `.virgil/library-path.json` — it
 cannot know the library root; the app owns that file.
 
@@ -40,19 +45,40 @@ VERSION_REL = Path(".virgil/.skill-bundle-version.json")
 FETCH_TIMEOUT_S = 20
 
 
+def _contained(piece: object) -> bool:
+    """Mirror of skill-bundle-layout.mjs `isContained`: non-empty `/`-separated
+    segments, none empty / `.` / `..`, no backslash or NUL. Manifest and STAMP
+    entries are data (the stamp sits in a cloud-synced folder agents write),
+    so `scripts/../../x` must route nowhere — this is the only door that
+    writes and deletes through plain `open`/`unlink`, uncontained by FSA."""
+    if not isinstance(piece, str) or piece == "":
+        return False
+    if "\\" in piece or "\0" in piece:
+        return False
+    return all(seg not in ("", ".", "..") for seg in piece.split("/"))
+
+
 def disk_path_for(subsystem: str, bundle_path: str) -> str | None:
-    """Mirror of skill-sync.ts `diskPathFor` — see the twin notice above.
-    Returns a folder-relative POSIX path, or None for unrecognized shapes
-    (skipped, defence against malformed manifests)."""
+    """Mirror of skill-bundle-layout.mjs `diskPathFor` — see the twin notice.
+    Returns a folder-relative POSIX path, or None for unrecognized or
+    uncontained shapes (skipped, defence against malformed manifests/stamps)."""
+    if not _contained(subsystem) or "/" in subsystem or not isinstance(bundle_path, str):
+        return None
     if subsystem == "library" and bundle_path == "CLAUDE.md":
         return ".claude/CLAUDE.md"
     if subsystem == "manifest":
+        if not _contained(bundle_path):
+            return None
         return f".claude/virgil/{bundle_path}"
     if bundle_path.startswith("claude-commands/"):
         rest = bundle_path[len("claude-commands/"):]
+        if not _contained(rest):
+            return None
         return f".claude/commands/{subsystem}/{rest}"
     if bundle_path.startswith("scripts/"):
         rest = bundle_path[len("scripts/"):]
+        if not _contained(rest):
+            return None
         return f".virgil/scripts/{subsystem}/{rest}"
     return None
 
@@ -111,23 +137,27 @@ def sync(folder: Path, source: BundleSource, *, check_only: bool = False) -> int
         print(f"sync_skills: STALE — on disk {on_disk or 'none'}, served {version}.")
         return 1
 
-    written: list[str] = []  # "<subsystem>/<bundlePath>", the stamp's files list
+    # The stamp's files list is EVERY manifest entry, routed or not — the
+    # same `newFiles` skill-sync.ts stamps (task 1309 aligned the twins).
+    listed: list[str] = []  # "<subsystem>/<bundlePath>"
+    written = 0
     for src in manifest.get("sources", []):
         name = src.get("name")
         for bundle_path in src.get("files", []):
+            listed.append(f"{name}/{bundle_path}")
             rel = disk_path_for(name, bundle_path)
             if rel is None:
                 continue
             data = source.file(name, bundle_path)
             _atomic_write(folder / rel, data)
-            written.append(f"{name}/{bundle_path}")
+            written += 1
 
     # Clean up files that left the bundle (same rule as skill-sync.ts step 4):
     # anything the OLD stamp managed that the new manifest no longer lists.
     removed: list[str] = []
-    new_set = set(written)
+    new_set = set(listed)
     for old_entry in (stamp or {}).get("files", []):
-        if old_entry in new_set:
+        if not isinstance(old_entry, str) or old_entry in new_set:
             continue
         sub, _, bundle_path = old_entry.partition("/")
         rel = disk_path_for(sub, bundle_path)
@@ -151,14 +181,14 @@ def sync(folder: Path, source: BundleSource, *, check_only: bool = False) -> int
             {
                 "version": version,
                 "syncedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "files": written,
+                "files": listed,
             },
             indent=2,
         ).encode("utf-8"),
     )
     print(
         f"sync_skills: updated {on_disk or 'none'} → {version} "
-        f"({len(written)} files written, {len(removed)} removed). "
+        f"({written} files written, {len(removed)} removed). "
         "New command prompts load in your NEXT session; scripts are live now."
     )
     return 0

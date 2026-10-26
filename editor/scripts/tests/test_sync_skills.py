@@ -4,8 +4,12 @@
 Pins the behavior contract the app's sync engine defines, against a local
 fixture bundle (no network):
 
-  • the routing table: all four disk_path_for rules land where skill-sync.ts's
-    diskPathFor lands them, and an unrecognized shape is SKIPPED, not written
+  • the routing table: all four disk_path_for rules land where
+    skill-bundle-layout.mjs's diskPathFor lands them (the cross-language
+    parity census is library/lib/__tests__/skill-bundle-layout-twin.test.ts),
+    and an unrecognized shape is SKIPPED, not written
+  • containment (task 1309): a `..` manifest entry is not written and a `..`
+    STAMP entry does not delete outside the paper folder
   • a fresh folder syncs whole and stamps {version, syncedAt, files}
   • version-match → early return, nothing rewritten (mtime pinned)
   • a file that LEFT the bundle is deleted on the next sync
@@ -102,8 +106,8 @@ stamp = json.loads((paper / ".virgil/.skill-bundle-version.json").read_text())
 check(stamp["version"] == "v1aaaaaaaaaa" and "syncedAt" in stamp,
       "stamp carries {version, syncedAt}")
 check("editor/scripts/apply_response.py" in stamp["files"]
-      and "editor/unrecognized/odd.bin" not in stamp["files"],
-      "stamp files list = managed entries only")
+      and "editor/unrecognized/odd.bin" in stamp["files"],
+      "stamp files list = every manifest entry (skill-sync.ts's newFiles)")
 
 print("— idempotence —")
 marker = paper / ".claude/commands/editor/draft-footnote.md"
@@ -145,6 +149,38 @@ print("— soft failure —")
 r = run([str(paper), "--from-local", str(tmp / "nonexistent-bundle")])
 check(r.returncode == 2 and "continuing with the on-disk bundle" in r.stdout,
       "unreadable bundle source → exit 2 with a soft-fail message")
+
+print("— containment (task 1309) —")
+box = tmp / "contain"
+cpaper = box / "paper"
+(cpaper / ".virgil").mkdir(parents=True)
+victim = box / "victim.txt"
+victim.write_text("keep me\n")
+evil_bundle = make_bundle(box, "v3cccccccccc", {
+    "scripts/ok.py": "print('ok')\n",
+})
+man = json.loads((evil_bundle / "bundle-manifest.json").read_text())
+for src in man["sources"]:
+    if src["name"] == "editor":
+        src["files"] += ["scripts/../../../../evil.py"]
+(evil_bundle / "bundle-manifest.json").write_text(json.dumps(man))
+for rel in ("evil.py", "evil.md"):  # where the hostile source path resolves
+    (tmp / rel).write_text("escaped\n")
+(cpaper / ".virgil/.skill-bundle-version.json").write_text(json.dumps({
+    "version": "old", "syncedAt": "t",
+    "files": ["editor/scripts/../../../../victim.txt", "../victim.txt", 7],
+}))
+r = run([str(cpaper), "--from-local", str(evil_bundle)])
+check(r.returncode == 0, f"a sync with hostile entries still completes (got {r.returncode}: {r.stdout}{r.stderr})")
+check((cpaper / ".virgil/scripts/editor/ok.py").exists(), "…and writes its contained files")
+check(not (box / "evil.py").exists() and not (box / "evil.md").exists(),
+      "a `..` manifest entry is NOT written outside the folder")
+check(victim.exists() and victim.read_text() == "keep me\n",
+      "a `..` stamp entry does NOT delete a file outside the folder")
+for sub, bp in [("editor", "scripts/../x"), ("editor", "claude-commands/../x"), ("editor", "scripts/"), ("editor", "scripts//x"),
+                ("editor", "scripts/./x"), ("../editor", "scripts/x"), ("a/b", "scripts/x"),
+                ("manifest", "../x"), ("manifest", ""), ("editor", "scripts/a\\b")]:
+    check(sync_skills.disk_path_for(sub, bp) is None, f"disk_path_for({sub!r}, {bp!r}) → None")
 
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

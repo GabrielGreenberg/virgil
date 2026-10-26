@@ -35,15 +35,39 @@ export function scriptsDirFor(subsystem) {
   return `${VIRGIL_DIR}/scripts/${subsystem}`;
 }
 
+/** A path piece that stays where it is put: non-empty, slash-separated
+ *  segments, none of them empty / `.` / `..`, and no backslash or NUL. The
+ *  CONTAINMENT half of the layout (task 1309): a manifest entry and an
+ *  on-disk stamp entry are DATA — the stamp lives in a cloud-synced folder
+ *  agents also write — so `scripts/../../x` must resolve to nothing rather
+ *  than to a path outside `.claude/` / `.virgil/scripts/`. The FSA writer was
+ *  contained for free (`getDirectoryHandle("..")` throws); the `fs` writers
+ *  and the Python twin were not, so the rule lives here, in the one spelling.
+ *
+ *  @param {string} piece
+ *  @returns {boolean}
+ */
+function isContained(piece) {
+  if (typeof piece !== "string" || piece === "") return false;
+  if (piece.includes("\\") || piece.includes("\0")) return false;
+  return piece.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
+}
+
 /** Map `<subsystem>/<bundle-relative path>` to its on-disk destination.
- *  Returns undefined for paths whose subsystem/shape we don't recognise — the
- *  caller skips them (defence against a malformed manifest).
+ *  Returns undefined for paths whose subsystem/shape we don't recognise, and
+ *  for any whose subsystem or remainder is not CONTAINED (see `isContained`)
+ *  — the caller skips them (defence against a malformed manifest or stamp).
+ *
+ *  TWIN: `editor/scripts/sync_skills.py` `disk_path_for` is the import-free
+ *  Python bootstrap's copy of these rules; `skill-bundle-layout-twin.test.ts`
+ *  runs both over one case list and pins their prefix vocabularies equal.
  *
  *  @param {string} subsystem  "library" | "editor" | "virgil" | "manifest"
  *  @param {string} bundlePath bundle-relative path within that subsystem
  *  @returns {string | undefined} folder-relative disk path
  */
 export function diskPathFor(subsystem, bundlePath) {
+  if (!isContained(subsystem) || subsystem.includes("/")) return undefined;
   // The workspace CLAUDE.md only ships from the library subsystem.
   if (subsystem === "library" && bundlePath === "CLAUDE.md") {
     return `${CLAUDE_DIR}/CLAUDE.md`;
@@ -51,14 +75,17 @@ export function diskPathFor(subsystem, bundlePath) {
   // The operational manifest is Virgil-global: it lands in one shared
   // `.claude/virgil/`, not under a per-subsystem segment.
   if (subsystem === "manifest") {
+    if (!isContained(bundlePath)) return undefined;
     return `${CLAUDE_DIR}/virgil/${bundlePath}`;
   }
   if (bundlePath.startsWith("claude-commands/")) {
     const rest = bundlePath.slice("claude-commands/".length);
+    if (!isContained(rest)) return undefined;
     return `${commandsDirFor(subsystem)}/${rest}`;
   }
   if (bundlePath.startsWith("scripts/")) {
     const rest = bundlePath.slice("scripts/".length);
+    if (!isContained(rest)) return undefined;
     return `${scriptsDirFor(subsystem)}/${rest}`;
   }
   return undefined;
