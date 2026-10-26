@@ -37,7 +37,6 @@ import json
 import re
 import sys
 import time
-import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -96,35 +95,6 @@ _TRANSIENT_RX = re.compile(
 )
 
 
-def _strip_braces(s: str) -> str:
-    """{Some Title} → Some Title. Leaves balanced inner braces alone."""
-    s = s.strip()
-    while len(s) > 1 and s.startswith("{") and s.endswith("}"):
-        s = s[1:-1].strip()
-    return s
-
-
-def _norm_title(s: str) -> str:
-    """Lowercase, drop punctuation, collapse whitespace. For fuzzy match."""
-    s = unicodedata.normalize("NFKD", _strip_braces(s)).lower()
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-
-def _first_author_surname(author_field: str) -> str:
-    """Pull the surname of the first author from a bib `author` field."""
-    if not author_field:
-        return ""
-    first = re.split(r"\s+and\s+", author_field.strip(), maxsplit=1)[0]
-    first = _strip_braces(first).strip()
-    if "," in first:
-        # "Smith, Jane" — surname before the comma
-        return _norm_title(first.split(",", 1)[0])
-    parts = first.split()
-    return _norm_title(parts[-1]) if parts else ""
-
-
 def _split_authors(author_field: str) -> list[str]:
     """`Smith, J. and Doe, J.` → ['Smith, J.', 'Doe, J.']."""
     if not author_field:
@@ -132,20 +102,15 @@ def _split_authors(author_field: str) -> list[str]:
     return [a.strip() for a in re.split(r"\s+and\s+", author_field.strip()) if a.strip()]
 
 
-def _normalize_doi(doi: str) -> str:
-    """Lowercase, strip leading http(s)://doi.org/, strip whitespace."""
-    if not doi:
-        return ""
-    s = doi.strip().lower()
-    s = re.sub(r"^https?://(dx\.)?doi\.org/", "", s)
-    return s.strip()
-
-
-def _normalize_isbn(isbn: str) -> str:
-    """Strip hyphens, spaces, lowercase. Keep just the digits + X."""
-    if not isbn:
-        return ""
-    return re.sub(r"[^0-9xX]", "", isbn).lower()
+# Identity normalizers are work_identity's — the ONE owner of "is this the
+# same work?" (task 1312). Bound under their old private names because the
+# bodies below and test_wiring.py read them that way.
+from work_identity import (  # noqa: E402
+    _strip_braces,
+    first_author_surname as _first_author_surname,
+    norm_title as _norm_title,
+    normalize_doi as _normalize_doi,
+)
 
 
 def is_transient(entry: dict) -> tuple[bool, str]:

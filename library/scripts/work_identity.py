@@ -134,9 +134,16 @@ def _strip_accents(s: str) -> str:
 
 
 def normalize_doi(s: str) -> str:
-    """Canonical DOI: lowercase, strip an ``https?://(dx.)?doi.org/`` prefix, trim.
+    """Canonical DOI: lowercase, strip a resolver/scheme prefix, trim.
 
-    Ported from ``merge_paper_references._normalize_doi``. Note this deliberately
+    Prefixes stripped: ``https?://(dx.)?doi.org/`` and ``doi:`` (any case,
+    optional space). Trailing citation punctuation (`` .;,``) is trimmed — a
+    DOI copied out of a reference list often keeps the sentence's period.
+    This is THE DOI normalizer: the editor's ``bib_match_library`` and
+    ``merge_paper_references`` import it rather than keep private copies
+    (task 1312 — the editor copy had drifted and missed ``dx.doi.org``).
+
+    Note this deliberately
     does NOT reject truncated placeholders like ``10.1038/`` — the VETO in
     :func:`classify` is what stops those from causing false merges, so callers
     that index by DOI still bucket them together (cheap) but never merge them.
@@ -145,13 +152,14 @@ def normalize_doi(s: str) -> str:
         return ""
     s = _strip_braces(s).strip().lower()
     s = re.sub(r"^https?://(dx\.)?doi\.org/", "", s)
-    return s.strip()
+    s = re.sub(r"^doi:\s*", "", s)
+    return s.strip(" .;,\t\n")
 
 
 def normalize_isbn(s: str) -> str:
     """Canonical ISBN: keep digits and ``x`` only, lowercase.
 
-    Ported from ``merge_paper_references._normalize_isbn``. A record may list
+    Originally ported from ``merge_paper_references``, which now imports it. A record may list
     several ISBNs (hardback/paperback/eISBN); we keep just the first run of
     ISBN-shaped characters so a 10- and a 13-digit printing still collide only
     when they genuinely share a run — good enough as a *bucketing* key because
@@ -229,9 +237,23 @@ def _surname_of(one_author: str) -> str:
     if not a:
         return ""
     if "," in a:
-        return _clean_name_token(a.split(",", 1)[0])
-    toks = a.split()
+        # ``King Jr., Martin`` — a suffix may ride inside the surname part.
+        toks = _drop_name_suffixes(a.split(",", 1)[0].split())
+        return _clean_name_token(" ".join(toks))
+    toks = _drop_name_suffixes(a.split())
     return _clean_name_token(toks[-1]) if toks else ""
+
+
+#: Generational suffixes that are never the surname (``John Smith Jr.``).
+_NAME_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv"})
+
+
+def _drop_name_suffixes(toks: list[str]) -> list[str]:
+    """Drop trailing generational-suffix tokens, never the last real token."""
+    toks = list(toks)
+    while len(toks) > 1 and _clean_name_token(toks[-1]) in _NAME_SUFFIXES:
+        toks.pop()
+    return toks
 
 
 def first_author_surname(author_field: str) -> str:
