@@ -144,6 +144,11 @@ const LEDGER: Record<string, Row> = {
     events: ["document.pointermove", "window.mousemove", "window.mouseup"],
     why: "one-shot stale-hover restore after an arrow key; a card drag pair",
   },
+  "components/dialog-contract.ts": {
+    scope: "open-state",
+    events: ["window.keydown"],
+    why: "Escape for an open non-SystemDialog dialog (the Fonts… tool window, task 1304), gated on the dialog stack's key owner",
+  },
   "components/system-dialog.tsx": {
     scope: "open-state",
     events: ["document.keydown", "window.keydown", "document.mousedown"],

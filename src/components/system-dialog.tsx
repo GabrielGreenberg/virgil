@@ -117,6 +117,7 @@ import {
   pushDialog,
   type DialogToken,
 } from "./dialog-stack";
+import { useDialogFocusRestore } from "./dialog-contract";
 import { isPlainEnter, resolveDialogEnter } from "./dialog-enter-policy";
 import { useBackdropPress } from "@/lib/backdrop-press";
 
@@ -663,48 +664,10 @@ export default function SystemDialog({
   // [cost: O(1) per OPEN] — one `document.activeElement` read on the open edge
   // and at most one `focus()` on the close edge. Nothing per render, per key or
   // per frame.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement;
-    // Nothing was focused (or only the document itself was) ⇒ nothing to give
-    // back; `<body>` is where focus lands anyway once the portal goes.
-    if (
-      !previous ||
-      previous === document.body ||
-      previous === document.documentElement
-    ) {
-      return;
-    }
-    return () => {
-      // STAND DOWN when something else has already claimed focus during the
-      // close. By the time a passive cleanup runs the portal is already
-      // detached, so a dialog that held focus leaves `activeElement` on
-      // `<body>` — anything ELSE there is a deliberate claim someone made
-      // (a handler that focused a fresh card, an outside mousedown that landed
-      // on a real control, a dialog that opened another dialog) and stealing it
-      // back would be the reposition-policy defect one axis over.
-      const now = document.activeElement;
-      if (now && now !== document.body && now !== document.documentElement) {
-        return;
-      }
-      // FAIL SAFE. An element that has since unmounted — the trash button of
-      // the card the confirm just deleted, the grab handle of the block it
-      // removed — restores NOTHING, which is exactly today's behaviour, rather
-      // than guessing a substitute target.
-      if (!previous.isConnected) return;
-      const el = previous as HTMLElement;
-      if (typeof el.focus !== "function") return;
-      try {
-        // `preventScroll` because a restore is a FOCUS, not a NAVIGATION: the
-        // caret was already where the user left it, and yanking the viewport to
-        // it is the "Refocus is not navigation" class (task 486) arriving
-        // through the shell.
-        el.focus({ preventScroll: true });
-      } catch {
-        /* a detached or hostile target — nothing to do */
-      }
-    };
-  }, [open]);
+  // The body of that effect lives in `dialog-contract.ts` so the
+  // non-SystemDialog hosts (the Fonts… tool window, task 1304) restore through
+  // the SAME code rather than a copy.
+  useDialogFocusRestore(open);
 
   // ── Initial focus ──────────────────────────────────────────────────
   // Gated on `mounted`, and that is the whole of the 389 focus half. `mounted`

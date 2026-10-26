@@ -2817,8 +2817,18 @@ that matches the surface, don't reinvent the shell:
   shared with the cued-default census. Allowlist EMPTY: there is no true
   statement of the form "this variant is part of the taxonomy but nothing may
   call it". So a variant and its first caller land together, or CI says so.
-- `FloatingPanel`-hosted tool windows (Fonts) keep their resizable shell but should
-  derive header/surface chrome from `SYSTEM_DIALOG_TOKENS`, not bespoke literals.
+- `FloatingPanel`-hosted tool windows (Fonts) are a **sanctioned pod-styled fork**
+  (Gabriel, 2026-07-05, task 033): they keep their resizable shell AND their pod
+  chrome (`--pod-toolbar` header, `--pod-panel` body) — do **not** migrate them to
+  `SYSTEM_DIALOG_TOKENS`. What they share with `SystemDialog` is the design TOKENS
+  (no hex fallbacks on tokens `globals.css` always defines) and the dialog
+  BEHAVIOUR contract, which `FloatingPanel` provides as an opt-in
+  `dialog={{ labelledBy, onCancel }}` (task 1304): `role="dialog"` named by the
+  title, a non-modal place on the dialog stack (`dialog-stack.ts`) so Escape
+  cancels only the key-owning window, and focus restore — the same
+  `dialog-contract.ts` code `SystemDialog` uses. A card float never passes it:
+  a popped card is not a dialog and must not close on Escape. Close buttons on
+  both kinds use the one `CloseIcon` (`components/icons/CloseIcon.tsx`).
 
 **Imperative dialogs.** `useSystemDialog()` (from
 `src/components/system-dialog-host.tsx`, provider mounted app-wide) exposes

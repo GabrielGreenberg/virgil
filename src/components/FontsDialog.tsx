@@ -16,6 +16,9 @@ import {
 } from "@/lib/panel-typography";
 import { usePanelTypography, usePanelDefault } from "@/hooks/usePanelTypography";
 import { iconHint } from "@/components/Hint";
+import { CloseIcon } from "@/components/icons/CloseIcon";
+
+const FONTS_TITLE_ID = "fonts-dialog-title";
 
 interface FontsDialogProps {
   open: boolean;
@@ -40,8 +43,8 @@ function CategoryCard({
     <div
       className="rounded-lg p-5"
       style={{
-        background: "var(--surface, #fff)",
-        border: "1px solid var(--border-light, #c9c5c5)",
+        background: "var(--surface)",
+        border: "1px solid var(--border-light)",
       }}
     >
       <div className="flex items-baseline justify-between mb-3">
@@ -70,8 +73,8 @@ function PreviewPod({
     <div
       className="rounded-md px-4 py-3 mb-4"
       style={{
-        background: "var(--background, #f8f3ed)",
-        border: "1px solid var(--border-light, #c9c5c5)",
+        background: "var(--background)",
+        border: "1px solid var(--border-light)",
         // Never a bare family name — resolvePreviewFontStack routes through
         // the loaded faces / CSS vars (a bare name silently falls back to
         // the UA default for next/font-loaded families). Preview-only: the
@@ -81,7 +84,7 @@ function PreviewPod({
         fontSize: `${fontSizeRem}rem`,
         fontWeight: weight,
         lineHeight: 1.4,
-        color: "var(--editor-text-color, #2a2a2a)",
+        color: "var(--editor-text-color)",
         minHeight: multiline ? "3em" : "2em",
         whiteSpace: multiline ? "normal" : "nowrap",
         overflow: "hidden",
@@ -178,18 +181,22 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
       initialHeight={pos.height}
       zIndex={70}
       onChange={setPos}
+      // The dialog BEHAVIOUR contract (task 1304) — role, name, Escape through
+      // the dialog stack, focus restore — on the pod-styled fork's own host.
+      // Fonts commits every change live, so cancelling it is closing it.
+      dialog={{ labelledBy: FONTS_TITLE_ID, onCancel: onClose }}
     >
       {/* Header — drag strip lives here (FloatingPanel's drag listener
           ignores buttons & inputs, so the close button still works). */}
       <div
         className="flex items-center justify-between px-5 py-3 shrink-0"
         style={{
-          background: "var(--pod-toolbar, #f5f3ef)",
-          borderBottom: "1px solid var(--border-light, #c9c5c5)",
+          background: "var(--pod-toolbar)",
+          borderBottom: "1px solid var(--border-light)",
         }}
       >
         <div className="flex items-baseline gap-2">
-          <h2 className="text-sm font-medium text-ink-body">Fonts</h2>
+          <h2 id={FONTS_TITLE_ID} className="text-sm font-medium text-ink-body">Fonts</h2>
           <span className="text-[11px] text-ink-muted">main text</span>
         </div>
         <button
@@ -198,9 +205,7 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           className="iconbtn-md"
           {...iconHint({ label: "Close" })}
         >
-          <svg width="16" height="16" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-            <path d="M3 3l6 6M9 3l-6 6" />
-          </svg>
+          <CloseIcon size={16} />
         </button>
       </div>
 
@@ -208,7 +213,7 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
         className="flex-1 overflow-y-auto px-5 py-5 space-y-4"
         data-no-window-drag
         onMouseDown={(e) => e.stopPropagation()}
-        style={{ background: "var(--pod-panel, #f3f0eb)" }}
+        style={{ background: "var(--pod-panel)" }}
       >
         {/* ── Editor body ───────────────────────────────────────────── */}
         <CategoryCard

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "./field-primitives";
+import { useMenuDismiss } from "./menu/useMenuDismiss";
 import { MAIN_TEXT_FONTS } from "@/lib/font-catalogue";
 import { resolvePreviewFontStack } from "@/lib/panel-typography";
 
@@ -29,14 +30,15 @@ export default function FontPicker({
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
+  // The shared menu dismiss (task 1304): outside press closes, and Escape
+  // closes the LIST — consumed, so the Fonts… window / Preferences hosting
+  // this picker does not also answer the same press. The hand-rolled
+  // mousedown closer it replaces had no Escape at all.
+  useMenuDismiss({
+    containerRef: ref,
+    onClose: () => setOpen(false),
+    open,
+  });
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus());
