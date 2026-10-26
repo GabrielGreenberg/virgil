@@ -248,13 +248,25 @@ top of step 1.
    (for ambiguous) or the reason (for residual missing), and a
    suggested resolution. Skip writing the file if every entry resolved.
 
-8. **Final notification + reply.**
+8. **Final notification + reply.** Close the run through the writeback
+   door's `notify` subcommand — it appends the `ai-request-complete`
+   notification and bumps `version.txt` in ONE commit under the editing pen,
+   which is how the app learns the run finished. Never reach the script
+   helpers through an inline `python3 -c` dotted-package import: that path
+   resolves only in the Virgil source repo, never in a paper folder.
+   The summary is free text, so it goes in by `@<path>` through a scratch
+   file — see [`_op-json.md`](_op-json.md) for the rule:
    ```bash
-   python3 -c "from editor.scripts._common import append_notification, bump_version, now_iso, resolve_doc; \
-               doc = resolve_doc('<docPath>'); \
-               append_notification(doc, {'kind': 'ai-request-complete', 'at': now_iso(), 'summary': 'sync-bib-to-library: <N> matched, <K> added, <P> flagged'}); \
-               bump_version(doc)"
    rm -rf <runDir>
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX") || exit 1
+   cat > "$t/summary" <<'TXT'
+   sync-bib-to-library: <N> matched, <K> added, <P> flagged
+   TXT
+   python3 "$scripts_dir/apply_response.py" "<docPath>" notify \
+       --skill sync-bib-to-library \
+       --summary "@$t/summary"; rc=$?
+   rm -rf "$t"
+   exit "$rc"
    ```
    Reply (single line):
    ```

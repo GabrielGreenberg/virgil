@@ -867,21 +867,17 @@ def resolve_writes(writes: list) -> list[tuple[Path, str | None]]:
     return out
 
 
-# Each writer comes in two forms: a `*_planned`/`*_appended` form that READS
-# current state and RETURNS the (path, new-content) pair without touching disk
-# — so the contract paths can fold it into a single atomic_write — and a
-# standalone form that commits it on its own (atomically) for other callers.
-
-
-def notification_appended(doc: Path, item: dict) -> tuple[Path, str]:
-    """Compute the next notifications.json content with `item` appended (cap
-    200). Returns `(path, serialized)`; does not write."""
-    return sidecar(doc, "notifications.json"), _notifications_with(doc, item)
+# The notification + version writers exist ONLY as DEFERRED write-set
+# contents for `commit_under_pen` (task 941). Their T0-snapshot and standalone
+# `atomic_write` forms are deleted (task 1313): a standalone writer is a second,
+# unpenned door, and its last caller was a skill step that could not even
+# import it. A run with nothing else to commit closes through
+# `apply_response.py <doc> notify`.
 
 
 def notification_deferred(doc: Path, item: dict) -> tuple[Path, Deferred]:
-    """`notification_appended` for a pen commit (task 941): the append is
-    REPLAYED on the inbox as it is inside the pen, not on a T0 read."""
+    """Append `item` to notifications.json (cap 200), for a pen commit: the
+    append is REPLAYED on the inbox as it is inside the pen, not on a T0 read."""
     return sidecar(doc, "notifications.json"), lambda: _notifications_with(doc, item)
 
 
@@ -895,11 +891,6 @@ def _notifications_with(doc: Path, item: dict) -> str:
     return json_dumps({"items": items})
 
 
-def append_notification(doc: Path, item: dict) -> None:
-    path, content = notification_appended(doc, item)
-    atomic_write([(path, content)])
-
-
 def read_version(doc: Path) -> int:
     path = sidecar(doc, "version.txt")
     if path.exists():
@@ -910,16 +901,8 @@ def read_version(doc: Path) -> int:
     return 0
 
 
-def version_bumped(doc: Path) -> tuple[Path, str, int]:
-    """Compute the next version.txt content (current + 1). Returns
-    `(path, serialized, new_int)`; does not write."""
-    path = sidecar(doc, "version.txt")
-    n = read_version(doc) + 1
-    return path, str(n) + "\n", n
-
-
 class DeferredVersionBump:
-    """`version_bumped` for a pen commit (task 941): current + 1 is read inside
+    """version.txt += 1 for a pen commit (task 941): current + 1 is read inside
     the pen. Use as a write-set content; `.n` holds the new number once the
     commit has resolved it."""
 
@@ -931,12 +914,6 @@ class DeferredVersionBump:
     def __call__(self) -> str:
         self.n = read_version(self.doc) + 1
         return str(self.n) + "\n"
-
-
-def bump_version(doc: Path) -> int:
-    path, content, n = version_bumped(doc)
-    atomic_write([(path, content)])
-    return n
 
 
 # ---------------------------------------------------------------------------

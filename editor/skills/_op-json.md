@@ -1,7 +1,7 @@
 <!-- Canonical "how free text reaches a Virgil helper" doctrine for every editor
      skill that calls `apply_response.py` with a positional op argument, or
      passes a free-text FLAG (`create_card.py --body/--title/--notes/--item/
-     --task-text/--original/--suggested/--explanation/--range/--bib-entry/--summary`, `apply_response.py complete-only --note`) — task 815.
+     --task-text/--original/--suggested/--explanation/--range/--bib-entry/--summary`, `apply_response.py complete-only --note`, `apply_response.py notify --summary`) — task 815.
 
      SSOT: this file is the single source of truth for the inline-vs-`@`-file
      rule. It is referenced by link (like `_ask-shape.md` /

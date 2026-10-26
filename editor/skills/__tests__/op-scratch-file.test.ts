@@ -581,7 +581,7 @@ function classifyValue(value: string): FlagSite["verdict"] {
 }
 
 /**
- * Every `create_card.py` / `complete-only` invocation in `rel`, with its
+ * Every `create_card.py` / `complete-only` / `notify` invocation in `rel`, with its
  * free-text flags. A command's extent: in a fenced block, the line plus its
  * `\` continuations (and any lines an open op-json quote spans); in inline code, up to the closing backtick (which may sit
  * on a later line — prose wraps inside it).
@@ -597,7 +597,7 @@ function flagSites(rel: string, flags: string[]): FlagSite[] {
       inFence = !inFence;
       return;
     }
-    const tok = /create_card\.py|complete-only/.exec(line);
+    const tok = /create_card\.py|complete-only|apply_response\.py"? [^\n]*\bnotify\b/.exec(line);
     if (!tok) return;
     let cmd: string;
     if (inFence) {
@@ -628,8 +628,8 @@ describe("free-text FLAGS — both helpers read `@<path>` (task 815)", () => {
     );
   });
 
-  it("apply_response.py's --note takes type=text_arg (complete-only + legacy)", () => {
-    expect(textArgFlags(HELPERS.apply_response)).toEqual(["note", "note"]);
+  it("apply_response.py's free text takes type=text_arg (--note: complete-only + legacy; --summary: notify)", () => {
+    expect(textArgFlags(HELPERS.apply_response)).toEqual(["note", "summary", "note"]);
   });
 
   it("text_arg resolves the path rather than joining it to the doc", () => {
