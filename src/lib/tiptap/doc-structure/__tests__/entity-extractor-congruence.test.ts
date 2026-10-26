@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EditorState } from "@tiptap/pm/state";
+import { CARD_ATOM_ID_ATTRS, CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import { inspectSteps } from "../step-inspector";
 import { applyDiff, buildInitial } from "../structure-index";
 import type { DocStructure } from "../types";
@@ -95,15 +96,62 @@ describe("entity extractor — load path ≡ step path (task 922)", () => {
     });
   });
 
+  // Every node name the extractor answers for: its structural blocks plus the
+  // card atoms, which come from the atom registry (task 1300).
+  const EXTRACTED_NODE_NAMES = [
+    "heading",
+    "figureBlock",
+    "exampleBlock",
+    "exampleItem",
+    ...CARD_ATOMS.map((a) => a.nodeName),
+  ];
+  /** A type-name comparison in any form: `typeName === "x"`,
+   *  `node.type.name !== "x"`, `n?.type.name === "x"`. */
+  const typeNameTest = (name: string) =>
+    new RegExp(`(?:\\btypeName|\\.type\\.name)\\s*[!=]==\\s*"${name}"`);
+
   it("neither walk constructs entities by branching on a node type name", () => {
     for (const file of ["structure-index.ts", "step-inspector.ts"]) {
       const src = readFileSync(join(__dirname, "..", file), "utf8");
-      for (const kind of ["heading", "figureBlock", "exampleItem", "citation"]) {
-        expect(src, `${file} branches on "${kind}"`).not.toMatch(
-          new RegExp(`typeName === "${kind}"`),
-        );
+      for (const name of EXTRACTED_NODE_NAMES) {
+        expect(src, `${file} branches on "${name}"`).not.toMatch(typeNameTest(name));
       }
       expect(src, `${file} calls the shared extractor`).toMatch(/extractEntitiesAt\(/);
+    }
+  });
+
+  // Task 1300 — the card atoms' node names AND id attrs are the registry's
+  // facts. A hand-spelled `typeName === "footnote"` / `attrs.footnoteId`
+  // agrees with the registry only by coincidence: a third card atom would be
+  // silently absent from the snapshot. No structure file may spell either.
+  it("no structure file spells a card atom's node name or id attr", () => {
+    for (const file of ["entity-extractor.ts", "structure-index.ts", "step-inspector.ts"]) {
+      const src = readFileSync(join(__dirname, "..", file), "utf8");
+      for (const { nodeName } of CARD_ATOMS) {
+        expect(src, `${file} compares a type name to "${nodeName}"`).not.toMatch(
+          typeNameTest(nodeName),
+        );
+      }
+      for (const idAttr of CARD_ATOM_ID_ATTRS) {
+        expect(src, `${file} reads .${idAttr} by hand`).not.toMatch(
+          new RegExp(`\\.${idAttr}\\b`),
+        );
+      }
+    }
+  });
+
+  it("every registered card atom contributes its entry, keyed by its registry id attr", () => {
+    for (const { kind, nodeName, idAttr } of CARD_ATOMS) {
+      const type = testSchema.nodes[nodeName];
+      expect(type, `test schema lacks "${nodeName}"`).toBeDefined();
+      const d = doc(
+        testSchema.nodes.paragraph.create({ uuid: "p1" }, [
+          type.create({ [idAttr]: `id-${kind}` }),
+        ]),
+      );
+      const s = buildInitial(d);
+      const ids = [...s.footnotes, ...s.citations].map((e) => e.id);
+      expect(ids, kind).toContain(`id-${kind}`);
     }
   });
 });

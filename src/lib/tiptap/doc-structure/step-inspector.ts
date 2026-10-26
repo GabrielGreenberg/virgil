@@ -30,7 +30,13 @@ import {
 } from "@tiptap/pm/transform";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
-import { type EntitySink, extractEntitiesAt, figureEntryAt } from "./entity-extractor";
+import {
+  cardAtomIdOf,
+  type EntitySink,
+  exampleIdentityOf,
+  extractEntitiesAt,
+  figureEntryAt,
+} from "./entity-extractor";
 import {
   type AnchorEntry,
   type BlockEntry,
@@ -38,7 +44,6 @@ import {
   type DocStructure,
   type CitationContainer,
   compareReturnedBlock,
-  deriveExampleIdentity,
   EMPTY_DIFF,
   type ExampleEntry,
   type FigureEntry,
@@ -387,9 +392,7 @@ function nearestExampleBlockUuid(doc: PMNode, pos: number): string | null {
   if (pos > doc.content.size) pos = doc.content.size;
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth >= 0; depth--) {
-    const node = $pos.node(depth);
-    if (node.type.name !== "exampleBlock") continue;
-    const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
+    const uuid = exampleIdentityOf($pos.node(depth))?.uuid;
     if (uuid) return uuid;
   }
   return null;
@@ -399,7 +402,8 @@ function nearestExampleBlockUuid(doc: PMNode, pos: number): string | null {
  * The container tag a citation collected at `pos` should carry — the step
  * path's answer to the question `buildInitial` answers with its exampleBlock
  * STACK. Same rule, different mechanism: the innermost enclosing exampleBlock
- * whose `deriveExampleIdentity` id is non-empty (`buildInitial` pushes only
+ * whose `exampleIdentityOf` id is non-empty — the SAME reading the extractor
+ * records its `ExampleEntry` from (`buildInitial` pushes only
  * such blocks onto its stack, so an inner id-less example is skipped there
  * too and an outer identified one wins on both paths).
  *
@@ -419,15 +423,7 @@ function enclosingCitationContainer(doc: PMNode, pos: number): CitationContainer
   if (pos > doc.content.size) pos = doc.content.size;
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth >= 0; depth--) {
-    const node = $pos.node(depth);
-    if (node.type.name !== "exampleBlock") continue;
-    const attrs = (node.attrs ?? {}) as Record<string, unknown>;
-    const { id } = deriveExampleIdentity({
-      uuid: attrs.uuid as string | null | undefined,
-      tag: attrs.tag as string | null | undefined,
-      label: attrs.label as string | null | undefined,
-      number: attrs.number as string | number | null | undefined,
-    });
+    const id = exampleIdentityOf($pos.node(depth))?.id;
     if (id) return { kind: "example", id };
   }
   return null;
@@ -1218,8 +1214,9 @@ export function inspectSteps(
     // handed several transactions cannot know which one's before-doc a removed
     // pos belongs to, so it must never re-resolve it. O(depth), removals only.
     const node = oldDoc.nodeAt(entry.pos);
+    const atom = node && cardAtomIdOf(node);
     removedFootnotes.push(
-      node?.type.name === "footnote" && node.attrs.footnoteId === id
+      node && atom?.kind === "footnote" && atom.id === id
         ? { ...entry, removedCarried: pickFootnoteCarriedAttrs(node.attrs) }
         : entry,
     );
