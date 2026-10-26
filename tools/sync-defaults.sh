@@ -11,6 +11,17 @@
 # would change anything. Writes nothing; the checkout is left byte-identical.
 # Used by `/cleanup-virgil` to confirm there's no drift.
 #
+# THE CANONICAL STATEMENT of when a promotion runs, what gates it, and where
+# it lands (task 1307) — other files point here rather than restate it:
+#   - Schedule: Tue + Fri 11:00 (launchd, plus once at load), so a mirrored
+#     pref change waits at most ~96h (Fri → Tue) for the next tick.
+#   - Gates: every changed file must `JSON.parse`; a promotion touching the
+#     View defaults must also pass the registry-source vitest gate (task 900,
+#     below). No tsc and no full suite run here.
+#   - Landing: a LOCAL commit, fast-forwarded onto main only when the primary
+#     is on main, the promoted files are clean, and the gate is green —
+#     otherwise PARKED on a `prefs-promote-<date>` branch. Never pushed.
+#
 # Triggered by:
 #   - ~/Library/LaunchAgents/com.virgil.promote-defaults.plist (Tue/Fri 11:00)
 #   - `npm run promote-defaults` (one-shot manual)

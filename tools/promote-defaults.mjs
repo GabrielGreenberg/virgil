@@ -158,10 +158,11 @@ function applyWhitelist(target, source, whitelist, label) {
  * re-serialized whole, so a preference retired from the interface is never
  * pruned from his storage — and the mirror POSTs that blob verbatim. Copying
  * every source key therefore RESURRECTS a retired preference into the shipped
- * defaults on the next cron tick, which `check-prefs-coverage` cannot see (it
- * asserts interface ⊆ defaults, so an extra key in the JSON is not a failure)
- * and `sync-defaults.sh` cannot see (its gate is `JSON.parse`, deliberately no
- * tsc and no tests) — and it commits to main unattended.
+ * defaults on the next promote tick, which the interface ⊆ defaults net
+ * cannot see (an extra key in the JSON is not a failure) and `sync-defaults.sh`
+ * cannot see (its gates — stated once, in its header — check JSON syntax and
+ * the View registry contract, not vocabulary) — and it lands on local main
+ * unattended.
  *
  * That is not hypothetical: `aiMarkerText`/`aiMarkerBg`/`aiMarkerBorder` were
  * retired from `EditorPreferences` and from the defaults JSON in `1c0c52be`,
@@ -192,10 +193,11 @@ function applyWhitelist(target, source, whitelist, label) {
  * The REGRESSION this rule accepts, stated rather than hidden: a preference
  * added to `EditorPreferences` and forgotten in the defaults JSON used to be
  * healed silently by the next promote tick (it arrived via Gabriel's blob).
- * Now it is dropped every tick — but such a commit no longer typechecks, so it
- * cannot reach main through any gated path; `sync-defaults.sh` itself runs no
- * tsc (its only gate is `JSON.parse`), so under launchd the immediate signal
- * is the log line below. That trade is deliberate: acquiring
+ * Now it is dropped every tick, with the log line below as the promoter's
+ * signal — but the commit that added the field without its default no longer
+ * typechecks (task 1306), so the hole is caught where it is made, not by the
+ * promoter (whose own gates are stated in `sync-defaults.sh`'s header). That
+ * trade is deliberate: acquiring
  * VOCABULARY from one developer's browser is how a retired pref comes back
  * from the dead, and a shipped default that no interface declares is worse
  * than a loud missing one. Add the JSON default in the same commit as the

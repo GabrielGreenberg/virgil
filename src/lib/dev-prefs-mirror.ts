@@ -5,7 +5,8 @@
  *
  * Polls every 30s and POSTs only when the merged blob changes. No tie-in
  * to useViewPrefs/usePreferences event plumbing — keeps the surface area
- * minimal; latency is fine for a 48h cron.
+ * minimal; 30s latency is noise against the promote schedule (stated once,
+ * in `tools/sync-defaults.sh`'s header).
  *
  * Gated by `NEXT_PUBLIC_DEV_STORAGE=true` since that's what unlocks the
  * sister API route (`src/app/api/dev/sync-prefs/route.dev.ts`).

@@ -71,7 +71,8 @@
   </array>
 
   <!-- Run immediately on (re)load so a fresh install promotes whatever
-       the snapshot already has, instead of waiting up to 72h. -->
+       the snapshot already has, instead of waiting up to ~96h (Fri → Tue). Schedule, gates and
+       landing are stated once, in tools/sync-defaults.sh's header. -->
   <key>RunAtLoad</key>
   <true/>
 
