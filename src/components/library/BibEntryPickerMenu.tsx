@@ -714,6 +714,7 @@ function BibEntryPickerRow({
               e.stopPropagation();
               onToggleExpand();
             }}
+            aria-expanded={expanded}
             className="iconbtn-xs"
             {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >

@@ -783,6 +783,7 @@ function OutlineNode({
                belongs to. Its `EditablePod` sibling below is a distinct
                control (it folds the POD) and keeps its hint. */
             aria-label={isCollapsed ? "Expand section" : "Collapse section"}
+            aria-expanded={!isCollapsed}
             className="mt-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 flex items-center justify-center focus-ring"
             style={{ width: OUTLINE_TWIST_COL, height: 16 }}
           >
@@ -1133,6 +1134,7 @@ const EditablePod = memo(function EditablePod({
               onToggleCollapse(pod.id);
             }}
             onMouseDown={(e) => e.stopPropagation()}
+            aria-expanded={!isCollapsed}
             className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 focus-ring"
             {...iconHint({ label: isCollapsed ? "Expand" : "Collapse", pos: "above" })}
           >
@@ -1918,14 +1920,11 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       )}
       {focusState?.active && onFocusToggleLock && (
         <button
-          data-iconbtn-exempt="accent-when-active ink (a lock) that iconbtn-* color would override"
+          type="button"
+          aria-pressed={focusState.locked}
           onClick={onFocusToggleLock}
-          className={`p-0.5 rounded-md transition-colors ${
-            focusState.locked
-              ? "text-[var(--accent)]"
-              : "text-[var(--muted)] hover:text-ink-body"
-          } focus-ring`}
-          {...iconHint({ label: focusState.locked ? "Unlock focus" : "Lock focus" })}
+          className="iconbtn-sm iconbtn-toggle"
+          {...iconHint({ label: "Lock focus", hint: focusState.locked ? "Unlock focus" : "Lock focus" })}
         >
           {focusState.locked ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

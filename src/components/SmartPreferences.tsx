@@ -7,6 +7,7 @@ import { Select } from "./field-primitives";
 import { withCurrent } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import { ResetButton } from "./ResetButton";
+import { PodDisclosure } from "./PodDisclosure";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
@@ -35,6 +36,7 @@ import {
 import type { LinkableKey } from "@/lib/pref-links";
 import { applyLightnessDelta } from "@/lib/pref-links";
 import { iconHint } from "@/components/Hint";
+import { ICON_STROKE } from "@/components/icons/icon-stroke";
 
 function PrefRow({
   item,
@@ -245,19 +247,26 @@ function LinkEdgeRow({
   return (
     <div className="flex items-center gap-2 pl-6 py-0.5 text-[10.5px] text-ink-muted">
       <span className="text-ink-faint">↳</span>
+      {/* A two-state toggle: `aria-pressed` announces the state and
+          `.iconbtn-toggle` paints it (task 1305) — the name stays fixed, the
+          hint says what a click does next. */}
       <button
-        data-iconbtn-exempt="accent-when-active ink (a lock) that iconbtn-* color would override"
+        type="button"
+        aria-pressed={locked}
         onClick={handleLockToggle}
-        className={`shrink-0 p-0.5 rounded transition-colors ${locked ? "text-[var(--accent)]" : "text-ink-faint hover:text-ink-muted"} focus-ring`}
-        {...iconHint({ label: locked ? "Unlock: child stays independent" : "Lock: child tracks parent + delta" })}
+        className="iconbtn-xs iconbtn-toggle shrink-0"
+        {...iconHint({
+          label: "Lock to parent",
+          hint: locked ? "Unlock: child stays independent" : "Lock: child tracks parent + delta",
+        })}
       >
         {locked ? (
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" fillOpacity="0.15" />
             <path d="M5 7V5a3 3 0 1 1 6 0v2" />
           </svg>
         ) : (
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="7" width="10" height="7" rx="1.5" />
             <path d="M5 7V5a3 3 0 0 1 5.6-1.5" />
           </svg>
@@ -332,28 +341,16 @@ function Section({
   // renders the very same parent rows — instead of only this section.
   return (
     <div className="rounded-lg border border-edge-subtle bg-surface-muted/40 overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full text-left px-3 py-2 hover-on-light"
+      <PodDisclosure
+        expanded={open}
+        onToggle={() => setOpen(!open)}
+        className="w-full text-left px-3 py-2 hover-on-light text-ink-muted"
       >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          className={`text-ink-muted motion-safe:transition-transform ${open ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="M3 1.5l4 3.5-4 3.5" />
-        </svg>
-        <div className="flex-1 min-w-0">
-          <div className="text-[12px] font-semibold text-ink-strong">{section.label}</div>
-          {section.description && (
-            <div className="text-[10.5px] text-ink-muted leading-tight">{section.description}</div>
-          )}
-        </div>
-      </button>
+        <span className="block text-[12px] font-semibold text-ink-strong">{section.label}</span>
+        {section.description && (
+          <span className="block text-[10.5px] text-ink-muted leading-tight">{section.description}</span>
+        )}
+      </PodDisclosure>
       {open && (
         <div className="px-3 pt-1 pb-2 bg-surface border-t border-edge-subtle">
           {section.items.map((item, i) => (
