@@ -40,81 +40,30 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
-import unicodedata
 from pathlib import Path
 from typing import Any, Optional
 
-# Make `library/scripts/_bib_parse.py` importable. The editor scripts run
-# from the repo root, so we anchor on this file's parents.
+# Make `library/scripts/` importable (`_bib_parse`, `work_identity`). The
+# editor scripts run from the repo root, so we anchor on this file's parents.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "library" / "scripts"))
 
 from _bib_parse import parse_bib_text  # noqa: E402
 
+# Identity signals come from the library's ONE owner of "is this the same
+# work?" — never a private copy here (task 1312: the copy that lived here had
+# drifted; a `https://dx.doi.org/…` DOI missed the DOI rung).
+from work_identity import (  # noqa: E402
+    first_author_surname,
+    norm_title,
+    norm_year,
+    normalize_doi,
+)
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import die, find_bib_file, resolve_doc  # noqa: E402
-
-
-# ---------------------------------------------------------------------------
-# Normalizers
-# ---------------------------------------------------------------------------
-
-
-def _normalize_doi(s: str) -> str:
-    s = s.strip().lower()
-    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-        if s.startswith(prefix):
-            s = s[len(prefix):]
-    return s.strip(" .;,")
-
-
-def _strip_braces(s: str) -> str:
-    return s.replace("{", "").replace("}", "").strip()
-
-
-def _normalize_title(s: str) -> str:
-    s = _strip_braces(s)
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-
-def _normalize_surname(s: str) -> str:
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = s.lower()
-    s = re.sub(r"[^a-z]", "", s)
-    s = re.sub(r"(jr|sr|iii)$", "", s)
-    return s
-
-
-def _first_author_surname(author_field: str) -> str:
-    """Pull the first author's surname from a BibTeX `author` field.
-
-    Handles both `Last, First` and `First Last` orderings, and stops at
-    the first `and` separator. Tolerates braces and accents.
-    """
-    raw = _strip_braces(author_field).strip()
-    if not raw:
-        return ""
-    first = re.split(r"\band\b", raw, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-    if "," in first:
-        surname = first.split(",", 1)[0].strip()
-    else:
-        parts = first.split()
-        surname = parts[-1] if parts else ""
-    return _normalize_surname(surname)
-
-
-def _year(year_field: str) -> Optional[int]:
-    m = re.search(r"\b(\d{4})\b", year_field or "")
-    return int(m.group(1)) if m else None
 
 
 # ---------------------------------------------------------------------------
@@ -135,13 +84,13 @@ def _build_library_index(master_text: str) -> dict[str, Any]:
         fields = entry["fields"]
         doi = fields.get("doi", "")
         if doi:
-            n = _normalize_doi(doi)
+            n = normalize_doi(doi)
             if n and n not in by_doi:
                 by_doi[n] = ck
 
-        surname = _first_author_surname(fields.get("author") or fields.get("editor") or "")
-        year = _year(fields.get("year") or "")
-        title = _normalize_title(fields.get("title") or "")
+        surname = first_author_surname(fields.get("author") or fields.get("editor") or "")
+        year = norm_year(fields.get("year") or "")
+        title = norm_title(fields.get("title") or "")
         if surname and year and title:
             key = (surname, year, title)
             by_signature.setdefault(key, []).append(ck)
@@ -198,7 +147,7 @@ def match_entry(entry: dict, index: dict) -> dict:
     # 2) DOI.
     doi = fields.get("doi", "")
     if doi:
-        n = _normalize_doi(doi)
+        n = normalize_doi(doi)
         if n in index["by_doi"]:
             out["status"] = "matched"
             out["library_citekey"] = index["by_doi"][n]
@@ -206,9 +155,9 @@ def match_entry(entry: dict, index: dict) -> dict:
             return out
 
     # 3) Signature (surname + year ±1 + title).
-    surname = _first_author_surname(fields.get("author") or fields.get("editor") or "")
-    year = _year(fields.get("year") or "")
-    title = _normalize_title(fields.get("title") or "")
+    surname = first_author_surname(fields.get("author") or fields.get("editor") or "")
+    year = norm_year(fields.get("year") or "")
+    title = norm_title(fields.get("title") or "")
     candidates = _signature_match(surname, year, title, index["by_signature"])
     if len(candidates) == 1:
         out["status"] = "matched"
