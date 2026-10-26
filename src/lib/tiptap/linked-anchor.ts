@@ -9,7 +9,11 @@ import {
   dispatchAnchorsRevived,
   dispatchTextObjectOrphaned,
 } from "@/lib/tiptap/orphan-events";
-import { groupHeldDepartures, snippetHoldingUuid } from "@/lib/tiptap/archive-holdings";
+import {
+  groupHeldDepartures,
+  holdingsApplyTo,
+  snippetHoldingUuid,
+} from "@/lib/tiptap/archive-holdings";
 import { hasLiveAnchor, hasLiveBlock, readDiffFor } from "@/lib/tiptap/doc-structure";
 import {
   classifyBlockDepartures,
@@ -138,11 +142,16 @@ export const LinkedAnchor = Mark.create({
  *  (`archive-holdings.ts`) as `virgil-anchors-archived`, one event per
  *  snippet. The archive GESTURE carries its cards itself; this is the answer
  *  for a removal that does not say what it is — a history replay of that
- *  gesture. O(departed) O(1) lookups; an empty registry answers at once. */
+ *  gesture. Only a replay: `replay` is `holdingsApplyTo(transactions)`, read
+ *  at append time (task 1297 — an ordinary delete after an Undo of the
+ *  archive orphans, as if nothing were held). O(departed) O(1) lookups; an
+ *  empty registry answers at once. */
 function announceArchivedDepartures(
   docId: string | null,
+  replay: boolean,
   departed: { uuids?: readonly string[]; anchorIds?: readonly string[] },
 ): void {
+  if (!replay) return;
   for (const [snippetId, held] of groupHeldDepartures(docId, departed)) {
     dispatchAnchorsArchived({ docId, snippetId, ...held });
   }
@@ -211,6 +220,7 @@ export const LinkedAnchorGuard = Extension.create<{
             }, 0);
           }
           if (diff.removedAnchors.length === 0) return null;
+          const replay = holdingsApplyTo(transactions);
           setTimeout(() => {
             // Liveness is the observer snapshot's answer, read off the SETTLED
             // state (task 878): an id the index still holds survived (interior
@@ -228,7 +238,9 @@ export const LinkedAnchorGuard = Extension.create<{
             // A departure an un-retired archive snippet HOLDS (task 1269 — a
             // Redo of an Archive) goes dormant there first; the orphan event
             // below then finds the link dormant and leaves it.
-            announceArchivedDepartures(docId, { anchorIds: departed.map((a) => a.id) });
+            announceArchivedDepartures(docId, replay, {
+              anchorIds: departed.map((a) => a.id),
+            });
             for (const a of departed) {
               dispatchAnchorOrphaned({ docId, anchorId: a.id, kind: a.kind });
             }
@@ -399,6 +411,7 @@ export const TextObjectOrphanGuard = Extension.create<{
           // now. O(replace steps × depth), and only on a block-removal
           // transaction — plain typing bailed two lines above.
           const { absorbedInto } = classifyBlockDepartures(transactions);
+          const replay = holdingsApplyTo(transactions);
           setTimeout(() => {
             // Liveness is the observer snapshot's answer, read off the SETTLED
             // state (task 878): a uuid the index holds was resurrected (or
@@ -413,7 +426,7 @@ export const TextObjectOrphanGuard = Extension.create<{
             const state = liveView?.state ?? null;
             // Departures an un-retired archive snippet holds go dormant there
             // BEFORE any orphan / absorbed verdict below (task 1269).
-            announceArchivedDepartures(docIdRef?.current ?? null, {
+            announceArchivedDepartures(docIdRef?.current ?? null, replay, {
               uuids: removed
                 .filter((b) => !(state && hasLiveBlock(state, b.uuid)))
                 .map((b) => b.uuid),
@@ -632,6 +645,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // the same whichever of the two plugins the appendTransaction chain
           // runs first.
           const departures = classifyBlockDepartures(transactions);
+          const replay = holdingsApplyTo(transactions); // EXCEPTION 5's gate
 
           const paraType = newState.schema.nodes.paragraph;
           if (!paraType) return null;
@@ -658,7 +672,10 @@ export const MarginaliaAnchorGuard = Extension.create<{
             // passage is in the archive and a Restore brings it back; the
             // cards go dormant there (`virgil-anchors-archived`), so a
             // placeholder here would only be a stray empty line. O(1) lookup.
-            if (snippetHoldingUuid(docIdRef?.current, b.uuid)) continue;
+            // Only for a history replay (task 1297): after an Undo of the
+            // archive the snippet still holds this uuid, and an ORDINARY
+            // delete of the live paragraph must resurrect as with no archive.
+            if (replay && snippetHoldingUuid(docIdRef?.current, b.uuid)) continue;
             vanished.push({ uuid: b.uuid, pos: b.pos });
           }
           if (vanished.length === 0) return null;

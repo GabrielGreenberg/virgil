@@ -350,6 +350,18 @@ function posOf(editor: Editor, needle: string): { from: number; to: number } {
 
 const P_REF = { kind: "paragraph", id: "p-target" } as DragHandleRef;
 
+/** Remove `p-target` WHOLE the ordinary way (no lifecycle meta, not history).
+ *  Its words span several text nodes, so locate the node, not a needle. */
+function deleteWholeTarget(editor: Editor): void {
+  let range: { from: number; to: number } | null = null;
+  editor.state.doc.forEach((n, pos) => {
+    if (n.attrs.uuid === "p-target") range = { from: pos, to: pos + n.nodeSize };
+  });
+  if (!range) throw new Error("p-target not in the doc");
+  editor.commands.deleteRange(range);
+  expect(editor.state.doc.textContent).not.toContain("Alpha");
+}
+
 describe("task 1194 — a whole-paragraph archive carries every card on it", () => {
   it("archives the cards WITH the passage: links kept dormant, nothing deleted, nothing re-homed", async () => {
     const editor = mountDoc(doc());
@@ -940,14 +952,51 @@ describe("task 1269 — Redo of an Archive leaves the cards dormant, not strippe
     retractArchiveHoldings(DOC, owner);
   });
 
+  it("archive → Undo → ORDINARY delete: the stale holdings capture nothing — cards orphan as in CONTROL (task 1297)", async () => {
+    const editor = mountDoc(doc(), {
+      docIdRef: { current: DOC },
+      anchoredUuidsRef: { current: new Set(["p-target"]) },
+    });
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    wireHooks(store, ["m1", "h1", "n1"]);
+    await h.dispatch("archive", P_REF);
+    const owner = {};
+    publishArchiveHoldings(DOC, owner, holdingsOf(h.snippets as unknown as ArchivedSnippet[]));
+    await flush();
+
+    editor.commands.undo();
+    await flush();
+    store.revive(editor);
+    const snippet = JSON.stringify(h.snippets[0]);
+
+    // Backspace/Cut the live paragraph the ordinary way — no lifecycle meta,
+    // not a history replay.
+    deleteWholeTarget(editor);
+    await flush();
+
+    // The anchor guard resurrects, exactly as with nothing archived.
+    expect(uuidsInOrder(editor)).toContain("p-target");
+    for (const id of ["m1", "h1", "n1"]) {
+      const c = store.byId(id);
+      expect(c.links!.some(isDormantLink), id).toBe(false);
+      expect(dormantSnippetOf(c), id).toBeNull();
+      expect(c.archived, id).toBeUndefined();
+    }
+    // The Mode-B cards' anchors departed for real: orphaned (stripped).
+    expect(store.byId("m1").links ?? []).toHaveLength(0);
+    expect(store.byId("h1").links ?? []).toHaveLength(0);
+    // S1 is untouched.
+    expect(JSON.stringify(h.snippets[0])).toBe(snippet);
+    retractArchiveHoldings(DOC, owner);
+  });
+
   it("CONTROL: nothing held → an ordinary removal of an anchored block still resurrects", async () => {
     const editor = mountDoc(doc(), {
       docIdRef: { current: DOC },
       anchoredUuidsRef: { current: new Set(["p-target"]) },
     });
-    const { from } = posOf(editor, "Alpha");
-    const { to } = posOf(editor, "delta.");
-    editor.chain().setTextSelection({ from: from - 1, to: to + 1 }).deleteSelection().run();
+    deleteWholeTarget(editor);
     await flush();
     expect(uuidsInOrder(editor)).toContain("p-target");
   });

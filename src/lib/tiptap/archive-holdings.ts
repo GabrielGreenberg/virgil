@@ -18,6 +18,8 @@
 // retracts only its own entry.
 
 import type { JSONContent } from "@tiptap/react";
+import type { Transaction } from "@tiptap/pm/state";
+import { isHistoryTransaction } from "@tiptap/pm/history";
 import type { ArchivedSnippet } from "@/lib/types";
 import { archiveOriginOf } from "@/lib/archive-origin";
 
@@ -69,6 +71,18 @@ export function holdingsOf(snippets: readonly ArchivedSnippet[]): ArchiveHolding
     for (const a of held.anchorIds) anchorIds.set(a, s.id);
   }
   return uuids.size === 0 && anchorIds.size === 0 ? NO_HOLDINGS : { uuids, anchorIds };
+}
+
+/** Task 1297: do holdings answer THIS removal at all? Only a HISTORY REPLAY.
+ *  A snippet stays un-retired through an Undo of its archive (pinned on
+ *  purpose — it is still a record a Restore can use), so its ids are held
+ *  while the passage is LIVE again. A later ordinary Backspace / Cut of that
+ *  passage is not the archive — its cards must orphan exactly as if nothing
+ *  were archived. A Redo is the one removal that re-enacts the archive without
+ *  saying so, and prosemirror-history marks it. Every guard that consults the
+ *  registry asks this first, so all of them give one answer per batch. O(batch). */
+export function holdingsApplyTo(transactions: readonly Transaction[]): boolean {
+  return transactions.some((tr) => isHistoryTransaction(tr));
 }
 
 const REGISTRY = new Map<string, Map<object, ArchiveHoldings>>();
