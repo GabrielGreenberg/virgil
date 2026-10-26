@@ -57,6 +57,7 @@ import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import { settleAppliedSpliceForCard } from "@/cards/lifecycle/run-event";
 import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
+import { ARCHIVE_GESTURE_META } from "@/lib/tiptap/archive-holdings";
 import { commitDocThenCards } from "@/components/drop-mode/commit-seam";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { StepMap } from "@tiptap/pm/transform";
@@ -259,6 +260,10 @@ export function commitRangeDelete(
   const tr = editor.state.tr
     .delete(from, to)
     .setMeta(LIFECYCLE_DELETE_META, true);
+  // A card half is the ARCHIVE's (a Delete answers nothing — see
+  // `RangeCardDisposition`): name this history event as the archive, so only
+  // ITS Redo re-enacts the archive for the anchor guards (task 1302).
+  if (beforeCards) tr.setMeta(ARCHIVE_GESTURE_META, true);
   return commitDocThenCards(editor, tr, () => {
     const disposition = beforeCards?.();
     cleanupLinksInRange(before, from, to, lifecycle, disposition?.carryInto ?? null);

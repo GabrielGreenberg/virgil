@@ -18,8 +18,8 @@
 // retracts only its own entry.
 
 import type { JSONContent } from "@tiptap/react";
-import type { Transaction } from "@tiptap/pm/state";
-import { isHistoryTransaction } from "@tiptap/pm/history";
+import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
+import { isHistoryTransaction, redoDepth, undoDepth } from "@tiptap/pm/history";
 import type { ArchivedSnippet } from "@/lib/types";
 import { archiveOriginOf } from "@/lib/archive-origin";
 
@@ -73,16 +73,108 @@ export function holdingsOf(snippets: readonly ArchivedSnippet[]): ArchiveHolding
   return uuids.size === 0 && anchorIds.size === 0 ? NO_HOLDINGS : { uuids, anchorIds };
 }
 
-/** Task 1297: do holdings answer THIS removal at all? Only a HISTORY REPLAY.
+/** Do holdings answer THIS removal at all? Only when the batch is the REDO OF
+ *  AN ARCHIVE — the one removal that re-enacts the archive without saying so.
+ *
  *  A snippet stays un-retired through an Undo of its archive (pinned on
- *  purpose — it is still a record a Restore can use), so its ids are held
- *  while the passage is LIVE again. A later ordinary Backspace / Cut of that
- *  passage is not the archive — its cards must orphan exactly as if nothing
- *  were archived. A Redo is the one removal that re-enacts the archive without
- *  saying so, and prosemirror-history marks it. Every guard that consults the
- *  registry asks this first, so all of them give one answer per batch. O(batch). */
+ *  purpose — task 1297: it is still a record a Restore can use), so its ids
+ *  are held while the passage is LIVE again. Any other removal of that live
+ *  passage is not the archive and its cards must orphan exactly as if nothing
+ *  were archived: an ordinary Backspace / Cut (1297), but equally an UNDO that
+ *  takes the passage away (undoing the paste that created it), or a REDO of
+ *  some other event (an ordinary Cut of it, undone). "Is this a history
+ *  transaction?" was a proxy for the literal question and answered yes to all
+ *  of those (task 1302). The literal answer is kept by `archiveReplayTracker`,
+ *  which follows each archive's own history EVENT through the undo/redo
+ *  stacks and marks the transaction that redoes it. Every guard that consults
+ *  the registry asks this first, so all of them give one answer per batch.
+ *  O(batch). */
 export function holdingsApplyTo(transactions: readonly Transaction[]): boolean {
-  return transactions.some((tr) => isHistoryTransaction(tr));
+  return transactions.some((tr) => ARCHIVE_REDOS.has(tr));
+}
+
+// ---------------------------------------------------------------------------
+// The archive's history event (task 1302)
+// ---------------------------------------------------------------------------
+
+/** Set by the archive GESTURE's transaction (`commitRangeDelete` with an
+ *  archive card half) — arms the tracker on the event it lands in. */
+export const ARCHIVE_GESTURE_META = "virgilArchiveGesture";
+
+/** Where an archive's history event sits. `done` / `undone` name the stack and
+ *  `depth` its eventCount WHILE the event is on top: it is still in that stack
+ *  exactly as long as the stack never shrinks below `depth` (history only
+ *  pops from the top, and a new edit clears the redo stack to 0). `pending` is
+ *  the gesture itself, resolved on the next transaction, when the event is the
+ *  top of the done stack. */
+type ArchiveEventSlot = { side: "pending" } | { side: "done" | "undone"; depth: number };
+
+/** The transactions that redo an archive. Keyed by the transaction object, so
+ *  it is per-editor by construction and lets go with the batch. */
+const ARCHIVE_REDOS = new WeakSet<Transaction>();
+
+/** "undo" / "redo" for a prosemirror-history transaction, else null. Its meta
+ *  is `{ redo, historyState }` under the history plugin's key, which the
+ *  package does not export — so it is read through the plugin. O(plugins),
+ *  history transactions only. */
+function historyDirection(tr: Transaction, state: EditorState): "undo" | "redo" | null {
+  if (!isHistoryTransaction(tr)) return null;
+  for (const p of state.plugins) {
+    const m = tr.getMeta(p) as { redo?: unknown; historyState?: unknown } | undefined;
+    if (m && typeof m === "object" && typeof m.redo === "boolean" && "historyState" in m) {
+      return m.redo ? "redo" : "undo";
+    }
+  }
+  return null;
+}
+
+/** Follow every archive's history event; mark the transaction that REDOES one
+ *  (`holdingsApplyTo`). Depths are read off the OLD state of each transaction
+ *  (fully built, whatever this plugin's order relative to history's), so every
+ *  change to a stack is observed at the next transaction — before any redo
+ *  can act on it. An event that leaves its stack any other way (the redo
+ *  stack cleared by a new edit, the done stack trimmed past it) is dropped:
+ *  failing closed means its cards orphan, never go dormant on a guess. */
+export function archiveReplayTracker(): Plugin<readonly ArchiveEventSlot[]> {
+  return new Plugin<readonly ArchiveEventSlot[]>({
+    key: new PluginKey("archiveReplayTracker"),
+    state: {
+      init: () => [],
+      // [cost: O(1)/tx with no archive in history; else O(archive events still in the undo/redo stacks) depth compares — two eventCount reads, no doc walk on any path] (task 1302)
+      apply(tr, slots, oldState) {
+        const gesture = tr.getMeta(ARCHIVE_GESTURE_META) === true;
+        if (slots.length === 0 && !gesture) return slots;
+        const done = undoDepth(oldState);
+        const undone = redoDepth(oldState);
+        const dir = historyDirection(tr, oldState);
+        let changed = gesture;
+        const next: ArchiveEventSlot[] = [];
+        for (const slot of slots) {
+          const s = slot.side === "pending" ? { side: "done" as const, depth: done } : slot;
+          if (s !== slot) changed = true;
+          if (s.side === "done") {
+            if (done < s.depth) { changed = true; continue; } // trimmed away
+            if (dir === "undo" && done === s.depth) {
+              next.push({ side: "undone", depth: undone + 1 }); // the archive, undone
+              changed = true;
+              continue;
+            }
+          } else {
+            if (undone < s.depth) { changed = true; continue; } // redo stack cleared
+            if (dir === "redo" && undone === s.depth) {
+              ARCHIVE_REDOS.add(tr); // THE redo of the archive
+              next.push({ side: "done", depth: done + 1 });
+              changed = true;
+              continue;
+            }
+          }
+          next.push(s);
+        }
+        if (gesture) next.push({ side: "pending" });
+        return changed ? next : slots;
+      },
+    },
+  });
 }
 
 const REGISTRY = new Map<string, Map<object, ArchiveHoldings>>();
