@@ -35,7 +35,12 @@ Output: one JSON object per line, sorted by name —
                 deep-index says `HEAVY operation`; `setup.md`'s "the heavy
                 extraction tools" is an adjective, not a declaration)
   light         declares `Light — safe to invoke …`
-  developerOnly description opens `Developer-only`
+  developerOnly description opens `Developer-only`, any casing — the SAME
+                rule the bundle builders read to keep a skill OUT of the
+                shipped bundle (`isRepoOnlySkill`, bundle-sources.mjs); the
+                two are pinned equal by `developer-only-census.test.ts`
+                (task 1310), so the front door never routes to a skill that
+                is not on disk
   requiredIds   unbracketed `<requestId>` / `<bibKey>` in its `Args:` line
                 (a bracketed `[<requestId>]` is optional — create-card)
 
@@ -60,6 +65,7 @@ _HEAVY = re.compile(r"heavy operation", re.I)
 _LIGHT = re.compile(r"\blight\s*[—–-]+\s*safe to invoke", re.I)
 _ARGS = re.compile(r"Args:(.*?)(?:\.\s|\.?$)")
 _BLOCK = re.compile(r"^[|>][+-]?\d*\s*$")
+_DEV_ONLY = re.compile(r"developer-only", re.I)
 
 
 def _frontmatter(text: str) -> Optional[str]:
@@ -115,7 +121,7 @@ def entry(silo: str, path: Path) -> Optional[dict]:
         "description": desc,
         "heavy": bool(_HEAVY.search(desc)),
         "light": bool(_LIGHT.search(desc)),
-        "developerOnly": desc.startswith("Developer-only"),
+        "developerOnly": bool(_DEV_ONLY.match(desc)),
         "requiredIds": required_ids(desc),
     }
 

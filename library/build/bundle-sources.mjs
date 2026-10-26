@@ -100,23 +100,42 @@ async function listFilesIn(absDir, predicate) {
 
 const FRONTMATTER = /^---\n([\s\S]*?)\n---/;
 
-/** True when a skill declares itself a maintainer skill the way the corpus
- *  already reads that declaration: its `description` opens `Developer-only`
- *  (`virgil/skills/start.md` rule 1). Read from the file, never a name list. */
-export function isRepoOnlySkill(src) {
+const BLOCK_SCALAR = /^[|>][+-]?\d*\s*$/;
+
+/** A skill's `description:` value, whitespace-normalised — the same parse
+ *  as `parse_description` in `editor/scripts/skill_catalog.py` (block scalar,
+ *  plain scalar with indented continuation lines, quoted scalar). */
+function skillDescription(src) {
   const fm = FRONTMATTER.exec(src);
-  if (!fm) return false;
+  if (!fm) return null;
   const lines = fm[1].split("\n");
   const i = lines.findIndex((l) => /^description:/.test(l));
-  if (i < 0) return false;
-  // `description:` is a YAML block scalar in every skill here, so the text
-  // normally starts on the NEXT line; the inline form is handled too.
-  const inline = lines[i]
-    .replace(/^description:\s*/, "")
-    .replace(/^[|>][-+]?\s*/, "")
-    .trim();
-  const first = inline || lines.slice(i + 1).map((l) => l.trim()).find((l) => l !== "") || "";
-  return /^developer-only/i.test(first);
+  if (i < 0) return null;
+  const head = lines[i].replace(/^description:\s*/, "").trim();
+  const parts = BLOCK_SCALAR.test(head) ? [] : [head];
+  for (const cont of lines.slice(i + 1)) {
+    // The value runs until the next top-level key.
+    if (cont && !/^\s/.test(cont)) break;
+    parts.push(cont);
+  }
+  let value = parts.join(" ").replace(/\s+/g, " ").trim();
+  if (value.length >= 2 && value[0] === value.at(-1) && (value[0] === '"' || value[0] === "'")) {
+    value = value.slice(1, -1);
+  }
+  return value;
+}
+
+/** True when a skill declares itself a maintainer skill the way the corpus
+ *  already reads that declaration: its `description` opens `Developer-only`,
+ *  any casing (`virgil/skills/start.md` rule 1). Read from the file, never a
+ *  name list. The front door's catalog (`skill_catalog.py`'s `developerOnly`)
+ *  reads the SAME declaration to keep these skills off its routes, so the two
+ *  answers must agree on every file — `developer-only-census.test.ts` pins
+ *  that (task 1310): a skill this drops from the bundle but the catalog still
+ *  routes is a route to a file that is not on disk. */
+export function isRepoOnlySkill(src) {
+  const desc = skillDescription(src);
+  return desc !== null && /^developer-only/i.test(desc);
 }
 
 /** Every `*.md` authored under `<silo>/skills/`, repo-only ones included. */
