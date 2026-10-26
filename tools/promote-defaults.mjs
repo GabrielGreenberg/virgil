@@ -171,11 +171,12 @@ function applyWhitelist(target, source, whitelist, label) {
  * Both `replace-all` targets (the only two: this file and
  * `panel-theme.defaults.json`) are closed vocabularies in TRACKED SOURCE, so a
  * legitimately NEW key is always already present in the target and survives
- * this rule untouched. What holds each closed is a TEST, not a type — say so
- * precisely, because the obvious answer is wrong in both cases:
- *   - `usePreferences.defaults.json`: `check-prefs-coverage` check 1 (every
- *     `EditorPreferences` key must appear here). NOT tsc — `DEFAULT_PREFS` is
- *     an `as` cast (usePreferences.ts), which cannot see a missing key.
+ * this rule untouched. What holds each closed differs — say so precisely:
+ *   - `usePreferences.defaults.json`: tsc (task 1306). `DEFAULT_PREFS` reaches
+ *     its type through `shippedDefaults` (src/lib/shipped-defaults.ts), which
+ *     still casts VALUE types but makes a missing `EditorPreferences` key a
+ *     compile error. (It used to be a bare `as` cast, netted only by a regex
+ *     text check.)
  *   - `panel-theme.defaults.json`: the hand-written `FROZEN_THEME_KEYS` set in
  *     `panel-theme-key-freeze.test.ts`, which asserts the JSON's key set
  *     EXACTLY. `DEFAULT_PANEL_COLORS` is likewise a cast
@@ -191,12 +192,14 @@ function applyWhitelist(target, source, whitelist, label) {
  * The REGRESSION this rule accepts, stated rather than hidden: a preference
  * added to `EditorPreferences` and forgotten in the defaults JSON used to be
  * healed silently by the next promote tick (it arrived via Gabriel's blob).
- * Now it is dropped every tick, and `sync-defaults.sh` does NOT run
- * `check-prefs-coverage` (its only gate is `JSON.parse`), so under launchd the
- * sole signal is the log line below. That trade is deliberate: acquiring
+ * Now it is dropped every tick — but such a commit no longer typechecks, so it
+ * cannot reach main through any gated path; `sync-defaults.sh` itself runs no
+ * tsc (its only gate is `JSON.parse`), so under launchd the immediate signal
+ * is the log line below. That trade is deliberate: acquiring
  * VOCABULARY from one developer's browser is how a retired pref comes back
  * from the dead, and a shipped default that no interface declares is worse
- * than a loud missing one. Run `npm run test:prefs` when adding a preference.
+ * than a loud missing one. Add the JSON default in the same commit as the
+ * interface field; tsc says so if you forget.
  *
  * Dropped keys are LOGGED rather than silently skipped (by `intersectShape`,
  * which since task 904 also drops a wrong-typed value).
