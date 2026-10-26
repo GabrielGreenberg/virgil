@@ -35,7 +35,7 @@ whether the night's task goes to the worker or to the human.
               cross.  Logged in the digest as a refused item; never silently
               applied AND never proposed.
 
-The three boundaries (design §4; editor/dev/README.md "Flagged for chip 18"):
+The three boundaries (MEMO_DEV_DREAM_DESIGN.md §4; editor/skills/dream.md §5):
   (B1) the architectural Don't-rules in editor/AGENTS.md  — and the DEV-mode
        reflection convention that lives in the same file (touching it would
        quietly unwire capture, a B3 cousin).
@@ -50,9 +50,9 @@ change's actual content, and a boundary-file touch with no content to adjudicate
 is refused (you cannot prove a blind edit safe).
 
 Pure + dry-run-safe: this module NEVER writes a file, runs git, or applies an
-edit.  It classifies; the caller (the dream skill) does the landing.  That is
-why iterate can later adopt it unchanged — it shares the *decision*, not a
-write path.
+edit.  It classifies; the dream files the finding as a task (dream.md §6) and
+the worker lands it (task 522).  That is why iterate can adopt it unchanged —
+it shares the *decision*, not a write path.
 
 CLI (for the skill and the test slice):
   dream_land.py --change '<inline-json>'      # classify one change → JSON verdict
@@ -120,9 +120,9 @@ DEV_LOOP_SKILLS = {
 #     withheld from acts by the non-skill-prompt rule (classify_change step 4),
 #     so adding the scripts there would buy nothing — and would misstate what
 #     the set means (its members are skill PROMPTS; `_skill_name` assumes it).
-#   • DEV_LOOP_PROCEDURE answers the NEVER-SELF-MERGE question (dream.md §6):
-#     may this branch merge unattended on green gates, or must it route to the
-#     human?  That clause was keyed on the three markdowns alone, so the
+#   • DEV_LOOP_PROCEDURE answers the NEVER-SELF-MERGE question (dream.md §4,
+#     the `blocked/` routing; task 522 retired the old §6 branch-merge form):
+#     may this finding be worked unattended, or must it route to the human?  That clause was keyed on the three markdowns alone, so the
 #     2026-08-18 dream's edit to `dream.py`'s marker semantics — the file that
 #     decides what the NEXT dream is allowed to read, i.e. the loop's memory —
 #     reached `proposes` only incidentally (it is a `.py` at all) and never
@@ -221,9 +221,10 @@ class Verdict:
     reason: str                  # one line, for the digest
     boundary: str | None = None  # set iff mode == refused
     paths: list[str] = field(default_factory=list)
-    # dream.md §6's never-self-merge answer, PUBLISHED on every verdict — so the
-    # skill READS A FLAG instead of re-deriving the membership by eye (the rule
-    # `dream.py select`'s `driftChecked` already follows).  Stamped centrally in
+    # The never-self-merge answer (dream.md §4: `neverSelfMerge` → `blocked/`),
+    # PUBLISHED on every verdict — so the skill READS A FLAG instead of
+    # re-deriving the membership by eye (the rule `dream.py select`'s
+    # `driftChecked` already follows).  Stamped centrally in
     # `classify_change`, so no routing branch can forget it, and independent of
     # `mode`: a dev-loop-procedure change is `proposes` for one reason (it is a
     # script / a loop skill) and unmergeable-unattended for another.
