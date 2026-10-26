@@ -325,3 +325,34 @@ so a positional placement whose doc moved is REFUSED, never re-asked.
 
 CI: `commit-live-placement.test.ts` (every leg against a MOVED doc, plus
 unmoved-doc controls).
+
+## The record half (task 1295) — a sidecar RECORD read across an await is a snapshot too
+
+The same law, on the sidecar side of the gap. A lifecycle door (delete / morph /
+SETTLE) that writes a card and then — after an `await`, or later in the same
+handler — reads that card again must see its own write. React does not give it
+that: a state write issued outside a discrete event renders on a later
+macrotask, while an `await` continuation runs in microtasks. Range Delete's
+settle-first phase (task 636) settled an applied suggestion, resumed straight
+into the cascade delete, and the executor's second `appliedSplice.get` still
+read `status:"applied"` from the render-captured `cards` — a second
+Keep/Revert prompt, after the passage was gone.
+
+The rule, held at the PRIMITIVE so no caller can forget it:
+`usePersistentState`'s `stateRef` is AUTHORITATIVE — every write door (`update`,
+the loader, the external-change adopt, the write convergence, the exposed
+`setState`) writes the ref first and then schedules the render, and `update`
+derives from the ref, not from React's queued `prev`. Each card-family hook
+exposes a live getter (`getCards` / `getItems` / `getSnippets`), and EVERY
+lifecycle door in `EditorPane` (the `appliedSpliceOps` bag, the pending-change
+deps' `getAppliedChange`, the six `makeUnbridgingDelete` wrappers' `resolveKind`
+/ `resolveCard`, clear-done, `withProposalFinalize`'s prior-status read) reads
+through it. Render-derived consumers (the Mode-B bag, the pill index) keep
+reading the array. Corollary: a hook that needs the PRE-write record reads it
+BEFORE calling `update` (`useNotes.convertCard`'s carry). And
+`makeUnbridgingDelete` answers `false` when there was no card to remove —
+"true = committed" is a contract, and with live reads "absent" really is absent.
+
+CI: `range-delete-settle-first.test.tsx` (the state-backed bag leg — two asks on
+a render-refreshed ref), `usePersistentState.test.tsx` (ref ahead of render),
+`unbridging-delete.test.ts` (not-found → false).

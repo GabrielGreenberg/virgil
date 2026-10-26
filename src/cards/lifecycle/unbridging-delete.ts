@@ -112,11 +112,15 @@ export function makeUnbridgingDelete(
   return async (id: string) => {
     const kind = deps.resolveKind(id);
     if (!kind) {
-      // Card already gone / unresolvable — nothing to unbridge or signal; just
-      // run the raw mutation so a stale caller still gets the delete it asked
-      // for.
+      // Card already gone / unresolvable — nothing to unbridge or signal. The
+      // raw mutation still runs (an idempotent no-op on an absent id), but the
+      // answer is FALSE: "true = the card was removed" (the contract above) is
+      // a lie when there was no card, and a caller tearing down what the card
+      // owned (`deletePassage`'s release) must not act on a delete that
+      // removed nothing (task 1295). `resolveKind` reads the LIVE collection,
+      // so "absent" here means absent, not merely not-yet-rendered.
       await deps.rawDelete(id);
-      return true;
+      return false;
     }
     return runCardLifecycleEvent(
       { type: "delete", kind, id, hasContent: false, card: deps.resolveCard?.(id) },

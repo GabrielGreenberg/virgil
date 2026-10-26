@@ -459,8 +459,15 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
+  // The LIVE collection (task 1295) — the newest write, not the last render's
+  // `items`. A lifecycle door (delete / morph / settle) that reads a record
+  // after an `await`, or after a write it just issued, reads through this;
+  // render-derived consumers keep reading `items`.
+  const getItems = useCallback(() => stateRef.current.items, [stateRef]);
+
   return useMemo(
     () => ({
+      getItems,
       items: state.items,
       addItem,
       addItemFromSeed,
@@ -489,6 +496,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       discardPristineTodos,
     }),
     [
+      getItems,
       state.items,
       addItem,
       addItemFromSeed,
