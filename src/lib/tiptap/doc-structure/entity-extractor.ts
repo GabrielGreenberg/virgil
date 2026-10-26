@@ -28,6 +28,7 @@ import type { JSONContent } from "@tiptap/react";
 import { inlineAtoms } from "@/lib/inline-content";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { type CardAtomKind, cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 import {
   type BlockEntry,
   type CitationContainer,
@@ -89,6 +90,106 @@ export function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry
 }
 
 /**
+ * The example identity a node carries, or null if it is not an example
+ * container. The ONE reading of "is this an exampleBlock, and what is its
+ * `ExampleEntry` identity?" — the extractor's own example branch and the step
+ * path's ancestor resolves (`nearestExampleBlockUuid`,
+ * `enclosingCitationContainer`) all ask it, so a citation's container id can
+ * never drift from the example entry's id it must match.
+ */
+export function exampleIdentityOf(n: PMNode): ReturnType<typeof deriveExampleIdentity> | null {
+  if (n.type.name !== "exampleBlock") return null;
+  const attrs = (n.attrs ?? {}) as Record<string, unknown>;
+  return deriveExampleIdentity({
+    uuid: str(attrs.uuid) || null,
+    tag: attrs.tag as string | null | undefined,
+    label: attrs.label as string | null | undefined,
+    number: attrs.number as string | number | null | undefined,
+  });
+}
+
+/**
+ * A Card-bearing atom's kind and entity id (`""` when unset), or null for any
+ * other node. Both halves come from the atom registry (task 1300) — the node
+ * name and the id attr are never spelled here.
+ */
+export function cardAtomIdOf(n: PMNode): { kind: CardAtomKind; id: string } | null {
+  const meta = cardAtomMetaForNodeName(n.type.name);
+  if (!meta) return null;
+  return { kind: meta.kind, id: str((n.attrs as Record<string, unknown>)[meta.idAttr]) };
+}
+
+interface CardAtomVisit {
+  /** The atom's entity id, `""` when unset. */
+  readonly id: string;
+  readonly attrs: Record<string, unknown>;
+  /** The walked position (what a container resolve is asked at). */
+  readonly pos: number;
+  /** The RECORDED position (`place`d). */
+  readonly at: number;
+  readonly ctx: ExtractContext;
+}
+
+/** What each Card-bearing atom kind contributes. Exhaustive over
+ *  `CardAtomKind`: a registry row without a contribution does not compile. */
+const CARD_ATOM_CONTRIBUTIONS: Record<CardAtomKind, (v: CardAtomVisit) => void> = {
+  footnote: ({ id, attrs, at, ctx: { sink } }) => {
+    if (id) {
+      sink.footnote({
+        id,
+        pos: at,
+        thanks: !!attrs.thanks,
+        number: (attrs.number as number | undefined) ?? 0,
+        title: str(attrs.title),
+      });
+    }
+    // The footnote's BODY citations (task 1128). A footnote is an atom whose
+    // body is a JSONContent literal in `attrs.content`, so no walk can enter
+    // it — but the cites inside are entities this node CONTRIBUTES, exactly
+    // like its own entry. Answering them here (not in a load-only descent)
+    // is what makes the step path agree with a rebuild: delete the footnote
+    // and its cites leave with it, paste it and they arrive, rewrite its body
+    // (`setNodeMarkup` on the atom — both sides re-extracted) and the
+    // difference is the cites that changed. O(body) per footnote the range
+    // touches; a keystroke touches none.
+    //
+    // A nested cite has no PM node of its own: its address is the HOST's
+    // `pos`, its container the host's RAW `footnoteId` — the id
+    // `FootnoteEntry.id` carries and the footnote omni item is keyed by. Do
+    // NOT prefer `linkId`: a `linkId`-derived host would never match the
+    // footnote item's key, and `nest-footnote-children.ts` would degrade the
+    // cite to a flat card.
+    const body = attrs.content as JSONContent | null | undefined;
+    if (body && typeof body === "object") {
+      for (const hit of inlineAtoms(body)) {
+        if (hit.kind !== "citation" || !hit.id) continue;
+        sink.citation(
+          citationEntryAt({
+            id: hit.id,
+            pos: at,
+            command: hit.command,
+            displayText: hit.displayText,
+            container: { kind: "footnote", id },
+          }),
+        );
+      }
+    }
+  },
+  citation: ({ id, attrs, pos, at, ctx }) => {
+    if (!id) return;
+    ctx.sink.citation(
+      citationEntryAt({
+        id,
+        pos: at,
+        command: attrs.command as string | undefined,
+        displayText: attrs.displayText as string | undefined,
+        container: ctx.citationContainer(pos),
+      }),
+    );
+  },
+};
+
+/**
  * Extract every structural entity ONE node contributes. Does not recurse —
  * the caller's traversal decides which nodes are visited.
  *
@@ -130,17 +231,11 @@ export function extractEntitiesAt(
     if (fig.label) sink.label({ id: fig.label, owner: "figure", ownerUuid: uuid, pos: at });
   }
 
-  if (typeName === "exampleBlock") {
-    const { id, uuid: exUuid, tag, label, number } = deriveExampleIdentity({
-      uuid,
-      tag: attrs.tag as string | null | undefined,
-      label: attrs.label as string | null | undefined,
-      number: attrs.number as string | number | null | undefined,
-    });
-    if (id) {
-      sink.example({ id, uuid: exUuid, pos: at, tag, label, number });
-      if (label) sink.label({ id: label, owner: "example", ownerUuid: exUuid, pos: at });
-    }
+  const example = exampleIdentityOf(n);
+  if (example?.id) {
+    const { id, uuid: exUuid, tag, label, number } = example;
+    sink.example({ id, uuid: exUuid, pos: at, tag, label, number });
+    if (label) sink.label({ id: label, owner: "example", ownerUuid: exUuid, pos: at });
   }
 
   if (typeName === "exampleItem") {
@@ -148,63 +243,14 @@ export function extractEntitiesAt(
     if (label) sink.label({ id: label, owner: "exampleItem", ownerUuid: null, pos: at });
   }
 
-  if (typeName === "footnote") {
-    const id = str(attrs.footnoteId);
-    if (id) {
-      sink.footnote({
-        id,
-        pos: at,
-        thanks: !!attrs.thanks,
-        number: (attrs.number as number | undefined) ?? 0,
-        title: str(attrs.title),
-      });
-    }
-    // The footnote's BODY citations (task 1128). A footnote is an atom whose
-    // body is a JSONContent literal in `attrs.content`, so no walk can enter
-    // it — but the cites inside are entities this node CONTRIBUTES, exactly
-    // like its own entry. Answering them here (not in a load-only descent)
-    // is what makes the step path agree with a rebuild: delete the footnote
-    // and its cites leave with it, paste it and they arrive, rewrite its body
-    // (`setNodeMarkup` on the atom — both sides re-extracted) and the
-    // difference is the cites that changed. O(body) per footnote the range
-    // touches; a keystroke touches none.
-    //
-    // A nested cite has no PM node of its own: its address is the HOST's
-    // `pos`, its container the host's RAW `footnoteId` — the id
-    // `FootnoteEntry.id` carries and the footnote omni item is keyed by. Do
-    // NOT prefer `linkId`: a `linkId`-derived host would never match the
-    // footnote item's key, and `nest-footnote-children.ts` would degrade the
-    // cite to a flat card.
-    const body = attrs.content as JSONContent | null | undefined;
-    if (body && typeof body === "object") {
-      for (const hit of inlineAtoms(body)) {
-        if (hit.kind !== "citation" || !hit.id) continue;
-        sink.citation(
-          citationEntryAt({
-            id: hit.id,
-            pos: at,
-            command: hit.command,
-            displayText: hit.displayText,
-            container: { kind: "footnote", id },
-          }),
-        );
-      }
-    }
-  }
-
-  if (typeName === "citation") {
-    const id = str(attrs.citationId);
-    if (id) {
-      sink.citation(
-        citationEntryAt({
-          id,
-          pos: at,
-          command: attrs.command as string | undefined,
-          displayText: attrs.displayText as string | undefined,
-          container: ctx.citationContainer(pos),
-        }),
-      );
-    }
+  // Card-bearing atoms (task 1300): WHICH node names are card atoms, and which
+  // attr carries each one's entity id, is the atom registry's fact — read
+  // here, never re-spelled. What each kind contributes is the exhaustive
+  // table below, so a new `CARD_ATOM_REGISTRY` row is a compile error here
+  // until its contribution is stated, not a silent gap in the snapshot.
+  const cardAtom = cardAtomIdOf(n);
+  if (cardAtom) {
+    CARD_ATOM_CONTRIBUTIONS[cardAtom.kind]({ id: cardAtom.id, attrs, pos, at, ctx });
   }
 
   // Linked-anchor marks ride on text nodes.
