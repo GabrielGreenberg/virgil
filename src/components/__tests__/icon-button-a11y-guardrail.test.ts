@@ -562,6 +562,46 @@ describe("an icon-only button takes its geometry from iconbtn-* (task 826)", () 
   });
 });
 
+/* ── Leg E′: an exemption that cites a STATE declares it (task 1305) ──
+ *
+ * `.iconbtn-toggle[aria-pressed="true"]` paints a pressed toggle — so the
+ * old reason "accent-when-active ink (a lock) that iconbtn-* color would
+ * override" was no longer true, and worse, it was the ONLY place the state
+ * lived: the Preferences link-lock and the Outline focus-lock conveyed
+ * on/off by ink colour alone, announced as a bare button. A reason that
+ * names an active / pressed / toggled / locked state is a claim that the
+ * button HAS one, so its tag must declare it to assistive tech:
+ * `aria-pressed` / `aria-expanded` / `aria-checked` / `aria-selected`, or a
+ * door that spells one (`menuTriggerAria(`, `foldChevronAttrs(`). A two-state
+ * icon toggle with no other reason to be exempt takes `iconbtn-toggle` and
+ * drops the exemption. */
+const STATEFUL_REASON = /data-iconbtn-exempt\s*=\s*"[^"]*\b(?:active|pressed|toggled?|locked|lock)\b[^"]*"/i;
+const DECLARES_STATE = /(?<![\w-])aria-(?:pressed|expanded|checked|selected)\s*=|\b(?:menuTriggerAria|foldChevronAttrs)\s*\(/;
+
+describe("an exemption that cites a state declares it (task 1305)", () => {
+  const exempt = ALL.icon.filter((s) => EXEMPT.test(s.tag));
+
+  it("sees a population worth censusing (self-check)", () => {
+    expect(exempt.filter((s) => STATEFUL_REASON.test(s.tag)).length).toBeGreaterThan(0);
+  });
+
+  it("every state-citing exemption sits on a tag that announces that state", () => {
+    const silent = exempt
+      .filter((s) => STATEFUL_REASON.test(s.tag) && !DECLARES_STATE.test(s.tag))
+      .map(at);
+    expect(silent).toEqual([]);
+  });
+
+  it("reads the retired lock shape as a hit and a declared state as a pass (self-check)", () => {
+    const lock = `<button data-iconbtn-exempt="accent-when-active ink (a lock) that iconbtn-* color would override" onClick={t}>`;
+    expect(STATEFUL_REASON.test(lock)).toBe(true);
+    expect(DECLARES_STATE.test(lock)).toBe(false);
+    expect(DECLARES_STATE.test(`<button data-iconbtn-exempt="own aria-pressed active state" aria-pressed={on}>`)).toBe(true);
+    expect(DECLARES_STATE.test(`<button data-iconbtn-exempt="own active state" {...menuTriggerAria("menu", open)}>`)).toBe(true);
+    expect(STATEFUL_REASON.test(`<button data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class">`)).toBe(false);
+  });
+});
+
 describe("a button with visible text does not override it with an aria-label", () => {
   const sites = ALL.text;
 

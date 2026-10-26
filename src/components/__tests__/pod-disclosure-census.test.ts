@@ -24,6 +24,16 @@
  * primitive is a disclosure until named in `RAW_DISCLOSURES` with its count
  * and reason, and each one carries the app's focus indicator and draws no
  * text-glyph chevron.
+ *
+ * Third needle (task 1305): both needles above look for a DECLARATION — a
+ * `<Chevron expanded=` or an `aria-expanded=` — so a disclosure that declares
+ * NOTHING was invisible to both. Preferences' group headers were exactly that:
+ * `<button onClick={() => setOpen(!open)}>` around an inline `rotate-90` svg,
+ * with no `aria-expanded`, no `type`, no ring. So a `<button>` whose subtree
+ * draws a state-turned chevron (a `rotate-90`/`rotate-180` class, a
+ * `rotate(90deg)`/`rotate(180deg)` transform, a `<Chevron`, a
+ * `<FoldChevronGlyph`) must DECLARE its state: `aria-expanded=`, or one of the
+ * doors that spell it (`foldChevronAttrs(`, `menuTriggerAria(`).
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -37,7 +47,7 @@ import {
 } from "@/lib/__tests__/_source-scan";
 
 const ROOT = join(__dirname, "..", "..", "..");
-const LEAF = "src/components/panel-primitives.tsx";
+const LEAF = "src/components/PodDisclosure.tsx";
 
 const NEEDLE = /<Chevron\s+expanded\s*=/g;
 
@@ -55,6 +65,14 @@ const RAW_DISCLOSURES: Record<string, { count: number; reason: string }> = {
   "src/components/CompileLogDisclosure.tsx": {
     count: 1,
     reason: "bottom drawer header: an up/down chevron for a drawer that opens UPWARD, uppercase strip label",
+  },
+  "src/panels/Outline/OutlinePanel.tsx": {
+    count: 2,
+    reason: "icon-only outline twisties (heading row + pod row): a glyph box beside the row's own label, not a labelled sub-pod",
+  },
+  "src/components/library/BibEntryPickerMenu.tsx": {
+    count: 1,
+    reason: "icon-only `iconbtn-xs` details caret in a hover cluster, rotating a menu caret 180°",
   },
   "src/components/MenuBar.tsx": { count: 1, reason: "menu group row: roving `menuitem` (focus shown by `data-active`), not a tab stop" },
   "library/components/BibCard.tsx": { count: 1, reason: "inline-styled \"more/less\" chip in the bib card's key row" },
@@ -75,6 +93,19 @@ function rawDisclosures(raw: string): { tag: string; subtree: string }[] {
   return elementsNamed(src, "button")
     .filter((h) => EXPANDED.test(h.tag))
     .map((h) => ({ tag: resolveConsts(h.tag, consts), subtree: h.subtree ?? "" }));
+}
+
+/** A chevron whose turn reads the open state — what a disclosure DRAWS. */
+const TURNED_CHEVRON = /(?<![\w-])rotate-(?:90|180)(?![\w-])|rotate\(\s*(?:90|180)deg\s*\)|<(?:Chevron|FoldChevronGlyph)\b/;
+/** What a disclosure must DECLARE: the attribute, or a door that spells it. */
+const DECLARES_STATE = /(?<![\w-])aria-expanded\s*=|\b(?:foldChevronAttrs|menuTriggerAria)\s*\(/;
+
+/** `<button>`s that draw a turned chevron but declare no expanded state. */
+function silentDisclosures(raw: string): string[] {
+  const src = commentsStripped(raw);
+  return elementsNamed(src, "button")
+    .filter((h) => TURNED_CHEVRON.test(h.subtree ?? "") && !DECLARES_STATE.test(h.tag))
+    .map((h) => h.tag.split("\n")[0].trim());
 }
 
 function hits(src: string): number {
@@ -148,6 +179,34 @@ describe("pod-disclosure census", () => {
       }
     }
     expect(seen).toBeGreaterThanOrEqual(Object.keys(RAW_DISCLOSURES).length);
+    expect(offenders).toEqual([]);
+  });
+
+  it("canary: the third needle sees a disclosure that declares nothing (task 1305)", () => {
+    const preFix = `<button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 w-full text-left py-1 hover-on-light rounded"
+      >
+        <svg width="10" height="10" className={\`text-ink-muted \${open ? "rotate-90" : ""}\`}><path d="M3 1.5l4 3.5-4 3.5" /></svg>
+        <span>{group.label}</span>
+      </button>`;
+    expect(silentDisclosures(preFix)).toHaveLength(1);
+    // The same shape turned by an inline transform, or drawing <Chevron>, is seen too…
+    expect(silentDisclosures(`<button onClick={t}><Caret style={{ transform: x ? "rotate(180deg)" : "none" }} /></button>`)).toHaveLength(1);
+    expect(silentDisclosures(`<button onClick={t}><FoldChevronGlyph /></button>`)).toHaveLength(1);
+    // …and a declaration, spelled or through its door, clears it.
+    expect(silentDisclosures(`<button aria-expanded={open} onClick={t}><Chevron expanded={open} /></button>`)).toEqual([]);
+    expect(silentDisclosures(`<button {...foldChevronAttrs(folded, "pod")}><FoldChevronGlyph /></button>`)).toEqual([]);
+  });
+
+  it("no `<button>` draws a turned chevron without declaring its expanded state", () => {
+    const offenders: string[] = [];
+    for (const file of PRODUCTION) {
+      if (file === LEAF) continue;
+      for (const tag of silentDisclosures(readFileSync(join(ROOT, file), "utf8"))) {
+        offenders.push(`${file}: ${tag} — a disclosure that declares nothing; use <PodDisclosure> or add aria-expanded`);
+      }
+    }
     expect(offenders).toEqual([]);
   });
 

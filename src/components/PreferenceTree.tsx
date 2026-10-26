@@ -5,6 +5,7 @@ import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, Pref
 import { isLeaf } from "@/lib/preferences-tree";
 import { Field, Select, type FieldIds } from "./field-primitives";
 import { ResetButton } from "./ResetButton";
+import { PodDisclosure } from "./PodDisclosure";
 import { withCurrent, type FontGroup } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import type { EditorPreferences } from "@/hooks/usePreferences";
@@ -215,26 +216,19 @@ function SectionNode({
 
   return (
     <div>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 w-full text-left py-1 hover-on-light rounded"
-        style={{ paddingLeft: depth * 12 }}
-      >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          className={`text-ink-muted motion-safe:transition-transform ${open ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
+      {/* Indent on a wrapper so the disclosure's own box (and its hover)
+          starts at the group's depth (task 1305). */}
+      <div style={{ paddingLeft: depth * 12 }}>
+        <PodDisclosure
+          expanded={open}
+          onToggle={() => setOpen(!open)}
+          className="w-full text-left py-1 hover-on-light rounded text-ink-muted"
         >
-          <path d="M3 1.5l4 3.5-4 3.5" />
-        </svg>
-        <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider">
-          {group.label}
-        </span>
-      </button>
+          <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider">
+            {group.label}
+          </span>
+        </PodDisclosure>
+      </div>
       {open && (
         <div>
           {group.children.map((child, i) => (
