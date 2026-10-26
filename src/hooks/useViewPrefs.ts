@@ -21,6 +21,7 @@ import {
   type OmniCategory,
 } from "@/panels/Omni/omni-categories";
 import { applyPanelSideMigrations, PANEL_SIDE_MIGRATIONS } from "./panel-side-migrations";
+import { shippedDefaults } from "@/lib/shipped-defaults";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
 import {
   coerceRegistryPrefs,
@@ -320,13 +321,18 @@ const DEFAULT_PREFS: ViewPrefs = {
   // is window-scoped, lives ONLY in the registry (not the JSON), so it's
   // omitted from the JSON cast below and supplied by REGISTRY_DEFAULTS.
   ...REGISTRY_DEFAULTS,
-  ...(defaultPrefsJson as Omit<
-    ViewPrefs,
-    | "bibFilter"
-    | "printOptions"
-    | "cardArchiveView"
-    | "appliedPrefMigrations"
-  >),
+  // Every other ViewPrefs key — registry-owned or hand-declared — must appear
+  // in the JSON: a missing one is a tsc error here (task 1306). The `Omit` is
+  // the whole list of keys the JSON deliberately does not ship.
+  ...shippedDefaults<
+    Omit<
+      ViewPrefs,
+      | "bibFilter"
+      | "printOptions"
+      | "cardArchiveView"
+      | "appliedPrefMigrations"
+    >
+  >()(defaultPrefsJson),
   printOptions: DEFAULT_PRINT_OPTIONS,
   cardArchiveView: {},
   // Not shipped in the JSON: a fresh profile has applied nothing, and baking a

@@ -378,8 +378,8 @@ describe("every labelled preference control moves a pixel", () => {
  * snapshot key, which resurrected the retired key in the shipped defaults.
  * Proof it happens: `aiMarkerText`/`aiMarkerBg`/`aiMarkerBorder` were retired
  * in `1c0c52be` and back in the JSON the next day (`ffa7dfe0`), where they sat
- * unread for two months. `check-prefs-coverage` asserts interface ⊆ defaults
- * and so is blind to an EXTRA key by construction; this is that other
+ * unread for two months. `shippedDefaults` (tsc, task 1306) asserts
+ * interface ⊆ defaults and so is blind to an EXTRA key by construction; this is that other
  * direction, expressed the way this census already asks its question.
  *
  * The mechanism fix is `applyAll` ignoring keys the target does not declare.

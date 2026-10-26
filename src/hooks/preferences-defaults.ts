@@ -17,8 +17,12 @@
  * `DEFAULT_PREFS`, so every existing importer is unchanged.
  */
 import type { EditorPreferences } from "./usePreferences";
+import { shippedDefaults } from "@/lib/shipped-defaults";
 import defaultPrefsJson from "./usePreferences.defaults.json";
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
-// promotion pipeline can rewrite them without touching TS source.
-export const DEFAULT_PREFS: EditorPreferences = defaultPrefsJson as EditorPreferences;
+// promotion pipeline can rewrite them without touching TS source. Every
+// `EditorPreferences` key must appear in the JSON — a missing one is a tsc
+// error here, not a runtime `undefined` (task 1306).
+export const DEFAULT_PREFS: EditorPreferences =
+  shippedDefaults<EditorPreferences>()(defaultPrefsJson);
