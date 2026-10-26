@@ -88,12 +88,13 @@ const SIDEBAR_VIEW_NONE = 0;
 /**
  * **Virgil's own defaults for the vendored pdf.js viewer, stated ONCE and
  * applied PER OPEN.** The vendored tree carries exactly two hand-authored
- * artifacts (`public/pdfjs/VIRGIL_VENDOR_NOTE.md`) and no patch census, so a
- * third vendored patch would be silently dropped by the next re-vendor with
- * every test green — which is why every Virgil-side preference about how that
+ * patches, declared in `public/pdfjs/VIRGIL_VENDOR_NOTE.md`, and a patch
+ * census (`__tests__/PdfView.viewerDefaults.test.ts`, task 498) pins that set
+ * EXACTLY: a third vendored patch goes RED, and a re-vendor (`unzip -o`) would
+ * drop it anyway. That is why every Virgil-side preference about how that
  * viewer BEHAVES belongs here, on the wrapper's own open path, rather than in
  * the dist. This is the named place: the next such default is added to this
- * function, not to a fourth path.
+ * function, not to a third patch.
  *
  * It states three things: the viewer is pinned LIGHT, its chrome is painted
  * from Virgil's LIVE palette (`applyViewerPalette`, task 890 — both at the
@@ -244,8 +245,9 @@ export function applyViewerPalette(
  * to PDFViewerApplication.open(). Extracted so the source-prop -> open()-arg
  * wiring can be unit-tested without a browser/iframe.
  *
- * `originalUrl` sets the viewer's title bar + download filename to a friendly
- * `<citekey>.pdf` rather than exposing the opaque blob: URL.
+ * `originalUrl` sets the viewer's title to a friendly `<citekey>.pdf` rather
+ * than exposing the opaque blob: URL (and would name the downloaded file, but
+ * `virgil-overrides.css` hides the download buttons).
  */
 export function pdfOpenArgs(
   objectUrl: string,

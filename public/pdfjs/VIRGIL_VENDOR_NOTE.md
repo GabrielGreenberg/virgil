@@ -43,8 +43,10 @@ Both are pinned as an EXACT SET by the census above, together with this note.
 ## Behaviour defaults live in the WRAPPER, never in here
 
 Virgil's preferences about how the viewer BEHAVES — today: the outline/thumbnail
-sidebar opens closed (task 498) — are stated in `applyViewerDefaults` in
-`library/components/PdfView.tsx` and applied per document open, not patched into
-the dist. A third vendored patch would be dropped by the next re-vendor exactly
-as step 3 would be; the wrapper survives a re-vendor for free. See AGENTS.md,
+sidebar opens closed (task 498), the viewer is pinned LIGHT, and its chrome is
+painted from Virgil's live palette (task 890) — are stated in `applyViewerDefaults`
+in `library/components/PdfView.tsx` and applied per document open, not patched
+into the dist. A third vendored patch would be dropped by the next re-vendor
+exactly as step 3 would be (and the census fails on it); the wrapper survives a
+re-vendor for free. See AGENTS.md,
 "Vendored viewers: the WRAPPER owns the defaults, and the dist gets a CENSUS".
