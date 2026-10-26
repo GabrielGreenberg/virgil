@@ -51,6 +51,7 @@ import {
   verdictOf,
   type ActionContext,
   type ActionId,
+  runAction as runRegistryAction,
 } from "@/lib/actions/action-registry";
 import { lightningContext } from "@/lib/actions/lightning-context";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
@@ -329,11 +330,6 @@ export function ActionsMenuPanel({
   const runGridAction = (id: ActionId, payload?: Record<string, unknown>) => {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) return;
-    // Focus the doc first (the grid cell is a toolbar button — focus may be on
-    // the button, not the doc); the format/math `run()`s re-focus too, but
-    // figure/graphics read the live selection before inserting, so we focus
-    // up-front.
-    editor.chain().focus().run();
     const ctx: ActionContext = {
       // The lightning panel's one ctx constructor (task 1199), carrying the
       // uniform collab gate (CHIP 7b): when the partner holds the pen the row's
@@ -397,7 +393,13 @@ export function ActionsMenuPanel({
         );
       },
     };
-    void row.run(ctx);
+    // Task 1299: the commit RE-ASKS the cell's question through the registry's
+    // ONE run door (the render-time `disabled=` is only as fresh as the last
+    // render). Focus the doc first (the grid cell is a toolbar button — focus
+    // may be on the button, not the doc); the format/math `run()`s re-focus
+    // too, but figure/graphics read the live selection before inserting, so we
+    // focus up-front — as `beforeRun`, so a REFUSED commit moves no focus.
+    runRegistryAction(row, ctx, { beforeRun: () => editor.chain().focus().run() });
     // NOTE: like the prior format cells (and the prior `wrapSelectionInMath` /
     // `insertFigureBlock` direct calls), we do NOT auto-close the menu here —
     // it dismisses on click-outside. Faithful to pre-6a/6b behavior.

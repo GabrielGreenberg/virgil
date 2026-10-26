@@ -24,6 +24,7 @@ import {
   SLASH_NAME_TO_ACTION_ID,
   VIRGIL_ACTION_REGISTRY,
   type ActionId,
+  runAction,
 } from "@/lib/actions/action-registry";
 import { CARD_ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import { markSlashNames, SLASH_MARK_TYPES } from "@/lib/mark-composition";
@@ -96,8 +97,8 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
   // `blockApplies` (→ "ok" at a caret) and `\tex` uses `blockInsertApplies`
   // (already "disabled" in a titleField, where `texRun`'s own bail already
   // no-ops it) — so behavior is unchanged for everything but the heading fix.
-  if (spec.applies(ctx) === "disabled") return;
-  void spec.run(ctx);
+  // Task 1299: both gates are asked by the registry's ONE run door now.
+  void runAction(spec, ctx);
 }
 
 /**

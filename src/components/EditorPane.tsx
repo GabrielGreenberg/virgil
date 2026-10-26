@@ -278,6 +278,7 @@ import {
   type ActionContext,
   type ActionId,
   type EditorActionsHandle,
+  runAction,
 } from "@/lib/actions/action-registry";
 import {
   registerEditorActionsHandle,
@@ -4693,9 +4694,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // cursor refs (`cardActionAllowedForCtx`), the cross-surface enforcement
         // point. Non-card actions (ref / example / wrappers) return "ok" for a
         // caret, so they're unaffected.
-        if (spec.applies(ctx) === "disabled") return "disabled";
-        void spec.run(ctx);
-        return "ran";
+        // Task 1299: through the registry's ONE run door, which asks this
+        // verdict and the ORIGIN's live pen ∧ host before `run`.
+        return runAction(spec, ctx);
       },
     };
     // Register THIS pane's handle keyed by its live `EditorView` (multi-doc
