@@ -115,7 +115,7 @@ from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
     bucket_body,
 )
 
-# Result-lenses the dream audits (design §4; README "What chip 18 consumes").
+# Result-lenses the dream audits (design §4; editor/dev/README.md "What the dream consumes").
 LENS_REJECTION = "rejectionCorpus"      # result: rejected
 LENS_SILENT = "silentEditAudit"         # result: silent-applied
 LENS_REFUSAL = "refusalPatterns"        # result: refused | impossible
