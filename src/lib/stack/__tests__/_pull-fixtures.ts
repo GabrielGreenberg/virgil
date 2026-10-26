@@ -60,6 +60,8 @@ export const POPULATED_SNAPSHOT_DATA: {
     kind: "note",
     id: "src-note-id",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
     title: "a title the user typed",
     titleAuto: false,
     content: RICH_BODY,
@@ -72,6 +74,8 @@ export const POPULATED_SNAPSHOT_DATA: {
     kind: "highlight",
     id: "src-highlight-id",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
     createdAt: "2020-01-01T00:00:00.000Z",
     highlightColor: "#abcdef",
     aiRequest: true,
@@ -104,10 +108,14 @@ export const POPULATED_SNAPSHOT_DATA: {
     type: "article",
     fields: { title: "A Paper", author: "Smith" },
     raw: "@article{smith2020, title={A Paper}}",
+    // Task 688: a span in the SOURCE paper's .bib — a per-doc binding.
+    source: { start: 120, end: 157, text: "@article{smith2020, title={A Paper}}", balanced: true },
   },
   todo: {
     id: "src-todo-id",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
     text: "the todo the user typed",
     titleAuto: false,
     notes: "notes the user typed",
@@ -129,12 +137,30 @@ export const POPULATED_SNAPSHOT_DATA: {
     originalPanel: "notes",
     originalCard: { kind: "note", id: "src-archive-id", links: [SOURCE_LINK] },
     archivedAt: "2020-01-02T00:00:00.000Z",
+    // The RETURN side (tasks 965 / 1079 / 1194) — each addresses the SOURCE
+    // paper: a block uuid, card ids, and `linkedAnchor` marks naming a card.
+    returnBefore: "src-first-block-uuid",
+    displaced: [
+      { kind: "note", id: "src-note-id", from: ["src-para-uuid"], to: "src-neighbour-uuid", added: true },
+    ],
+    carriedMarks: [
+      {
+        anchorId: "src-anchor-id",
+        attrs: { anchorId: "src-anchor-id", linkCard: "note:src-note-id" },
+        from: 1,
+        to: 5,
+        text: "body",
+      },
+    ],
   },
   "revision-comment": {
     kind: "comment",
     id: "src-rev-comment-id",
     createdAt: "2020-01-01T00:00:00.000Z",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
+    selectedLatex: "text selected in the \\emph{SOURCE} doc",
     text: "body the user typed",
     content: RICH_BODY,
     aiRequest: true,
@@ -152,6 +178,11 @@ export const POPULATED_SNAPSHOT_DATA: {
     id: "src-rev-suggestion-id",
     createdAt: "2020-01-01T00:00:00.000Z",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
+    selectedLatex: "text selected in the \\emph{SOURCE} doc",
+    // Task 1043: the SOURCE paper's ai-requests.json row.
+    aiOriginRequestId: "src-ai-request-id",
     author: "ai",
     original_text: "the passage as it stood",
     suggested_text: "the AI's replacement",
@@ -181,6 +212,9 @@ export const POPULATED_SNAPSHOT_DATA: {
     id: "src-cut-comment-id",
     createdAt: "2020-01-01T00:00:00.000Z",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
+    selectedLatex: "text selected in the \\emph{SOURCE} doc",
     text: "body the user typed",
     content: RICH_BODY,
     aiRequest: true,
@@ -198,6 +232,11 @@ export const POPULATED_SNAPSHOT_DATA: {
     id: "src-cut-suggestion-id",
     createdAt: "2020-01-01T00:00:00.000Z",
     archived: true,
+    // Task 1193: dormant in a SOURCE-paper snippet — a per-doc binding.
+    archivedWith: "src-archive-snippet-id",
+    selectedLatex: "text selected in the \\emph{SOURCE} doc",
+    // Task 1043: the SOURCE paper's ai-requests.json row.
+    aiOriginRequestId: "src-ai-request-id",
     author: "ai",
     original_text: "the passage as it stood",
     suggested_text: "the AI's replacement",

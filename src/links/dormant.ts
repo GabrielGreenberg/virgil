@@ -45,6 +45,12 @@
 import type { Link } from "./_shared/types";
 import { isModeB } from "./_shared/types";
 
+/** The dormancy field's NAME, for a table that must classify it without
+ *  reading or writing it — the Stack pull's `FIELD_FATES` (task 1298), which
+ *  keeps it behind because it names a snippet in the SOURCE paper. Exported
+ *  so that table keys by this constant rather than spelling the field. */
+export const DORMANT_CARD_FIELD = "archivedWith" as const;
+
 /** The card shape the predicates read. Structural, so every card kind fits. */
 export interface DormantCardShape {
   id: string;
