@@ -112,7 +112,12 @@ export interface PersistentStateApi<S> {
    * a derivation held for one document is never applied to another.
    */
   updateWhenLoaded: (fn: (prev: S) => S) => void;
-  /** Live mirror of `state` for callers that need synchronous access. */
+  /**
+   * The newest written state, synchronously — written BEFORE the render is
+   * scheduled (task 1295), so a read after a write (even across an `await`
+   * that resumes before React renders) sees it. Callers READ it; they never
+   * assign it — every write goes through `update`.
+   */
   stateRef: MutableRefObject<S>;
   /**
    * True once the initial sidecar read for the current `docId` has
@@ -178,9 +183,33 @@ export function usePersistentState<S>(
     errorLabel,
     debounceMs = sidecarWriteDebounceMs(filename),
   } = opts;
-  const [state, setState] = useState<S>(defaultValue);
+  const [state, setRenderedState] = useState<S>(defaultValue);
+  // THE LIVE MIRROR IS AUTHORITATIVE (task 1295). Every write lands in the ref
+  // FIRST and then schedules the render, so a read that follows a write — in
+  // the same handler, or after an `await` whose continuation runs before React
+  // has rendered (a write from outside a discrete event is DefaultLane, and
+  // renders on a later macrotask) — sees the write. The ref used to be
+  // re-assigned from `state` on render, which made it a RENDER-captured
+  // snapshot wearing a "live" name: a lifecycle door that settled a card and
+  // then re-read it (range Delete's settle-first phase, then its cascade
+  // delete) still saw the pre-settle record and asked Keep/Revert a second
+  // time, after the passage was gone. `update` therefore derives from the ref,
+  // not from React's queued `prev` — the ref IS the newest write, so the order
+  // of writes is unchanged; only their visibility is earlier.
   const stateRef = useRef(state);
-  stateRef.current = state;
+  // Every write door — `update`, the loader, the external-change adopt
+  // (`apply`), the write convergence, the exposed `setState` — passes through
+  // here, so no door can leave the ref behind. A functional action resolves
+  // against the REF (the newest write), never against React's queued `prev`.
+  const setState = useCallback<Dispatch<SetStateAction<S>>>((action) => {
+    const next =
+      typeof action === "function"
+        ? (action as (prev: S) => S)(stateRef.current)
+        : action;
+    if (next === stateRef.current) return;
+    stateRef.current = next;
+    setRenderedState(next);
+  }, []);
 
   // Reader-mode write guard. The active chrome's `editableCardKinds` whitelist
   // (the Library Reader's `READER_EDITABLE_CARD_KINDS`, `["note"]`) decides
@@ -517,9 +546,10 @@ export function usePersistentState<S>(
         //
         // Precondition on the caller, since this cancels rather than merges: the
         // payload must already reflect any `update()` issued before it.
-        // `stateRef` refreshes on RENDER, so `update(f); persist({...stateRef
-        // .current})` inside ONE handler would drop `f` — derive the payload from
-        // the same state `update` did, or just use `update`.
+        // (`stateRef` is written BEFORE the render since task 1295, so
+        // `update(f); persist({...stateRef.current})` now carries `f`; the
+        // payload must still come from the ref, never from a render-captured
+        // `state`.)
         cancelArmedTimer();
         pendingRef.current = null;
         // Reader-mode safety guard: refuse a write the active chrome disallows
@@ -648,33 +678,32 @@ export function usePersistentState<S>(
 
   const update = useCallback(
     (fn: (prev: S) => S) => {
-      setState((prev) => {
-        const next = fn(prev);
-        // No-op update (referentially-equal `next`) → don't mark mutated and
-        // don't arm a redundant byte-identical write. This matters now that the
-        // orphan-listener kind gates are dropped: ALL panels call
-        // `clearCardAnchor()` on every `virgil-anchor-orphaned` event, and the
-        // four NON-owning panels self-filter to a state no-op (`return prev`).
-        // Without this guard each would still schedule an identical `writeSidecar`
-        // and stamp `hasMutatedRef` (spuriously arming the loader-stomp guard).
-        if (next === prev) return prev;
-        hasMutatedRef.current = true;
-        if (debounceMs <= 0) {
-          void persist(next);
-        } else {
-          pendingRef.current = next;
-          cancelArmedTimer();
-          pendingTimerRef.current = window.setTimeout(() => {
-            pendingTimerRef.current = null;
-            const payload = pendingRef.current;
-            pendingRef.current = null;
-            if (payload !== null) void persist(payload);
-          }, debounceMs);
-        }
-        return next;
-      });
+      const prev = stateRef.current;
+      const next = fn(prev);
+      // No-op update (referentially-equal `next`) → don't mark mutated and
+      // don't arm a redundant byte-identical write. This matters now that the
+      // orphan-listener kind gates are dropped: ALL panels call
+      // `clearCardAnchor()` on every `virgil-anchor-orphaned` event, and the
+      // four NON-owning panels self-filter to a state no-op (`return prev`).
+      // Without this guard each would still schedule an identical `writeSidecar`
+      // and stamp `hasMutatedRef` (spuriously arming the loader-stomp guard).
+      if (next === prev) return;
+      setState(next);
+      hasMutatedRef.current = true;
+      if (debounceMs <= 0) {
+        void persist(next);
+      } else {
+        pendingRef.current = next;
+        cancelArmedTimer();
+        pendingTimerRef.current = window.setTimeout(() => {
+          pendingTimerRef.current = null;
+          const payload = pendingRef.current;
+          pendingRef.current = null;
+          if (payload !== null) void persist(payload);
+        }, debounceMs);
+      }
     },
-    [persist, debounceMs, cancelArmedTimer],
+    [persist, debounceMs, cancelArmedTimer, setState],
   );
 
   // ── THE LOAD-TIME RECONCILE DOOR (task 570) ────────────────────────────────
@@ -690,7 +719,7 @@ export function usePersistentState<S>(
   const applyReconcile = useCallback(
     (fn: (prev: S) => S) => {
       if (loadErrorRef.current) {
-        setState((prev) => fn(prev));
+        setState(fn(stateRef.current));
         return;
       }
       update(fn);

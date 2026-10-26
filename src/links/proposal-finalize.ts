@@ -149,13 +149,17 @@ export async function finalizeProposal(
  *  caller's value straight back to the family's own setter. */
 export interface ProposalStatusHook {
   cards: readonly unknown[];
+  /** The live collection (task 1295); preferred over `cards` when present. */
+  getCards?: () => readonly unknown[];
   setSuggestionStatus: (id: string, status: never) => void;
 }
 
 /**
  * Return `hook` with its `setSuggestionStatus` finalizing on a terminal
- * transition. The PREVIOUS status is read from `hook.cards` at call time (the
- * render the caller acted in); a double fire before re-render is harmless —
+ * transition. The PREVIOUS status is read from the LIVE collection
+ * (`hook.getCards()`, task 1295; `hook.cards` for a hook without one), so a
+ * second transition issued before React re-renders sees the first's status
+ * rather than finalizing twice; a double fire would be harmless anyway —
  * `finalizeProposalRequest` writes nothing over an already-terminal row and
  * `setDone` is idempotent.
  */
@@ -165,7 +169,7 @@ export function withProposalFinalize<H extends ProposalStatusHook>(
 ): H {
   const inner = hook.setSuggestionStatus as (id: string, status: string) => void;
   const setSuggestionStatus = (id: string, status: string) => {
-    const card = hook.cards.find(
+    const card = (hook.getCards?.() ?? hook.cards).find(
       (c) =>
         !!c &&
         typeof c === "object" &&

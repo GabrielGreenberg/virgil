@@ -44,6 +44,7 @@ vi.mock("@/lib/focus-new-card", async (importOriginal) => {
 import { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 import { renderHook } from "@testing-library/react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
@@ -152,10 +153,12 @@ function makeSpliceOps(opts: {
   onSettle?: () => void;
 }): { ops: AppliedSpliceOps; counts: { asks: number; settles: number } } {
   const counts = { asks: 0, settles: 0 };
-  // STATEFUL, like the real bag: `get` reads the live card, and a landed
-  // settlement clears the card's `appliedChange`, so the splice is gone
-  // afterwards. Without that a second door asking the same question would be
-  // prompted twice, which is precisely what the real wiring does not do.
+  // STATEFUL: `get` reads the live card, and a landed settlement clears the
+  // card's `appliedChange`, so the splice is gone afterwards. This flag flips
+  // SYNCHRONOUSLY inside `settle` — a property the real bag only has because
+  // its `get` reads the hooks' live ref (task 1295). The real bag is pinned
+  // separately below, over the REAL state primitive, because a hand-built
+  // flag here is exactly what kept that defect green.
   let live = true;
   const ops: AppliedSpliceOps = {
     get: (kind, id) =>
@@ -352,4 +355,80 @@ describe("task 636 — nothing changes for a passage with no live splice", () =>
     expect(editor.state.doc.textContent).toBe("Before.After.");
     expect(h.deleted).toEqual([`revision-suggestion:${SUGGESTION_ID}`]);
   });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 1295 — the REAL bag's read path. EditorPane's `appliedSpliceOps.get`
+// reads the revisions/cutter cards, and its `settle` lands through the hooks'
+// `usePersistentState.update` — a React state write that renders only on a
+// later macrotask. The continuation after phase one's `await` runs in
+// microtasks straight into the cascade delete, whose executor asks `get`
+// AGAIN. When `get` read a render-captured snapshot it still saw
+// `status:"applied"`, and a second Keep/Revert/Cancel prompt opened after the
+// passage was gone. This bag is backed by the real primitive and reads it the
+// way the hooks' `getCards()` does (its `stateRef`), so it fails on a ref that
+// refreshes only on render.
+// ---------------------------------------------------------------------------
+
+interface SuggState {
+  cards: { id: string; status: string; appliedChange?: { anchorId: string; mode: "replace" } }[];
+}
+
+function stateBackedSpliceOps(answer: AppliedSpliceResolution) {
+  const seed: SuggState = {
+    cards: [
+      { id: SUGGESTION_ID, status: "applied", appliedChange: { anchorId: "anchor-1", mode: "replace" } },
+    ],
+  };
+  const { result } = renderHook(() =>
+    usePersistentState<SuggState>("doc-1295", "revisions.json", seed),
+  );
+  // Captured ONCE, like EditorPane's memo closure between renders.
+  const api = result.current;
+  const counts = { asks: 0, settles: 0 };
+  const ops: AppliedSpliceOps = {
+    get: (kind, id) => {
+      if (kind !== "revision-suggestion") return null;
+      const card = api.stateRef.current.cards.find((c) => c.id === id);
+      if (!card || card.status !== "applied" || !card.appliedChange) return null;
+      return { anchorId: card.appliedChange.anchorId, mode: card.appliedChange.mode };
+    },
+    ask: async () => {
+      counts.asks++;
+      return answer;
+    },
+    settle: (_kind, id, resolution) => {
+      counts.settles++;
+      // `commitAppliedChange`'s shape: status + appliedChange cleared, through
+      // the hook's queued state write — NOT a synchronous local flag.
+      api.update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === id
+            ? { id: c.id, status: resolution === "keep" ? "accepted" : "rejected" }
+            : c,
+        ),
+      }));
+      return true;
+    },
+  };
+  return { ops, counts };
+}
+
+describe("task 1295 — one prompt over the REAL state-backed bag", () => {
+  for (const answer of ["keep", "revert"] as const) {
+    it(`DELETE + ${answer}: asked exactly once, then the passage and the card go`, async () => {
+      const editor = mountDoc(docWithAppliedSuggestion());
+      const splice = stateBackedSpliceOps(answer);
+      const h = makeHarness(editor, splice.ops);
+
+      await h.dispatch("delete", TARGET_REF);
+      // Let the fire-and-forget cascade delete run its own (would-be) prompt.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(splice.counts.asks).toBe(1);
+      expect(splice.counts.settles).toBe(1);
+      expect(editor.state.doc.textContent).not.toContain(TARGET_TEXT);
+      expect(h.deleted).toEqual([`revision-suggestion:${SUGGESTION_ID}`]);
+    });
+  }
 });

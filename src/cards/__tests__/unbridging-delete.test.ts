@@ -128,9 +128,12 @@ describe("makeUnbridgingDelete", () => {
       unbridge: spies.unbridge,
       signal: () => {},
     });
-    del("ghost");
+    const committed = del("ghost");
     await flush();
 
+    // Task 1295: nothing was removed, so the answer is false — a caller that
+    // tears down what the card owned must not act on it.
+    await expect(committed).resolves.toBe(false);
     expect(spies.rawDelete).toHaveBeenCalledWith("ghost");
     expect(spies.unbridge).not.toHaveBeenCalled();
     expect(spies.order).toEqual(["mutate"]);

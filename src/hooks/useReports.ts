@@ -577,8 +577,15 @@ export function useReports(
     clearCardAnchor(anchorId);
   });
 
+  // The LIVE collection (task 1295) — the newest write, not the last render's
+  // `cards`. A lifecycle door (delete / morph / settle) that reads a record
+  // after an `await`, or after a write it just issued, reads through this;
+  // render-derived consumers keep reading `cards`.
+  const getCards = useCallback(() => stateRef.current.cards, [stateRef]);
+
   return useMemo(
     () => ({
+      getCards,
       cards: state.cards,
       addReport,
       addReportRequest,
@@ -606,6 +613,7 @@ export function useReports(
       discardPristineCards,
     }),
     [
+      getCards,
       state.cards,
       addReport,
       addReportRequest,

@@ -389,7 +389,6 @@ export function useArchive(docId: string | null) {
         const remove = (prev: ArchiveState): ArchiveState => ({
           snippets: prev.snippets.filter((s) => s.id !== id),
         });
-        stateRef.current = remove(stateRef.current);
         update(remove);
         return true;
       }
@@ -399,10 +398,9 @@ export function useArchive(docId: string | null) {
           s.id === id ? { ...s, archived: true } : s,
         ),
       });
-      // Advance the ref mirror too (the next render re-assigns it anyway), so a
-      // second call for the same id before React re-renders sees the retired
-      // flag and refuses instead of landing the excerpt a second time.
-      stateRef.current = retire(stateRef.current);
+      // `update` advances the live ref before React re-renders (task 1295), so
+      // a second call for the same id sees the retired flag and refuses
+      // instead of landing the excerpt a second time.
       update(retire);
       return true;
     },
@@ -452,8 +450,15 @@ export function useArchive(docId: string | null) {
     (_s, snippets) => ({ snippets }),
   );
 
+  // The LIVE collection (task 1295) — the newest write, not the last render's
+  // `snippets`. A lifecycle door (delete / morph / settle) that reads a record
+  // after an `await`, or after a write it just issued, reads through this;
+  // render-derived consumers keep reading `snippets`.
+  const getSnippets = useCallback(() => stateRef.current.snippets, [stateRef]);
+
   return useMemo(
     () => ({
+      getSnippets,
       snippets: state.snippets,
       archiveContent,
       archiveFromSeed,
@@ -472,6 +477,7 @@ export function useArchive(docId: string | null) {
       clearCardAnchor,
     }),
     [
+      getSnippets,
       state.snippets,
       archiveContent,
       archiveFromSeed,

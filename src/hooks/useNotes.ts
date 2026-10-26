@@ -712,6 +712,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const convertCard = useCallback(
     (id: string, toKind: "note" | "highlight") => {
       pristine.markDirty(id);
+      // The PRE-morph record, read BEFORE the write: `update` advances the
+      // live ref synchronously (task 1295), so a read after it would see the
+      // already-morphed card and skip the carry below.
+      const card = stateRef.current.cards.find((c) => c.id === id);
       update((prev) => ({
         cards: prev.cards.map((c) => {
           if (c.id !== id || c.kind === toKind) return c;
@@ -724,7 +728,6 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       // the note/highlight the user no longer sees. Context is built from the
       // morphed record (same transform the update applies) through the TO
       // kind's own context builder — the one a re-tick would use.
-      const card = stateRef.current.cards.find((c) => c.id === id);
       if (!card || card.kind === toKind || !morphCarriesAiRequest(card.kind)) return;
       const next = applyCardMorph(card.kind, card);
       if (!next.aiRequest) return;
@@ -772,8 +775,15 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
+  // The LIVE collection (task 1295) — the newest write, not the last render's
+  // `cards`. A lifecycle door (delete / morph / settle) that reads a record
+  // after an `await`, or after a write it just issued, reads through this;
+  // render-derived consumers keep reading `cards`.
+  const getCards = useCallback(() => stateRef.current.cards, [stateRef]);
+
   return useMemo(
     () => ({
+      getCards,
       cards,
       notes,
       highlights,
@@ -811,6 +821,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       discardPristineNotes,
     }),
     [
+      getCards,
       cards,
       notes,
       highlights,

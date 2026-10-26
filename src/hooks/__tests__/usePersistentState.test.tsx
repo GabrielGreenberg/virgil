@@ -125,6 +125,25 @@ describe("usePersistentState", () => {
     );
   });
 
+  it("stateRef carries an update BEFORE React renders it (task 1295)", async () => {
+    beginDocPipeline("doc-1");
+    mockRead.mockResolvedValue(EMPTY);
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-1", "test.json", EMPTY),
+    );
+    await waitFor(() => expect(result.current.state).toEqual(EMPTY));
+    const api = result.current;
+    // Outside act(): the render is queued, not flushed — exactly the window a
+    // lifecycle door's `await` continuation runs in.
+    api.update((prev) => ({ items: [...prev.items, "x"] }));
+    expect(api.stateRef.current.items).toEqual(["x"]);
+    // A second write in the same window derives from the first, not from the
+    // last render.
+    api.update((prev) => ({ items: [...prev.items, "y"] }));
+    expect(api.stateRef.current.items).toEqual(["x", "y"]);
+    await waitFor(() => expect(result.current.state.items).toEqual(["x", "y"]));
+  });
+
   it("does not write when no pipeline is active", async () => {
     // No beginDocPipeline call — handle lookup returns null.
     mockRead.mockResolvedValue(EMPTY);

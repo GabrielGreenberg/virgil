@@ -1522,7 +1522,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const revisionPendingDeps = useCallback(
     (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
       getAppliedChange: (cid) =>
-        revisionsHookRaw.cards.find(
+        revisionsHookRaw.getCards().find(
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
         )?.appliedChange,
       setSuggestionStatus: revisionsHookRaw.setSuggestionStatus,
@@ -1537,7 +1537,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const cutterPendingDeps = useCallback(
     (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
       getAppliedChange: (cid) =>
-        cutterHookRaw.cards.find(
+        cutterHookRaw.getCards().find(
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
         )?.appliedChange,
       setSuggestionStatus: cutterHookRaw.setSuggestionStatus,
@@ -1586,11 +1586,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // is false for every record written before the flip.)
         const card =
           kind === "revision-suggestion"
-            ? revisionsHookRaw.cards.find(
+            ? revisionsHookRaw.getCards().find(
                 (c): c is RevisionSuggestionCard =>
                   c.id === id && c.kind === "suggestion",
               )
-            : cutterHookRaw.cards.find(
+            : cutterHookRaw.getCards().find(
                 (c): c is CutterSuggestionCard =>
                   c.id === id && c.kind === "suggestion",
               );
@@ -1635,8 +1635,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       },
     }),
     [
-      revisionsHookRaw.cards,
-      cutterHookRaw.cards,
+      revisionsHookRaw.getCards,
+      cutterHookRaw.getCards,
       chooseLifecycle,
       docId,
       revisionPendingDeps,
@@ -1818,33 +1818,33 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) => {
-          const c = revisionsHookRaw.cards.find((r) => r.id === id);
+          const c = revisionsHookRaw.getCards().find((r) => r.id === id);
           return c ? cardKindFromRecord(c, "revisions") : null;
         },
         rawDelete: revisionsHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
-        resolveCard: (id) => revisionsHookRaw.cards.find((r) => r.id === id),
+        resolveCard: (id) => revisionsHookRaw.getCards().find((r) => r.id === id),
         finalizeLeavingProposal: onProposalLeave,
       }),
-    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
+    [revisionsHookRaw.getCards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
   );
   const deleteCutterCard = useMemo(
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) => {
-          const c = cutterHookRaw.cards.find((r) => r.id === id);
+          const c = cutterHookRaw.getCards().find((r) => r.id === id);
           return c ? cardKindFromRecord(c, "cutter") : null;
         },
         rawDelete: cutterHookRaw.deleteCard,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
-        resolveCard: (id) => cutterHookRaw.cards.find((r) => r.id === id),
+        resolveCard: (id) => cutterHookRaw.getCards().find((r) => r.id === id),
         finalizeLeavingProposal: onProposalLeave,
       }),
-    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
+    [cutterHookRaw.getCards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal, onProposalLeave],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: morphCard, deleteCard: deleteRevisionCard }),
@@ -1893,7 +1893,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) => {
-          const c = reportsHookRaw.cards.find((r) => r.id === id);
+          const c = reportsHookRaw.getCards().find((r) => r.id === id);
           return c ? cardKindFromRecord(c, "reports") : null;
         },
         rawDelete: reportsHookRaw.deleteCard,
@@ -1901,7 +1901,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [reportsHookRaw.getCards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1918,7 +1918,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) => {
-          const c = notesHookRaw.cards.find((n) => n.id === id);
+          const c = notesHookRaw.getCards().find((n) => n.id === id);
           return c ? (c.kind as CardKind) : null;
         },
         rawDelete: notesHookRaw.deleteNote,
@@ -1926,7 +1926,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [notesHookRaw.getCards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: morphCard, deleteNote: deleteNoteCard }),
@@ -1939,13 +1939,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) =>
-          todosHookRaw.items.some((t) => t.id === id) ? "todo" : null,
+          todosHookRaw.getItems().some((t) => t.id === id) ? "todo" : null,
         rawDelete: todosHookRaw.deleteItem,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [todosHookRaw.getItems, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   // The Todo panel's SECOND destructive door — "clear done" — composed from the
   // wired single delete above rather than re-implemented (task 681). It used to
@@ -1977,13 +1977,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const bulk = makeUnbridgingBulkDelete(deleteTodoItem);
     return async (ids?: readonly string[]) => {
       const idSet = ids ? new Set(ids) : null;
-      const targets = todosHookRaw.items
+      const targets = todosHookRaw
+        .getItems()
         .filter((t) => t.done && (!idSet || idSet.has(t.id)))
         .map((t) => t.id);
       if (targets.length === 0) return;
       await bulk(targets);
     };
-  }, [deleteTodoItem, todosHookRaw.items]);
+  }, [deleteTodoItem, todosHookRaw.getItems]);
   const todosHook = useMemo<WiredTodosHook>(
     () => ({ ...todosHookRaw, deleteItem: deleteTodoItem, clearDone: clearDoneTodos }),
     [todosHookRaw, deleteTodoItem, clearDoneTodos],
@@ -2064,13 +2065,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () =>
       makeUnbridgingDelete({
         resolveKind: (id) =>
-          archiveHookRaw.snippets.some((s) => s.id === id) ? "archive" : null,
+          archiveHookRaw.getSnippets().some((s) => s.id === id) ? "archive" : null,
         rawDelete: archiveHookRaw.deleteSnippet,
         unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
         signal: cardLifecycleSignal,
       }),
-    [archiveHookRaw.snippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
+    [archiveHookRaw.getSnippets, archiveHookRaw.deleteSnippet, unbridgeAiRequestRow, appliedSpliceOps, cardLifecycleSignal],
   );
   // Task 1195: a deleted PASSAGE then RELEASES the cards that travelled with
   // it — the five stores drop their links dormant in it and clear
