@@ -261,12 +261,12 @@ function LinkEdgeRow({
         })}
       >
         {locked ? (
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" fillOpacity="0.15" />
             <path d="M5 7V5a3 3 0 1 1 6 0v2" />
           </svg>
         ) : (
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="7" width="10" height="7" rx="1.5" />
             <path d="M5 7V5a3 3 0 0 1 5.6-1.5" />
           </svg>

@@ -1164,9 +1164,11 @@ Five states. One implementation each.
   four rings; `.focus-ring` is that indicator UNBUNDLED from geometry and
   palette. Inputs use a thicker border instead of a ring.
   Reach for `.focus-ring` on a
-  control the size utilities genuinely don't fit — a 10px outline chevron, a
-  button whose ink is accent-when-active (`iconbtn-*` would win the colour), an
-  inline-styled library control. It is not an escape from `iconbtn-*`: if the
+  control the size utilities genuinely don't fit — a 10px outline chevron, an
+  inline-styled library control. A two-state icon toggle is NOT such a case:
+  it takes `iconbtn-{size} iconbtn-toggle` + `aria-pressed`, whose pressed
+  paint replaces an accent-when-active ink, and an exemption whose reason
+  cites a state must declare it (`aria-pressed`/`aria-expanded`, task 1305). It is not an escape from `iconbtn-*`: if the
   utility fits, take the utility. Never leave the UA default
   ring, and never strip it bare: `outline: none` is legal only where the same
   rule supplies the replacement — a `:focus`/`:focus-visible` rule over the same
@@ -2203,7 +2205,12 @@ through the file's same-file string consts (`_source-scan`'s
 const paints, not an opaque name. Likewise every raw `<button aria-expanded>`
 is a disclosure: `<PodDisclosure>`, or named in `pod-disclosure-census.test.ts`
 with a reason, ringed, and drawing `<Chevron>` (the leaf
-`@/components/Chevron`) — never a "▾/▸" text glyph.
+`@/components/Chevron`) — never a "▾/▸" text glyph. And the converse: a
+`<button>` that draws a state-turned chevron (`rotate-90`/`rotate-180`,
+`<Chevron`, `<FoldChevronGlyph`) DECLARES its state — a disclosure that
+declares nothing is the shape the census exists to see (task 1305).
+`PodDisclosure` is a leaf too (`@/components/PodDisclosure`), so a surface
+outside the card vocabulary — Preferences' group headers — takes it as is.
 
 **A disabled `<Button>` keeps its hint.** It keeps pointer events (hover
 and the press nudge are gated on `enabled:`), so the `title` / `data-hint`
