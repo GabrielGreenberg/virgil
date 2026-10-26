@@ -67,6 +67,8 @@ export {
   diffHasStructuralEntries,
   diffTouchesNumberingInputs,
   diffExamplesRecomputable,
+  STRUCTURAL_REVISION_PREDICATES,
+  type StructuralRevisionCategory,
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,

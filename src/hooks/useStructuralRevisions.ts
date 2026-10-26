@@ -41,38 +41,37 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { getBus } from "@/lib/tiptap/doc-structure";
+import {
+  getBus,
+  STRUCTURAL_REVISION_PREDICATES,
+  type StructuralRevisionCategory,
+} from "@/lib/tiptap/doc-structure";
 import { rafCoalesced } from "@/lib/raf-coalesced";
 
-export interface StructuralRevisions {
-  /** Footnote node added / removed / reordered (also covers footnote-body edits). */
-  footnotes: number;
-  /** Citation node added / removed / reordered / attrs (command·displayText) changed. */
-  citations: number;
-  /** exampleBlock added / removed / structurally changed. */
-  examples: number;
-  /** linkedAnchor mark (note·cut·revision·report·…) added / removed. */
-  anchors: number;
-  /** Anchorable block added / removed (drives doc-order-dependent derivations). */
-  blocks: number;
-  /** Heading added / removed / structural-attr changed. */
-  headings: number;
-  /** figureBlock added / removed / structural-attr changed. */
-  figures: number;
-  /** `\label{…}` defined / removed. */
-  labels: number;
-}
+/**
+ * One counter per category of `STRUCTURAL_REVISION_PREDICATES`
+ * (doc-structure/types.ts) — the keys DERIVE from that table, and each counter
+ * bumps exactly when its predicate holds (task 1301):
+ *
+ *  - footnotes — added / removed / reordered (also covers footnote-body edits).
+ *  - citations — added / removed / reordered / attrs changed, or a footnote
+ *    body changed (a citation can live inside one).
+ *  - examples  — exampleBlock added / removed / structurally changed.
+ *  - anchors   — linkedAnchor mark (note·cut·revision·report·…) added / removed.
+ *  - blocks    — anchorable block added / removed / reordered.
+ *  - headings  — heading added / removed / structural-attr changed.
+ *  - figures   — figureBlock added / removed / structural-attr changed.
+ *  - labels    — `\label{…}` defined / removed / moved with its owner.
+ */
+export type StructuralRevisions = Record<StructuralRevisionCategory, number>;
 
-const ZERO: StructuralRevisions = {
-  footnotes: 0,
-  citations: 0,
-  examples: 0,
-  anchors: 0,
-  blocks: 0,
-  headings: 0,
-  figures: 0,
-  labels: 0,
-};
+const CATEGORIES = Object.keys(
+  STRUCTURAL_REVISION_PREDICATES,
+) as StructuralRevisionCategory[];
+
+const ZERO: StructuralRevisions = Object.fromEntries(
+  CATEGORIES.map((k) => [k, 0]),
+) as StructuralRevisions;
 
 export function useStructuralRevisions(
   editor: Editor | null | undefined,
@@ -111,51 +110,24 @@ export function useStructuralRevisions(
       });
     });
 
-    const bump = (key: keyof StructuralRevisions) => () => {
-      pending.add(key);
-      flush.schedule();
-    };
-
-    const unsubs = [
-      bus.onFootnotesAdded(bump("footnotes")),
-      bus.onFootnotesRemoved(bump("footnotes")),
-      bus.onFootnoteOrderChanged(bump("footnotes")),
-
-      bus.onCitationsAdded(bump("citations")),
-      bus.onCitationsRemoved(bump("citations")),
-      bus.onCitationsChanged(bump("citations")),
-      bus.onCitationOrderChanged(bump("citations")),
-      // A citation can be born / edited / removed entirely inside a footnote's
-      // opaque `attrs.content`, invisible to step inspection. A footnote-body
-      // edit surfaces as a footnote-order change — re-derive citations then too.
-      bus.onFootnoteOrderChanged(bump("citations")),
-
-      bus.onExamplesAdded(bump("examples")),
-      bus.onExamplesRemoved(bump("examples")),
-      bus.onExamplesRecomputable(bump("examples")),
-
-      bus.onAnchorsAdded(bump("anchors")),
-      bus.onAnchorsRemoved(bump("anchors")),
-
-      bus.onBlocksAdded(bump("blocks")),
-      bus.onBlocksRemoved(bump("blocks")),
-      bus.onBlockOrderChanged(bump("blocks")),
-
-      bus.onHeadingsAdded(bump("headings")),
-      bus.onHeadingsRemoved(bump("headings")),
-      bus.onHeadingsChanged(bump("headings")),
-
-      bus.onFiguresAdded(bump("figures")),
-      bus.onFiguresRemoved(bump("figures")),
-      bus.onFiguresChanged(bump("figures")),
-
-      bus.onLabelsAdded(bump("labels")),
-      bus.onLabelsRemoved(bump("labels")),
-    ];
+    // ONE subscription: every structural emit asks each category's declared
+    // predicate (O(categories) boolean checks over the diff — the same work
+    // the per-channel emits did). Content-only diffs never reach
+    // `onAnyChange`, so typing bumps nothing.
+    const unsub = bus.onAnyChange((diff) => {
+      let any = false;
+      for (const k of CATEGORIES) {
+        if (STRUCTURAL_REVISION_PREDICATES[k](diff)) {
+          pending.add(k);
+          any = true;
+        }
+      }
+      if (any) flush.schedule();
+    });
 
     return () => {
       flush.cancel();
-      for (const u of unsubs) u();
+      unsub();
     };
   }, [editor]);
 
