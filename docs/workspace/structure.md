@@ -1,4 +1,4 @@
-<!-- last-verified: c4bac5c2 2026-10-26 -->
+<!-- last-verified: b891cc64 2026-10-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -249,8 +249,10 @@ mechanism. Two pieces:
    (owned by no subsystem), so the meta-builder emits this one leg directly rather
    than reading a sub-builder's output. Its version is content-addressed (sha256
    over the docs) and folds into the meta-version hash.
-2. **The sync engine routes it.** `library/lib/skill-sync.ts`'s `diskPathFor()`
-   maps the `manifest` prefix to a single shared `.claude/virgil/<file>.md`.
+2. **The sync engine routes it.** `diskPathFor()` (defined in
+   `library/lib/skill-bundle-layout.mjs`, re-exported by `skill-sync.ts`; its Python
+   twin is `sync_skills.disk_path_for`, and since task 1309 both refuse an
+   uncontained path — empty/`.`/`..` segment, backslash, NUL) maps the `manifest` prefix to a single shared `.claude/virgil/<file>.md`.
    Unlike `claude-commands/` → `.claude/commands/<subsystem>/` and `scripts/` →
    `.virgil/scripts/<subsystem>/`, the manifest is **not** subsystem-scoped — there
    is one manifest per paper, not one per subsystem.

@@ -1,4 +1,4 @@
-<!-- last-verified: c4bac5c2 2026-10-26 -->
+<!-- last-verified: b891cc64 2026-10-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -242,7 +242,9 @@ a card fully dormant across two snippets stays archived, re-pointed to the remai
 one (task 1254). Since task 1269 a carried mark is placed on Restore by its WORDS
 (`CarriedMarkRecord.text`), and a HISTORY REPLAY of an archive (Redo) goes dormant
 too: the guards ask `archive-holdings.ts` (published by `useArchive`) whether a
-departing uuid/anchorId is held by an un-retired snippet. Task 1270: ONE travel
+departing uuid/anchorId is held by an un-retired snippet — and since task 1302 only
+for the Redo of the archive's OWN history event (`archiveReplayTracker`), so an Undo
+of the paste that made a held passage, or a Redo of a plain Cut, orphans as usual. Task 1270: ONE travel
 predicate (`isCarriedLink` / `splitCarried` in `dormant.ts`) — a Mode-A link
 travels PER PID, splitting into a dormant and a live half. Task 1271: the four
 dormant doors (carry / returnRemapped / release / reinstate) read ONE carrying-store

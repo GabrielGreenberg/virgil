@@ -1,4 +1,4 @@
-<!-- last-verified: 1ab7baff 2026-10-16 -->
+<!-- last-verified: b891cc64 2026-10-27 -->
 <!-- derives-from: AGENTS.md#laws -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -36,7 +36,7 @@ A transaction reaches app code by three doors, and each is a keystroke handler: 
 - `components/EditorMirror.tsx` — RAF-deferred replay. PARKED since task 115 — its only consumer, `SplitEditorPanes`, is deliberately unmounted, so this subscriber cannot run today. It stays listed because the file still makes the subscription and the guardrail greps files, not mounts.
 - `components/Marginalia.tsx` — RAF-coalesced host-element notify.
 - `components/editor-layout/card-actions/grab-menu-target.ts` ×2 — (1) `useLiveGrabTarget`, one subscription per OPEN grab menu (task 737). The handler maps the menu target's span through the transaction's step maps (and its `appendedTransactions`'), O(steps), testing selection staleness in the same pass; a RAF-coalesced ≤1/frame publish re-derives the anchor (one `coordsAtPos`/`nodeDOM` read) and the rows' `applies()` (per-kind / O(depth)). The uuid walk that seeds a node ref's span runs once, at open. Contract: `grab-menu-live-target.test.tsx`. (2) `trackDispatchTarget` (task 1181), one subscription per IN-FLIGHT grab dispatch, disposed in the dispatch's `finally`: the handler pushes doc-changing transactions onto an array, O(1); the selection ref is re-mapped through them (O(steps recorded)) only after the confirm / settle awaits. Contract: `grab-selection-across-confirm.test.tsx`.
-- `lib/tiptap/tracked-pos.ts` — `trackPos`, one subscription per OPEN citation / `\ref` create-at-caret popover (task 1190): the captured insertion point is mapped through each docChanged transaction's steps (`mapResult`, O(steps)), so an edit landing while the user picks moves it with its text and a deletion of the spot nulls it (the commit refuses). Started at open in the marker-clicks bridge, disposed by EditorLayout's request effect on close/replace — no popover, no subscriber. Contract: `tracked-pos.test.tsx`.
+- `lib/tiptap/tracked-pos.ts` — `trackPos`, one subscription per OPEN citation / `\ref` create-at-caret popover (task 1190): the captured insertion point is mapped through each docChanged transaction's steps (`mapResult`, O(steps)), so an edit landing while the user picks moves it with its text and a deletion of the spot nulls it (the commit refuses). Started at open in the marker-clicks bridge, disposed by EditorLayout's request effect on close/replace — no popover, no subscriber. Since task 1314 the same primitive carries the math / figure-graphics / existing-`\ref` EDIT popovers' open state (`trackAtomPos`, assoc 1, one per open session) and the text-colour stash (`trackRange`) — still one subscription per OPEN popover. Contract: `tracked-pos.test.tsx`.
 - `lib/tiptap/use-live-editor-signature.ts` — `useLiveEditorSignature`, one subscription per OPEN surface that paints editor state (task 738; today the lightning panel `ActionsMenuPanel`). Every transaction (stored-marks and selection ones included, so ⌘B at a caret counts) reaches an O(1) pending-RAF check; the ≤1/frame RAF body re-asks the caller's `signature()` — the same `isActive`/`applies()` reads its render makes, O(cells) — and re-renders only on a changed string. Contract: `lightning-live-format-state.test.tsx`.
 - `lib/float-sync.tsx` — `useMainTransactionSync`, one subscription per OPEN text-object float. docChanged-gated + own-write meta filter + the **source-touch gate** (task 140): the handler maps the float's live source range forward through the transaction's steps — and its `appendedTransactions`' — asking in the same O(steps) pass whether any step intersected it, and invokes `readSource` only if one did (steps, not step maps: see the note below on `StepMap.empty`). That third gate is the load-bearing one: `readSource` is O(doc) in every body, so the first two alone made each main keystroke cost a full-document walk PER OPEN FLOAT. **This is the entry that proves a justification must describe the CALLBACK, not just the gate** — it previously read "O(1) per tx", which was true of the subscriber and false of what it called, and the grep guardrail can only see the `editor.on(...)` call form. Contract: [src/lib/\_\_tests\_\_/float-source-touch-gate.test.tsx](../../../src/lib/__tests__/float-source-touch-gate.test.tsx) counts `readSource` calls on the real hook against a real editor — typing in five other paragraphs with three floats open must run it zero times.
 <!-- /census -->
@@ -507,6 +507,12 @@ present on one path and absent on the other. The constructor also owns the
 invariant that a `"footnote"` container mirrors into the legacy
 `nestedInFootnoteId`, so that pairing lives in one place rather than at each
 call site.
+Since task 1300 the extractor's footnote/citation branches are ONE registry-driven
+branch (`cardAtomIdOf` → an exhaustive `Record<CardAtomKind>` contribution table,
+so a new `CARD_ATOM_REGISTRY` row is a compile error until it states its entry), the
+step inspector's removed-footnote pick asks the same helper, and the example
+identity is read once (`exampleIdentityOf`) by the extractor and both step-path
+ancestor resolves.
 
 **Deriving it makes the step path AUTHORITATIVE, which retires an accepted
 edge.** `applyDiff` no longer carries the EXAMPLE tag forward: an untagged
