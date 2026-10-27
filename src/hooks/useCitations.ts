@@ -32,6 +32,7 @@ import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import { spliceBibBlock } from "@/lib/bib-source";
 import {
   bibAddressOf,
+  bibKeyIndex,
   citekeyEq,
   mapAddressedBibEntry,
   resolveBibEntry,
@@ -773,14 +774,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [runBibMutation],
   );
 
-  const getBibEntry = useCallback(
-    (key: string): BibEntry | undefined => bibEntries.find((e) => e.key === key),
-    [bibEntries],
-  );
+  // The ONE case-folded read door (task 1325): the same identity the add-dedupe
+  // above asks through `citekeyEq`, so a key this hook would refuse as a
+  // case-twin is never also reported missing.
+  const bibEntryMap = useMemo(() => bibKeyIndex(bibEntries), [bibEntries]);
 
-  const bibEntryMap = useMemo(
-    () => new Map(bibEntries.map((e) => [e.key, e])),
-    [bibEntries],
+  const getBibEntry = useCallback(
+    (key: string): BibEntry | undefined => bibEntryMap.get(key),
+    [bibEntryMap],
   );
 
   // Depends on the RESOLVED family rather than `stateRef.current.bibPackage`:

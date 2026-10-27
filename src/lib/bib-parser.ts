@@ -28,6 +28,7 @@ import {
   type Patch,
 } from "./bib-source";
 import { latexToDisplayText } from "./latex-typography";
+import { bibKeyIndex, findBibEntryByKey, type BibKeyIndex } from "./bib-address";
 import { parseCiteCommand, resolveCiteNoteRows } from "./cite-command-model";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
@@ -683,7 +684,7 @@ export function formatAuthorsTruncated(authorStr: string, maxNames = 3): string 
 
 /** Always returns "Author (Year)" format for a single bib key, regardless of citation command. */
 export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): string {
-  const entry = bibEntries.find((e) => e.key === key);
+  const entry = findBibEntryByKey(bibEntries, key);
   if (!entry) return key;
   const author = formatAuthorLastNames(entry, false, false);
   const year = getEntryYear(entry);
@@ -827,7 +828,7 @@ export function formatInlineCitation(
   command: string,
   bibEntries: BibEntry[],
   bibPackage: string = "natbib",
-  entryMap?: Map<string, BibEntry>,
+  entryMap?: BibKeyIndex,
 ): string {
   return latexToDisplayText(
     formatInlineCitationRaw(command, bibEntries, bibPackage, entryMap),
@@ -843,12 +844,14 @@ function formatInlineCitationRaw(
   command: string,
   bibEntries: BibEntry[],
   bibPackage: string = "natbib",
-  entryMap?: Map<string, BibEntry>,
+  entryMap?: BibKeyIndex,
 ): string {
   const parsed = parseCiteCommand(command);
   if (!parsed) return command; // fallback: show raw command
 
-  const map = entryMap ?? new Map(bibEntries.map((e) => [e.key, e]));
+  // Case-folded, as BibTeX resolves `\cite{smith2020}` against `Smith2020`
+  // (task 1325) — one identity with the mutators' `citekeyEq`.
+  const map = entryMap ?? bibKeyIndex(bibEntries);
   const formatAuthor = (entry: BibEntry | undefined, star: boolean, cap: boolean) =>
     formatAuthorLastNames(entry, star, cap);
   const getYear = (entry: BibEntry | undefined) => getEntryYear(entry);

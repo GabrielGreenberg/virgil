@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
+import { bibKeyIndex, citekeyIdentity } from "@/lib/bib-address";
 
 /**
  * Auto-enrich a paper's `references.bib` from the central Virgil Library.
@@ -105,11 +106,14 @@ export function useAutoAddLibraryEntriesForCitations(args: {
     prevReferencedRef.current = refKeys;
     if (pending.size === 0) return;
 
-    const paperKeys = new Set(paperKeysJoined.split("|").filter(Boolean));
-    const libByKey = new Map<string, BibEntry>();
-    for (const e of libraryEntriesRef.current) libByKey.set(e.key, e);
+    // Case-folded (task 1325): a `\cite{smith2020}` the paper bib holds as
+    // `Smith2020` is settled — the add mutator would refuse it as a case-twin.
+    const paperKeys = new Set(
+      paperKeysJoined.split("|").filter(Boolean).map(citekeyIdentity),
+    );
+    const libByKey = bibKeyIndex(libraryEntriesRef.current);
     for (const key of Array.from(pending)) {
-      if (paperKeys.has(key)) {
+      if (paperKeys.has(citekeyIdentity(key))) {
         pending.delete(key);
         continue;
       }

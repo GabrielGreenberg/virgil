@@ -29,6 +29,7 @@ import {
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import { membershipChipsFor } from "@/components/library/provenance-chips";
 import { parseRawCitekeys } from "@/lib/bib-entry-head";
+import { bibKeyIndex, citekeyIdentity } from "@/lib/bib-address";
 import type { LiveAnchor } from "@/components/menu/live-anchor";
 import {
   BibEntryPickerMenu,
@@ -106,11 +107,13 @@ export function CitekeyPicker({
   const { items: libraryItems } = useLibraryItems();
   const { membershipMap } = useLibraryMemberships();
 
-  const paperByCitekey = useMemo(() => {
-    const out = new Map<string, BibEntry>();
-    for (const e of paperBibEntries) out.set(e.key, e);
-    return out;
-  }, [paperBibEntries]);
+  // Case-folded (task 1325): library `smith2020` IS paper `Smith2020` — the
+  // same identity the add mutator's dedupe asks, so the picker never offers
+  // an add that would be refused as a case-twin.
+  const paperByCitekey = useMemo(
+    () => bibKeyIndex(paperBibEntries),
+    [paperBibEntries],
+  );
 
   const libraryByCitekey = useMemo(() => {
     const out = new Map<string, LibraryIndexItem>();
@@ -127,11 +130,12 @@ export function CitekeyPicker({
   const mergedEntries = useMemo(() => {
     const out: BibEntry[] = [...paperBibEntries];
     if (!canAdd) return out;
-    const seen = new Set(paperBibEntries.map((e) => e.key));
+    const seen = new Set(paperBibEntries.map((e) => citekeyIdentity(e.key)));
     for (const e of libraryBibEntries) {
-      if (!seen.has(e.key)) {
+      const id = citekeyIdentity(e.key);
+      if (!seen.has(id)) {
         out.push(e);
-        seen.add(e.key);
+        seen.add(id);
       }
     }
     return out;
@@ -160,10 +164,13 @@ export function CitekeyPicker({
 
   const onPick = useCallback(
     async (entry: BibEntry): Promise<RowState> => {
-      if (!paperByCitekey.has(entry.key) && onAddBibEntry !== null) {
+      // A pick the paper already holds (even under another case) cites the
+      // BIB's spelling, so the `\cite` resolves exactly under biber too.
+      const held = paperByCitekey.get(entry.key);
+      if (!held && onAddBibEntry !== null) {
         onAddBibEntry(entry);
       }
-      onSelectKeys([entry.key]);
+      onSelectKeys([held?.key ?? entry.key]);
       // Deferred create popover stays open to stage more keys (the caller
       // commits on OK / click-away); the in-card / panel picker closes on pick.
       if (!keepOpenOnPick) onClose();
