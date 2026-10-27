@@ -1,6 +1,7 @@
 /**
  * block-frame.ts — the ONE canonical per-block geometry source for every
- * margin affordance (grab handle, drop indicator, and figure chrome).
+ * margin affordance (grab handle, drop indicator, figure chrome, and the
+ * pending-change pill).
  * Resolve a block's frame once and every affordance
  * reads the SAME numbers, so they align BY CONSTRUCTION rather than by
  * coincidence (the bug this replaces: each handle measured its own block,
@@ -284,12 +285,24 @@ function firstLineRectOf(target: HTMLElement): DOMRect {
   return target.getBoundingClientRect();
 }
 
-/** Fallback px for the em margin tokens when the custom property is missing
- *  / unreadable — the resolved values at the editor's nominal 16px font
- *  (`--margin-handle-gap: 0.625em` → 10px, `--margin-track-width: 1.25em` →
- *  20px). */
-const DEFAULT_HANDLE_GAP_PX = 10;
-const DEFAULT_TRACK_WIDTH_PX = 20;
+/** The editor's NOMINAL font-size in px — the one number every font-relative
+ *  fallback in this module resolves against when a computed style is
+ *  unreadable (SSR / jsdom / stub): the root font for a `rem` token
+ *  ({@link rootFontSizePx}), the block font `resolveBlockFrame` scales the em
+ *  handle-gap / track tokens by, and the chevron's em base for a caller that
+ *  supplies none. Stated ONCE (task 1322) — before, it was spelled four ways,
+ *  one of them `DEFAULT_HANDLE_GAP_PX * 1.6`. */
+export const NOMINAL_EDITOR_FONT_PX = 16;
+/** The em factors `globals.css` authors `--margin-handle-gap` /
+ *  `--margin-track-width` at. Their px fallbacks are DERIVED from these at the
+ *  nominal font rather than hand-typed, and `resolve-margin-em.test.ts` pins
+ *  the stylesheet to these same factors — the handle-gap/track counterpart of
+ *  the chevron pin below, so a globals.css retune cannot leave the fallback
+ *  silently behind. */
+export const MARGIN_HANDLE_GAP_EM = 0.625;
+export const MARGIN_TRACK_WIDTH_EM = 1.25;
+const DEFAULT_HANDLE_GAP_PX = MARGIN_HANDLE_GAP_EM * NOMINAL_EDITOR_FONT_PX;
+const DEFAULT_TRACK_WIDTH_PX = MARGIN_TRACK_WIDTH_EM * NOMINAL_EDITOR_FONT_PX;
 /** Fallbacks for the fold-chevron column when the tokens can't be read. Taken
  *  from the LEFT-LANE SSOT (`@/lib/marginalia`), which is where the chevron's
  *  column is declared as a band beside the marker columns (task 670) — NOT
@@ -299,19 +312,14 @@ const DEFAULT_TRACK_WIDTH_PX = 20;
  *  {@link resolveChevronColumnRight}. */
 const DEFAULT_CHEVRON_OFFSET_PX = MARGIN_COL_CHEVRON_OFFSET;
 const DEFAULT_CHEVRON_WIDTH_PX = MARGIN_COL_CHEVRON_WIDTH;
-/** Em base a caller that supplies none falls back to — the editor's nominal
- *  font-size. Unused while both chevron tokens are px literals; it exists so a
- *  direct caller (the hover-zone suite) need not invent a font for a token
- *  whose shipped spelling has no em rung. */
-const DEFAULT_CHEVRON_EM_BASE_PX = 16;
 
 /** Document-root font-size in px — the base a `rem`-authored token resolves
  *  against (CSS `rem` = root em). Falls back to the editor's nominal 16px when
  *  the root font-size is unreadable (SSR / stub). O(1) — one computed-style read. */
 function rootFontSizePx(): number {
-  if (typeof document === "undefined") return 16;
+  if (typeof document === "undefined") return NOMINAL_EDITOR_FONT_PX;
   const raw = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  return Number.isFinite(raw) && raw > 0 ? raw : 16;
+  return Number.isFinite(raw) && raw > 0 ? raw : NOMINAL_EDITOR_FONT_PX;
 }
 
 /**
@@ -424,7 +432,7 @@ export function resolveChevronColumnRight(
   cs: CSSStyleDeclaration,
   kind: string | null,
   blockLeft: number,
-  fontSizePx: number = DEFAULT_CHEVRON_EM_BASE_PX,
+  fontSizePx: number = NOMINAL_EDITOR_FONT_PX,
 ): number | null {
   if (!reservesChevronColumn(kind)) return null;
   const offset = resolveMarginEm(
@@ -894,7 +902,7 @@ export function resolveBlockFrame(el: HTMLElement): BlockFrame {
   // center reads. No separate `fontEl` descent: the em token and the chip-1
   // optical center read the SAME element by construction — and, since task 336,
   // from the SAME `getComputedStyle` call (read above).
-  const fontSizePx = parseFloat(cs.fontSize) || DEFAULT_HANDLE_GAP_PX * 1.6;
+  const fontSizePx = parseFloat(cs.fontSize) || NOMINAL_EDITOR_FONT_PX;
   const gapPx = resolveMarginEm(
     cs,
     fontSizePx,
@@ -936,7 +944,7 @@ export function resolveBlockFrame(el: HTMLElement): BlockFrame {
       // The em base comes from the SAME element as the style and the origin —
       // `el`'s font, never the heading's inner display font. A gutter column
       // shared by every row cannot scale with one row's type size.
-      parseFloat(blockCs.fontSize) || DEFAULT_CHEVRON_EM_BASE_PX,
+      parseFloat(blockCs.fontSize) || NOMINAL_EDITOR_FONT_PX,
     );
   }
 
