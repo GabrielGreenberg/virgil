@@ -707,10 +707,10 @@ export interface EditorPaneMenuBarBundle {
 
   // ── Doc-DERIVED divider sets (not prefs) ───────────────────────
   /** Heading levels actually present in the doc. */
-  availableDividerLevels: Set<import("./MenuBar").DividerLevel>;
+  availableDividerLevels: Set<import("@/lib/view-prefs/divider-vocab").DividerLevel>;
   /** `prefs.dividerLevels ∩ availableDividerLevels` — the `show-dividers-N`
    *  class tokens are built from this, so it stays a derivation, not a pref. */
-  activeDividerLevels: Set<import("./MenuBar").DividerLevel>;
+  activeDividerLevels: Set<import("@/lib/view-prefs/divider-vocab").DividerLevel>;
 
   // ── The three registry-driven writers ──────────────────────────
   toggleViewPref: (key: import("@/lib/view-prefs/registry").ViewPrefKey) => void;

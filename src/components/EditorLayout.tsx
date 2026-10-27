@@ -28,7 +28,10 @@ import {
   LAYOUT_SITE_SECTION_PATH,
 } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
-import { type DividerLevel } from "@/hooks/useViewPrefs";
+import {
+  activeDividerLevels as activeDividerLevelsOf,
+  dividerLevelsPresent,
+} from "@/lib/view-prefs/divider-vocab";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
@@ -1943,18 +1946,14 @@ export default function EditorLayout() {
   const outlineFocusHeadings = focusStructure.headings;
   const outlineTotalBlocks = focusStructure.totalBlocks;
 
-  const availableDividerLevels = useMemo(() => {
-    const s = new Set<DividerLevel>();
-    outlineHeadings.forEach((h) => {
-      if (h.level >= 0 && h.level <= 6) s.add(h.level as DividerLevel);
-    });
-    return s;
-  }, [outlineHeadings]);
-  const activeDividerLevels = useMemo(() => {
-    const s = new Set<DividerLevel>();
-    dividerLevels.forEach((lvl) => { if (availableDividerLevels.has(lvl)) s.add(lvl); });
-    return s;
-  }, [dividerLevels, availableDividerLevels]);
+  const availableDividerLevels = useMemo(
+    () => dividerLevelsPresent(outlineHeadings.map((h) => h.level)),
+    [outlineHeadings],
+  );
+  const activeDividerLevels = useMemo(
+    () => activeDividerLevelsOf(dividerLevels, availableDividerLevels),
+    [dividerLevels, availableDividerLevels],
+  );
 
   const {
     handleFocusActivate,
