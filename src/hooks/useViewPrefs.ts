@@ -39,6 +39,15 @@ import {
   STRUCTURAL_GLOBAL_PREF_KEYS,
   type StructuralGlobalPrefKey,
 } from "@/lib/view-prefs/structural-globals";
+import {
+  adoptWindowSlice,
+  CARD_ARCHIVE_VIEWS,
+  EPHEMERAL_WINDOW_PREF_KEYS,
+  PANEL_MODES,
+  STRUCTURAL_WINDOW_PREF_KEYS,
+  type EphemeralWindowPrefKey,
+  type StructuralWindowPrefKey,
+} from "@/lib/view-prefs/structural-window";
 import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import {
   filterPlacements,
@@ -105,7 +114,7 @@ export interface PanelPlacement {
 
 /** A panel can sit in the gutter dock (default) or as a free-floating
  *  window. The mode is per-panel and persists across reloads. */
-export type PanelMode = "docked" | "floating";
+export type PanelMode = (typeof PANEL_MODES)[number];
 
 /* `MAX_STACK` (the per-side stack ceiling) and `MIN_BAND_PX` (the breathing
  * room a newcomer needs before it displaces a band) are declared by the dock
@@ -146,8 +155,9 @@ export interface ViewPrefs extends RegistryPrefs {
   panelHeights: Partial<Record<PanelId, number>>;
   /** Per-side most-recently-used order, most-recent-first. The last
    *  entry still present in `dockStack[side]` is the eviction target when
-   *  a new panel needs room. Session-only (recency resets with the open
-   *  set on reload). */
+   *  a new panel needs room. Session-only — declared `ephemeral` in
+   *  `@/lib/view-prefs/structural-window`: never loaded, persisted or
+   *  shipped as a default. */
   panelMRU: { left: PanelId[]; right: PanelId[] };
   /** Whether each side column is collapsed (hidden) without destroying
    *  its dockStack. Replaces the old `activeLeft === null` sentinel. */
@@ -221,11 +231,12 @@ export interface ViewPrefs extends RegistryPrefs {
    *  Keyed by PanelId; per-window (a reviewer window can browse archives while a
    *  draft window stays on active). Wholly distinct from the text-object Archive
    *  PANEL. */
-  cardArchiveView: Partial<Record<PanelId, "active" | "archived" | "all">>;
+  cardArchiveView: Partial<Record<PanelId, CardArchiveView>>;
 }
 
-/** The three card-archive view modes. */
-export type CardArchiveView = "active" | "archived" | "all";
+/** The three card-archive view modes — declared once, as values, beside the
+ *  window door that validates a stored one. */
+export type CardArchiveView = (typeof CARD_ARCHIVE_VIEWS)[number];
 
 /* ── Derived read helpers (pure) ───────────────────────────────────────
  * Single implementation lives in the dependency-free leaf `view-prefs-
@@ -331,10 +342,13 @@ const DEFAULT_PREFS: ViewPrefs = {
       | "printOptions"
       | "cardArchiveView"
       | "appliedPrefMigrations"
+      | EphemeralWindowPrefKey
     >
   >()(defaultPrefsJson),
   printOptions: DEFAULT_PRINT_OPTIONS,
   cardArchiveView: {},
+  // Session-only (`ephemeral` in structural-window): nothing to ship.
+  panelMRU: { left: [], right: [] },
   // Not shipped in the JSON: a fresh profile has applied nothing, and baking a
   // migration id into the defaults would mark it done for every new user.
   appliedPrefMigrations: [],
@@ -347,22 +361,14 @@ const GLOBAL_STORAGE_KEY = "virgil-view-prefs/global";
 export const VIEW_PREFS_GLOBAL_STORAGE_KEY = GLOBAL_STORAGE_KEY;
 const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
 
-/**
- * Keys whose values are user-level preferences and should mirror across
- * every Virgil window (theme-adjacent: highlights, print options, strip
- * placements so panel-icon order stays consistent everywhere — editor
- * windows and the Library Reader — plus the page-layout dimensions
- * users tune once and want consistent everywhere). Everything not
- * listed here is per-window — dock state, popped cards, panel widths,
- * etc. — so a draft window and a reviewer window on different monitors
- * can have totally different shapes.
- *
- * Page-layout keys (`editor{Left,Right,Top,Bottom}Margin`)
- * are global because they're the values
- * the personal-prefs promotion pipeline reads to bake into shipped
- * defaults — see `tools/promote-defaults.mjs` and the whitelist in
- * `src/lib/dev-prefs-registry.json`.
- */
+// Scope: a key is GLOBAL (mirrored across every Virgil window — strip
+// placements, page margins, highlights, print options: things tuned once and
+// wanted everywhere) or per-WINDOW (dock state, floats, panel widths — so a
+// draft window and a reviewer window can have totally different shapes).
+// Each half is declared, never hand-listed here: globals in
+// `structural-globals` + the registry's `scope: "global"` rows; window keys in
+// `structural-window` + the registry's window rows. The promoted globals feed
+// `tools/promote-defaults.mjs` via `src/lib/dev-prefs-registry.json`.
 /** Structural (non-registry) global keys — page geometry, strip placements,
  *  omni filters, print options. Declared, WITH their promotion facts, in
  *  `@/lib/view-prefs/structural-globals` beside the registry half, and
@@ -384,6 +390,22 @@ type GlobalPrefKey =
   | StructuralGlobalPrefKey
   | (typeof REGISTRY_GLOBAL_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
+
+/* The scope census (task 1319): every `ViewPrefs` key is global (structural
+ * or registry), registry-owned, or a declared structural WINDOW row — with its
+ * load-time shape — and nothing else. A new window field fails to compile here
+ * until `@/lib/view-prefs/structural-window` classifies it, so it cannot reach
+ * live prefs through `pickKnown` unvalidated. Runtime twin:
+ * `view-prefs-window-door.test.ts`. */
+type UndeclaredWindowKey = Exclude<
+  keyof ViewPrefs,
+  StructuralGlobalPrefKey | keyof RegistryPrefs | StructuralWindowPrefKey
+>;
+type StaleWindowRow = Exclude<StructuralWindowPrefKey, keyof ViewPrefs>;
+const _windowScopeCensus: [UndeclaredWindowKey | StaleWindowRow] extends [never]
+  ? true
+  : { undeclared: UndeclaredWindowKey; stale: StaleWindowRow } = true;
+void _windowScopeCensus;
 
 // ── Version skew: closed-world on read, open-world on write (task 929) ──
 // A PWA routinely runs two BUILDS at once — an old window stays open while a
@@ -416,6 +438,9 @@ const CONSUMED_PREF_KEYS = new Set<string>([
   ...RETIRED_LAYOUT_KEYS,
   // The pre-381 per-side omni lists, folded to `omniHiddenCategories`.
   "omniCategories",
+  // Session-only window keys (task 1319): never written, so a value an
+  // earlier build (or an older peer) left on disk is dropped, not carried.
+  ...EPHEMERAL_WINDOW_PREF_KEYS,
 ]);
 
 /** Read-modify-write body for ONE blob: the keys this build writes there,
@@ -431,6 +456,16 @@ function withCarriedKeys(
     if (!(k in slice) && !CONSUMED_PREF_KEYS.has(k)) carried[k] = v;
   }
   return { ...carried, ...slice };
+}
+
+/** Session-only window keys — `persist` skips them (task 1319). */
+const EPHEMERAL_WINDOW_SET = new Set<string>(EPHEMERAL_WINDOW_PREF_KEYS);
+
+/** A structural window key's shipped default, as a fresh copy — the live
+ *  prefs object is mutated by spread only, but a shared `{}` default handed to
+ *  two loads is one accident away from cross-talk. */
+function freshDefault(k: StructuralWindowPrefKey): unknown {
+  return JSON.parse(JSON.stringify(DEFAULT_PREFS[k]));
 }
 
 /** Closed-world filter: only this build's vocabulary reaches live prefs. */
@@ -840,7 +875,7 @@ export function normalizeGlobalSlice(raw: unknown): Pick<ViewPrefs, GlobalPrefKe
   );
 
   /* ── the remaining structural globals ────────────────────────────────
-   * Page width, the four margins, the code-pane ratio: adopt a stored value
+   * The four margins, the code-pane ratio: adopt a stored value
    * only where its TYPE matches the shipped default's, else the default.
    * Derived from `STRUCTURAL_GLOBAL_PREF_KEYS` rather than hand-listed, so a
    * structural global added there cannot reach live state unvalidated — the
@@ -1117,6 +1152,11 @@ export function loadPrefs(): ViewPrefs {
     // old activeLeft sentinel (null = collapsed); the old "blank" sentinel
     // (hidden omni) is retired with omni-hide (task 807) and simply dropped.
     // The dead split keys are deleted so they never round-trip.
+    // THE window door (task 1319): every structural window key validated
+    // against its declared shape — malformed or session-only → absent here →
+    // its default below. The legacy folds read only what the door adopted, so
+    // a stored `"false"` can no longer pass as a truthy collapse flag.
+    const adopted = adoptWindowSlice(parsed);
     const realPanel = (x: unknown): x is PanelId =>
       typeof x === "string" && x !== "omni" && x !== "blank";
     const legacyStack = (top: unknown, bottom: unknown): PanelId[] => {
@@ -1126,7 +1166,7 @@ export function loadPrefs(): ViewPrefs {
       return out;
     };
     const dockStack = clampStack(
-      parsed.dockStack ?? {
+      adopted.dockStack ?? {
         left: legacyStack(parsed.activeLeft, parsed.activeLeftBottom),
         right: legacyStack(parsed.activeRight, parsed.activeRightBottom),
       },
@@ -1134,8 +1174,10 @@ export function loadPrefs(): ViewPrefs {
       // literal (task 273).
       MAX_STACK,
     ) as ViewPrefs["dockStack"];
-    const collapsedLeft = parsed.collapsedLeft ?? parsed.activeLeft === null;
-    const collapsedRight = parsed.collapsedRight ?? parsed.activeRight === null;
+    const collapsedLeft =
+      (adopted.collapsedLeft as boolean | undefined) ?? parsed.activeLeft === null;
+    const collapsedRight =
+      (adopted.collapsedRight as boolean | undefined) ?? parsed.activeRight === null;
     for (const k of RETIRED_LAYOUT_KEYS) {
       delete (parsed as Record<string, unknown>)[k];
     }
@@ -1177,14 +1219,15 @@ export function loadPrefs(): ViewPrefs {
       x !== "blank" &&
       placedIds.has(x as PanelId) &&
       (PANEL_REGISTRY as Record<string, unknown>)[x] !== undefined;
-    const survivingPoppedPanels: PanelId[] = Array.isArray(parsed.poppedOutPanels)
-      ? (parsed.poppedOutPanels as unknown[]).filter(validPanelId)
-      : [];
+    const survivingPoppedPanels: PanelId[] = (
+      (adopted.poppedOutPanels as unknown[] | undefined) ?? []
+    ).filter(validPanelId);
 
     // Open layout (dockStack) + per-band heights (panelHeights) persist
     // per-window so a reload restores the open panels and their sizes;
     // recency (panelMRU) is session-only. Floats (poppedOutPanels) re-float
-    // (validated above). panelModes / floatPositions / panelWidths persist.
+    // (validated above). Every structural window value comes from the door
+    // (`adopted`), defaulted per key — no hand `?? {}` overrides.
     // The stored per-window `dockStack` was written against the PRE-migration
     // placements, so the band-follows-icon enforcer runs last (task 899).
     // Window-scoped registry keys get the same declared-domain coercion the
@@ -1195,6 +1238,10 @@ export function loadPrefs(): ViewPrefs {
     for (const k of REGISTRY_WINDOW_KEYS) {
       if (k in coercedAll) windowRegistry[k] = coercedAll[k];
     }
+    const windowSlice: Record<string, unknown> = {};
+    for (const k of STRUCTURAL_WINDOW_PREF_KEYS) {
+      windowSlice[k] = k in adopted ? adopted[k] : freshDefault(k);
+    }
 
     return reconcileDockStackToPlacements({
       ...DEFAULT_PREFS,
@@ -1202,21 +1249,14 @@ export function loadPrefs(): ViewPrefs {
       // where `persist` carries it through; it never enters live prefs.
       ...(pickKnown(parsed) as Partial<ViewPrefs>),
       ...windowRegistry,
-      // The normalized global values override `parsed`'s raw ones — the whole
-      // point of the door (side migrations included).
+      // Both doors' values override `parsed`'s raw ones — the whole point of
+      // a door (side migrations included on the global side).
+      ...(windowSlice as Pick<ViewPrefs, StructuralWindowPrefKey>),
       ...globalSlice,
       dockStack,
-      panelMRU: { left: [], right: [] },
-      panelHeights:
-        parsed.panelHeights && typeof parsed.panelHeights === "object"
-          ? (parsed.panelHeights as ViewPrefs["panelHeights"])
-          : {},
       collapsedLeft,
       collapsedRight,
       poppedOutPanels: survivingPoppedPanels,
-      panelModes: parsed.panelModes ?? {},
-      floatPositions: parsed.floatPositions ?? {},
-      panelWidths: parsed.panelWidths ?? {},
     });
   } catch {
     return DEFAULT_PREFS;
@@ -1433,7 +1473,7 @@ export function useViewPrefs(opts?: {
         const globalSlice: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(newPrefs)) {
           if (GLOBAL_PREF_SET.has(k)) globalSlice[k] = v;
-          else windowSlice[k] = v;
+          else if (!EPHEMERAL_WINDOW_SET.has(k)) windowSlice[k] = v;
         }
         // Idempotent: a persist whose slice matches disk wakes no peer.
         // Read-modify-write (task 929): keys another BUILD wrote, which this

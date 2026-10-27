@@ -40,7 +40,7 @@ const TUNED_GLOBAL = {
 /** Non-default per-window layout. */
 const TUNED_WINDOW = {
   panelWidths: { left: 321 },
-  panelModes: { notes: "expanded" },
+  panelModes: { notes: "floating" },
 };
 
 beforeEach(() => localStorage.clear());
@@ -76,7 +76,7 @@ describe("loadPrefs — a corrupt blob costs only ITS OWN store", () => {
 
     // (defect leg) — pre-674 the layout was discarded along with the prefs.
     expect(prefs.panelWidths).toEqual({ left: 321 });
-    expect(prefs.panelModes).toEqual({ notes: "expanded" });
+    expect(prefs.panelModes).toEqual({ notes: "floating" });
     // …and the preferences DO fall back, which is the honest half.
     expect(prefs.editorLeftMargin).toBe(155);
   });

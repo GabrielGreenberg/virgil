@@ -59,7 +59,12 @@ const GLOBAL_STORAGE_KEY = "virgil-view-prefs/global";
 /** The SHIPPED defaults, read from the JSON SSOT rather than a hand copy —
  *  `DEFAULT_PREFS` is module-private in `useViewPrefs` and a suite is not a
  *  reason to export it. */
-const SHIPPED = defaultPrefsJson as unknown as ViewPrefs;
+// `panelMRU` is session-only (task 1319: declared `ephemeral`, so the JSON does
+// not ship it); supply its empty value the way `DEFAULT_PREFS` does.
+const SHIPPED = {
+  ...defaultPrefsJson,
+  panelMRU: { left: [], right: [] },
+} as unknown as ViewPrefs;
 
 function installStorageShim(name: "localStorage" | "sessionStorage") {
   const store = new Map<string, string>();
