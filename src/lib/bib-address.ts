@@ -90,6 +90,62 @@ export function citekeyIdentity(key: string): string {
 }
 
 /**
+ * The READ door for "which entry does this citekey name?" (task 1325) — the
+ * same identity {@link citekeyEq} gives the mutators, so a reader and a
+ * mutator can never disagree about whether two keys are one. Before it every
+ * reader built `new Map(entries.map(e => [e.key, e]))` and asked it exactly:
+ * `\cite{smith2020}` against a bib holding `Smith2020` rendered "?? ??", the
+ * card offered an add the mutator then refused as a case-twin.
+ *
+ * Exact spelling wins where one exists (a malformed bib that holds BOTH
+ * `Smith2020` and `smith2020` keeps each reachable by its own spelling);
+ * otherwise the first entry, in source order, whose key folds to the same
+ * identity — the one BibTeX keeps ("Repeated entry" drops the later block).
+ *
+ * A hit whose `key` differs from the asked spelling is a CASE MISMATCH the
+ * caller may surface ({@link isCaseTwinHit}): BibTeX resolves it, biber may not.
+ */
+export interface BibKeyIndex<T extends { key: string } = BibEntry> {
+  get(key: string): T | undefined;
+  has(key: string): boolean;
+}
+
+export function bibKeyIndex<T extends { key: string }>(
+  entries: readonly T[],
+): BibKeyIndex<T> {
+  const exact = new Map<string, T>();
+  const folded = new Map<string, T>();
+  for (const e of entries) {
+    if (!exact.has(e.key)) exact.set(e.key, e);
+    const id = citekeyIdentity(e.key);
+    if (!folded.has(id)) folded.set(id, e);
+  }
+  const get = (key: string): T | undefined =>
+    exact.get(key) ?? folded.get(citekeyIdentity(key));
+  return { get, has: (key) => get(key) !== undefined };
+}
+
+/** One-shot form of {@link bibKeyIndex} for a single lookup. */
+export function findBibEntryByKey<T extends { key: string }>(
+  entries: readonly T[],
+  key: string,
+): T | undefined {
+  return (
+    entries.find((e) => e.key === key) ??
+    entries.find((e) => citekeyEq(e.key, key))
+  );
+}
+
+/** True when `entry` answered `key` only by case-folding — the cited spelling
+ *  differs from the bib's, which biber may refuse to resolve. */
+export function isCaseTwinHit(
+  key: string,
+  entry: { key: string } | undefined,
+): entry is { key: string } {
+  return !!entry && entry.key !== key;
+}
+
+/**
  * A durable-as-possible coordinate for one entry, taken from the list it was
  * displayed in and resolvable against any later parse of the same file.
  */

@@ -63,6 +63,7 @@ import {
   type RefObject,
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
+import { findBibEntryByKey } from "@/lib/bib-address";
 import type { ExcerptReturnAddress } from "@/lib/tiptap/restore-excerpt";
 import VirgilEditor, { type EditorHandle } from "./Editor";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
@@ -2213,7 +2214,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // gesture, never per keystroke.
   const stackBibCtx: StackBibCtx = useMemo(
     () => ({
-      getBibEntry: (k) => citationsHook.bibEntries.find((e) => e.key === k),
+      getBibEntry: (k) => findBibEntryByKey(citationsHook.bibEntries, k),
       getAnnotation: (k) => annotationsHook.getAnnotation(k),
     }),
     [citationsHook.bibEntries, annotationsHook],

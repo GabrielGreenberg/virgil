@@ -15,6 +15,7 @@ import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
 import { NO_BIB_UID } from "@/lib/bib-uid";
+import { bibKeyIndex, citekeyIdentity, findBibEntryByKey } from "@/lib/bib-address";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import {
@@ -243,7 +244,7 @@ function BibliographyPanel({
   // as the cursor key — harmless, just not rename-stable.
   const uidForKey = useCallback(
     (key: string): string => {
-      const entry = bibEntries.find((e) => e.key === key);
+      const entry = findBibEntryByKey(bibEntries, key);
       return entry?.uid || key;
     },
     [bibEntries],
@@ -369,11 +370,6 @@ function BibliographyPanel({
     libraryBibEntries,
   ]);
 
-  const existingKeys = useMemo(
-    () => new Set(bibEntries.map((e) => e.key)),
-    [bibEntries],
-  );
-
   // Library-status lookup: citekey → catalog row. Used for the
   // provenance chips (a citekey in master.bib gets a `central` chip,
   // and we surface bib auth state from the same row).
@@ -486,11 +482,11 @@ function BibliographyPanel({
     if (isCommitEnter(e) && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
   });
 
-  const localEntryByKey = useMemo(() => {
-    const out = new Map<string, BibEntry>();
-    for (const e of bibEntries) out.set(e.key, e);
-    return out;
-  }, [bibEntries]);
+  // Case-folded (task 1325): a library `smith2020` beside a local `Smith2020`
+  // is the SAME key to BibTeX and to `addBibEntry`'s dedupe, so it must take
+  // the conflict / navigate paths below — an exact Map sent it straight to an
+  // add the mutator silently refused, and the chip stayed "Add".
+  const localEntryByKey = useMemo(() => bibKeyIndex(bibEntries), [bibEntries]);
 
   const handleAddEntry = useCallback(
     (entry: BibEntry) => {
@@ -502,7 +498,7 @@ function BibliographyPanel({
         if (local) {
           if (bibEntryFieldsEqual(local, entry)) {
             // Byte-identical — silent no-op, navigate to it.
-            handleSelectBibKey(entry.key);
+            handleSelectBibKey(local.key);
             return;
           }
           setConflictDecision({ libraryEntry: entry, localEntry: local });
@@ -510,7 +506,7 @@ function BibliographyPanel({
         }
       }
       onAddBibEntry?.(entry);
-      // Keep the entry in the global/library results — existingKeys
+      // Keep the entry in the global/library results — localEntryByKey
       // re-render flips the chip from "Add" to "Added" so the list
       // doesn't shift under the user's cursor while they're typing.
     },
@@ -530,7 +526,7 @@ function BibliographyPanel({
       const local = localEntryByKey.get(entry.key);
       if (local) {
         if (bibEntryFieldsEqual(local, entry)) {
-          handleSelectBibKey(entry.key);
+          handleSelectBibKey(local.key);
           return "added";
         }
         setConflictDecision({ libraryEntry: entry, localEntry: local });
@@ -578,10 +574,10 @@ function BibliographyPanel({
   const handleConflictNewCitekey = useCallback(() => {
     if (!conflictDecision) return;
     const { libraryEntry } = conflictDecision;
-    const existing = new Set(bibEntries.map((e) => e.key));
+    const existing = new Set(bibEntries.map((e) => citekeyIdentity(e.key)));
     let suffix = 2;
     let next = `${libraryEntry.key}-${suffix}`;
-    while (existing.has(next)) {
+    while (existing.has(citekeyIdentity(next))) {
       suffix += 1;
       next = `${libraryEntry.key}-${suffix}`;
     }
@@ -974,7 +970,7 @@ function BibliographyPanel({
         // "Added" (a click would be a no-op anyway).
         const alreadyAddedFlag = (() => {
           if (!isPreviewResult) return false;
-          if (!existingKeys.has(entry.key)) return false;
+          if (!localEntryByKey.has(entry.key)) return false;
           if (!isLibraryResult) return true;
           const local = localEntryByKey.get(entry.key);
           return !!local && bibEntryFieldsEqual(local, entry);

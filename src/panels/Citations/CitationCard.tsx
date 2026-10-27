@@ -22,6 +22,13 @@ import {
 } from "@/lib/bib-parser";
 import { parseRawCitekeys } from "@/lib/bib-entry-head";
 import {
+  bibKeyIndex,
+  citekeyEq,
+  citekeyIdentity,
+  isCaseTwinHit,
+  type BibKeyIndex,
+} from "@/lib/bib-address";
+import {
   PanelCard,
   PANEL,
   CardMetaLabel,
@@ -396,10 +403,10 @@ export function CitationCard({
    *  document nothing and stays frictionless. */
   const inDocument = isAnchored && !isDraft;
 
-  const bibEntryMap = useMemo(
-    () => new Map(bibEntries.map((e) => [e.key, e])),
-    [bibEntries],
-  );
+  // Case-folded (task 1325): a row citing `smith2020` resolves the bib's
+  // `Smith2020` rather than reading as missing and offering an add the
+  // mutator would refuse as a case-twin.
+  const bibEntryMap = useMemo(() => bibKeyIndex(bibEntries), [bibEntries]);
 
   /* ── Local UI state synced from cit.command ──────────────────────── */
 
@@ -621,11 +628,17 @@ export function CitationCard({
       if (!parsed.ok) return;
       const target = rows.find((r) => r.id === rowId);
       if (!target) return;
+      // One identity for "the card already cites it" — case-folded, as the
+      // bib's own (task 1325).
       const elsewhere = new Set(
-        rows.filter((r) => r.id !== rowId).map((r) => r.key.trim()),
+        rows
+          .filter((r) => r.id !== rowId)
+          .map((r) => citekeyIdentity(r.key.trim())),
       );
       const fresh = parsed.keys.filter(
-        (k, i) => !elsewhere.has(k) && parsed.keys.indexOf(k) === i,
+        (k, i) =>
+          !elsewhere.has(citekeyIdentity(k)) &&
+          parsed.keys.findIndex((o) => citekeyEq(o, k)) === i,
       );
       if (fresh.length === 0) return;
       const [first, ...rest] = fresh;
@@ -813,7 +826,7 @@ export function CitationCard({
       // `persist` at EVENT time — never a parent setState (`persist` →
       // `onUpdateCitation`) from inside the `setRows` updater. Matches the
       // sibling mutators' discipline (`setRowKeys`/`setRowPostnote`/`removeRow`).
-      if (rows.some((r) => r.key === bibKey)) return; // already present — no-op
+      if (rows.some((r) => citekeyEq(r.key, bibKey))) return; // already present — no-op
       // If the only row is empty, fill it instead of adding a new row.
       const allEmpty = rows.every((r) => !r.key.trim());
       const next = allEmpty
@@ -1182,6 +1195,7 @@ export function CitationCard({
                   onOpenPickerForInput={(el, q) => openPickerForInput(row.id, el, q)}
                   onPickerQueryChange={(q) => setPickerExternalQuery(q)}
                   onChangePostnote={(p) => setRowPostnote(row.id, p)}
+                  onUseBibSpelling={(k) => setRowKeys(row.id, [k])}
                   onRemove={() => removeRow(row.id)}
                   registerAnchor={(el) => {
                     if (el) rowAnchorRefs.current.set(row.id, el);
@@ -1441,7 +1455,7 @@ export function CitationCard({
 
 interface CitationKeyRowProps {
   row: UiRow;
-  bibEntryMap: Map<string, BibEntry>;
+  bibEntryMap: BibKeyIndex;
   canRemove: boolean;
   bibExpanded: boolean;
   /** True when this row's citekey resolves to a Virgil Library entry — gates
@@ -1459,6 +1473,9 @@ interface CitationKeyRowProps {
   onOpenPickerForInput: (inputEl: HTMLInputElement, initialQuery: string) => void;
   onPickerQueryChange: (q: string) => void;
   onChangePostnote: (postnote: string) => void;
+  /** Rewrite this row's key to the bib's own spelling — offered only when the
+   *  row resolved by case-folding alone (task 1325). */
+  onUseBibSpelling: (bibKey: string) => void;
   onRemove: () => void;
   registerAnchor: (el: HTMLElement | null) => void;
 }
@@ -1476,11 +1493,16 @@ function CitationKeyRow({
   onOpenPickerForInput,
   onPickerQueryChange,
   onChangePostnote,
+  onUseBibSpelling,
   onRemove,
   registerAnchor,
 }: CitationKeyRowProps) {
   const trimmed = row.key.trim();
   const entry = trimmed ? bibEntryMap.get(trimmed) : undefined;
+  // Resolved, but only by folding case: BibTeX accepts `\cite{smith2020}` for
+  // `Smith2020`, biber may not — so the row says so, quietly, and offers the
+  // bib's spelling rather than hiding the hazard (task 1325).
+  const caseTwinOf = isCaseTwinHit(trimmed, entry) ? entry!.key : null;
   const [pgOpen, setPgOpen] = useState(!!row.postnote);
   const [pgDraft, setPgDraft] = useState(row.postnote || "");
   const pgInputRef = useRef<HTMLInputElement>(null);
@@ -1719,6 +1741,28 @@ function CitationKeyRow({
           >
             {trimmed}
           </button>
+          {caseTwinOf && (
+            <span
+              data-citekey-case-twin={caseTwinOf}
+              className="inline-flex items-center gap-1 min-w-0 whitespace-nowrap"
+            >
+              <span>
+                bib spells it <span className="card-mono">{caseTwinOf}</span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUseBibSpelling(caseTwinOf);
+                }}
+                data-button-exempt="10px meta-row chip beside the Bib toggle, below Button's sm scale"
+                className="text-[10px] uppercase tracking-wide px-1 py-0 rounded text-[var(--muted)] hover:text-ink-body hover-on-light focus-ring"
+                data-hint="Cite the key as the bibliography spells it"
+              >
+                Use
+              </button>
+            </span>
+          )}
           <button
             type="button"
             onClick={copyCitekey}
