@@ -26,6 +26,7 @@ import {
   applyMathEdit,
   atomPopoverMayOpen,
   resolveAtomEditTarget,
+  trackAtomPos,
 } from "@/lib/tiptap/atom-edit-target";
 
 class ResizeObserverStub {
@@ -150,15 +151,15 @@ describe("atom popover door — read-only MAIN (task 1071, leg 1)", () => {
     const m = mountMain(true, TWO_MATHS);
     const [posA] = posesOf(m.editor, "inlineMath");
     m.editableRef.current = false;
-    expect(applyMathEdit(m.editor, posA, { kind: "inline", latex: "a" }, "z")).toBe(false);
+    expect(applyMathEdit(m.editor, trackAtomPos(m.editor, posA), { kind: "inline", latex: "a" }, "z")).toBe(false);
     const [refPos] = posesOf(mountMain(false, A_REF).editor, "labelRef");
     const ro = mounted[mounted.length - 1];
     expect(
-      resolveAtomEditTarget(ro, refPos, (n) => n.type.name === "labelRef"),
+      resolveAtomEditTarget(ro, trackAtomPos(ro, refPos), (n) => n.type.name === "labelRef"),
     ).toBeNull();
     // Control: editable again → the same commit lands.
     m.editableRef.current = true;
-    expect(applyMathEdit(m.editor, posA, { kind: "inline", latex: "a" }, "z")).toBe(true);
+    expect(applyMathEdit(m.editor, trackAtomPos(m.editor, posA), { kind: "inline", latex: "a" }, "z")).toBe(true);
     expect(m.editor.state.doc.nodeAt(posA)?.attrs.latex).toBe("z");
   });
 });
@@ -168,29 +169,80 @@ describe("math save addresses the CLICKED formula (task 1071, leg 2)", () => {
     const { editor } = mountMain(true, TWO_MATHS);
     const [posA] = posesOf(editor, "inlineMath");
     const clicked = { kind: "inline" as const, latex: "a" };
+    const at = trackAtomPos(editor, posA); // started at click, as the bridge does
     // The external write: remove `$a$ ` — `$b$` slides onto posA.
     editor.view.dispatch(editor.state.tr.delete(posA, posA + 2));
     expect(editor.state.doc.nodeAt(posA)?.attrs.latex).toBe("b");
-    expect(applyMathEdit(editor, posA, clicked, "z")).toBe(false);
+    expect(applyMathEdit(editor, at, clicked, "z")).toBe(false);
     expect(editor.state.doc.nodeAt(posA)?.attrs.latex).toBe("b");
   });
 
   it("an inline↔display swap at pos is refused", () => {
     const { editor } = mountMain(true, TWO_MATHS);
     const [posA] = posesOf(editor, "inlineMath");
-    expect(applyMathEdit(editor, posA, { kind: "display", latex: "a" }, "z")).toBe(false);
+    expect(applyMathEdit(editor, trackAtomPos(editor, posA), { kind: "display", latex: "a" }, "z")).toBe(false);
     expect(editor.state.doc.nodeAt(posA)?.attrs.latex).toBe("a");
   });
 
   it("control: the unmoved clicked formula saves", () => {
     const { editor } = mountMain(true, TWO_MATHS);
     const [, posB] = posesOf(editor, "inlineMath");
-    expect(applyMathEdit(editor, posB, { kind: "inline", latex: "b" }, "z")).toBe(true);
+    expect(applyMathEdit(editor, trackAtomPos(editor, posB), { kind: "inline", latex: "b" }, "z")).toBe(true);
     expect(editor.state.doc.nodeAt(posB)?.attrs.latex).toBe("z");
   });
 
   it("a stale pos past the doc end is a safe no-op", () => {
     const { editor } = mountMain(true, TWO_MATHS);
-    expect(applyMathEdit(editor, 9999, { kind: "inline", latex: "a" }, "z")).toBe(false);
+    expect(applyMathEdit(editor, trackAtomPos(editor, 9999), { kind: "inline", latex: "a" }, "z")).toBe(false);
+  });
+});
+
+describe("the edit popovers FOLLOW the document (task 1314)", () => {
+  it("math: an insertion BEFORE the clicked formula while the popover is open → Save lands on it", () => {
+    const { editor } = mountMain(true, TWO_MATHS);
+    const [posA] = posesOf(editor, "inlineMath");
+    const at = trackAtomPos(editor, posA); // the click
+    editor.commands.insertContentAt(1, "xyz"); // an upstream edit lands meanwhile
+    expect(applyMathEdit(editor, at, { kind: "inline", latex: "a" }, "z")).toBe(true);
+    const [a, b] = posesOf(editor, "inlineMath").map((p) => editor.state.doc.nodeAt(p)?.attrs.latex);
+    expect([a, b]).toEqual(["z", "b"]);
+    at.dispose();
+  });
+
+  it("an insertion exactly AT the atom's start goes before it — the address stays on the clicked atom", () => {
+    const { editor } = mountMain(true, TWO_MATHS);
+    const [, posB] = posesOf(editor, "inlineMath");
+    const at = trackAtomPos(editor, posB);
+    editor.commands.insertContentAt(posB, "q");
+    expect(at.get()).toBe(posB + 1);
+    expect(applyMathEdit(editor, at, { kind: "inline", latex: "b" }, "z")).toBe(true);
+    at.dispose();
+  });
+
+  it("the clicked formula deleted meanwhile → refused (the caller announces it), no write", () => {
+    const { editor } = mountMain(true, TWO_MATHS);
+    const [posA] = posesOf(editor, "inlineMath");
+    const at = trackAtomPos(editor, posA);
+    editor.view.dispatch(editor.state.tr.delete(posA, posA + 1));
+    expect(applyMathEdit(editor, at, { kind: "inline", latex: "a" }, "z")).toBe(false);
+    expect(posesOf(editor, "inlineMath").map((p) => editor.state.doc.nodeAt(p)?.attrs.latex)).toEqual(["b"]);
+  });
+
+  it("a whole-document replacement nulls the tracker → refused", () => {
+    const { editor } = mountMain(true, TWO_MATHS);
+    const [posA] = posesOf(editor, "inlineMath");
+    const at = trackAtomPos(editor, posA);
+    editor.commands.setContent(TWO_MATHS);
+    expect(at.get()).toBeNull();
+    expect(applyMathEdit(editor, at, { kind: "inline", latex: "a" }, "z")).toBe(false);
+  });
+
+  it("a disposed tracker stops following (no subscriber outlives the popover)", () => {
+    const { editor } = mountMain(true, TWO_MATHS);
+    const [posA] = posesOf(editor, "inlineMath");
+    const at = trackAtomPos(editor, posA);
+    at.dispose();
+    editor.commands.insertContentAt(1, "xyz");
+    expect(at.get()).toBe(posA);
   });
 });

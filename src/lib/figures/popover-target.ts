@@ -24,6 +24,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { serializeFigureEnvBody } from "@/lib/latex-serializer";
 import { resolveAtomEditTarget } from "@/lib/tiptap/atom-edit-target";
+import type { TrackedPos } from "@/lib/tiptap/tracked-pos";
 import {
   applyFigureEnvBodyEdit,
   applyGraphicsCommandEdit,
@@ -43,6 +44,15 @@ export interface ClickedFigure {
   uuid: string | null;
   /** The seed the popover opened on (`figurePopoverRaw(node)`). */
   raw: string;
+}
+
+/** The open figure/graphics popover's session (task 1314): the clicked
+ *  identity, its OWNING editor (main or the figure's float — EX-F4-02) and its
+ *  position there as a tracker — no raw `pos`. Whoever drops it disposes `at`. */
+export interface ActiveFigure extends ClickedFigure {
+  at: TrackedPos;
+  rect: DOMRect;
+  editor: Editor;
 }
 
 /** The tex-mode popover seed for a figure/graphics node — the faithful env body
@@ -91,11 +101,13 @@ export function isClickedFigure(clicked: ClickedFigure): (node: PMNode) => boole
  *  [cost: O(log doc) + the identity check + one transaction.] */
 export function applyFigurePopoverEdit(
   owner: Editor | null | undefined,
-  pos: number,
+  at: TrackedPos,
   clicked: ClickedFigure,
   newText: string,
 ): boolean {
-  if (!resolveAtomEditTarget(owner, pos, isClickedFigure(clicked))) return false;
+  const target = resolveAtomEditTarget(owner, at, isClickedFigure(clicked));
+  if (!target) return false;
+  const { pos } = target;
   return clicked.kind === "figureBlock"
     ? applyFigureEnvBodyEdit(owner!, pos, newText)
     : applyGraphicsCommandEdit(owner!, pos, newText);

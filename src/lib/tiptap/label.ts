@@ -10,6 +10,7 @@ import { ATOM_REGISTRY } from "./atom-registry";
 import { createLeafNodeView } from "./leaf-node-view";
 import { atomPopoverMayOpen } from "./atom-edit-target";
 import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
+import type { TrackedPos } from "./tracked-pos";
 
 const REF_ATOM = ATOM_REGISTRY.ref;
 
@@ -18,21 +19,24 @@ export const REF_CLICK_EVENT = "virgil-label-ref-click";
 
 /**
  * A `labelRef` atom's IDENTITY across the gap between the click and the
- * popover's commit: the editor that owns it and its position there. The
- * handlers that re-point it resolve `editor.state.doc.nodeAt(pos)` at commit
- * time and REFUSE when it is no longer a `labelRef` naming `label` (the doc
- * may have moved) — never falling back to "the first chip with that label",
- * which is the mis-address this identity exists to prevent (task 550; the
- * task-285 rule for addressing a node across an async gap).
+ * popover's commit: the editor that owns it, its position there — TRACKED, so
+ * it follows edits landing while the popover is open (task 1314) — and its
+ * label. The handlers that re-point it resolve the tracked spot at commit time
+ * and REFUSE when it is gone or no longer a `labelRef` naming `label` — never
+ * falling back to "the first chip with that label", which is the mis-address
+ * this identity exists to prevent (task 550; the task-285 rule for addressing
+ * a node across an async gap).
  */
 export interface RefNodeIdentity {
   editor: Editor;
-  pos: number;
+  at: TrackedPos;
   label: string;
 }
 
-/** What `REF_CLICK_EVENT` carries. */
-export interface RefClickDetail extends RefNodeIdentity {
+/** What `REF_CLICK_EVENT` carries — the click-time `pos`, which the bridge
+ *  turns into a tracker synchronously with the open. */
+export interface RefClickDetail extends Omit<RefNodeIdentity, "at"> {
+  pos: number;
   refCommand: string;
   targetKind: string | null;
   /** The clicked chip's own screen rect — the popover anchors at THIS chip. */

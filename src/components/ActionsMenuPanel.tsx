@@ -37,9 +37,10 @@
  * this provider's exclude set (R8), so it needs no explicit exclusion.
  */
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLiveEditorSignature } from "@/lib/tiptap/use-live-editor-signature";
 import type { Editor } from "@tiptap/react";
+import { trackRange, type TrackedRange } from "@/lib/tiptap/tracked-pos";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { DragHandleAction } from "./DragHandleMenu";
 import type { TextObjectKind } from "@/text-objects/types";
@@ -281,8 +282,28 @@ export function ActionsMenuPanel({
   // pre-migration click-outside effect used (design §3.2 / R8).
   const [colorPopoverEl, setColorPopoverEl] = useState<HTMLElement | null>(null);
   // Stash the selection range so the color popover can re-apply it after
-  // the native color picker steals focus.
-  const stashedRangeRef = useRef<{ from: number; to: number } | null>(null);
+  // the native color picker steals focus. TRACKED (task 1314): the range
+  // follows edits landing while the popover is open, so the pick colours the
+  // text that was selected, not whatever shifted into its offsets. The tracker
+  // lives exactly as long as the popover — released on pick, close, re-open
+  // and unmount.
+  const stashedRangeRef = useRef<TrackedRange | null>(null);
+  const releaseStash = () => {
+    stashedRangeRef.current?.dispose();
+    stashedRangeRef.current = null;
+  };
+  useEffect(() => {
+    if (colorPopoverAnchor) return;
+    stashedRangeRef.current?.dispose();
+    stashedRangeRef.current = null;
+  }, [colorPopoverAnchor]);
+  useEffect(
+    () => () => {
+      stashedRangeRef.current?.dispose();
+      stashedRangeRef.current = null;
+    },
+    [],
+  );
 
   const runAction = (action: DragHandleAction) => {
     if (!dragHandleMenu) return;
@@ -357,7 +378,8 @@ export function ActionsMenuPanel({
         const { from, to } = editor.state.selection;
         // Rewritten on EVERY open (task 1168): a collapsed caret clears it, so a
         // popover dismissed without a pick can never leave a stale range behind.
-        stashedRangeRef.current = from !== to ? { from, to } : null;
+        releaseStash();
+        stashedRangeRef.current = from !== to ? trackRange(editor, from, to) : null;
         setColorPopoverAnchor(rect);
       },
       // The SHARED create-popover seam (citation + `\ref`). The 'Cross-ref' grid
@@ -411,11 +433,14 @@ export function ActionsMenuPanel({
   // open-time verdict. A refused commit writes nothing and bumps no MRU slot;
   // either way the popover closes (it has nothing left to offer).
   const commitColor = (color: string | null) => {
-    const stashed = stashedRangeRef.current;
-    const landed = applyTextColor(gridCellCtx(stashed), color);
+    const tracked = stashedRangeRef.current;
+    // A stash whose text was removed meanwhile resolves `null`; colouring the
+    // live selection instead would paint text the user never picked — refuse.
+    const stashed = tracked ? tracked.get() : null;
+    const landed = tracked && !stashed ? false : applyTextColor(gridCellCtx(stashed), color);
     if (landed && color !== null) bumpColorToFront(color);
     setColorPopoverAnchor(null);
-    stashedRangeRef.current = null;
+    releaseStash();
   };
   const applyColor = (color: string) => commitColor(color);
   const clearColor = () => commitColor(null);
@@ -905,7 +930,7 @@ export function ActionsMenuPanel({
             onClose={() => {
               setColorPopoverAnchor(null);
               setColorPopoverEl(null);
-              stashedRangeRef.current = null;
+              releaseStash();
             }}
           />
         )}

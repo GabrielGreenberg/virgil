@@ -33,7 +33,8 @@ import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-ex
 import { useRefActions } from "@/components/editor-layout/card-actions/ref";
 import { useMarkerClickBridges } from "@/components/editor-layout/event-bridges/marker-clicks";
 import type { EditorHandle } from "@/components/Editor";
-import { REF_CLICK_EVENT, type ActiveRef } from "@/lib/tiptap/label";
+import { REF_CLICK_EVENT, type ActiveRef, type RefNodeIdentity } from "@/lib/tiptap/label";
+import { trackAtomPos } from "@/lib/tiptap/atom-edit-target";
 import { REPO_ROOT, codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -96,6 +97,16 @@ function chips(ed: Editor): { pos: number; label: string; refCommand: string; di
   return out;
 }
 
+/** A chip identity as the click bridge builds it: the pos TRACKED from now. */
+function ident(ed: Editor, pos: number, label: string): RefNodeIdentity {
+  return { editor: ed, at: trackAtomPos(ed, pos), label };
+}
+
+/** An address that does NOT follow the doc — what a raw click-time `pos` was. */
+function frozen(ed: Editor, pos: number, label: string): RefNodeIdentity {
+  return { editor: ed, at: { get: () => pos, dispose: () => {} }, label };
+}
+
 function actions(ed: Editor) {
   const handle = { getEditor: () => ed } as unknown as EditorHandle;
   const setActiveRef = vi.fn();
@@ -108,7 +119,7 @@ describe("re-pointing addresses the clicked chip (task 550)", () => {
     const ed = mount();
     const [c1, c2] = chips(ed);
     const { result } = actions(ed);
-    expect(result.current.handleRefChangeLabel({ editor: ed, pos: c2.pos, label: "sec:a" }, "sec:b")).toBe(true);
+    expect(result.current.handleRefChangeLabel(ident(ed, c2.pos, "sec:a"), "sec:b")).toBe(true);
     const after = chips(ed);
     expect(after.map((c) => c.label)).toEqual(["sec:a", "sec:b"]);
     expect(after[0].pos).toBe(c1.pos);
@@ -119,7 +130,7 @@ describe("re-pointing addresses the clicked chip (task 550)", () => {
     const ed = mount();
     const [, c2] = chips(ed);
     const { result } = actions(ed);
-    expect(result.current.handleRefChangeCommand({ editor: ed, pos: c2.pos, label: "sec:a" }, "getref")).toBe(true);
+    expect(result.current.handleRefChangeCommand(ident(ed, c2.pos, "sec:a"), "getref")).toBe(true);
     const after = chips(ed);
     expect(after.map((c) => c.refCommand)).toEqual(["ref", "getref"]);
     expect(after[1].displayText).toBe("(1)");
@@ -129,7 +140,7 @@ describe("re-pointing addresses the clicked chip (task 550)", () => {
     const ed = mount();
     const [c1] = chips(ed);
     const { result } = actions(ed);
-    result.current.handleRefChangeLabel({ editor: ed, pos: c1.pos, label: "sec:a" }, "sec:b");
+    result.current.handleRefChangeLabel(ident(ed, c1.pos, "sec:a"), "sec:b");
     expect(chips(ed).map((c) => c.label)).toEqual(["sec:b", "sec:a"]);
   });
 
@@ -137,32 +148,53 @@ describe("re-pointing addresses the clicked chip (task 550)", () => {
     const ed = mount();
     const [, c2] = chips(ed);
     const { result } = actions(ed);
-    result.current.handleRefChangeLabel({ editor: ed, pos: c2.pos, label: "sec:a" }, "fig:x");
+    result.current.handleRefChangeLabel(ident(ed, c2.pos, "sec:a"), "fig:x");
     const after = chips(ed);
     expect(after[1].label).toBe("fig:x");
     expect(after[1].displayText).toBe("1");
     expect(ed.state.doc.nodeAt(after[1].pos)?.attrs.targetKind).toBe("figure");
   });
 
-  it("REFUSES a stale identity (the doc moved under the popover) rather than falling back to a label search", () => {
+  it("FOLLOWS the doc (task 1314): an insertion before the chips while the popover is open still re-points the clicked chip", () => {
     const ed = mount();
     const [c1, c2] = chips(ed);
     const { result } = actions(ed);
+    const t2 = ident(ed, c2.pos, "sec:a"); // tracked from the click
+    const t1 = ident(ed, c1.pos, "sec:a");
     // Insert text BEFORE both chips: every position after it shifts by 3.
     ed.commands.insertContentAt(1, "xyz");
     const moved = chips(ed);
     expect(moved[1].pos).toBe(c2.pos + 3);
-    // The stale pos now holds something else (or nothing) — refuse.
-    expect(result.current.handleRefChangeLabel({ editor: ed, pos: c2.pos, label: "sec:a" }, "sec:b")).toBe(false);
-    expect(result.current.handleRefChangeCommand({ editor: ed, pos: c1.pos, label: "sec:a" }, "getref")).toBe(false);
+    expect(result.current.handleRefChangeLabel(t2, "sec:b")).toBe(true);
+    expect(result.current.handleRefChangeCommand(t1, "getref")).toBe(true);
+    expect(chips(ed).map((c) => [c.label, c.refCommand])).toEqual([["sec:a", "getref"], ["sec:b", "ref"]]);
+  });
+
+  it("REFUSES a frozen (pre-1314 raw) address the doc moved under, rather than falling back to a label search", () => {
+    const ed = mount();
+    const [c1, c2] = chips(ed);
+    const { result } = actions(ed);
+    ed.commands.insertContentAt(1, "xyz");
+    expect(result.current.handleRefChangeLabel(frozen(ed, c2.pos, "sec:a"), "sec:b")).toBe(false);
+    expect(result.current.handleRefChangeCommand(frozen(ed, c1.pos, "sec:a"), "getref")).toBe(false);
     expect(chips(ed).map((c) => [c.label, c.refCommand])).toEqual([["sec:a", "ref"], ["sec:a", "ref"]]);
+  });
+
+  it("REFUSES when the clicked chip itself is deleted while the popover is open", () => {
+    const ed = mount();
+    const [, c2] = chips(ed);
+    const { result } = actions(ed);
+    const t2 = ident(ed, c2.pos, "sec:a");
+    ed.view.dispatch(ed.state.tr.delete(c2.pos, c2.pos + 1));
+    expect(result.current.handleRefChangeLabel(t2, "sec:b")).toBe(false);
+    expect(chips(ed).map((c) => c.label)).toEqual(["sec:a"]);
   });
 
   it("REFUSES an identity whose label no longer matches the node at that pos", () => {
     const ed = mount();
     const [, c2] = chips(ed);
     const { result } = actions(ed);
-    expect(result.current.handleRefChangeLabel({ editor: ed, pos: c2.pos, label: "sec:other" }, "sec:b")).toBe(false);
+    expect(result.current.handleRefChangeLabel(ident(ed, c2.pos, "sec:other"), "sec:b")).toBe(false);
     expect(chips(ed).map((c) => c.label)).toEqual(["sec:a", "sec:a"]);
   });
 
@@ -178,15 +210,16 @@ describe("re-pointing addresses the clicked chip (task 550)", () => {
     const ed = mount();
     const [, c2] = chips(ed);
     const { result, setActiveRef } = actions(ed);
-    result.current.handleRefChangeLabel({ editor: ed, pos: c2.pos, label: "sec:a" }, "sec:b");
+    const target = ident(ed, c2.pos, "sec:a");
+    result.current.handleRefChangeLabel(target, "sec:b");
     const updater = setActiveRef.mock.calls.at(-1)![0] as (p: ActiveRef | null) => ActiveRef | null;
     const rect = new DOMRect(0, 0, 10, 10);
-    const active: ActiveRef = { editor: ed, pos: c2.pos, label: "sec:a", refCommand: "ref", rect };
+    const active: ActiveRef = { ...target, refCommand: "ref", rect };
     expect(updater(active)?.label).toBe("sec:b");
     // A different chip's active state is left alone.
-    expect(updater({ ...active, pos: 1 })?.label).toBe("sec:a");
+    expect(updater({ ...active, at: trackAtomPos(ed, 1) })?.label).toBe("sec:a");
     expect(updater(null)).toBeNull();
-    result.current.handleRefChangeCommand({ editor: ed, pos: c2.pos, label: "sec:b" }, "getfullref");
+    result.current.handleRefChangeCommand({ ...target, label: "sec:b" }, "getfullref");
     const updater2 = setActiveRef.mock.calls.at(-1)![0] as (p: ActiveRef | null) => ActiveRef | null;
     expect(updater2({ ...active, label: "sec:b" })?.refCommand).toBe("getfullref");
   });
@@ -223,8 +256,8 @@ describe("the click carries identity and the bridge stores it (no DOM re-find)",
     dom2.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(setActiveRef).toHaveBeenCalledTimes(1);
     const active = setActiveRef.mock.calls[0][0] as ActiveRef;
-    expect(active.pos).toBe(c2.pos);
-    expect(active.pos).not.toBe(c1.pos);
+    expect(active.at.get()).toBe(c2.pos);
+    expect(active.at.get()).not.toBe(c1.pos);
     expect(active.editor).toBe(ed);
     expect(active.label).toBe("sec:a");
     expect(active.refCommand).toBe("ref");

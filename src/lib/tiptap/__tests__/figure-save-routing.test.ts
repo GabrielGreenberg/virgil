@@ -37,6 +37,7 @@ import {
   applyGraphicsCommandEdit,
 } from "@/lib/figures/apply-env-body";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { trackAtomPos } from "@/lib/tiptap/atom-edit-target";
 import {
   applyFigurePopoverEdit,
   figurePopoverRaw,
@@ -79,7 +80,7 @@ function saveFigure(editor: Editor, pos: number, newText: string): boolean {
   const clicked: ClickedFigure = inRange
     ? clickedAt(editor, pos)
     : { kind: "graphicsBlock", uuid: null, raw: "" };
-  return applyFigurePopoverEdit(editor, pos, clicked, newText);
+  return applyFigurePopoverEdit(editor, trackAtomPos(editor, pos), clicked, newText);
 }
 
 // `figureFloat` is the figure node's only mode flag (there is no `surface`
@@ -569,9 +570,28 @@ describe("figure popover save names the clicked node (task 1082)", () => {
     const { editor, element } = mount([figure("f1", "a.png", "Cap A", "fig:a")]);
     try {
       const clicked = clickedAt(editor, 0);
-      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(true);
+      const at = trackAtomPos(editor, 0); // started at click, as the bridge does
+      expect(applyFigurePopoverEdit(editor, at, clicked, BODY)).toBe(true);
       expect(attrsAt(editor, 0).source).toBe("edited.png");
       expect(attrsAt(editor, 0).label).toBe("fig:edited");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("task 1314: a block inserted BEFORE the clicked figure while open → the save follows it", () => {
+    const { editor, element } = mount([figure("f1", "a.png", "Cap A", "fig:a")]);
+    try {
+      const clicked = clickedAt(editor, 0);
+      const at = trackAtomPos(editor, 0); // the click
+      editor.commands.insertContentAt(0, { type: "paragraph", content: [{ type: "text", text: "new" }] });
+      const figPos = at.get()!;
+      expect(figPos).toBeGreaterThan(0);
+      expect(editor.state.doc.nodeAt(figPos)!.attrs.uuid).toBe("f1");
+      expect(applyFigurePopoverEdit(editor, at, clicked, BODY)).toBe(true);
+      expect(attrsAt(editor, figPos).source).toBe("edited.png");
+      at.dispose();
     } finally {
       editor.destroy();
       element.remove();
@@ -585,9 +605,10 @@ describe("figure popover save names the clicked node (task 1082)", () => {
     ]);
     try {
       const clicked = clickedAt(editor, 0);
+      const at = trackAtomPos(editor, 0); // started at click, as the bridge does
       deleteAt(editor, 0); // figure #2 slides onto pos 0
       expect(editor.state.doc.nodeAt(0)!.attrs.uuid).toBe("f2");
-      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(false);
+      expect(applyFigurePopoverEdit(editor, at, clicked, BODY)).toBe(false);
       expect(attrsAt(editor, 0).source).toBe("b.png");
       expect(attrsAt(editor, 0).label).toBe("fig:b");
       expect(captionTextAt(editor, 0)).toBe("Cap B");
@@ -604,9 +625,10 @@ describe("figure popover save names the clicked node (task 1082)", () => {
     ]);
     try {
       const clicked = clickedAt(editor, 0);
+      const at = trackAtomPos(editor, 0); // started at click, as the bridge does
       expect(clicked.uuid).toBeNull();
       deleteAt(editor, 0);
-      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(false);
+      expect(applyFigurePopoverEdit(editor, at, clicked, BODY)).toBe(false);
       expect(attrsAt(editor, 0).source).toBe("b.png");
     } finally {
       editor.destroy();
@@ -621,9 +643,10 @@ describe("figure popover save names the clicked node (task 1082)", () => {
     ]);
     try {
       const clicked = clickedAt(editor, 0);
+      const at = trackAtomPos(editor, 0); // started at click, as the bridge does
       deleteAt(editor, 0);
       expect(editor.state.doc.nodeAt(0)!.type.name).toBe("graphicsBlock");
-      expect(applyFigurePopoverEdit(editor, 0, clicked, BODY)).toBe(false);
+      expect(applyFigurePopoverEdit(editor, at, clicked, BODY)).toBe(false);
       // The old fall-through stored the whole env body as the graphic's command.
       expect(attrsAt(editor, 0).command).toBe("\\includegraphics{g.png}");
     } finally {
@@ -639,9 +662,10 @@ describe("figure popover save names the clicked node (task 1082)", () => {
     ]);
     try {
       const clicked = clickedAt(editor, 0);
+      const at = trackAtomPos(editor, 0); // started at click, as the bridge does
       deleteAt(editor, 0);
       expect(
-        applyFigurePopoverEdit(editor, 0, clicked, "\\includegraphics{z.png}"),
+        applyFigurePopoverEdit(editor, at, clicked, "\\includegraphics{z.png}"),
       ).toBe(false);
       expect(attrsAt(editor, 0).label).toBe("fig:a");
       expect(captionTextAt(editor, 0)).toBe("Cap A");
@@ -655,9 +679,10 @@ describe("figure popover save names the clicked node (task 1082)", () => {
     const { editor, element } = mount([graphic("g1", "one.png"), graphic("g2", "two.png")]);
     try {
       const clicked = clickedAt(editor, 0);
+      const at = trackAtomPos(editor, 0); // started at click, as the bridge does
       deleteAt(editor, 0);
       expect(
-        applyFigurePopoverEdit(editor, 0, clicked, "\\includegraphics{z.png}"),
+        applyFigurePopoverEdit(editor, at, clicked, "\\includegraphics{z.png}"),
       ).toBe(false);
       expect(attrsAt(editor, 0).command).toBe("\\includegraphics{two.png}");
     } finally {

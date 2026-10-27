@@ -87,11 +87,18 @@ export function caretAnchor(
 }
 
 /** Re-read the rendered node at `pos` (an inline atom's chip); falls back to
- *  the caret at `pos` when the node has no mounted DOM. */
-export function nodeAnchor(editor: Editor | null | undefined, pos: number): LiveAnchor {
-  const caret = caretAnchor(editor, pos);
+ *  the caret at `pos` when the node has no mounted DOM. `pos` may be a thunk —
+ *  an edit popover's `TrackedPos.get` (task 1314), so the anchor follows the
+ *  chip the commit will write. */
+export function nodeAnchor(
+  editor: Editor | null | undefined,
+  at: number | (() => number | null),
+): LiveAnchor {
+  const caret = caretAnchor(editor, at);
   return () => {
     if (!editor || editor.isDestroyed) return null;
+    const pos = typeof at === "function" ? at() : at;
+    if (pos === null) return null;
     if (pos < 0 || pos > editor.state.doc.content.size) return null;
     let dom: Node | null = null;
     try {
