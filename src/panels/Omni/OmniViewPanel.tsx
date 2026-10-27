@@ -286,7 +286,7 @@ export function OmniFilterMenu({
       // placement the primitive can also FLIP when the space below runs out.
       align={side === "left" ? "start" : "end"}
       triggerHint="Filter"
-      triggerClassName="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center justify-center"
+      triggerClassName="iconbtn-sm iconbtn-meta"
       menuClassName="min-w-[160px]"
       trigger={() => (
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
