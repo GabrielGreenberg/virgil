@@ -303,6 +303,38 @@ describe("CSS census — the affordance is scoped to the attribute", () => {
     }
   });
 
+  it("COVERAGE (task 1315): every registry atom appears in a scoped `grab` AND a `grabbing` rule", () => {
+    // The CSS hand-lists the classes (CSS cannot import TS). The scoping leg
+    // above only inspects rules that ALREADY name an atom, so a fifth row — or
+    // a renamed `domClass` — would get the base `pointer` but never `grab`,
+    // with every other leg green. This is the leg that sees the absence.
+    const scope = `[${ATOMS_GRASPABLE_ATTR}="true"]`;
+    const rulesSetting = (value: "grab" | "grabbing"): string[] => {
+      const out: string[] = [];
+      const re = /([^{}]+)\{([^{}]*)\}/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(code))) {
+        if (new RegExp(`cursor:\\s*${value}\\s*;`).test(m[2])) out.push(m[1].trim());
+      }
+      return out.filter((sel) => sel.includes(scope));
+    };
+    const grab = rulesSetting("grab");
+    const grabbing = rulesSetting("grabbing");
+    for (const meta of Object.values(ATOM_REGISTRY)) {
+      // Class-token boundary: `.inline-math` must not be satisfied by
+      // `.inline-math-foo`.
+      const token = new RegExp(`\\.${meta.domClass}(?![\\w-])`);
+      expect(
+        grab.some((sel) => token.test(sel)),
+        `.${meta.domClass} has no scoped \`cursor: grab\` rule`,
+      ).toBe(true);
+      expect(
+        grabbing.some((sel) => token.test(sel)),
+        `.${meta.domClass} has no scoped \`cursor: grabbing\` rule`,
+      ).toBe(true);
+    }
+  });
+
   it("the scope is NOT re-derived from `contenteditable`", () => {
     // MAIN pins `contenteditable="true"` whatever the user-facing state, so a
     // rule keyed on it would exempt exactly the surface this fix is about.

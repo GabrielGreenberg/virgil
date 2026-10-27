@@ -19,6 +19,7 @@ import {
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
+import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import {
   composeInlineRun,
   isCodeWrapped,
@@ -242,9 +243,9 @@ export function htmlToJson(html: string): JSONContent {
       const tag = el.tagName.toLowerCase();
 
       // Citation node (preserved attrs)
-      if (tag === "span" && el.dataset.type === "citation") {
+      if (tag === "span" && el.dataset.type === ATOM_REGISTRY.citation.domType) {
         out.push({
-          type: "citation",
+          type: ATOM_REGISTRY.citation.nodeName,
           attrs: {
             citationId: el.dataset.citationId || "",
             command: el.dataset.command || el.textContent || "",
@@ -255,9 +256,9 @@ export function htmlToJson(html: string): JSONContent {
       }
 
       // Inline math node
-      if (tag === "span" && el.dataset.type === "inline-math") {
+      if (tag === "span" && el.dataset.type === ATOM_REGISTRY["inline-math"].domType) {
         out.push({
-          type: "inlineMath",
+          type: ATOM_REGISTRY["inline-math"].nodeName,
           attrs: { latex: el.dataset.latex || "" },
         });
         return;

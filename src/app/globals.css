@@ -4218,9 +4218,7 @@ textarea {
 /* Citation — lock the :hover yellow on, for both hover-from-card and
  * selection (citations read via their native yellow, never a blue ring). */
 .citation-node[data-card-hovered="true"],
-.citation-node[data-card-selected="true"],
-[data-type="citation"][data-card-hovered="true"],
-[data-type="citation"][data-card-selected="true"] {
+.citation-node[data-card-selected="true"] {
   background: var(--amber-highlight-wash);
   border-color: var(--amber-highlight-edge);
   color: var(--amber-highlight-ink);

@@ -16,8 +16,11 @@
  * `parseHTML`, and its NodeView (footnote / citation / label / math's inline
  * branch) instead of hardcoding the literals, so the live DOM can't drift from
  * this SSOT — pinned per-kind by `atom-selectable-parity.test.ts` (task 232).
- * The grab gesture, the `inTextAtomGrab` drop spec, and the affordance CSS all
- * read off this.
+ * The grab gesture and the `inTextAtomGrab` drop spec read off this. The
+ * affordance CSS (`globals.css`) cannot import TS, so it hand-lists each
+ * `domClass` — and is PINNED to this table by the CSS census in
+ * `atom-grab-affordance.test.ts`: a row whose class is missing from the
+ * scoped `cursor: grab` / `grabbing` rules fails CI by name.
  *
  * The deprecated `aiRequestMarker` is intentionally absent — AI requests
  * live in Cards, not as in-text atoms (uprooted; see git history).
@@ -34,7 +37,9 @@ export interface AtomMeta {
   nodeName: string;
   /** The `data-type` attribute the NodeView DOM carries. */
   domType: string;
-  /** The class on the NodeView DOM (used for the cursor affordance). */
+  /** The class on the NodeView DOM (used for the cursor affordance — the
+   *  globals.css grab rules list it by hand, pinned per-row by the census in
+   *  `atom-grab-affordance.test.ts`). */
   domClass: string;
   /**
    * The node attr carrying the Atom's entity id, or `null` for id-less
