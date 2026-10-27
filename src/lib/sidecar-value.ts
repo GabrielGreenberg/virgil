@@ -273,6 +273,24 @@ export const CONTENT_WRITE_DEBOUNCE_MS = 300;
  */
 export const VIEW_WRITE_DEBOUNCE_MS = 2500;
 
+/**
+ * Task 1327 — the burst CAP on a CONTENT sidecar's debounce. A card body typed
+ * into without a 300 ms pause still reaches disk at least this often (the
+ * task-1174 rule, "continuous typing must still write", which until 1327 only
+ * the `.tex` autosave honoured). Card writes are cheap — one small JSON file —
+ * so the cap is short.
+ */
+export const CONTENT_WRITE_MAX_WAIT_MS = 2000;
+
+/** The burst cap for this file, derived from its tier: VIEW state is a pure
+ *  trailing debounce (`Infinity` — nothing reads it while the doc is open,
+ *  and every writer flushes on the boundaries that matter). */
+export function sidecarWriteMaxWaitMs(filename: string): number {
+  return sidecarTier(filename) === "view"
+    ? Infinity
+    : CONTENT_WRITE_MAX_WAIT_MS;
+}
+
 /** The write cadence for this file, derived from its tier. The ONE place a
  *  sidecar debounce number comes from — CI forbids a hand-picked literal at a
  *  write site. */

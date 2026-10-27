@@ -2621,3 +2621,43 @@ time — and the panels order cards through ONE comparator, `byCreatedAt`
 ([src/hooks/useRecentlyAddedTracker.ts](../../../src/hooks/useRecentlyAddedTracker.ts)).
 
 CI: `src/hooks/__tests__/card-loader-createdAt-heal.test.ts`.
+
+## The cadence half: continuous typing still writes, through ONE coalescer (task 1327)
+
+Task 1174 gave the `.tex` autosave a maxWait (`AUTOSAVE_MAX_WAIT_MS`): an
+unbroken typing burst still writes, so "unsaved" means autosave is genuinely
+not landing. The rule was private code in `useDocument`; every other writer of
+the user's content kept a hand-rolled trailing `setTimeout` with no cap — a
+card body stacked two (RichTextField 250 ms → the sidecar hook's 300 ms) and
+reached disk only when the typist paused.
+
+**Rule.** A writer coalesces through the ONE primitive —
+[`createWriteCoalescer`](../../../src/lib/write-coalescer.ts) (trailing
+`delayMs` + burst cap `maxWaitMs` + `flush`/`cancel`/`pending`), or its React
+owner [`useWriteCoalescer`](../../../src/hooks/useWriteCoalescer.ts) (stable
+object, latest `fire`, timing fixed at mount, never cancels on unmount). The
+writer owns WHAT a fire does; the primitive owns WHEN. Caps by tier:
+
+- `.tex` autosave: 1500 ms / 10 s (unchanged).
+- CONTENT sidecars: 300 ms / `CONTENT_WRITE_MAX_WAIT_MS` 2 s; VIEW sidecars stay
+  pure trailing (`sidecarWriteMaxWaitMs` → `Infinity`).
+- Card-body field (RichTextField): 250 ms / 1 s — so continuous card typing
+  reaches disk within ~3 s.
+- Mirrored drafts: 400 ms / 2 s. Code→TipTap re-parse: 600 ms / 10 s.
+
+A cap shorter than the window is raised to it (lodash's rule). `pending` is
+"armed", never "landed" — each writer's dirty predicate still asks its own
+in-flight half.
+
+**Residual, stated.** The RichTextField stage is still not a pending-flusher
+registrant (task 559's STATED RESIDUAL); the cap bounds how long it holds an
+edit, it does not put it behind the reload door. Not converted, deliberately:
+`useEditorUIState`'s `cursorTimer` (a caret settle sampler whose write rides
+the coalescer) and `code-pane-bridge`'s `tipTapTimer` (TipTap→code DISPLAY
+sync). `useLatexSource`'s timer feeds lint, not disk.
+
+CI: `write-coalescer.test.ts`, `useWriteCoalescer.test.tsx`,
+`write-coalescer-census.test.ts` (writer files may arm `setTimeout` only at a
+declared non-write site), `usePersistentState.test.tsx` ("continuous update()
+bursts"); the population regexes of `reload-door.test.ts` and
+`cross-window-storage-guardrail.test.ts` count a coalescer as a held debounce.

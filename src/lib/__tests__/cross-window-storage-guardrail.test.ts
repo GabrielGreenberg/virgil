@@ -499,8 +499,11 @@ describe("cross-window storage guardrail — store-shape census (task 599)", () 
 // write — and each member must either consume the door or carry a ledgered
 // argument that is CHECKED against its code, exactly like sweep 3's.
 
-/** A timer handle STORED somewhere — i.e. a deferred, cancellable write. */
-const HOLDS_TIMER_HANDLE = /=\s*(?:window\s*\.\s*)?setTimeout\s*\(/;
+/** A timer handle STORED somewhere — i.e. a deferred, cancellable write. Since
+ *  task 1327 the ONE write coalescer (`useWriteCoalescer` / `createWriteCoalescer`) is that handle
+ *  for every content writer, so constructing one counts. */
+const HOLDS_TIMER_HANDLE =
+  /=\s*(?:window\s*\.\s*)?setTimeout\s*\(|\b(?:create|use)WriteCoalescer\s*\(/;
 const USES_MIRROR_DOOR = /\buseMirroredDraft\s*\(/;
 
 type MirrorLedgerEntry = { kind: "flushes-and-merges"; reason: string };

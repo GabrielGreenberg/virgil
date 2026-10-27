@@ -367,8 +367,11 @@ describe("census · the sidecar hook's dirty predicate is ONE thing", () => {
   );
   const code = codeOnlyLines(src);
 
-  it("the null-handle comparison lives in exactly two declarations — the predicate, and the one timer-cancel door", () => {
-    const re = /pendingTimerRef\.current\s*(?:!==|===)\s*null/g;
+  it("the coalescer is read in exactly two declarations — the predicate, and the one timer-cancel door", () => {
+    // Task 1327: the hand-rolled timer handle became the shared write
+    // coalescer; the census's subject is unchanged — the armed/disarmed
+    // question is asked in ONE predicate and answered in ONE cancel door.
+    const re = /writeCoalescer\.(?:pending|cancel\(\))/g;
     const owners: string[] = [];
     for (const m of code.matchAll(re)) {
       const region = enclosingDeclaration(code, m.index ?? 0);
@@ -376,17 +379,18 @@ describe("census · the sidecar hook's dirty predicate is ONE thing", () => {
       const owner = /const\s+(cancelArmedTimer|hasPendingWrite)\s*=\s*useCallback/.exec(header);
       expect(
         owner,
-        `a timer-handle null test outside the predicate / cancel door — in:\n${header}`,
+        `a coalescer arm-state read outside the predicate / cancel door — in:\n${header}`,
       ).not.toBeNull();
       owners.push(owner![1]);
     }
-    // Can-see canary + exact set: one comparison per owner, both owners present.
+    // Can-see canary + exact set: one read per owner, both owners present.
     expect(owners.sort()).toEqual(["cancelArmedTimer", "hasPendingWrite"]);
+    expect(code).not.toMatch(/pendingTimerRef/);
   });
 
   it("the predicate reads BOTH halves — an armed timer OR an in-flight write", () => {
     expect(code).toMatch(
-      /const hasPendingWrite = useCallback\(\(\): boolean => \{\s*return pendingTimerRef\.current !== null \|\| inFlightRef\.current > 0;/,
+      /const hasPendingWrite = useCallback\(\(\): boolean => \{\s*return writeCoalescer\.pending \|\| inFlightRef\.current > 0;/,
     );
   });
 

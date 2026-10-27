@@ -56,6 +56,7 @@ import {
   registerRecoveryActions,
 } from "@/lib/mirror-recovery";
 import { hashContent } from "@/lib/disk-ledger";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import {
   TEX_DELIMITERS_CHANGED_EVENT,
   type TexDelimitersChangedDetail,
@@ -136,7 +137,16 @@ export function useDocument() {
   }, [watcher]);
   const [content, setContent] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(true);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The autosave's coalescer (task 1327 — the ONE trailing-debounce + maxWait
+  // primitive, `@/lib/write-coalescer`). Its `pending` is "a debounced write
+  // is armed"; the fire body is `fireAutosave` below, reached through a ref so
+  // the coalescer itself is created once and never re-armed by a re-render.
+  const fireAutosaveRef = useRef<() => void>(() => {});
+  const saveCoalescer = useWriteCoalescer({
+    delayMs: AUTOSAVE_DEBOUNCE_MS,
+    maxWaitMs: AUTOSAVE_MAX_WAIT_MS,
+    fire: () => fireAutosaveRef.current(),
+  });
   // `latestContentRef` holds the last-debounce-fired JSON snapshot (or
   // the last-flushed snapshot). It's the *fallback* source for the
   // unmount cleanup, which fires AFTER React destroys the editor (child
@@ -268,10 +278,10 @@ export function useDocument() {
    */
   const hasWorkToWrite = useCallback(
     () =>
-      saveTimerRef.current !== null ||
+      saveCoalescer.pending ||
       hasUnlandedWork(docId) ||
       pendingDelimitersRef.current !== null,
-    [docId],
+    [docId, saveCoalescer],
   );
 
   /**
@@ -411,19 +421,16 @@ export function useDocument() {
   // ref alone lags up to ~1500 ms). Fall back to the ref only when
   // the editor is gone (unmount path).
   const flushPending = useCallback(async (): Promise<void> => {
-    // `saveTimerRef.current !== null` is the canonical "there are
-    // unsaved edits" signal post-perf-fix. A clean state (no debounce
-    // in flight, last save completed) has saveTimer === null and
+    // `hasWorkToWrite()` is the canonical "there are unsaved edits"
+    // signal. A clean state (no debounce armed, last save landed) has
+    // `saveCoalescer.pending === false` and
     // latestContentRef === the saved doc — so we'd otherwise re-save
     // the same content on every flushPending call.
     // save-silent-ok: nothing to write — no armed debounce and the channel
     // reports every edit landed. Writing here would re-send the last saved
     // model on every flush call.
     if (!hasWorkToWrite()) return;
-    if (saveTimerRef.current !== null) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
+    saveCoalescer.cancel();
     const editor = editorRef.current;
     let pending: JSONContent | null;
     if (editor && !editor.isDestroyed) {
@@ -441,7 +448,7 @@ export function useDocument() {
     if (!pending) return;
     latestContentRef.current = null;
     await save(pending);
-  }, [save, hasWorkToWrite]);
+  }, [save, hasWorkToWrite, saveCoalescer]);
 
   // Load the doc on mount. The `<DocPipeline key={docId}>` ancestor
   // forces a full remount when the docId changes, so this effect runs
@@ -533,10 +540,7 @@ export function useDocument() {
       // save-silent-ok: nothing pending — the channel reports every edit
       // landed and no debounce is armed, so the last save captured everything.
       if (!hasWorkToWrite()) return;
-      if (saveTimerRef.current !== null) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
+      saveCoalescer.cancel();
       // Defensive: prefer the live editor if it's still alive (e.g.,
       // test environments where the editor isn't a real TipTap instance
       // that destroys itself). In production, React destroys the editor
@@ -559,7 +563,7 @@ export function useDocument() {
       // mirror tick in the sibling cleanup below is what covers this document.
       if (pending) void save(pending);
     };
-  }, [save, hasWorkToWrite, currentModel]);
+  }, [save, hasWorkToWrite, currentModel, saveCoalescer]);
 
   // Task 391 — the doc is leaving memory. Take a final forced mirror tick (the
   // flush above is fire-and-forget and may be refused), then stop reporting
@@ -588,10 +592,7 @@ export function useDocument() {
       // (and as wasted work in prod for multi-doc sessions).
       // save-silent-ok: nothing pending — see `flushPending`.
       if (!hasWorkToWrite()) return;
-      if (saveTimerRef.current !== null) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
+      saveCoalescer.cancel();
       // Pagehide fires before component unmount, so the editor is
       // still alive here. Prefer the live snapshot.
       const editor = editorRef.current;
@@ -642,7 +643,7 @@ export function useDocument() {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [save, docId, hasWorkToWrite]);
+  }, [save, docId, hasWorkToWrite, saveCoalescer]);
 
   // Debounced save — schedules a 1500 ms timer that, on fire, asks the
   // live editor for its current JSON snapshot and writes it. The doc
@@ -650,99 +651,82 @@ export function useDocument() {
   // moving serialization INSIDE the timer means we pay O(doc-size) at
   // most once per 1500 ms during sustained typing instead of once per
   // keystroke. See plan: ok-lets-do-a-dreamy-thacker.md.
-  // The re-arm path (autosave-pause guard) needs to call `debouncedSave`
-  // recursively. We route the re-arm through this ref to avoid a
-  // reference-before-declaration of the `useCallback` const (and to keep the
-  // closure stable). The ref is assigned to the callback immediately below.
   //
   // MAXWAIT (task 1174): a pure trailing debounce never fires during a typing
   // burst with no 1500 ms pause, so `dirtySince` aged straight into the
-  // `unsaved` tier while nothing was wrong. The burst's first arm is recorded
-  // and every re-arm is capped at {@link AUTOSAVE_MAX_WAIT_MS} from it, so a
-  // document being typed into still writes at least that often. The capped
-  // fire is the SAME timer body — same pause guard, same refusal doors in
-  // `save` — and it only READS the model (no transaction), so it cannot
-  // disturb an IME composition.
-  const debouncedSaveRef = useRef<() => void>(() => {});
-  const burstStartRef = useRef<number | null>(null);
-  const debouncedSave = useCallback(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
+  // `unsaved` tier while nothing was wrong. Every re-arm is capped at
+  // {@link AUTOSAVE_MAX_WAIT_MS} from the burst's first arm, so a document
+  // being typed into still writes at least that often. Since task 1327 that
+  // rule is the shared coalescer's (`createWriteCoalescer`), not private code
+  // here. The capped fire is the SAME body — same pause guard, same refusal
+  // doors in `save` — and it only READS the model (no transaction), so it
+  // cannot disturb an IME composition.
+  const debouncedSave = useCallback(() => saveCoalescer.arm(), [saveCoalescer]);
+  const fireAutosave = useCallback(() => {
+    // The burst ended with this fire, whichever branch runs: a paused
+    // re-arm below starts a fresh one (the coalescer's contract).
+    // AUTOSAVE-CLOBBER GUARD (DESIGN §4): while an external change is
+    // unresolved, do NOT overwrite disk. RE-ARM the debounce instead of
+    // writing, so (a) the dirty flag `saveCoalescer.pending` STAYS
+    // true — keeping the watcher's severity at 'conflict' — and (b) the edit
+    // is retried automatically once the user resolves the change (Reload or
+    // Dismiss → hasUnresolvedChange() returns false and the next fire writes
+    // normally). KEYSTROKE SANCTITY: this check runs at debounce-fire (off the
+    // hot path), never per keystroke; it is a single O(1) store read.
+    const paused = autosavePauseReason(watcherRef.current, docId);
+    if (paused) {
+      // Task 557 — CAPTURE BEFORE REPORTING. A pause is precisely the state
+      // the mirror exists for, and until 557 this branch returned nineteen
+      // lines before `latestContentRef.current = doc`: throughout a conflict
+      // or a cowork-pen hold the ONLY copy of the work was the live editor,
+      // so the moment it was destroyed every memory-side consumer had
+      // nothing. The editor is alive HERE, which is the one moment this path
+      // can answer the question at all. O(doc) at most once per 1500 ms, off
+      // the keystroke path — the same cost the landing branch below pays.
+      const live = editorRef.current;
+      if (live && !live.isDestroyed) {
+        latestContentRef.current =
+          getDocProducts(live)?.ensureFresh().docJson ?? live.getJSON();
+      }
+      // Task 391: the pause is correct AND it means the user's work is
+      // memory-only from here. Say so on the channel — that is what arms the
+      // mirror and what stops a reload door opening quietly on top of it.
+      // Task 489: the REASON comes from the door that decided to pause, so a
+      // cowork hold can no longer be reported as a conflict.
+      noteSaveBlocked(docId, paused);
+      saveCoalescer.arm();
+      return;
     }
-    const now = Date.now();
-    if (burstStartRef.current === null) burstStartRef.current = now;
-    const delay = Math.max(
-      0,
-      Math.min(AUTOSAVE_DEBOUNCE_MS, burstStartRef.current + AUTOSAVE_MAX_WAIT_MS - now),
-    );
-    saveTimerRef.current = setTimeout(() => {
-      // The burst ends with this fire, whichever branch runs: a paused re-arm
-      // below starts a fresh one.
-      burstStartRef.current = null;
-      // AUTOSAVE-CLOBBER GUARD (DESIGN §4): while an external change is
-      // unresolved, do NOT overwrite disk. RE-ARM the debounce instead of
-      // writing, so (a) the dirty flag `saveTimerRef.current !== null` STAYS
-      // true — keeping the watcher's severity at 'conflict' — and (b) the edit
-      // is retried automatically once the user resolves the change (Reload or
-      // Dismiss → hasUnresolvedChange() returns false and the next fire writes
-      // normally). KEYSTROKE SANCTITY: this check runs at debounce-fire (off the
-      // hot path), never per keystroke; it is a single O(1) store read.
-      const paused = autosavePauseReason(watcherRef.current, docId);
-      if (paused) {
-        // Task 557 — CAPTURE BEFORE REPORTING. A pause is precisely the state
-        // the mirror exists for, and until 557 this branch returned nineteen
-        // lines before `latestContentRef.current = doc`: throughout a conflict
-        // or a cowork-pen hold the ONLY copy of the work was the live editor,
-        // so the moment it was destroyed every memory-side consumer had
-        // nothing. The editor is alive HERE, which is the one moment this path
-        // can answer the question at all. O(doc) at most once per 1500 ms, off
-        // the keystroke path — the same cost the landing branch below pays.
-        const live = editorRef.current;
-        if (live && !live.isDestroyed) {
-          latestContentRef.current =
-            getDocProducts(live)?.ensureFresh().docJson ?? live.getJSON();
-        }
-        // Task 391: the pause is correct AND it means the user's work is
-        // memory-only from here. Say so on the channel — that is what arms the
-        // mirror and what stops a reload door opening quietly on top of it.
-        // Task 489: the REASON comes from the door that decided to pause, so a
-        // cowork hold can no longer be reported as a conflict.
-        noteSaveBlocked(docId, paused);
-        debouncedSaveRef.current();
-        return;
-      }
-      saveTimerRef.current = null;
-      const editor = editorRef.current;
-      if (!editor || editor.isDestroyed) {
-        // Task 392 — the debounce has just been disarmed and there is no
-        // model to write, so this edit has no retry left on this path. Say so
-        // on the channel: the unmount flush below (or a manual Save) is what
-        // clears it, and until one of them lands the work is memory-only.
-        noteSaveBlocked(docId, "error");
-        return;
-      }
-      // Perf Wave 1 (S3): prefer the DocProducts pipeline's synchronously-
-      // refreshed shared docJson — O(changed blocks), identity-stable for
-      // unchanged blocks — over a fresh O(doc) deep copy. writeDocBundle is
-      // mutation-safe for the shared snapshot (needsUuidWork copy-on-write).
-      // Null pipeline (flag off / not mounted) falls back to getJSON.
-      const doc =
-        getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
-      // Populate the snapshot ref so the unmount cleanup (which fires
-      // after the editor is destroyed) has something to flush.
-      latestContentRef.current = doc;
-      // `save` carries any standing preamble stash itself (see
-      // `pendingDelimitersRef`) — this is the retry path that lands a
-      // preamble edit after the user resolves an external change via
-      // Dismiss / "Keep my version", or after a refused write is acknowledged.
-      save(doc);
-    }, delay);
-  }, [save, docId]);
-  // Sync the self-reference ref in an effect (never during render). The re-arm
-  // path inside the timer reads it only after this effect has run.
+    const editor = editorRef.current;
+    if (!editor || editor.isDestroyed) {
+      // Task 392 — the debounce has just been disarmed and there is no
+      // model to write, so this edit has no retry left on this path. Say so
+      // on the channel: the unmount flush below (or a manual Save) is what
+      // clears it, and until one of them lands the work is memory-only.
+      noteSaveBlocked(docId, "error");
+      return;
+    }
+    // Perf Wave 1 (S3): prefer the DocProducts pipeline's synchronously-
+    // refreshed shared docJson — O(changed blocks), identity-stable for
+    // unchanged blocks — over a fresh O(doc) deep copy. writeDocBundle is
+    // mutation-safe for the shared snapshot (needsUuidWork copy-on-write).
+    // Null pipeline (flag off / not mounted) falls back to getJSON.
+    const doc =
+      getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
+    // Populate the snapshot ref so the unmount cleanup (which fires
+    // after the editor is destroyed) has something to flush.
+    latestContentRef.current = doc;
+    // `save` carries any standing preamble stash itself (see
+    // `pendingDelimitersRef`) — this is the retry path that lands a
+    // preamble edit after the user resolves an external change via
+    // Dismiss / "Keep my version", or after a refused write is acknowledged.
+    save(doc);
+  }, [save, docId, saveCoalescer]);
+  // Sync the fire body in an effect (never during render). The coalescer
+  // reads it only when its timer fires, after this effect has run.
   useEffect(() => {
-    debouncedSaveRef.current = debouncedSave;
-  }, [debouncedSave]);
+    fireAutosaveRef.current = fireAutosave;
+  }, [fireAutosave]);
 
   // Immediate doc-bundle flush for anchor-UUID mint transactions. Cancels the
   // pending 1500 ms debounce and writes the live editor JSON NOW, so a freshly
@@ -755,7 +739,7 @@ export function useDocument() {
   // it always arrives with the debounce just armed by `debouncedSave()` below.
   const flushNow = useCallback(() => {
     // AUTOSAVE-CLOBBER GUARD (DESIGN §4): while an external change is
-    // unresolved, do NOT write. Re-arm the debounce (leaving saveTimerRef
+    // unresolved, do NOT write. Re-arm the debounce (leaving the coalescer
     // armed) so the minted UUID is retried after the user resolves the change,
     // and the dirty flag stays true (severity stays 'conflict'). This is a
     // discrete commit path, not the keystroke path — O(1) store read.
@@ -765,10 +749,7 @@ export function useDocument() {
       debouncedSave();
       return;
     }
-    if (saveTimerRef.current !== null) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
+    saveCoalescer.cancel();
     const editor = editorRef.current;
     if (!editor || editor.isDestroyed) {
       // Task 392 — same as the debounce timer's arm: the flush was requested,
@@ -784,7 +765,7 @@ export function useDocument() {
       getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
     latestContentRef.current = doc;
     void save(doc);
-  }, [save, debouncedSave, docId]);
+  }, [save, debouncedSave, docId, saveCoalescer]);
 
   // Code-pane preamble commit: persist the live TipTap JSON with the
   // caller-supplied .tex delimiters. `writeDocBundle` skips its disk
@@ -847,15 +828,12 @@ export function useDocument() {
         noteSaveBlocked(docId, "error");
         return;
       }
-      if (saveTimerRef.current !== null) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
+      saveCoalescer.cancel();
       const doc = editor.getJSON();
       latestContentRef.current = doc;
       void save(doc);
     },
-    [save, debouncedSave, docId],
+    [save, debouncedSave, docId, saveCoalescer],
   );
 
   // CHIP-C: immediate doc-bundle flush requested on a drop-mode re-anchor
@@ -1016,10 +994,7 @@ export function useDocument() {
    * not land 1500 ms later.
    */
   const keepMineOverDisk = useCallback(async (): Promise<boolean> => {
-    if (saveTimerRef.current !== null) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
+    saveCoalescer.cancel();
     const doc = currentModel();
     // save-silent-ok: reported by RETURN — `false` reaches the conflict door,
     // which tells the user their version was not kept.
@@ -1032,7 +1007,7 @@ export function useDocument() {
     // fail outright; either way the door must not report the user's version
     // "kept" while it sits in memory alone.
     return receipt.landed;
-  }, [currentModel, save]);
+  }, [currentModel, save, saveCoalescer]);
 
   /**
    * Task 851 — the user answered THIS offer: drop exactly its slot (never the
@@ -1079,10 +1054,7 @@ export function useDocument() {
     const recovered = offer.entry.content;
     // THE NET, FIRST — both sides, before anything is overwritten.
     await snapshotConflictSides(handle, recovered);
-    if (saveTimerRef.current !== null) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
+    saveCoalescer.cancel();
     const receipt = await save(recovered, { userResolvedConflict: true });
     // Task 567 — the verdict is the write's OWN receipt. Until 567 this read
     // `isWriteProtected`, which answers whether a NOTICE stands: a THROWN
@@ -1097,7 +1069,7 @@ export function useDocument() {
     await refetch();
     await answerMirrorOffer(offer.entry);
     return true;
-  }, [docId, handle, save, refetch, answerMirrorOffer]);
+  }, [docId, handle, save, refetch, answerMirrorOffer, saveCoalescer]);
 
   /** Keep what is on disk. The mirror's content is NOT archived here: the disk
    *  copy is the one the user chose and the mirrored one is being declined —
@@ -1152,10 +1124,7 @@ export function useDocument() {
         noteSaveBlocked(docId, paused);
         return { landed: false, reason: paused };
       }
-      if (saveTimerRef.current !== null) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
+      saveCoalescer.cancel();
       const doc = currentModel();
       if (!doc) {
         // No model at all (no editor, nothing ever snapshotted): nothing can
@@ -1185,7 +1154,7 @@ export function useDocument() {
       if (receipt.landed || receipt.reason === "read-only") return { landed: true };
       return { landed: false, reason: receipt.reason };
     },
-    [docId, currentModel, save],
+    [docId, currentModel, save, saveCoalescer],
   );
 
   useEffect(

@@ -26,6 +26,7 @@ import {
   type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
@@ -88,6 +89,13 @@ interface RichTextFieldProps {
    *  true. */
   editable?: boolean;
 }
+
+/** The card-body field's trailing window before it hands an edit upstream. */
+const RICH_TEXT_DEBOUNCE_MS = 250;
+/** Task 1327 — its burst cap: an unbroken typing burst still hands its edit
+ *  upstream at least this often (the task-1174 "continuous typing must still
+ *  write" rule, through the shared coalescer). */
+const RICH_TEXT_MAX_WAIT_MS = 1000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Format toolbar (commands operate on the wrapped Tiptap editor)
@@ -362,9 +370,25 @@ function RichTextFieldImpl({
     [refreshCitationDisplay, refreshRefDisplay],
   );
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // The editor whose edit the debounce is holding — read by the unmount flush.
+  // The editor whose edit the debounce is holding — read by the coalescer's
+  // fire (trailing, capped, blur flush, unmount flush alike).
   const pendingEditorRef = useRef<{ getJSON: () => JSONContent } | null>(null);
+  // Task 1327 — the upstream stage of a card-body write rides the ONE write
+  // coalescer (`@/lib/write-coalescer`): 250 ms trailing so the parent (and
+  // the persist chain) is not thrashed per keystroke, CAPPED at
+  // RICH_TEXT_MAX_WAIT_MS so an unbroken typing burst still hands its edit
+  // upstream — where the sidecar hook's own capped coalescer takes it to disk.
+  // End-to-end, continuous card typing reaches disk within ~1 s + the content
+  // tier's cap, instead of only when the typist pauses.
+  const changeCoalescer = useWriteCoalescer({
+    delayMs: RICH_TEXT_DEBOUNCE_MS,
+    maxWaitMs: RICH_TEXT_MAX_WAIT_MS,
+    fire: () => {
+      const pending = pendingEditorRef.current;
+      pendingEditorRef.current = null;
+      if (pending) onChangeRef.current(pending.getJSON());
+    },
+  });
   const isFocusedRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -532,28 +556,18 @@ function RichTextFieldImpl({
       // armed. Closing it needs a synchronous render flush around the
       // hand-off (a different mechanism, with its own harness); until then
       // the blur edge below and the sidecar hook's own doors are the nets.
-      if (debounceRef.current) clearTimeout(debounceRef.current);
       pendingEditorRef.current = editor;
-      debounceRef.current = setTimeout(() => {
-        debounceRef.current = undefined;
-        pendingEditorRef.current = null;
-        onChangeRef.current(editor.getJSON());
-      }, 250);
+      changeCoalescer.arm();
     },
     onFocus: ({ editor: ed }) => {
       isFocusedRef.current = true;
       onFocusChangeRef.current?.(true, ed);
     },
-    onBlur: ({ editor }) => {
+    onBlur: () => {
       isFocusedRef.current = false;
       // Flush any pending debounced update so the parent sees the final value
       // before we report the blur (which often triggers cleanup logic).
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = undefined;
-        pendingEditorRef.current = null;
-        onChangeRef.current(editor.getJSON());
-      }
+      changeCoalescer.flush();
       onFocusChangeRef.current?.(false, null);
     },
   // Re-create the editor when instanceKey changes (footnote/note ID changed
@@ -575,14 +589,9 @@ function RichTextFieldImpl({
   // from its last state.)
   useEffect(() => {
     return () => {
-      if (!debounceRef.current) return;
-      clearTimeout(debounceRef.current);
-      debounceRef.current = undefined;
-      const pending = pendingEditorRef.current;
-      pendingEditorRef.current = null;
-      if (pending) onChangeRef.current(pending.getJSON());
+      changeCoalescer.flush();
     };
-  }, [instanceKey]);
+  }, [instanceKey, changeCoalescer]);
 
   // Editor-census probe (__editorCensus): one live-instance tick per mount.
   useEffect(() => registerEditorMount("rich-text-field"), []);

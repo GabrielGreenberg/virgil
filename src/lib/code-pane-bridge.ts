@@ -62,6 +62,13 @@ import {
   getCharRangeForUuid,
 } from "@/lib/code-position-map";
 import { setCodeBand } from "@/lib/code-band";
+import { createWriteCoalescer } from "@/lib/write-coalescer";
+
+/** Task 1327 — the code→TipTap stage's burst cap: continuous code typing
+ *  still re-parses into the model at least this often (the `.tex` autosave's
+ *  own cap, so a code-pane burst reaches disk on the same clock as a visual
+ *  one). */
+const CODE_SYNC_MAX_WAIT_MS = 10_000;
 
 export const SYNC_ANNOTATION = Annotation.define<true>();
 
@@ -170,7 +177,16 @@ export function createCodePaneBridge(
   let pendingPersist: { preamble: string; postamble: string } | null = null;
   let syncing: "code" | "tiptap" | null = null;
   let lastParseError: string | null = null;
-  let codeTimer: ReturnType<typeof setTimeout> | null = null;
+  // The code→TipTap stage rides the ONE write coalescer (task 1327,
+  // `@/lib/write-coalescer`): trailing `debounceMs`, capped at
+  // CODE_SYNC_MAX_WAIT_MS so an unbroken burst of code typing still reaches
+  // the model — and through the model's own autosave, disk. Hoisted function
+  // declaration, so the fire may name `flushCodeToTipTap` here.
+  const codeCoalescer = createWriteCoalescer({
+    delayMs: debounceMs,
+    maxWaitMs: CODE_SYNC_MAX_WAIT_MS,
+    fire: () => flushCodeToTipTap(),
+  });
   let tipTapTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
@@ -215,10 +231,7 @@ export function createCodePaneBridge(
 
   function flushCodeToTipTap() {
     if (disposed) return;
-    if (codeTimer) {
-      clearTimeout(codeTimer);
-      codeTimer = null;
-    }
+    codeCoalescer.cancel();
     const text = view.state.doc.toString();
     // Re-extract preamble/postamble in case the user edited them. We
     // keep the previous values if extraction fails (e.g. mid-edit of
@@ -357,8 +370,7 @@ export function createCodePaneBridge(
   }
 
   function scheduleCodeToTipTap() {
-    if (codeTimer) clearTimeout(codeTimer);
-    codeTimer = setTimeout(flushCodeToTipTap, debounceMs);
+    codeCoalescer.arm();
   }
 
   function flushTipTapToCode() {
@@ -583,7 +595,7 @@ export function createCodePaneBridge(
       // Ending the bridge COMMITS what it holds, it does not cancel it (task
       // 864). Every exit from the code view — the visual/PDF toggles, a doc
       // switch, an editor swap — unmounts the pane and lands here, and the
-      // last ≤ debounceMs of code typing exists ONLY in `codeTimer`. Clearing
+      // last ≤ debounceMs of code typing exists ONLY in the coalescer. Clearing
       // it dropped those keystrokes silently. So flush first, through the same
       // gated door as the debounce (a lossy parse keeps the last-good model
       // and reports via `onParseError`), while `disposed` is still false. The
@@ -591,7 +603,7 @@ export function createCodePaneBridge(
       // (editor swap) — a destroyed editor has nowhere to receive the edit.
       // A pending TipTap→code sync is dropped: the code view is going away
       // and TipTap is canonical.
-      if (codeTimer && !editor.isDestroyed) {
+      if (codeCoalescer.pending && !editor.isDestroyed) {
         try {
           flushCodeToTipTap();
         } catch (err) {
@@ -599,10 +611,7 @@ export function createCodePaneBridge(
         }
       }
       disposed = true;
-      if (codeTimer) {
-        clearTimeout(codeTimer);
-        codeTimer = null;
-      }
+      codeCoalescer.cancel();
       if (tipTapTimer) {
         clearTimeout(tipTapTimer);
         tipTapTimer = null;
@@ -618,7 +627,7 @@ export function createCodePaneBridge(
       return lastParseError;
     },
     flush() {
-      if (codeTimer) flushCodeToTipTap();
+      if (codeCoalescer.pending) flushCodeToTipTap();
       if (tipTapTimer) flushTipTapToCode();
     },
     onCodeMirrorUpdate(u: ViewUpdate) {

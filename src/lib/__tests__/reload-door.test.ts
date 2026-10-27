@@ -551,7 +551,9 @@ describe("census — every coalescing writer registers with the ONE registry", (
   // with an explicit type argument where it cannot be inferred.
   const WRITE_DOOR =
     /\b(?:writeSidecar|writeSidecarMerged|writeDocBundle|mutateSidecar|mutateBib|writeTex)\s*(?:<[^>()]*>)?\s*\(/;
-  const DEBOUNCE = /\bsetTimeout\s*\(/;
+  // Since task 1327 a writer's debounce is the shared write coalescer, so
+  // constructing one counts as holding a debounce.
+  const DEBOUNCE = /\bsetTimeout\s*\(|\b(?:create|use)WriteCoalescer\s*\(/;
   const REGISTER = /\bregisterPendingFlusher\s*\(/;
   const REGISTRY_FILE = "src/lib/multi-window/pending-saves.ts";
 

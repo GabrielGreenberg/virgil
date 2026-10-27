@@ -12,7 +12,8 @@ import {
 } from "@/lib/multi-window/doc-pipeline";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { foldedSetOf } from "@/lib/section-folding";
-import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
+import { sidecarWriteDebounceMs, sidecarWriteMaxWaitMs } from "@/lib/sidecar-value";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import {
   registerPendingFlusher,
   unregisterPendingFlusher,
@@ -218,17 +219,22 @@ export function useEditorUIState(
   // pending-flusher registry's entry (task 559), so the value is never delayed
   // past the moment it stops being live.
   const pendingRef = useRef<EditorStateData | null>(null);
-  const timerRef = useRef<number | null>(null);
+  // The ONE write coalescer (task 1327, `@/lib/write-coalescer`), on this
+  // file's tier cadence — VIEW tier, so a pure trailing debounce (maxWait ∞).
+  // Its fire hands the parked payload to the current `persistNow`.
+  const fireWriteRef = useRef<() => void>(() => {});
+  const writeCoalescer = useWriteCoalescer({
+    delayMs: sidecarWriteDebounceMs(EDITOR_STATE_FILE),
+    maxWaitMs: sidecarWriteMaxWaitMs(EDITOR_STATE_FILE),
+    fire: () => fireWriteRef.current(),
+  });
 
   const flushPending = useCallback((): Promise<void> => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+    writeCoalescer.cancel();
     const payload = pendingRef.current;
     pendingRef.current = null;
     return payload !== null ? persistNow(payload) : Promise.resolve();
-  }, [persistNow]);
+  }, [persistNow, writeCoalescer]);
 
   // …and register that same door with the ONE pending-flusher registry
   // (task 559), so the per-doc drain and the app-wide reload door flush this
@@ -244,16 +250,17 @@ export function useEditorUIState(
   const persist = useCallback(
     (s: EditorStateData) => {
       pendingRef.current = s;
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        timerRef.current = null;
-        const payload = pendingRef.current;
-        pendingRef.current = null;
-        if (payload !== null) void persistNow(payload);
-      }, sidecarWriteDebounceMs(EDITOR_STATE_FILE));
+      writeCoalescer.arm();
     },
-    [persistNow],
+    [writeCoalescer],
   );
+  useEffect(() => {
+    fireWriteRef.current = () => {
+      const payload = pendingRef.current;
+      pendingRef.current = null;
+      if (payload !== null) void persistNow(payload);
+    };
+  }, [persistNow]);
 
   // Settle on doc switch / unmount — the new doc's handle is different, so a
   // write that fired afterwards would be dropped by the stale-pipeline guard.
