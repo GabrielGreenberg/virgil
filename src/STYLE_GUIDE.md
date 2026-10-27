@@ -999,7 +999,11 @@ Toggle-sidebar button keeps the icon strip's 18px). CI:
 requires `iconbtn-{size}` / `topbarbtn` in the tag, or a
 `data-iconbtn-exempt="<reason>"` attribute naming one of the exceptions
 below (or another real reason a reviewer can argue with). The reason
-travels with the code, so the next copy-paste sees it.
+travels with the code, so the next copy-paste sees it. A button a SHELL
+renders from a forwarded class prop counts too (task 1323): an icon-only
+`<AnchoredMenu trigger={() => <svg/>}>` takes the rung in its
+`triggerClassName` (e.g. `"iconbtn-sm iconbtn-meta"`), and the exemption
+attribute goes on that call tag.
 
 **What `iconbtn-*` deliberately does NOT model.** These are icon-only
 buttons in shape but not in spec terms; each has state or context the

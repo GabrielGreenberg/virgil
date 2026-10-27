@@ -528,15 +528,140 @@ const EXEMPT = /(?<![\w-])data-iconbtn-exempt\s*=\s*"[^"]*\w[^"]*"/;
  *  value is `"iconbtn-sm"`) is read as what it is, not as opaque. */
 const wearsGeometry = (s: Site) => GEOMETRY.test(s.tag);
 
+/* ── Leg E's population includes FORWARDED triggers (task 1323) ──
+ *
+ * "Which buttons exist" was answered twice in this file. Leg E read literal
+ * `<button>` tags; the shell leg below DISCOVERS every component that renders
+ * the `<button>` itself and takes its class from a prop (`AnchoredMenu`'s
+ * `triggerClassName`, `PopoutButton`'s `className`, …). A button whose class
+ * is decided at such a CALL SITE was invisible to leg E — so the Omni filter
+ * kebab, `<AnchoredMenu triggerClassName="p-1.5 rounded text-[var(--muted)] …"
+ * trigger={() => <svg/>}>`, sat off every `iconbtn-*` rung with CI green.
+ *
+ * Now leg E reads the SAME derived population: every icon-only call site of
+ * every button-rendering shell joins the literal tags. A call is icon-only
+ * when every CONTENT CHANNEL the shell's `<button>` renders — `{children}`, or
+ * a render prop (`{trigger(open)}`) — that the call supplies renders an
+ * element and no text. The call's TAG is the site: its class prop, its
+ * `data-iconbtn-exempt`, its spread / `tabIndex={-1}` are read exactly as for
+ * a literal `<button>`. A shell that composes geometry itself (a token in its
+ * own className expression OUTSIDE any `prop ?? …` fallback) answers for every
+ * call; a shell whose token is only the fallback answers for calls that pass
+ * no class. */
+
+/** The content channels a shell's own `<button>` renders: `{children}` →
+ *  `children`, `{trigger(open)}` → `trigger`. */
+function contentChannels(m: ShellMember): string[] {
+  const hit = elementsNamed(m.fileSource, "button").find((h) => h.tag === m.tagSource);
+  if (!hit?.subtree) return [];
+  return [...new Set([...hit.subtree.matchAll(/\{\s*([a-z]\w*)\s*[(}]/g)].map((x) => x[1]))];
+}
+
+/** Is a shell CALL icon-only, read through the shell's content channels?
+ *  True only when some supplied channel renders an element and none renders
+ *  text; null when a region cannot be parsed (fail loud). */
+export function forwardedCallIsIcon(call: JsxElementHit, channels: string[]): boolean | null {
+  let element = false;
+  for (const ch of channels) {
+    if (ch === "children") {
+      if (!call.subtree || !call.subtree.trim()) continue;
+      const icon = isIconOnly(call);
+      if (icon !== true) return icon;
+      if (/<[A-Za-z]/.test(call.subtree)) element = true;
+      continue;
+    }
+    const region = propValue(call.tag, ch);
+    if (region === null) continue;
+    // A string or a computed value with no element may be text.
+    if (!/<[A-Za-z]/.test(region)) return false;
+    // A fragment is an element for this question: `() => (<>AI requests…</>)`
+    // renders its text, and `renderedText` only opens on a NAMED tag.
+    const text = renderedText(region.replace(/<>/g, "<F>").replace(/<\/>/g, "</F>"), 0);
+    if (text === null) return null;
+    if (/[A-Za-z0-9]/.test(text)) return false;
+    element = true;
+  }
+  return element;
+}
+
+/** Every icon-only call site of a button-rendering shell, as a leg-E `Site`. */
+function forwardedIconSites(): { sites: Site[]; unreadable: string[] } {
+  const shells = MEMBERS.filter((m) => m.tag === "button").flatMap((m) => {
+    const channels = contentChannels(m);
+    if (channels.length === 0) return [];
+    const expr = resolveConsts(m.expr, stringConsts(m.fileSource));
+    const fallback = new RegExp(`(?<![\\w.])${m.prop}\\s*(?:\\?\\?|\\|\\|)`).test(expr);
+    // `composes`: the shell wears geometry for every caller; `defaults`: only
+    // for a caller that passes no class.
+    const geometry = GEOMETRY.test(expr) ? (fallback ? "defaults" : "composes") : "none";
+    return geometry === "composes" ? [] : [{ m, channels, geometry }];
+  });
+  const sites: Site[] = [];
+  const unreadable: string[] = [];
+  for (const { file, raw } of sources()) {
+    // The LINE-ALIGNED stripped view (comments blanked in place, strings
+    // kept): a call tag routinely carries a `//` comment between its props
+    // (the Omni filter's does), so it cannot be relocated byte-for-byte in
+    // `raw`, and the line falls straight out of the aligned view instead.
+    const src = strip(raw, true, true);
+    const consts = stringConsts(src);
+    for (const { m, channels, geometry } of shells) {
+      for (const hit of elementsNamed(src, m.shell)) {
+        const line = src.slice(0, hit.index).split("\n").length;
+        const icon = forwardedCallIsIcon(hit, channels);
+        if (icon === null) unreadable.push(`${file}:${line} <${m.shell}>`);
+        if (icon !== true) continue;
+        if (geometry === "defaults" && propValue(hit.tag, m.prop) === null) continue;
+        sites.push({ ...hit, tag: resolveConsts(hit.tag, consts), file, line });
+      }
+    }
+  }
+  return { sites, unreadable };
+}
+
 describe("an icon-only button takes its geometry from iconbtn-* (task 826)", () => {
-  const sites = ALL.icon.filter((s) => !opaqueSpread(s.tag) && !notATabStop(s.tag));
+  // Lazy: the shell discovery (`MEMBERS`) is declared further down the file.
+  let memo: { sites: Site[]; forwarded: Site[]; unreadable: string[] } | null = null;
+  const population = () => {
+    if (memo) return memo;
+    const fwd = forwardedIconSites();
+    const keep = (s: Site) => !opaqueSpread(s.tag) && !notATabStop(s.tag);
+    const forwarded = fwd.sites.filter(keep);
+    memo = { sites: [...ALL.icon.filter(keep), ...forwarded], forwarded, unreadable: fwd.unreadable };
+    return memo;
+  };
 
   it("sees a population worth censusing (self-check)", () => {
+    const { sites, forwarded, unreadable } = population();
     expect(sites.filter(wearsGeometry).length).toBeGreaterThan(40);
+    // The forwarded half: `AnchoredMenu`'s icon triggers (CitationCard, the
+    // panel-primitives menus, the Omni filter) must be SEEN, or the widening
+    // silently narrowed back to literal tags.
+    expect(forwarded.filter((s) => /^<AnchoredMenu\b/.test(s.tag)).length).toBeGreaterThanOrEqual(3);
+    expect(unreadable).toEqual([]);
+  });
+
+  it("reads a forwarded icon trigger as a site, and its class prop as its geometry (self-check)", () => {
+    const bare = `<AnchoredMenu triggerClassName="p-1.5 rounded" trigger={() => <svg aria-hidden="true" />}>{() => null}</AnchoredMenu>`;
+    const [hit] = elementsNamed(bare, "AnchoredMenu");
+    expect(forwardedCallIsIcon(hit, ["trigger"])).toBe(true);
+    expect(GEOMETRY.test(hit.tag)).toBe(false);
+    const sized = bare.replace("p-1.5 rounded", "iconbtn-sm iconbtn-meta");
+    expect(GEOMETRY.test(elementsNamed(sized, "AnchoredMenu")[0].tag)).toBe(true);
+    // A trigger that shows a word is not icon-only; neither is a bare value.
+    const worded = `<AnchoredMenu trigger={() => <span>Sort</span>}>{() => null}</AnchoredMenu>`;
+    expect(forwardedCallIsIcon(elementsNamed(worded, "AnchoredMenu")[0], ["trigger"])).toBe(false);
+    const fragment = `<AnchoredMenu trigger={() => (<>AI requests<span aria-hidden>▾</span></>)}>{() => null}</AnchoredMenu>`;
+    expect(forwardedCallIsIcon(elementsNamed(fragment, "AnchoredMenu")[0], ["trigger"])).toBe(false);
+    const computed = `<AnchoredMenu trigger={renderLabel}>{() => null}</AnchoredMenu>`;
+    expect(forwardedCallIsIcon(elementsNamed(computed, "AnchoredMenu")[0], ["trigger"])).toBe(false);
+    // Children channel, for a children-forwarding shell.
+    const kids = `<PopoutButton className="p-1"><IconPopout /></PopoutButton>`;
+    expect(forwardedCallIsIcon(elementsNamed(kids, "PopoutButton")[0], ["children"])).toBe(true);
   });
 
   it("every icon-only button wears iconbtn-*/topbarbtn or states its exemption at the site", () => {
-    const handRolled = sites
+    const handRolled = population().sites
       .filter((s) => !wearsGeometry(s) && !EXEMPT.test(s.tag))
       .map(at);
     // No allowlist. A hit is either `className="iconbtn-{xs|sm|md|lg}"` (+ an
@@ -547,7 +672,7 @@ describe("an icon-only button takes its geometry from iconbtn-* (task 826)", () 
   });
 
   it("an exemption never sits on a button that already wears iconbtn-*", () => {
-    const moot = sites.filter((s) => wearsGeometry(s) && EXEMPT.test(s.tag)).map(at);
+    const moot = population().sites.filter((s) => wearsGeometry(s) && EXEMPT.test(s.tag)).map(at);
     expect(moot).toEqual([]);
   });
 
