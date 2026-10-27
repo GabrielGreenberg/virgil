@@ -499,9 +499,15 @@ describe("census — every archived answer comes from the ONE authority", () => 
     expect(src).not.toMatch(/if\s*\(c\.archived\)/);
   });
 
-  it("the DOM-keyed sweep reaches EditorLayout from PaneState, never a second derivation", () => {
+  it("the DOM-keyed sweep runs IN the pane that owns the set, never a second derivation", () => {
+    // Task 1316: the sweep (`useLinkHighlight`) moved from EditorLayout into
+    // EditorPane, so the set no longer bubbles through PaneState at all — and a
+    // shell-less host (the Library Reader) gets the sweep too.
+    const pane = read("src/components/EditorPane.tsx");
+    expect(pane).toMatch(/useLinkHighlight\(\{[\s\S]*?archivedAnchorIds:\s*archivedAnchorIdSet/);
+    expect(pane).not.toMatch(/^\s*archivedAnchorIds:\s*ReadonlySet<string>;/m);
     const layout = read("src/components/EditorLayout.tsx");
-    expect(layout).toContain("archivedAnchorIds: paneState?.archivedAnchorIds");
+    expect(layout).not.toContain("paneState?.archivedAnchorIds");
     // EditorLayout holds no `archived` fact of its own: it must not build one.
     expect(layout).not.toContain("archivedCardIds(");
     expect(layout).not.toContain("archivedAnchorIds(");

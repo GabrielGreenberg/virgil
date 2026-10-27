@@ -104,8 +104,8 @@ import {
   deriveCategorySides,
   omniCategoriesForSide,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, ALL_HIGHLIGHT_TYPES, HighlightType, isPanelDocked } from "@/hooks/useViewPrefs";
-import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
+import { useViewPrefs, PanelId, isPanelDocked } from "@/hooks/useViewPrefs";
+import { visibleHighlightKinds } from "@/links/_shared/useLinkHighlight";
 import { Button } from "./Button";
 import { cardFloatZ } from "@/floats/float-policy";
 import {
@@ -197,9 +197,6 @@ const EMPTY_MODE_B_CARDS: ModeBBag = {
   highlights: [],
 };
 const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
-// Stable empty for the archived-anchor sweep's `paneState?.X ?? …` read — a
-// fresh `new Set()` per render would re-fire the sweep effect every render.
-const EMPTY_ARCHIVED_ANCHORS: PaneState["archivedAnchorIds"] = new Set<string>();
 // Stable empties for the shell's diagnostics fallbacks (read from paneState in
 // the code-view Errors sidebar + badge; the pane owns the real state now).
 const EMPTY_ERR_SET: Set<string> = new Set();
@@ -1076,39 +1073,11 @@ export default function EditorLayout() {
   // depended on the EditorLayout-side mainAreaRef. Removed with the
   // 7.8 mount swap; reintroduce inside EditorPane if needed.)
 
-  // Standing linked-anchor chrome: the editor root gets `data-show-hl-<kind>`
-  // for each visible highlight kind, and archived cards' spans get
-  // `data-anchor-archived`. HOVER / SELECTION of a `.linked-anchor` span is
-  // NOT painted here (task 1148): its one painter is the pane's
-  // `useAnchorHighlightReconciler`, reading the pane's own card store. The
-  // shell used to keep a second copy of that state (`activeAnchorId` synced
-  // from the selected note/cut/comment, `hoveredAnchorId` re-derived from the
-  // store's hover) and paint a second channel whose wash never won the cascade.
-  const hiddenHighlightTypes = useMemo(
-    () => new Set<HighlightType>(prefs.hiddenHighlightTypes),
-    [prefs.hiddenHighlightTypes],
-  );
-  const visibleHighlightKinds = useMemo(() => {
-    const out = new Set<"note" | "todo" | "comment" | "cut" | "archive" | "report">();
-    if (!prefs.showHighlights) return out;
-    for (const t of ALL_HIGHLIGHT_TYPES) {
-      if (!hiddenHighlightTypes.has(t)) out.add(t);
-    }
-    // Archive linked anchors aren't toggleable from the menu — keep
-    // them visible whenever the master switch is on.
-    out.add("archive");
-    return out;
-  }, [prefs.showHighlights, hiddenHighlightTypes]);
-  useLinkHighlight({
-    editor: editorInstance,
-    visibleHighlightKinds,
-    // An archived card draws no anchor chrome (task 497). Read from the ACTIVE
-    // pane's bubbled PaneState — the ONE authority's DOM-keyed projection,
-    // never a second derivation here (the shell holds no `archived` fact of its
-    // own). Inert empty set until the pane bubbles, which is also correct: with
-    // no pane there are no spans to sweep.
-    archivedAnchorIds: paneState?.archivedAnchorIds ?? EMPTY_ARCHIVED_ANCHORS,
-  });
+  // Standing linked-anchor chrome (the per-kind `data-show-hl-<kind>` washes
+  // and the archived-span sweep) is the PANE's — `useLinkHighlight` mounts in
+  // EditorPane (task 1316), so the Library Reader, which has no shell, gets it
+  // too. The shell keeps only the revisions text-highlight gate below, which
+  // reads the same rule through `visibleHighlightKinds`.
 
   // ── LabelRef popover state ──
   // The clicked chip by IDENTITY (owning editor + pos), its own rect, its
@@ -3007,7 +2976,7 @@ export default function EditorLayout() {
   // Search range highlight takes priority — skip text-based highlight when active
   const highlightText = searchHighlightRange
     ? null
-    : !visibleHighlightKinds.has("comment")
+    : !visibleHighlightKinds(prefs).has("comment")
       ? null
       : isPanelDocked(prefs, "revisions") &&
           currentSuggestion &&

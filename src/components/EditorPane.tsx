@@ -119,6 +119,10 @@ import {
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import {
+  useLinkHighlight,
+  visibleHighlightKinds,
+} from "@/links/_shared/useLinkHighlight";
+import {
   archivedAnchorIds,
   archivedCardIds,
 } from "@/links/_shared/archived-anchor-chrome";
@@ -837,18 +841,6 @@ export interface PaneState {
   // DocPipeline) and must hand the pane's save machinery to the bridge's
   // `persistDelimiters` callback.
   saveWithDelimiters: (d: { preamble: string; postamble: string }) => void;
-  /**
-   * Mode-B `linkedAnchor` anchor ids owned by an ARCHIVED card — the ONE
-   * authority's DOM-keyed projection (`archivedAnchorIds`,
-   * `src/links/_shared/archived-anchor-chrome.ts`).
-   *
-   * Bubbled rather than re-derived because the sweep that consumes it
-   * (`useLinkHighlight`) is mounted in EditorLayout, which holds no card
-   * collections of its own beyond the slices below — and a second derivation
-   * there is precisely the mistake task 476 was about. Recomputes only when a
-   * sidecar collection changes, so it adds no per-keystroke bubble.
-   */
-  archivedAnchorIds: ReadonlySet<string>;
 }
 
 export interface EditorPaneProps {
@@ -3415,9 +3407,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   // The SAME rule over the SAME collections, projected onto the Mode-B
   // `linkedAnchor` anchor ids those archived cards own — the DOM-stable key
-  // `useLinkHighlight` sweeps `data-anchor-archived` onto. Bubbled through
-  // `PaneState` because the sweep is mounted in EditorLayout; deriving it a
-  // second time there is exactly the mistake task 476 was about.
+  // `useLinkHighlight` sweeps `data-anchor-archived` onto — mounted below in
+  // this same pane (task 1316), so the set never leaves it.
   const archivedAnchorIdSet = useMemo(
     () => archivedAnchorIds(archivableCollections),
     [archivableCollections],
@@ -6060,7 +6051,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       paragraphByErrorId,
       jumpToErrorVisual,
       setSourceText,
-      archivedAnchorIds: archivedAnchorIdSet,
     });
   }, [
     onPaneStateChange,
@@ -6106,7 +6096,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     paragraphByErrorId,
     jumpToErrorVisual,
     setSourceText,
-    archivedAnchorIdSet,
   ]);
 
   // ── Anchored-card hover/selection bridges + highlight painters ────
@@ -6122,6 +6111,23 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // a paper switch would otherwise stay lit (with its text) on return (task
   // 1147). The authority door, not the card door — "nothing is hovered here".
   usePaneHideReset(() => _setHoveredEntity(null, null));
+
+  // STANDING linked-anchor chrome — the per-kind washes the Highlights menu
+  // toggles, and the archived-span sweep (task 1316). Mounted HERE, in the
+  // pane, so every host gets it: the Library Reader mounts EditorPane with no
+  // EditorLayout around it, and while this lived in the shell the Reader's
+  // Highlights toggles drew nothing. Reads the host's prefs (Reader's ephemeral
+  // store or the main app's persisted one), registry defaults when absent.
+  const { showHighlights, hiddenHighlightTypes } = bridgeRoutingPrefs;
+  const linkHighlightKinds = useMemo(
+    () => visibleHighlightKinds({ showHighlights, hiddenHighlightTypes }),
+    [showHighlights, hiddenHighlightTypes],
+  );
+  useLinkHighlight({
+    editor,
+    visibleHighlightKinds: linkHighlightKinds,
+    archivedAnchorIds: archivedAnchorIdSet,
+  });
 
   useAnchorHighlightReconciler({
     editor,
