@@ -82,12 +82,23 @@ type AnySuggestionCard = RevisionSuggestionCard | CutterSuggestionCard;
  * (comment | suggestion) — the driver narrows to suggestions internally, so the
  * caller passes the hook's `cards` straight through. Generic over the union
  * card type `TCard` and the family's suggestion subtype `TSugg`.
+ *
+ * TWO reads of the same collection, with two jobs (task 1326):
+ *   - `cards` is the RENDER snapshot — used ONLY as the batch effect's dep, so
+ *     the trigger keeps its keystroke-silent gate (identity moves only when a
+ *     sidecar mutates);
+ *   - `getCards()` is the LIVE collection (task 1295's authoritative
+ *     `stateRef`) — every DECISION a pass makes (what is pending, which
+ *     paragraphs already hold an applied change, which claims to drop) reads
+ *     it, because a pass routinely runs right after its own writes, before
+ *     React has committed them into `cards`.
  */
 export interface AutoApplyFamily<
   TCard extends { kind: string },
   TSugg extends AnySuggestionCard,
 > {
   cards: readonly TCard[];
+  getCards: () => readonly TCard[];
   setSuggestionStatus: (id: string, status: TSugg["status"]) => void;
   setAppliedChange: (
     id: string,
@@ -221,7 +232,7 @@ export function collectPendingAiSuggestions(
     family: PendingChangeFamily,
     isSuggestion: (c: TCard) => c is TCard & TSugg,
   ): void => {
-    for (const card of fam.cards) {
+    for (const card of fam.getCards()) {
       if (!isSuggestion(card)) continue;
       if (card.author !== "ai" || card.status !== "pending") continue;
       const anchorUuid = getLinkedTextObjectIds(card)[0];
@@ -252,6 +263,48 @@ export function collectPendingAiSuggestions(
     (c): c is CutterCard & CutterSuggestionCard => c.kind === "suggestion",
   );
   return out;
+}
+
+/**
+ * ONE auto-apply pass — the body BOTH triggers run (the batch effect over every
+ * pending suggestion; the selection-leave path over those anchored to the
+ * paragraph just left, via `onlyAnchor`). Pure over its inputs, so the
+ * stale-window ordering is unit-testable without React.
+ *
+ * Every decision reads the families' LIVE `getCards()` (see
+ * {@link AutoApplyFamily}). And per-paragraph serialization does not rest on
+ * commit ordering alone: the anchor of every card still CLAIMED in `dispatched`
+ * (an apply whose `pending → applied` flip has not been observed yet) seeds
+ * `inFlight` too, so a second suggestion on that paragraph waits even if a pass
+ * somehow runs over a lagging collection (task 1326 — before it, a
+ * splice-re-fired pass over the render snapshot rebuilt `inFlight` without the
+ * just-applied paragraph and landed a SECOND applied change on it).
+ * O(cards + dispatched), never O(doc).
+ */
+export function runAutoApplyPass(args: {
+  editor: Editor;
+  revisions: RevisionAutoApplyFamily;
+  cutter: CutterAutoApplyFamily;
+  caretParagraphUuid: string | null;
+  dispatched: Set<string>;
+  onlyAnchor?: string;
+}): void {
+  const { editor, revisions, cutter, caretParagraphUuid, dispatched, onlyAnchor } =
+    args;
+  const live = [...revisions.getCards(), ...cutter.getCards()];
+  reconcileDispatched(dispatched, live);
+  const inFlight = paragraphsWithInFlightApplied(live);
+  if (dispatched.size > 0) {
+    for (const c of live) {
+      if (c.kind !== "suggestion" || !dispatched.has(c.id)) continue;
+      const anchor = getLinkedTextObjectIds(c)[0];
+      if (anchor) inFlight.add(anchor);
+    }
+  }
+  for (const target of collectPendingAiSuggestions(revisions, cutter)) {
+    if (onlyAnchor !== undefined && target.anchorUuid !== onlyAnchor) continue;
+    applyOne(editor, target, caretParagraphUuid, inFlight, dispatched);
+  }
 }
 
 export interface UseAutoApplyPendingChangesArgs {
@@ -305,22 +358,17 @@ export function useAutoApplyPendingChanges(
   useEffect(() => {
     if (!canProducePendingChanges()) return;
     if (!editor) return;
-    const caret = paragraphUuidAtSelection(editor);
-    reconcileDispatched(dispatchedRef.current, [
-      ...revisions.cards,
-      ...cutter.cards,
-    ]);
-    const inFlight = paragraphsWithInFlightApplied([
-      ...revisions.cards,
-      ...cutter.cards,
-    ]);
-    const pending = collectPendingAiSuggestions(revisions, cutter);
-    for (const target of pending) {
-      applyOne(editor, target, caret, inFlight, dispatchedRef.current);
-    }
+    runAutoApplyPass({
+      editor,
+      revisions,
+      cutter,
+      caretParagraphUuid: paragraphUuidAtSelection(editor),
+      dispatched: dispatchedRef.current,
+    });
     // `revisions`/`cutter` are intentionally read but NOT deps: only the stable
     // `revisionCards`/`cutterCards` array identities + counters gate this (the
     // wrapper objects are rebuilt each EditorPane render and would over-fire).
+    // The card arrays are the GATE only — the pass itself reads `getCards()`.
     // `structural.blocks/.anchors` re-scan on a paragraph split/merge or anchor add.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, structural.blocks, structural.anchors, revisionCards, cutterCards]);
@@ -338,19 +386,20 @@ export function useAutoApplyPendingChanges(
       if (!prev) return; // nothing was left
       const ed = editorRef.current;
       if (!ed) return;
+      // Only the suggestions anchored to the paragraph we just left became
+      // newly-safe; `next` is the current caret paragraph for the gate. The
+      // families come from a ref for their (stable) getters + mutators; the
+      // card DATA is read live through `getCards()`, so the ref's post-render
+      // refresh cadence cannot hand this path a stale collection.
       const { revisions: rev, cutter: cut } = famRef.current;
-      reconcileDispatched(dispatchedRef.current, [...rev.cards, ...cut.cards]);
-      const inFlight = paragraphsWithInFlightApplied([
-        ...rev.cards,
-        ...cut.cards,
-      ]);
-      const pending = collectPendingAiSuggestions(rev, cut);
-      for (const target of pending) {
-        // Only the suggestions anchored to the paragraph we just left became
-        // newly-safe; `next` is the current caret paragraph for the gate.
-        if (target.anchorUuid !== prev) continue;
-        applyOne(ed, target, next, inFlight, dispatchedRef.current);
-      }
+      runAutoApplyPass({
+        editor: ed,
+        revisions: rev,
+        cutter: cut,
+        caretParagraphUuid: next,
+        dispatched: dispatchedRef.current,
+        onlyAnchor: prev,
+      });
     },
     [],
   );

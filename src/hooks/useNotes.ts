@@ -428,7 +428,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const setNoteAiRequest = useCallback(
     (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine.markDirty(id);
-      const note = notes.find((n) => n.id === id);
+      // LIVE lookup (task 1326, the task-1295 record half): a create-then-flag
+      // caller runs before the render that would put the note in `notes`.
+      const note = stateRef.current.cards.find(
+        (c): c is UserNote => c.id === id && c.kind === "note",
+      );
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "note" ? { ...c, aiRequest: value } : c,
@@ -439,12 +443,14 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       // row whose note is gone still closes the row.
       bridgeFlagForCard(docId, "note", id, value, mode, note, noteContext);
     },
-    [update, pristine, docId, notes],
+    [update, pristine, docId, stateRef],
   );
 
   const setHighlightAiRequest = useCallback(
     (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
-      const card = highlights.find((h) => h.id === id);
+      const card = stateRef.current.cards.find(
+        (c): c is HighlightCard => c.id === id && c.kind === "highlight",
+      );
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "highlight" ? { ...c, aiRequest: value } : c,
@@ -452,7 +458,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       }));
       bridgeFlagForCard(docId, "highlight", id, value, mode, card, highlightContext);
     },
-    [update, docId, highlights],
+    [update, docId, stateRef],
   );
 
   const addNoteTextObjectId = useCallback(
