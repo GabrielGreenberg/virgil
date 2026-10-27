@@ -34,15 +34,27 @@
  *  2. BOTH VIEWS ARE ALWAYS READ — a payload that fills only one is still
  *     served, which is the reason the second loop was written in the first
  *     place. The fix keeps its intent and drops its broken guard.
- *  3. PER-EVENT SCOPE — the `seen` Set is created INSIDE the call and never
- *     escapes. Deduping across the session would silently swallow a user
- *     deliberately pasting the same screenshot twice — a paste that visibly
- *     does nothing, which is a WORSE bug than the one being fixed.
+ *  3. PER-EVENT SCOPE — the reconciliation tally is created INSIDE the call
+ *     and never escapes. Deduping across the session would silently swallow a
+ *     user deliberately pasting the same screenshot twice — a paste that
+ *     visibly does nothing, which is a WORSE bug than the one being fixed.
  *
- * The key carries `size` and `lastModified` as well as `name`, because a
- * clipboard image is typically named `"image.png"` in BOTH views of the same
- * paste — the name alone would collide across genuinely different images, and
- * would be all that distinguished them.
+ * Reconciliation is ACROSS views, never WITHIN one (task 1321). Each `items`
+ * file "uses up" one `files` entry with the same content key; a `files` entry
+ * left unmatched is kept. So two genuinely identical files inside ONE view (a
+ * drop carrying two same-name, same-size files from different folders) both
+ * survive — only the second view's echo of the first is dropped.
+ *
+ * The key is `name|size|type` and deliberately NOT `lastModified`. In Blink,
+ * `lastModified` is stamped per MINT, not per payload: `DataObjectItem::
+ * GetAsFile()` builds a fresh File on every call (re-reading the system
+ * clipboard, stamped `base::Time::Now()`), while `DataTransfer::files()`
+ * returns a FileList cached when the event was BUILT. So one pasted
+ * screenshot reaches the handler with two different `lastModified`s, and a
+ * key that carries the field splits one image into two thumbnails — task
+ * 419's bug, one field too strict. Within one event there is one payload, so
+ * a field that varies by view is noise, not identity. (`size` still keeps two
+ * different `"image.png"`s apart, should a payload ever carry two.)
  *
  * Import-free leaf, deliberately (the placement rule `latex-markers.ts` /
  * `node-attr-sets.ts` earned): a facet the layer that needs it cannot import
@@ -66,16 +78,18 @@ export interface TransferFileSource {
   readonly files?: ArrayLike<File> | null;
 }
 
-/** `name|size|type|lastModified` — everything about the payload the platform
- *  hands us that does not depend on WHICH view minted the File. */
+/** `name|size|type` — everything about the payload the platform hands us
+ *  that does not depend on WHICH view minted the File. `lastModified` is
+ *  per-mint in Blink (see the header), so it is excluded. */
 function contentKey(file: File): string {
-  return `${file.name}|${file.size}|${file.type}|${file.lastModified}`;
+  return `${file.name}|${file.size}|${file.type}`;
 }
 
 /**
  * Every file this transfer payload carries, each exactly once, in the order
  * the payload presents them (`items` first, then any `files` entry the first
- * view did not already describe).
+ * view did not already describe — matched one-for-one, so same-view
+ * duplicates survive).
  *
  * `accept` filters by the file's own type; omit it to take everything (a
  * library ingest takes PDF / DOCX / .tex / .bib alike). It is consulted on the
@@ -87,23 +101,31 @@ export function filesFromTransfer(
   accept?: (type: string) => boolean,
 ): File[] {
   if (!dt) return [];
-  // Per-event scope — see property 3 above. Never hoist this.
-  const seen = new Set<string>();
-  const out: File[] = [];
   const ok = (type: string | undefined): boolean => (accept ? accept(type ?? "") : true);
-
-  const take = (file: File | null | undefined): void => {
-    if (!file || !ok(file.type)) return;
-    const key = contentKey(file);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(file);
-  };
+  const out: File[] = [];
+  // Per-event scope — see property 3 above. Never hoist this. A MULTISET:
+  // how many `items` files of each content key the `files` view may still
+  // echo without adding anything.
+  const unmatched = new Map<string, number>();
 
   for (const item of Array.from(dt.items ?? [])) {
-    if (item && item.kind === "file" && ok(item.type)) take(item.getAsFile());
+    if (!item || item.kind !== "file" || !ok(item.type)) continue;
+    const file = item.getAsFile();
+    if (!file || !ok(file.type)) continue;
+    const key = contentKey(file);
+    unmatched.set(key, (unmatched.get(key) ?? 0) + 1);
+    out.push(file);
   }
-  for (const file of Array.from(dt.files ?? [])) take(file);
+  for (const file of Array.from(dt.files ?? [])) {
+    if (!file || !ok(file.type)) continue;
+    const key = contentKey(file);
+    const left = unmatched.get(key) ?? 0;
+    if (left > 0) {
+      unmatched.set(key, left - 1);
+      continue;
+    }
+    out.push(file);
+  }
 
   return out;
 }

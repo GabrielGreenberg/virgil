@@ -112,12 +112,34 @@ describe("imagesFromClipboard — the two views (leg 1)", () => {
     expect(names(out)).toEqual(["a.png", "b.png"]);
   });
 
-  it("the same NAME at a different size or time is a different image", () => {
+  it("the same NAME at a different size is a different image", () => {
     // A clipboard image is typically "image.png" in both views, which is why
     // the key cannot be the name alone.
-    const first = png("image.png", 1000);
-    const later = png("image.png", 2000);
-    expect(imagesFromClipboard(transfer({ items: [first], files: [later] }))).toHaveLength(2);
+    const small = mk("image.png", "image/png", "small");
+    const large = mk("image.png", "image/png", "a-much-larger-image");
+    expect(imagesFromClipboard(transfer({ items: [small], files: [large] }))).toHaveLength(2);
+  });
+
+  it("the BLINK shape — one image, the two views stamped DIFFERENT lastModified — yields ONE (task 1321)", () => {
+    // Blink's `DataObjectItem::GetAsFile()` mints a fresh File stamped
+    // `Time::Now()` on every call; `DataTransfer::files()` is cached from
+    // event construction. Same bytes, same name, different stamps.
+    const fromItems = mk("image.png", "image/png", "screenshot-bytes", 1_700_000_000_123);
+    const fromFiles = mk("image.png", "image/png", "screenshot-bytes", 1_700_000_000_097);
+    const out = imagesFromClipboard(transfer({ items: [fromItems], files: [fromFiles] }));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(fromItems);
+  });
+
+  it("two identical files within ONE view both survive — reconciliation is across views (multiset)", () => {
+    const a1 = mk("figure.png", "image/png", "same");
+    const a2 = mk("figure.png", "image/png", "same");
+    expect(imagesFromClipboard(transfer({ files: [a1, a2] }))).toHaveLength(2);
+    expect(imagesFromClipboard(transfer({ items: [a1, a2] }))).toHaveLength(2);
+    // Each `items` file consumes exactly ONE `files` echo.
+    expect(imagesFromClipboard(transfer({ items: [a1, a2], files: [twin(a1), twin(a2)] }))).toHaveLength(2);
+    // A `files` duplicate beyond what `items` described is kept.
+    expect(imagesFromClipboard(transfer({ items: [a1], files: [twin(a1), twin(a2)] }))).toHaveLength(2);
   });
 
   it("non-image payloads are ignored in BOTH views by the image reader", () => {
@@ -193,15 +215,15 @@ describe("imagesFromClipboard — per-event scope (leg 2)", () => {
     expect(imagesFromClipboard(one)).toHaveLength(1);
   });
 
-  it("the door holds no module state — the `seen` Set is created in the call", () => {
+  it("the door holds no module state — the reconciliation tally is created in the call", () => {
     const src = fs.readFileSync(path.join(REPO, DOOR), "utf8");
     const code = codeOnly(src);
-    // Every `new Set` in this module must sit INSIDE the exported function,
-    // never at module scope, or the session-wide dedupe returns.
+    // Every `new Set` / `new Map` in this module must sit INSIDE the exported
+    // function, never at module scope, or the session-wide dedupe returns.
     for (const line of code.split("\n")) {
-      if (line.includes("new Set")) expect(line.startsWith("  ")).toBe(true);
+      if (/new (Set|Map)\b/.test(line)) expect(line.startsWith("  ")).toBe(true);
     }
-    expect(code).toContain("new Set");
+    expect(code).toMatch(/new (Set|Map)\b/);
   });
 });
 
