@@ -138,7 +138,7 @@ export function resolveLinkedAnchorRange(
  *
  * Task 700: the snapshot is the RECOVERY key `reanchorByText` searches with
  * when the mark is lost — never display text. A surface that shows "the
- * highlighted words" reads HERE (through `useLinkedAnchorText`), and the load
+ * highlighted words" reads the PLAIN currency HERE (`useLinkedAnchorPassage.text`; its display form is the rich slice, task 1324), and the load
  * reconcile refreshes the stored snapshot from here so recovery searches
  * current text. `within` bounds the walk (see `findLinkedAnchorRange`).
  * Returns null when no text carries the mark.

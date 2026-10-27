@@ -11,11 +11,14 @@
 // Pins:
 //   1. `readLinkedAnchorText` reads the live marked words, bounded by the
 //      DocStructure snapshot's mapped range, in the create path's currency.
-//   2. `useLinkedAnchorText` follows an edit INSIDE the passage, and typing
+//   2. `useLinkedAnchorPassage` follows an edit INSIDE the passage, and typing
 //      leaves the bus `emitCount` flat (keystroke sanctity).
 //   3. The real `HighlightCard` shows the live words, and a Mode-A-relocated
 //      highlight shows its stored words instead of "empty highlight".
-//   4. The load reconcile REFRESHES a stale `textSnapshot` from the live mark
+//   4. (task 1324) The card quotes the RICH live slice: inline atoms
+//      (citation, inline math) and marks survive in the expanded quote and
+//      the collapsed cue, and the 80×lines clamp exists once.
+//   5. The load reconcile REFRESHES a stale `textSnapshot` from the live mark
 //      (the chosen cadence: once per doc-open) and is idempotent.
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -37,7 +40,9 @@ import type { ReactNode } from "react";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import { getBus } from "@/lib/tiptap/doc-structure/bus";
 import { readLinkedAnchorText } from "@/lib/linked-anchor-range";
-import { useLinkedAnchorText } from "@/links/_shared/useLinkedAnchorText";
+import { useLinkedAnchorPassage } from "@/links/_shared/useLinkedAnchorPassage";
+import { clampCompressedText, makeCompressedSummary } from "@/components/panel-primitives";
+import { capturedPassageOneLine } from "@/panels/_shared/captured-passage";
 import { EditorRefProvider } from "@/components/editor-layout/contexts/editor-ref";
 import { HighlightCard } from "@/panels/Notes/HighlightCard";
 import type { HighlightCard as HighlightCardData } from "@/lib/types";
@@ -153,9 +158,9 @@ describe("task 700 — live highlight text", () => {
     editor.destroy();
   });
 
-  it("useLinkedAnchorText follows an edit inside the passage; typing leaves emitCount flat", () => {
+  it("useLinkedAnchorPassage follows an edit inside the passage; typing leaves emitCount flat", () => {
     const editor = mountHighlighted();
-    const { result } = renderHook(() => useLinkedAnchorText(ANCHOR), { wrapper: wrapperFor(editor) });
+    const { result } = renderHook(() => useLinkedAnchorPassage(ANCHOR)?.text ?? null, { wrapper: wrapperFor(editor) });
     expect(result.current).toBe("alpha beta");
 
     const before = getBus(editor)!.emitCount;
@@ -232,5 +237,116 @@ describe("task 700 — live highlight text", () => {
     // An empty live read never overwrites; no opts is the old no-op.
     expect(reconcileCardToResolved(card, res, { liveMarkText: "" }).changed).toBe(false);
     expect(reconcileCardToResolved(card, res).changed).toBe(false);
+  });
+});
+
+/** "Intro alpha <em>beta</em> \\citep{k} $x$ gamma outro." with a linkedAnchor
+ *  over "alpha … gamma" — the passage holds a mark and two inline atoms. */
+function mountRichHighlighted(): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "p1" },
+          content: [
+            { type: "text", text: "Intro alpha " },
+            { type: "text", text: "beta", marks: [{ type: "italic" }] },
+            { type: "text", text: " " },
+            { type: "citation", attrs: { command: "citep", displayText: "Smith 2020", citationId: "c1" } },
+            { type: "text", text: " " },
+            { type: "inlineMath", attrs: { latex: "x" } },
+            { type: "text", text: " gamma outro." },
+          ],
+        },
+      ],
+    },
+  });
+  const from = findWords(editor, "alpha").from;
+  const to = findWords(editor, "gamma").to;
+  const mark = editor.state.schema.marks.linkedAnchor.create({ anchorId: ANCHOR, kind: "highlight" });
+  editor.view.dispatch(editor.state.tr.addMark(from, to, mark));
+  return editor;
+}
+
+describe("task 1324 — a highlight quotes its passage with atoms and marks", () => {
+  it("the live passage keeps the citation, the math and the italic; the plain key stays textBetween", () => {
+    const editor = mountRichHighlighted();
+    const { result } = renderHook(() => useLinkedAnchorPassage(ANCHOR), { wrapper: wrapperFor(editor) });
+    const live = result.current!;
+    // Recovery currency unchanged (task 700): atoms contribute nothing.
+    expect(live.text).toBe("alpha beta   gamma");
+    const json = JSON.stringify(live.content);
+    expect(json).toContain('"citation"');
+    expect(json).toContain('"inlineMath"');
+    expect(json).toContain('"italic"');
+    // The doc-only anchor mark never reaches a card body.
+    expect(json).not.toContain("linkedAnchor");
+    // The collapsed projection reads the citation's display text.
+    expect(capturedPassageOneLine({ latex: live.text, content: live.content })).toBe(
+      "alpha beta Smith 2020 $x$ gamma",
+    );
+    editor.destroy();
+  });
+
+  it("typing in the block OUTSIDE the mark keeps the same passage object (no re-render, no re-capture)", () => {
+    const editor = mountRichHighlighted();
+    const { result } = renderHook(() => useLinkedAnchorPassage(ANCHOR), { wrapper: wrapperFor(editor) });
+    const first = result.current;
+    const before = getBus(editor)!.emitCount;
+    act(() => {
+      const { to } = findWords(editor, "outro");
+      editor.view.dispatch(editor.state.tr.insertText("zz", to));
+    });
+    expect(result.current).toBe(first);
+    expect(getBus(editor)!.emitCount).toBe(before);
+    editor.destroy();
+  });
+
+  it("the collapsed cue and the expanded quote both show every word, and an edit inside reaches both", () => {
+    const editor = mountRichHighlighted();
+    const card = highlightCard([modeBLink("alpha beta   gamma")]);
+    const props = {
+      card,
+      selected: false,
+      onSetAiRequest: () => {},
+      onDelete: () => {},
+      onSelect: () => {},
+    };
+    const collapsed = render(<HighlightCard {...props} />, { wrapper: wrapperFor(editor) });
+    expect(collapsed.container.textContent).toContain("alpha beta Smith 2020 $x$ gamma");
+    collapsed.unmount();
+
+    const expanded = render(<HighlightCard {...props} isPoppedOut />, { wrapper: wrapperFor(editor) });
+    const passage = expanded.container.querySelector(".captured-passage")!;
+    expect(passage).toBeTruthy();
+    expect(passage.querySelector("em")?.textContent).toBe("beta");
+    expect(passage.textContent).toContain("Smith 2020");
+    expect(passage.textContent).toContain("gamma");
+    act(() => {
+      const { from } = findWords(editor, "gamma");
+      editor.view.dispatch(editor.state.tr.insertText("delt", from, from + 4));
+    });
+    expect(passage.isConnected ? passage.textContent : expanded.container.textContent).toContain("delta");
+    expect(expanded.container.textContent).not.toContain("gamma");
+    editor.destroy();
+  });
+
+  it("one compressed clamp: makeCompressedSummary and the highlight cue share the budget and ellipsis rule", () => {
+    const long = "word ".repeat(40).trim();
+    const viaSummary = makeCompressedSummary(
+      { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: long }] }] },
+      1,
+    );
+    expect(viaSummary).toBe(clampCompressedText(long, 1));
+    expect(viaSummary.endsWith("…")).toBe(true);
+    expect(viaSummary.length).toBeLessThanOrEqual(81);
+    expect(clampCompressedText("short", 1)).toBe("short");
   });
 });

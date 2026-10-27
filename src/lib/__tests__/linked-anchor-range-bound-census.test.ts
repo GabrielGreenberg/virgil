@@ -107,7 +107,7 @@ describe("linked-anchor-range bound census (task 926)", () => {
     for (const rel of [
       "src/components/PendingChangePill.tsx",
       "src/text-objects/floats/linked-range-body.tsx",
-      "src/links/_shared/useLinkedAnchorText.ts",
+      "src/links/_shared/useLinkedAnchorPassage.ts",
       "src/links/links.ts",
     ]) {
       const src = fs.readFileSync(path.join(REPO_ROOT, rel), "utf8");

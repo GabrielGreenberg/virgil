@@ -569,16 +569,27 @@ export function compressedBodyStyle(
   };
 }
 
-export function makeCompressedSummary(content: JSONContent | unknown, lines: number): string {
-  const text = richJsonToPlainText(content).replace(/\s+/g, " ").trim();
-  const limit = 80 * Math.max(1, lines);
-  // C24 (OMNI-F1-03): the old hard `.slice(0, limit)` cut mid-word with NO
-  // ellipsis, so a truncated summary looked like the whole body. Append "…"
-  // when (and only when) we actually dropped trailing content, so a body that
-  // fits is returned verbatim. The clamp is on the projected plain text; the
-  // CSS line-clamp (`compressedBodyStyle`) still caps the rendered height.
+/** The character budget of ONE compressed line — the text-side twin of the
+ *  CSS line-clamp in {@link compressedBodyStyle}. */
+export const COMPRESSED_CHARS_PER_LINE = 80;
+
+/**
+ * The ONE clamp a collapsed card's one-line text goes through (task 1324 —
+ * the highlight cue used to spell a second copy with a different cut rule).
+ * C24 (OMNI-F1-03): the old hard `.slice(0, limit)` cut mid-word with NO
+ * ellipsis, so a truncated summary looked like the whole body. Append "…"
+ * when (and only when) we actually dropped trailing content, so a text that
+ * fits is returned verbatim. The clamp is on the projected plain text; the
+ * CSS line-clamp (`compressedBodyStyle`) still caps the rendered height.
+ */
+export function clampCompressedText(text: string, lines: number): string {
+  const limit = COMPRESSED_CHARS_PER_LINE * Math.max(1, lines);
   if (text.length <= limit) return text;
   return text.slice(0, limit).trimEnd() + "…";
+}
+
+export function makeCompressedSummary(content: JSONContent | unknown, lines: number): string {
+  return clampCompressedText(richJsonToPlainText(content).replace(/\s+/g, " ").trim(), lines);
 }
 
 /* ── Class-string constants ───────────────────────────────────────── */
