@@ -52,6 +52,7 @@ import {
   paragraphsWithInFlightApplied,
   reconcileDispatched,
   applyOne,
+  runAutoApplyPass,
   type RevisionAutoApplyFamily,
   type CutterAutoApplyFamily,
   type ResolvedSuggestion,
@@ -140,9 +141,13 @@ describe("isAutoApplyEligible — the per-suggestion gate", () => {
 
 describe("collectPendingAiSuggestions — the candidate filter", () => {
   function fam(cards: RevisionCard[]): RevisionAutoApplyFamily {
-    return { cards, ...noMutators };
+    return { cards, getCards: () => cards, ...noMutators };
   }
-  const emptyCutter: CutterAutoApplyFamily = { cards: [] as CutterCard[], ...noMutators };
+  const emptyCutter: CutterAutoApplyFamily = {
+    cards: [] as CutterCard[],
+    getCards: () => [],
+    ...noMutators,
+  };
 
   it("keeps AI-pending suggestions with a resolvable anchor, resolved to their uuid", () => {
     const out = collectPendingAiSuggestions(
@@ -160,10 +165,15 @@ describe("collectPendingAiSuggestions — the candidate filter", () => {
   it("tags a cutter-family suggestion with family 'cutter-suggestion'", () => {
     const emptyRev: RevisionAutoApplyFamily = {
       cards: [] as RevisionCard[],
+      getCards: () => [],
       ...noMutators,
     };
+    const cutterCards = [
+      suggestion({ id: "c", anchorUuid: "P1" }) as unknown as CutterCard,
+    ];
     const cutterFam: CutterAutoApplyFamily = {
-      cards: [suggestion({ id: "c", anchorUuid: "P1" }) as unknown as CutterCard],
+      cards: cutterCards,
+      getCards: () => cutterCards,
       ...noMutators,
     };
     const out = collectPendingAiSuggestions(emptyRev, cutterFam);
@@ -316,5 +326,94 @@ describe("applyOne — the cross-pass double-apply guard", () => {
     applyOne(ed, t, "P2", new Set(), dispatched);
     expect(applySuggestionMock).toHaveBeenCalledTimes(1);
     expect(dispatched.has("a")).toBe(true);
+  });
+});
+
+describe("runAutoApplyPass — per-paragraph serialization across the stale window (task 1326)", () => {
+  const ed = {} as Editor;
+  const appliedA = {
+    ...suggestion({ id: "a", anchorUuid: "P1", status: "applied" }),
+    appliedChange: {
+      anchorId: "anc",
+      anchorUuid: "P1",
+      originalText: "old",
+      replacement: "new",
+      mode: "replace" as const,
+      appliedAt: "t",
+    },
+  } as RevisionCard;
+  const emptyCutter: CutterAutoApplyFamily = {
+    cards: [] as CutterCard[],
+    getCards: () => [],
+    ...noMutators,
+  };
+  function appliedIds(): string[] {
+    return applySuggestionMock.mock.calls.map(
+      (c) => ((c as unknown[])[0] as { card: { id: string } }).card.id,
+    );
+  }
+
+  it("a second pass over a LAGGING collection (A still pending) does not apply B onto A's paragraph", () => {
+    applySuggestionMock.mockClear();
+    // The collection never catches up: both reads return A still `pending` —
+    // the worst-case commit ordering. The dispatched claim alone must hold P1.
+    const stale = [
+      suggestion({ id: "a", anchorUuid: "P1" }),
+      suggestion({ id: "b", anchorUuid: "P1" }),
+    ];
+    const rev: RevisionAutoApplyFamily = {
+      cards: stale,
+      getCards: () => stale,
+      ...noMutators,
+    };
+    const dispatched = new Set<string>();
+    runAutoApplyPass({ editor: ed, revisions: rev, cutter: emptyCutter, caretParagraphUuid: null, dispatched });
+    expect(appliedIds()).toEqual(["a"]); // pass 1: A applies, B waits in-pass
+    // Pass 2 — the splice re-fired the effect before the status commit.
+    runAutoApplyPass({ editor: ed, revisions: rev, cutter: emptyCutter, caretParagraphUuid: null, dispatched });
+    expect(appliedIds()).toEqual(["a"]); // B must NOT land on P1
+    // The selection-leave path runs the same pass and holds the same line.
+    runAutoApplyPass({ editor: ed, revisions: rev, cutter: emptyCutter, caretParagraphUuid: "P2", dispatched, onlyAnchor: "P1" });
+    expect(appliedIds()).toEqual(["a"]);
+  });
+
+  it("decides from the LIVE getter, not the render snapshot", () => {
+    applySuggestionMock.mockClear();
+    const renderSnapshot = [
+      suggestion({ id: "a", anchorUuid: "P1" }),
+      suggestion({ id: "b", anchorUuid: "P1" }),
+    ];
+    // Live: A has already committed `applied` (the write landed in stateRef).
+    const live = [appliedA, suggestion({ id: "b", anchorUuid: "P1" })];
+    const rev: RevisionAutoApplyFamily = {
+      cards: renderSnapshot,
+      getCards: () => live,
+      ...noMutators,
+    };
+    // Fresh guard (e.g. a later mount): only the live status can hold P1.
+    runAutoApplyPass({ editor: ed, revisions: rev, cutter: emptyCutter, caretParagraphUuid: null, dispatched: new Set() });
+    expect(appliedIds()).toEqual([]);
+  });
+
+  it("releases the paragraph once the claimed card leaves `pending` (successor applies)", () => {
+    applySuggestionMock.mockClear();
+    let live: RevisionCard[] = [
+      suggestion({ id: "a", anchorUuid: "P1" }),
+      suggestion({ id: "b", anchorUuid: "P1" }),
+    ];
+    const rev: RevisionAutoApplyFamily = {
+      cards: live,
+      getCards: () => live,
+      ...noMutators,
+    };
+    const dispatched = new Set<string>();
+    runAutoApplyPass({ editor: ed, revisions: rev, cutter: emptyCutter, caretParagraphUuid: null, dispatched });
+    // A was accepted (its applied change resolved) → no longer pending, no appliedChange.
+    live = [
+      suggestion({ id: "a", anchorUuid: "P1", status: "accepted" as never }),
+      suggestion({ id: "b", anchorUuid: "P1" }),
+    ];
+    runAutoApplyPass({ editor: ed, revisions: rev, cutter: emptyCutter, caretParagraphUuid: null, dispatched });
+    expect(appliedIds()).toEqual(["a", "b"]);
   });
 });

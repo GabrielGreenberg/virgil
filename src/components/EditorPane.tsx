@@ -1890,11 +1890,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       structural: rev,
       revisions: {
         cards: revisionsHook.cards,
+        getCards: revisionsHook.getCards,
         setSuggestionStatus: revisionsHook.setSuggestionStatus,
         setAppliedChange: revisionsHook.setAppliedChange,
       },
       cutter: {
         cards: cutterHook.cards,
+        getCards: cutterHook.getCards,
         setSuggestionStatus: cutterHook.setSuggestionStatus,
         setAppliedChange: cutterHook.setAppliedChange,
       },

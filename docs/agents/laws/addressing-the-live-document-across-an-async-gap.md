@@ -357,6 +357,21 @@ CI: `range-delete-settle-first.test.tsx` (the state-backed bag leg — two asks 
 a render-refreshed ref), `usePersistentState.test.tsx` (ref ahead of render),
 `unbridging-delete.test.ts` (not-found → false).
 
+**Two late members (task 1326).** The rule covers any consumer that DECIDES
+right after its own writes, not only `EditorPane`'s doors. (1) The auto-apply
+driver: a splice re-fires its pass before React commits `pending → applied`, so
+a pass over the render `cards` rebuilt its per-paragraph in-flight set without
+the paragraph it had just spliced and applied a second suggestion onto it. Both
+triggers now run ONE pass (`runAutoApplyPass`) that reads `getCards()`; the
+render arrays survive only as the batch effect's keystroke-silent GATE; and the
+anchors of still-claimed (`dispatched`) cards seed the in-flight set, so the
+one-applied-per-paragraph rule no longer rests on commit ordering at all.
+(2) The note + highlight `set…AiRequest` setters looked their card up in the
+render memo — a create-then-flag filed the ADD with no card. All seven flag
+setters now read `stateRef.current`. CI: `live-card-read-census.test.ts`,
+`useAutoApplyPendingChanges.test.ts` (the lagging-collection leg),
+`ai-request-cancel-absent-card.test.tsx` (create-then-flag).
+
 ## The popover half (tasks 1190 + 1314) — a popover session's target FOLLOWS, then is identity-checked
 
 A deferred-commit popover (citation / `\ref` CREATE; math, figure/graphics and

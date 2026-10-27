@@ -235,3 +235,43 @@ describe("Cancel on a card-linked row whose card is ABSENT still closes the row 
     expect(row.linkedTo).toEqual({ panel: "todos", cardId: id });
   });
 });
+
+// Task 1326 — the note + highlight setters were the last two that resolved
+// their card from the RENDER memo (`notes.find` / `highlights.find`), so a
+// create-then-flag in one turn (no render between) filed the ADD with no card:
+// the flag stuck on the card and no row reached the inbox.
+describe("create-then-flag in one turn files the row (task 1326)", () => {
+  it("note: setNoteAiRequest right after addNote reaches the queue", async () => {
+    beginDocPipeline(DOC);
+    const hook = renderHook(() => useNotes(DOC));
+    await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+    writes.length = 0;
+    let id = "";
+    await act(async () => {
+      const h = hook.result.current;
+      id = h.addNote("para-3").id;
+      h.setNoteAiRequest(id, true, "toggle");
+    });
+    await waitFor(() => expect(lastQueue()?.requests.length).toBe(1));
+    const row = lastQueue()!.requests[0];
+    expect(row.status).toBe("pending");
+    expect(row.linkedTo).toEqual({ panel: "notes", cardId: id });
+  });
+
+  it("highlight: setHighlightAiRequest right after addHighlight reaches the queue", async () => {
+    beginDocPipeline(DOC);
+    const hook = renderHook(() => useNotes(DOC));
+    await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+    writes.length = 0;
+    let id = "";
+    await act(async () => {
+      const h = hook.result.current;
+      id = h.addHighlight({ anchorId: "anc-1", anchorText: "a passage" }, "para-3").id;
+      h.setHighlightAiRequest(id, true, "toggle");
+    });
+    await waitFor(() => expect(lastQueue()?.requests.length).toBe(1));
+    const row = lastQueue()!.requests[0];
+    expect(row.status).toBe("pending");
+    expect(row.linkedTo).toEqual({ panel: "notes", cardId: id });
+  });
+});
