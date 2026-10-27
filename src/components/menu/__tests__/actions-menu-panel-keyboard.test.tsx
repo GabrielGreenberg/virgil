@@ -98,6 +98,10 @@ function makeEditor(editable = true) {
   return {
     isEditable: editable,
     isActive: () => false,
+    // The colour stash is a tracked range (task 1314) — it subscribes to
+    // transactions while the popover is open.
+    on: () => {},
+    off: () => {},
     chain,
     state,
     view,

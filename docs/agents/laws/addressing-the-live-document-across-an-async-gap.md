@@ -356,3 +356,25 @@ BEFORE calling `update` (`useNotes.convertCard`'s carry). And
 CI: `range-delete-settle-first.test.tsx` (the state-backed bag leg — two asks on
 a render-refreshed ref), `usePersistentState.test.tsx` (ref ahead of render),
 `unbridging-delete.test.ts` (not-found → false).
+
+## The popover half (tasks 1190 + 1314) — a popover session's target FOLLOWS, then is identity-checked
+
+A deferred-commit popover (citation / `\ref` CREATE; math, figure/graphics and
+existing-`\ref` EDIT; the text-colour stash) opens on a click and writes on a
+later gesture. Its open state never carries a raw `pos`: it carries a
+`TrackedPos` ([src/lib/tiptap/tracked-pos.ts](../../../src/lib/tiptap/tracked-pos.ts))
+started in the click bridge synchronously with the open and disposed by
+whoever drops the state (EditorLayout's per-session effects, keyed on the
+TRACKER so a re-render of the same session does not dispose it). EDIT sessions
+use `trackAtomPos` (`assoc: 1` — an insertion exactly at the atom's start goes
+in front of it); the colour stash uses `trackRange` (both ends inward-sticky).
+
+Following and identity are complementary: `resolveAtomEditTarget` takes the
+`TrackedPos` (never a number) and still runs the clicked-identity predicate.
+A refusal that survives is a real loss of target and is ANNOUNCED
+(`notifyAtomEditRefused`, with the typed draft) — a dropped boolean is how a
+user's edit used to vanish with no word.
+
+CI: `atom-popover-door.test.ts` ("FOLLOW the document"), `tracked-pos.test.tsx`
+(`trackRange`), `ref-repoint-identity.test.tsx`, `figure-save-routing.test.ts`,
+`atom-popover-gate-census.test.ts` ("announces a refusal").

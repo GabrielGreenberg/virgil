@@ -162,15 +162,14 @@ import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover"
 import type { AtomCreateSession } from "@/lib/actions/atom-create";
 import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
-import { applyMathEdit } from "@/lib/tiptap/atom-edit-target";
+import { applyMathEdit, type ActiveMath } from "@/lib/tiptap/atom-edit-target";
 import { CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
 import NodeEditPopover from "./NodeEditPopover";
 import {
   applyFigurePopoverEdit,
-  type ClickedFigure,
-  type FigurePopoverKind,
+  type ActiveFigure,
 } from "@/lib/figures/popover-target";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
@@ -1133,7 +1132,7 @@ export default function EditorLayout() {
   // Live anchors (task 747): the `\ref` popovers follow their chip / caret on
   // scroll instead of staying where it was when they opened. One per request.
   const activeRefAnchor = useMemo(
-    () => (activeRef ? nodeAnchor(activeRef.editor, activeRef.pos) : undefined),
+    () => (activeRef ? nodeAnchor(activeRef.editor, activeRef.at.get) : undefined),
     [activeRef],
   );
   const atomCreateAnchor = useMemo(
@@ -1143,34 +1142,26 @@ export default function EditorLayout() {
         : undefined,
     [atomCreateRequest],
   );
-  // ── Math popover state ──
-  const [activeMath, setActiveMath] = useState<{
-    kind: "inline" | "display";
-    latex: string;
-    pos: number;
-    rect: DOMRect;
-    // The editor instance that owns the clicked math node — the save targets
-    // THIS editor (main OR an embedded card/float surface), so a math edit
-    // always lands in the editor whose pos-space `pos` belongs to. See
-    // `handleMathSave` and math.ts's click bridge (EX-F4-02).
-    editor: Editor;
-  } | null>(null);
-  // ── Figure tex-mode popover state ──
-  const [activeFigure, setActiveFigure] = useState<{
-    kind: FigurePopoverKind;
-    raw: string;
-    // The clicked block's uuid — with `kind` (and `raw` when null), the
-    // identity `handleFigureSave` resolves against the LIVE doc (task 1082).
-    uuid: string | null;
-    pos: number;
-    rect: DOMRect;
-    // The editor instance that owns the clicked figure/graphics node — the save
-    // targets THIS editor (main OR the figure's own float surface), so a figure
-    // edit always lands in the editor whose pos-space `pos` belongs to. Mirrors
-    // `activeMath.editor`; see `handleFigureSave` + FigureBlockNodeView's click
-    // bridge (EX-F4-02 figure twin).
-    editor: Editor;
-  } | null>(null);
+  // ── Math / figure EDIT popover state ──
+  // Each names the clicked atom by identity in its OWNING editor (main OR an
+  // embedded card/float surface — EX-F4-02), at a TRACKED position that follows
+  // the doc while the popover is open (task 1314; `ActiveMath` /
+  // `ActiveFigure`). The commit resolves it through the atom-edit door.
+  const [activeMath, setActiveMath] = useState<ActiveMath | null>(null);
+  const [activeFigure, setActiveFigure] = useState<ActiveFigure | null>(null);
+  // Every edit popover's tracker lives exactly as long as its session: keyed
+  // on the TRACKER (not the state object — `\ref`'s re-point rebuilds the
+  // object around the same chip), so closing or replacing disposes it and no
+  // transaction subscriber outlives the popover.
+  const activeRefAt = activeRef?.at;
+  const activeMathAt = activeMath?.at;
+  const activeFigureAt = activeFigure?.at;
+  useEffect(() => (activeRefAt ? () => activeRefAt.dispose() : undefined), [activeRefAt]);
+  useEffect(() => (activeMathAt ? () => activeMathAt.dispose() : undefined), [activeMathAt]);
+  useEffect(
+    () => (activeFigureAt ? () => activeFigureAt.dispose() : undefined),
+    [activeFigureAt],
+  );
   // NOTE (CHIP 4a-ii): EditorLayout's own `pendingCitationCreate` /
   // `pendingCitationMode` state was consumed ONLY by the now-removed
   // `useCommandInputBridges` `virgil-citation-create` handler (the citation
@@ -2117,8 +2108,10 @@ export default function EditorLayout() {
   // never every chip sharing its label.
   useEffect(() => {
     if (!activeRef) return;
-    const { editor, pos } = activeRef;
+    const { editor, at } = activeRef;
     if (editor.isDestroyed) return;
+    const pos = at.get();
+    if (pos === null) return;
     let el: globalThis.Node | null = null;
     try {
       el = editor.view.nodeDOM(pos);
@@ -2162,6 +2155,36 @@ export default function EditorLayout() {
         title: kind === "citation" ? "Citation not added" : "Reference not added",
         message:
           "The text where you opened this was changed or removed while you were choosing, so nothing was inserted. Place the cursor and try again.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    },
+    [runConfirm],
+  );
+  // An EDIT popover's commit was refused (task 1314): the clicked atom was
+  // deleted, replaced, or the doc went read-only while the popover was open.
+  // The tracker already followed every benign shift, so this is a real loss of
+  // target — say so, and hand the user back what they typed, never silently.
+  const notifyAtomEditRefused = useCallback(
+    (what: "formula" | "figure" | "reference", draft?: string) => {
+      const noun =
+        what === "formula" ? "Formula" : what === "figure" ? "Figure" : "Reference";
+      void runConfirm({
+        title: `${noun} not changed`,
+        message: (
+          <>
+            The {what} you were editing was changed or removed while the editor was open, so
+            your edit was not applied.
+            {draft ? (
+              <>
+                {" "}Your edit, so you can re-apply it:
+                <pre className="mt-2 whitespace-pre-wrap break-words select-text font-mono">
+                  {draft}
+                </pre>
+              </>
+            ) : null}
+          </>
+        ),
         confirmLabel: "OK",
         hideCancel: true,
       });
@@ -2252,16 +2275,18 @@ export default function EditorLayout() {
   // and the node there must be the CLICKED one — same kind, same `latex`. An
   // external write that removed the clicked formula slides its neighbour onto
   // `pos`; writing "whatever math is there now" would overwrite the neighbour.
+  //
+  // Task 1314: `session.at` is TRACKED from the click, so an edit landing
+  // upstream while the popover is open no longer strands the commit; a
+  // refusal that remains is a real loss of target and is announced, draft
+  // included.
   const handleMathSave = useCallback(
-    (
-      editor: Editor,
-      pos: number,
-      clicked: { kind: "inline" | "display"; latex: string },
-      newLatex: string,
-    ) => {
-      applyMathEdit(editor, pos, clicked, newLatex);
+    (session: ActiveMath, newLatex: string) => {
+      if (!applyMathEdit(session.editor, session.at, session, newLatex)) {
+        notifyAtomEditRefused("formula", newLatex);
+      }
     },
-    [],
+    [notifyAtomEditRefused],
   );
 
   // ── Figure tex-mode popover save handler ──
@@ -2281,12 +2306,7 @@ export default function EditorLayout() {
   // change to the main doc. Targeting MAIN with a float-space `pos` would
   // mis-target / corrupt the wrong node — the very corruption the dropped
   // `figureFloat` click-suppression prevented (by making float figures inert).
-  const handleFigureSave = useCallback((
-    editor: Editor,
-    pos: number,
-    clicked: ClickedFigure,
-    newText: string,
-  ) => {
+  const handleFigureSave = useCallback((session: ActiveFigure, newText: string) => {
     // Tasks 318/319: this is the SOLE env-body save path for both kinds (the
     // figure NodeView's chrome mutators patch `extras` / `command` directly and
     // never rebuild a whole env). The attr re-thread lives in the shared
@@ -2301,9 +2321,13 @@ export default function EditorLayout() {
     // (kind + uuid, else kind + seed), resolves it through the atom-edit door
     // (editable now, `pos` in range, identity matches) and runs ONLY that
     // kind's writeback — no fall-through, so a figure body can never become a
-    // graphic's `command`. Anything else is a refusal. (Mirrors handleMathSave.)
-    applyFigurePopoverEdit(editor, pos, clicked, newText);
-  }, []);
+    // graphic's `command`. Anything else is a refusal — announced, with the
+    // draft (task 1314; the position is tracked, as in handleMathSave).
+    const clicked = { kind: session.kind, uuid: session.uuid, raw: session.raw };
+    if (!applyFigurePopoverEdit(session.editor, session.at, clicked, newText)) {
+      notifyAtomEditRefused("figure", newText);
+    }
+  }, [notifyAtomEditRefused]);
 
   // The `\ref` CREATE popover folds onto the SHARED inline-atom create
   // controller — slash `\ref` → `refRun` → `ctx.openAtomCreate("ref")`
@@ -3425,8 +3449,13 @@ export default function EditorLayout() {
           labels={gatherLabels()}
           refCommand={activeRef.refCommand}
           // Both writes address the CLICKED chip (identity), never the label.
-          onChangeLabel={(_old, next) => handleRefChangeLabel(activeRef, next)}
-          onChangeRefCommand={(_lbl, cmd) => handleRefChangeCommand(activeRef, cmd)}
+          // A refusal (the chip was removed meanwhile) is announced (task 1314).
+          onChangeLabel={(_old, next) => {
+            if (!handleRefChangeLabel(activeRef, next)) notifyAtomEditRefused("reference");
+          }}
+          onChangeRefCommand={(_lbl, cmd) => {
+            if (!handleRefChangeCommand(activeRef, cmd)) notifyAtomEditRefused("reference");
+          }}
           onJumpToLabel={handleRefJump}
           onClose={() => setActiveRef(null)}
         />
@@ -3475,7 +3504,7 @@ export default function EditorLayout() {
           kind={activeMath.kind}
           value={activeMath.latex}
           anchorRect={activeMath.rect}
-          onSave={(newLatex) => handleMathSave(activeMath.editor, activeMath.pos, activeMath, newLatex)}
+          onSave={(newLatex) => handleMathSave(activeMath, newLatex)}
           onClose={() => setActiveMath(null)}
         />
       )}
@@ -3485,9 +3514,7 @@ export default function EditorLayout() {
           kind={activeFigure.kind}
           value={activeFigure.raw}
           anchorRect={activeFigure.rect}
-          onSave={(newText) =>
-            handleFigureSave(activeFigure.editor, activeFigure.pos, activeFigure, newText)
-          }
+          onSave={(newText) => handleFigureSave(activeFigure, newText)}
           onClose={() => setActiveFigure(null)}
         />
       )}

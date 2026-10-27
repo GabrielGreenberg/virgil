@@ -53,12 +53,32 @@ describe("atom-popover gate CENSUS (task 1071)", () => {
     const layout = read("src/components/EditorLayout.tsx");
     const at = layout.indexOf("const handleFigureSave = useCallback(");
     expect(at, "handleFigureSave not found").toBeGreaterThan(-1);
-    const body = layout.slice(at, layout.indexOf("}, []);", at));
+    const body = layout.slice(at, layout.indexOf("}, [notifyAtomEditRefused]);", at));
     expect(body).toContain("applyFigurePopoverEdit(");
     expect(body).not.toContain("applyFigureEnvBodyEdit(");
     expect(body).not.toContain("applyGraphicsCommandEdit(");
     const door = read("src/lib/figures/popover-target.ts");
-    expect(door).toContain("resolveAtomEditTarget(owner, pos, isClickedFigure(clicked))");
+    expect(door).toContain("resolveAtomEditTarget(owner, at, isClickedFigure(clicked))");
+  });
+
+  // Task 1314: every edit popover's commit names its atom by a TRACKED
+  // position (the door's signature takes a `TrackedPos`, so tsc pins that half)
+  // and ANNOUNCES a refusal — a dropped return value is how a typed edit used to
+  // vanish with no word.
+  it("every edit-popover commit announces a refusal", () => {
+    const layout = read("src/components/EditorLayout.tsx");
+    for (const name of ["handleMathSave", "handleFigureSave"]) {
+      const at = layout.indexOf(`const ${name} = useCallback(`);
+      expect(at, `${name} not found`).toBeGreaterThan(-1);
+      const body = layout.slice(at, layout.indexOf("[notifyAtomEditRefused]", at));
+      expect(body, name).toMatch(/if \(!apply\w+\([\s\S]*?\)\) \{\s*notifyAtomEditRefused\(/);
+    }
+    const popover = layout.slice(layout.indexOf("<LabelRefPopover"));
+    expect(popover).toMatch(/if \(!handleRefChangeLabel\([^)]*\)\) notifyAtomEditRefused/);
+    expect(popover).toMatch(/if \(!handleRefChangeCommand\([^)]*\)\) notifyAtomEditRefused/);
+    // And no session state reintroduces a raw click-time `pos`.
+    const bridge = read("src/components/editor-layout/event-bridges/marker-clicks.ts");
+    expect(bridge).not.toMatch(/setActive(?:Ref|Math|Figure)\(\{[\s\S]{0,400}?\bpos: detail\.pos/);
   });
 
   it("every virgil-figure-click detail carries the clicked uuid", () => {

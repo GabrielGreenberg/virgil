@@ -21,7 +21,7 @@ import { describe, it, expect } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { InlineMath, DisplayMath } from "@/lib/tiptap/math";
-import { applyMathEdit } from "@/lib/tiptap/atom-edit-target";
+import { applyMathEdit, trackAtomPos } from "@/lib/tiptap/atom-edit-target";
 
 // The REAL commit `EditorLayout.handleMathSave` calls (task 1071 extracted it
 // from a copy this suite used to keep). `clicked` defaults to the identity of
@@ -34,7 +34,7 @@ function saveMath(editor: Editor, pos: number, newLatex: string): boolean {
     if (n?.type.name === "displayMath") clicked = { kind: "display", latex: n.attrs.latex || "" };
     else if (n?.type.name === "inlineMath") clicked = { kind: "inline", latex: n.attrs.latex || "" };
   }
-  return applyMathEdit(editor, pos, clicked, newLatex);
+  return applyMathEdit(editor, trackAtomPos(editor, pos), clicked, newLatex);
 }
 
 function mountInline(latex: string, surface: "main" | "float") {

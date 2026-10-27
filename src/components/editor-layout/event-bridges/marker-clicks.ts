@@ -31,8 +31,12 @@ import {
 } from "@/lib/actions/atom-create";
 import { trackPos } from "@/lib/tiptap/tracked-pos";
 import { REF_CLICK_EVENT, type ActiveRef, type RefClickDetail } from "@/lib/tiptap/label";
-import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
-import { isFigurePopoverKind, type FigurePopoverKind } from "@/lib/figures/popover-target";
+import {
+  atomPopoverMayOpen,
+  trackAtomPos,
+  type ActiveMath,
+} from "@/lib/tiptap/atom-edit-target";
+import { isFigurePopoverKind, type ActiveFigure } from "@/lib/figures/popover-target";
 import {
   CITATION_CLICK_EVENT,
   ERROR_MARKER_CLICK_EVENT,
@@ -229,35 +233,11 @@ export function useMarkerClickBridges(deps: {
    *  setter lands it in EditorLayout's `atomCreateRequest` state as an
    *  `AtomCreateSession` — the pos now a tracker that follows the doc. */
   setAtomCreateRequest: Dispatch<SetStateAction<AtomCreateSession | null>>;
-  setActiveMath: Dispatch<
-    SetStateAction<{
-      kind: "inline" | "display";
-      latex: string;
-      pos: number;
-      rect: DOMRect;
-      // The editor instance that OWNS the clicked math node (main OR an
-      // embedded card/float surface). The save dispatches into THIS editor so
-      // `pos` is interpreted in the pos-space it was minted in — never blindly
-      // against MAIN. See math.ts's click handler + EditorLayout.handleMathSave.
-      editor: Editor;
-    } | null>
-  >;
-  setActiveFigure: Dispatch<
-    SetStateAction<{
-      kind: FigurePopoverKind;
-      raw: string;
-      // The clicked block's uuid — with `kind` (and `raw` when null), the
-      // identity the save resolves against the LIVE doc (task 1082).
-      uuid: string | null;
-      pos: number;
-      rect: DOMRect;
-      // The editor instance that OWNS the clicked figure/graphics node (main OR
-      // the figure's own float surface). The save dispatches into THIS editor so
-      // `pos` is interpreted in the pos-space it was minted in — never blindly
-      // against MAIN. See FigureBlockNodeView's click handler + handleFigureSave.
-      editor: Editor;
-    } | null>
-  >;
+  /** The clicked math atom's popover session — its click-time `pos` now a
+   *  tracker in the OWNING editor (task 1314; `ActiveMath`). */
+  setActiveMath: Dispatch<SetStateAction<ActiveMath | null>>;
+  /** The clicked figure/graphics block's popover session (`ActiveFigure`). */
+  setActiveFigure: Dispatch<SetStateAction<ActiveFigure | null>>;
   /** Resolve the ACTIVE doc's interaction store at click time (see
    *  `AnchorClickEnv.getActiveCardStore`). */
   getActiveCardStore: () => CardStore;
@@ -370,9 +350,12 @@ export function useMarkerClickBridges(deps: {
       // nothing (`isEditable` is a constant `true` on MAIN).
       if (!atomPopoverMayOpen(owner)) return;
       const cmd = detail.refCommand;
+      // The chip's pos FOLLOWS the owner's doc from this moment (task 1314),
+      // started synchronously with the open; EditorLayout disposes it when the
+      // popover closes or is replaced.
       setActiveRef({
         label: detail.label,
-        pos: detail.pos,
+        at: trackAtomPos(owner, detail.pos),
         editor: owner,
         rect: detail.rect,
         refCommand:
@@ -446,7 +429,8 @@ export function useMarkerClickBridges(deps: {
       setActiveMath({
         kind: detail.kind,
         latex: typeof detail.latex === "string" ? detail.latex : "",
-        pos: detail.pos,
+        // Tracked from the click (task 1314) — see the `\ref` bridge above.
+        at: trackAtomPos(owner, detail.pos),
         rect: detail.rect,
         editor: owner,
       });
@@ -476,7 +460,8 @@ export function useMarkerClickBridges(deps: {
         kind: detail.kind,
         raw: typeof detail.raw === "string" ? detail.raw : "",
         uuid: typeof detail.uuid === "string" && detail.uuid ? detail.uuid : null,
-        pos: detail.pos,
+        // Tracked from the click (task 1314) — see the `\ref` bridge above.
+        at: trackAtomPos(owner, detail.pos),
         rect: detail.rect,
         editor: owner,
       });

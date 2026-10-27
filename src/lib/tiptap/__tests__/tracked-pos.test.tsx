@@ -29,7 +29,7 @@ vi.mock("@/lib/storage", async () =>
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Citation } from "@/lib/tiptap/citation";
-import { trackPos } from "@/lib/tiptap/tracked-pos";
+import { trackPos, trackRange } from "@/lib/tiptap/tracked-pos";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { useMarkerClickBridges } from "@/components/editor-layout/event-bridges/marker-clicks";
 import {
@@ -211,5 +211,36 @@ describe("the create popover commits at the TRACKED position (task 1190)", () =>
     expect(session.at.get()).toBeNull();
     expect(editor.state.doc).toBe(before);
     session.at.dispose();
+  });
+});
+
+// Task 1314: the text-colour popover's stash — a SELECTION range that follows.
+describe("trackRange (task 1314)", () => {
+  it("an insertion before the range shifts both ends: the pick colours the text that was selected", () => {
+    const ed = mount("hello world");
+    // "world" = 7..12
+    const r = trackRange(ed, 7, 12);
+    ed.commands.insertContentAt(1, "abc");
+    expect(r.get()).toEqual({ from: 10, to: 15 });
+    expect(ed.state.doc.textBetween(10, 15)).toBe("world");
+    r.dispose();
+  });
+
+  it("text typed exactly at either end lands OUTSIDE the range", () => {
+    const ed = mount("hello world");
+    const r = trackRange(ed, 7, 12);
+    ed.commands.insertContentAt(12, "!");
+    ed.commands.insertContentAt(7, "_");
+    expect(r.get()).toEqual({ from: 8, to: 13 });
+    expect(ed.state.doc.textBetween(8, 13)).toBe("world");
+    r.dispose();
+  });
+
+  it("is null once the selected text is deleted — the commit refuses rather than colour the live selection", () => {
+    const ed = mount("hello world");
+    const r = trackRange(ed, 7, 12);
+    ed.view.dispatch(ed.state.tr.delete(6, 12));
+    expect(r.get()).toBeNull();
+    r.dispose();
   });
 });

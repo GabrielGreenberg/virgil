@@ -58,11 +58,12 @@ function extractLabelsFromRaw(text: string, index: RefTargetIndex<unknown>): Lab
  * Two rules the handlers hold (task 550):
  *
  *   • A re-point addresses the chip by IDENTITY (`RefNodeIdentity`: the
- *     owning editor + `pos`), never by label — a label is not unique, and the
+ *     owning editor + a TRACKED `pos` that follows the doc while the popover is
+ *     open — task 1314), never by label — a label is not unique, and the
  *     pre-550 handlers walked the doc and rewrote the FIRST chip naming the
  *     old key, so re-pointing the second `\ref{sec:intro}` silently changed
- *     the first. The identity is re-checked at commit (`nodeAt(pos)` must
- *     still be a `labelRef` naming that label); a mismatch REFUSES rather than
+ *     the first. The identity is re-checked at commit (the tracked spot
+ *     must still hold a `labelRef` naming that label); a mismatch REFUSES rather than
  *     falling back to a label search (the task-285 rule).
  *   • Every NUMBER shown or written here — the popover's badges, a chip's
  *     `displayText` on insert / re-point, the jump target — is read off the
@@ -253,7 +254,7 @@ export function useRefActions(deps: {
     (target: RefNodeIdentity) =>
       resolveAtomEditTarget(
         target.editor,
-        target.pos,
+        target.at,
         (node) => node.type.name === "labelRef" && node.attrs.label === target.label,
       ),
     [],
@@ -263,9 +264,10 @@ export function useRefActions(deps: {
   const handleRefChangeLabel = useCallback(
     (target: RefNodeIdentity | null, newLabel: string): boolean => {
       if (!target || !newLabel) return false;
-      const node = locateRef(target);
-      if (!node) return false;
-      const { editor, pos } = target;
+      const resolved = locateRef(target);
+      if (!resolved) return false;
+      const { node, pos } = resolved;
+      const { editor, at } = target;
       const refCommand = (node.attrs.refCommand as RefCommand) || "ref";
       const { display, targetKind } = resolveLabelDisplay(
         displayDocFor(editor),
@@ -285,7 +287,7 @@ export function useRefActions(deps: {
       );
       // The popover stays on THIS chip, now showing its new target.
       setActiveRef((prev) =>
-        prev && prev.editor === editor && prev.pos === pos ? { ...prev, label: newLabel } : prev,
+        prev && prev.editor === editor && prev.at === at ? { ...prev, label: newLabel } : prev,
       );
       return true;
     },
@@ -296,9 +298,10 @@ export function useRefActions(deps: {
   const handleRefChangeCommand = useCallback(
     (target: RefNodeIdentity | null, newCommand: RefCommand): boolean => {
       if (!target) return false;
-      const node = locateRef(target);
-      if (!node) return false;
-      const { editor, pos, label } = target;
+      const resolved = locateRef(target);
+      if (!resolved) return false;
+      const { node, pos } = resolved;
+      const { editor, at, label } = target;
       const { display, targetKind } = resolveLabelDisplay(
         displayDocFor(editor),
         label,
@@ -313,7 +316,7 @@ export function useRefActions(deps: {
         }),
       );
       setActiveRef((prev) =>
-        prev && prev.editor === editor && prev.pos === pos
+        prev && prev.editor === editor && prev.at === at
           ? { ...prev, refCommand: newCommand }
           : prev,
       );
