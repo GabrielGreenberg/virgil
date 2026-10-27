@@ -9,7 +9,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
+  MARGIN_HANDLE_GAP_EM,
+  MARGIN_TRACK_WIDTH_EM,
+  NOMINAL_EDITOR_FONT_PX,
   resolveChevronColumnRight,
   resolveMarginEm,
 } from "@/text-objects/block-frame";
@@ -160,5 +165,30 @@ describe("resolveChevronColumnRight — through the one interpreter", () => {
     const cs = tokenCs({ "--margin-col-chevron": "-44px" });
     expect(resolveChevronColumnRight(cs, "paragraph", 200)).toBeNull();
     expect(resolveChevronColumnRight(cs, null, 200)).toBeNull();
+  });
+});
+
+describe("handle-gap / track fallbacks — globals.css is pinned to block-frame's em factors (task 1322)", () => {
+  const CSS = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+  /** The authored value of a `--margin-*` custom property at its first rung. */
+  function authored(token: string): string {
+    const m = new RegExp(`${token}:\\s*([^;]+);`).exec(CSS);
+    return m ? m[1].trim() : "";
+  }
+
+  it("`--margin-handle-gap` / `--margin-track-width` are authored at the factors the fallbacks derive from", () => {
+    // block-frame.ts derives its unreadable-token fallbacks as
+    // `factor × NOMINAL_EDITOR_FONT_PX`. A hand retune of either token in the
+    // stylesheet without the factor would leave the fallback silently behind —
+    // the drift the chevron pair is already pinned against.
+    expect(authored("--margin-handle-gap")).toBe(`${MARGIN_HANDLE_GAP_EM}em`);
+    expect(authored("--margin-track-width")).toBe(`${MARGIN_TRACK_WIDTH_EM}em`);
+  });
+
+  it("an unreadable token falls back to factor × the nominal font", () => {
+    const blank = fakeCs("");
+    expect(resolveMarginEm(blank, 16, "--margin-handle-gap", MARGIN_HANDLE_GAP_EM * NOMINAL_EDITOR_FONT_PX)).toBe(10);
+    expect(NOMINAL_EDITOR_FONT_PX).toBe(16);
+    expect(MARGIN_TRACK_WIDTH_EM * NOMINAL_EDITOR_FONT_PX).toBe(20);
   });
 });

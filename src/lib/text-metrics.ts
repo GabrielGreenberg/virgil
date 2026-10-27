@@ -16,7 +16,7 @@
  * envelope CSS uses to distribute `line-height` leading) and `capHeight`
  * is the actual ascent of a rendered capital letter. All three come from
  * canvas's `TextMetrics`. We cache per
- * `(fontFamily | fontSize | fontWeight | lineHeight)` signature; the
+ * `(fontFamily | fontSize | fontWeight | fontStyle | lineHeight)` signature; the
  * cache is invalidated on EVERY font-load wave (the `FontFaceSet`'s
  * `loadingdone` event — not just the boot `document.fonts.ready`) so
  * FOUT, including a runtime main-text font switch to a lazily-loaded
@@ -26,7 +26,8 @@
  * TextObjectRef placement path and the SelectionRef path, and — through the
  * shared {@link opticalCenterY} / {@link capBandCenterOffset} primitives — by
  * the canonical block frame (`src/text-objects/block-frame.ts`) and the
- * marginalia registry (`useMarginaliaRegistry.ts`). It is the single source of
+ * editor-geometry service (`src/lib/editor-geometry/service.ts`, which the
+ * marginalia registry adapts). It is the single source of
  * truth: every consumer composes the SAME primitives (including the exported
  * {@link resolveLineHeightPx}) rather than re-deriving the math, so all the
  * margin affordances align BY CONSTRUCTION.
