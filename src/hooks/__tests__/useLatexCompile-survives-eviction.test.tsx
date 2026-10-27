@@ -81,7 +81,7 @@ describe("useLatexCompile — the compile record outlives the pane (task 1277)",
     const DOC = "doc-a";
     beginDocPipeline(DOC);
     const first = renderHook(() => useLatexCompile(DOC));
-    let run!: Promise<void>;
+    let run!: Promise<boolean>;
     act(() => {
       run = first.result.current.compile();
     });
@@ -132,7 +132,7 @@ describe("useLatexCompile — the compile record outlives the pane (task 1277)",
   it("a pane mounted AFTER the run finished (no pipeline open) still receives the PDF once", async () => {
     const DOC = "doc-b";
     const first = renderHook(() => useLatexCompile(DOC));
-    let run!: Promise<void>;
+    let run!: Promise<boolean>;
     act(() => {
       run = first.result.current.compile();
     });
@@ -151,5 +151,91 @@ describe("useLatexCompile — the compile record outlives the pane (task 1277)",
     expect(onCompileSuccess.mock.calls[0][0]).toBe(PDF);
     second.rerender();
     expect(onCompileSuccess).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Task 1320: `compile()` resolves `true` exactly when ITS run published a new
+// PDF — the edge EditorLayout opens the PDF split on. Mount delivery of an
+// older PDF (`onCompileSuccess` on mount) is not that edge.
+describe("useLatexCompile — compile() reports a FRESH PDF (task 1320)", () => {
+  beforeEach(() => {
+    resetPipelines();
+    __resetAllCompileRecords();
+    __resetAllCompileProgress();
+    compileSpy.mockClear();
+    resolveCompile = null;
+  });
+
+  it("resolves true when the press's run produced a PDF", async () => {
+    const { result } = renderHook(() => useLatexCompile("doc-fresh"));
+    let run!: Promise<boolean>;
+    act(() => {
+      run = result.current.compile();
+    });
+    await act(flush);
+    let fresh: boolean | undefined;
+    await act(async () => {
+      resolveCompile!(OK);
+      fresh = await run;
+    });
+    expect(fresh).toBe(true);
+  });
+
+  it("resolves false when the run failed (no PDF)", async () => {
+    const { result } = renderHook(() => useLatexCompile("doc-fail"));
+    let run!: Promise<boolean>;
+    act(() => {
+      run = result.current.compile();
+    });
+    await act(flush);
+    let fresh: boolean | undefined;
+    await act(async () => {
+      resolveCompile!({ ...OK, status: "failed", pdf: undefined });
+      fresh = await run;
+    });
+    expect(fresh).toBe(false);
+  });
+
+  it("a press that joins a run already in flight resolves false; the starter's resolves true", async () => {
+    const DOC = "doc-join";
+    const a = renderHook(() => useLatexCompile(DOC));
+    const b = renderHook(() => useLatexCompile(DOC));
+    let runA!: Promise<boolean>;
+    act(() => {
+      runA = a.result.current.compile();
+    });
+    await act(flush);
+    let joined: boolean | undefined;
+    await act(async () => {
+      joined = await b.result.current.compile();
+    });
+    expect(joined).toBe(false);
+    let fresh: boolean | undefined;
+    await act(async () => {
+      resolveCompile!(OK);
+      fresh = await runA;
+    });
+    expect(fresh).toBe(true);
+  });
+
+  it("mount delivery of an earlier PDF is not a fresh press", async () => {
+    const DOC = "doc-old";
+    const first = renderHook(() => useLatexCompile(DOC));
+    let run!: Promise<boolean>;
+    act(() => {
+      run = first.result.current.compile();
+    });
+    await act(flush);
+    await act(async () => {
+      resolveCompile!(OK);
+      await run;
+    });
+    first.unmount();
+    // A remount is handed the old PDF via onCompileSuccess, but no compile()
+    // was pressed — nothing reports a fresh edge, so nothing opens the split.
+    const onCompileSuccess = vi.fn();
+    renderHook(() => useLatexCompile(DOC, { onCompileSuccess }));
+    expect(onCompileSuccess).toHaveBeenCalledTimes(1);
+    expect(compileSpy).toHaveBeenCalledTimes(1);
   });
 });

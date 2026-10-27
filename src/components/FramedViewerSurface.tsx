@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 /**
  * The single framed-viewer surface shared by the docs-side compiled-PDF pane
- * ([EditorLayout.tsx]) and the Library PDF pane ([library/components/RightDetail.tsx]).
+ * ([EditorLayout.tsx] — the right-hand pane of the text split, task 1320) and the Library PDF pane ([library/components/RightDetail.tsx]).
  *
  * It is the **four-layer frame** both viewers were duplicating: an outer flex
  * that insets its child by 4px on three sides (creating the thin border ring),
@@ -34,12 +34,19 @@ interface FramedViewerSurfaceProps {
    * everywhere); the docs viewer passes `4` in zen mode to tighten it.
    */
   paddingBottom?: CSSProperties["paddingBottom"];
+  /**
+   * Left inset. Defaults to 4px; the docs viewer passes `0` because it sits
+   * right of the split divider, whose own gap already separates it from the
+   * text pod (task 1320 — the same edge the code pod has).
+   */
+  paddingLeft?: CSSProperties["paddingLeft"];
   children: ReactNode;
 }
 
 export default function FramedViewerSurface({
   backdrop,
   paddingBottom = "var(--pod-gap)",
+  paddingLeft = 4,
   children,
 }: FramedViewerSurfaceProps) {
   return (
@@ -48,7 +55,7 @@ export default function FramedViewerSurface({
       style={{
         paddingTop: 4,
         paddingBottom,
-        paddingLeft: 4,
+        paddingLeft,
         paddingRight: 4,
       }}
     >

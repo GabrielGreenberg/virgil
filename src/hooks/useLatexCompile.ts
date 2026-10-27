@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { LatexError } from "@/lib/latex-errors";
 import {
   getCompileRecord,
+  isCompileRunning,
   subscribeCompileRecord,
 } from "@/lib/compile/compile-record";
 import {
@@ -21,7 +22,13 @@ import { useSystemDialog } from "@/components/system-dialog-host";
  * private copy that died with it under keep-alive eviction.
  */
 export interface UseLatexCompileResult {
-  compile: () => Promise<void>;
+  /** Run a compile for this doc. Resolves `true` exactly when THIS call's run
+   *  published a new PDF — the "fresh success" edge (task 1320), which is not
+   *  the same as `onCompileSuccess`: that one also fires on mount for a PDF
+   *  produced earlier, and a caller that opens the PDF on success must not
+   *  fire on a remount. `false` for a failure, a cancel, or a press that
+   *  joined a run already in flight (that run's own caller owns its edge). */
+  compile: () => Promise<boolean>;
   /** A run for this doc is in flight — whichever pane started it. */
   isCompiling: boolean;
   /** Raw pdfTeX log from the doc's most recent compile, or null if none yet. */
@@ -65,11 +72,14 @@ export function useLatexCompile(
   }, [docId, record.pdf, record.pdfGeneration, record.pdfAt, onCompileSuccess]);
 
   const compile = useCallback(async () => {
-    if (!docId) return;
+    if (!docId) return false;
+    if (isCompileRunning(docId)) return false;
+    const startGeneration = getCompileRecord(docId).pdfGeneration;
     await runCompileForDoc(docId, {
       onDocumentClassMismatch,
       alert: systemDialog.alert,
     });
+    return getCompileRecord(docId).pdfGeneration > startGeneration;
   }, [docId, onDocumentClassMismatch, systemDialog]);
 
   return {

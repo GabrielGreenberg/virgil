@@ -1266,8 +1266,9 @@ function FloatingPanelInner({
     // fail-closed is what turns the second from "resolves the pane that happens
     // to be first" into "resolves nothing", so it is closed here:
     //
-    //  (a) a pane can MOUNT while hidden (a tab click while the PDF viewer is
-    //      up mounts the new doc pane one commit before `pdfView` flips off),
+    //  (a) a pane can MOUNT while hidden (before task 1320 a tab click while
+    //      the whole-surface PDF viewer was up mounted the new doc pane one
+    //      commit before `pdfView` flipped off; any hidden mount still can),
     //      and with deps of `[mode, slotKey]` alone the effect would never run
     //      again — the panel would body-portal for the life of the mount;
     //  (b) a `dockStack` change made in pane A re-keys pane B's slot WHILE B IS
