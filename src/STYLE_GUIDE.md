@@ -2127,7 +2127,10 @@ stability" + "Layout-gesture stability".
 
 The CodeMirror LaTeX-source pane (right of the `SplitWithCode` divider)
 is a focused, two-pane mode — treat it as a clean document column, not a
-crowded workspace:
+crowded workspace. The compiled-PDF pane shares the SAME right-hand slot
+and inherits every rule below (task 1320): code and PDF are alternatives
+in one slot, never a three-column layout; the sync-position pill is
+code-only.
 
 - **No L/R panel strips.** Both `PaneRail`s are hidden while the code
   pane is open (`useCodePaneSplit().active`); panels are unavailable in

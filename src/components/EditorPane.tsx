@@ -758,7 +758,9 @@ export interface PaneState {
     currentPreamble: string;
     note?: string;
   }) => AiRequest;
-  compilePdf: () => void;
+  /** Resolves `true` when this press's run published a fresh PDF (task 1320 —
+   *  the edge EditorLayout opens the PDF split on). */
+  compilePdf: () => Promise<boolean>;
   isCompiling: boolean;
   // Live compile diagnostics from EditorPane's single `useLatexCompile`
   // instance. EditorLayout's code-view error sidebar + log drawer read

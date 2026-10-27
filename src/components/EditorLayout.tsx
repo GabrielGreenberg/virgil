@@ -7,6 +7,13 @@ import { readFlag } from "@/lib/feature-flags";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
+import {
+  type RightPane,
+  afterDocSwitch,
+  afterFreshCompile,
+  closeRightPane,
+  openRightPane,
+} from "./editor-layout/right-pane";
 import { setFocusBandMeta } from "@/lib/focus-view";
 import {
   computeSectionPathAt,
@@ -423,10 +430,22 @@ export default function EditorLayout() {
   // `paneState?.pdfBlobUrl` / `paneState?.pdfStale`. The former dead parallel
   // copies here (pdfBlobUrl / lastCompileTime / pdfStale / latestPdfBytes) were
   // never populated by any compile and have been removed.
-  const [pdfView, setPdfView] = useState(false);
+  //
+  // Task 1320: the right side of the document row is ONE slot — "what
+  // accompanies the text" — holding the LaTeX source or the compiled PDF, never
+  // both. It used to be two booleans (`codeView`, `pdfView`) rendered by two
+  // different mechanisms (a split vs. a whole-surface replacement), kept apart
+  // by hand in four callbacks; that is why the PDF could not simply sit beside
+  // the text the way code does. Now both open in the same `SplitWithCode`
+  // right-hand pane and exclusivity is the type, not a convention.
+  const [rightPane, setRightPane] = useState<RightPane>(null);
+  const pdfView = rightPane === "pdf";
+  const codeView = rightPane === "code";
+  const activePaneRef = useRef(activePane);
+  activePaneRef.current = activePane;
 
   useEffect(() => {
-    setPdfView(false);
+    setRightPane(afterDocSwitch);
   }, [currentDocId]);
 
   // `promptDocClassMismatch` feeds EditorPane's live `useLatexCompile`
@@ -1251,10 +1270,17 @@ export default function EditorLayout() {
     notifyChromePaletteChanged();
   }, [editorPrefs, editorTransforms, editorPrefsHydrated, zenModeOn]);
 
-  const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
   const [codeViewParagraphId, setCodeViewParagraphId] = useState<string | null>(null);
   const codeEditorHandleRef = useRef<CodeEditorHandle | null>(null);
+  const moveCodeToTextCursor = useCallback(
+    () => codeEditorHandleRef.current?.moveCodeToTextCursor(),
+    [],
+  );
+  const moveTextToCodeCursor = useCallback(
+    () => codeEditorHandleRef.current?.moveTextToCodeCursor(),
+    [],
+  );
 
   // Route Cmd/Ctrl+P to our Print dialog instead of the browser's bare
   // print sheet. Falls through to the browser when there's no active
@@ -2571,8 +2597,7 @@ export default function EditorLayout() {
     // TipTap instance) stay mounted while CodeEditor opens in the right pane;
     // the derived `editorInstance` (= editorInstanceByDocId[currentDocId]) stays
     // live so the code-pane bridge can sync edits both directions.
-    setPdfView(false);
-    setCodeView(true);
+    setRightPane((p) => openRightPane(p, "code"));
   }, [latestDocEffective]);
 
   const switchToVisualView = useCallback(() => {
@@ -2581,8 +2606,7 @@ export default function EditorLayout() {
     // already reflects the latest content via the bridge. We just
     // close the code pane.
     codeEditorHandleRef.current = null;
-    setCodeView(false);
-    setPdfView(false);
+    setRightPane((p) => closeRightPane(p, "code"));
   }, []);
 
   // P6: a PURE view toggle — no disk read, no blob creation. The viewer renders
@@ -2590,16 +2614,15 @@ export default function EditorLayout() {
   // effect seeds that from disk once when it has no in-memory bytes.
   const switchToPdfView = useCallback(() => {
     if (currentDocId) activateDocPane(currentDocId);
-    setCodeView(false);
-    setPdfView(true);
+    setRightPane((p) => openRightPane(p, "pdf"));
   }, [currentDocId, activateDocPane]);
 
   const switchFromPdfView = useCallback(() => {
-    setPdfView(false);
+    setRightPane((p) => closeRightPane(p, "pdf"));
   }, []);
 
   // Memoized toggles for the EditorPane mount — without these, inline
-  // arrows (`() => setPdfView((v) => !v)`) would get a fresh identity
+  // arrows (`() => setRightPane(…)`) would get a fresh identity
   // every render, propagating through EditorPane's `onTogglePdfView`
   // prop into VirgilEditor's `[onEditorReady]` effect, retriggering
   // `setEditor` on every parent render and infinite-looping.
@@ -2721,7 +2744,20 @@ export default function EditorLayout() {
   // pdfView/codeView/pdfBlobUrl/aiRequests) changes. The wrappers always invoke
   // the current pane function, so behavior is unchanged. (`paneStateRef` is
   // declared once near the `paneState` derivation above and reused here.)
-  const stableCompilePdf = useCallback(() => paneStateRef.current?.compilePdf?.(), []);
+  // Task 1320: a compile the user started that publishes a FRESH PDF opens the
+  // PDF beside the text — but only into an EMPTY right slot (an open code pane
+  // is the user's working surface; it already shows the compile's status), and
+  // only if the user is still on that paper's document view when it lands. The
+  // edge is the press's own result, never the pane's PDF delivery, which also
+  // fires when a pane mounts and is handed an older PDF.
+  const stableCompilePdf = useCallback(async () => {
+    const docAtPress = currentDocIdRef.current;
+    const fresh = await paneStateRef.current?.compilePdf?.();
+    if (!fresh || !docAtPress) return;
+    if (currentDocIdRef.current !== docAtPress) return;
+    if (activePaneRef.current !== "doc") return;
+    setRightPane(afterFreshCompile);
+  }, []);
   const stableSwitchToPdfView = useCallback(() => paneStateRef.current?.switchToPdfView?.(), []);
   const stableSwitchFromPdfView = useCallback(() => paneStateRef.current?.switchFromPdfView?.(), []);
   const stableSwitchToCodeView = useCallback(() => paneStateRef.current?.switchToCodeView?.(), []);
@@ -3083,20 +3119,22 @@ export default function EditorLayout() {
             <DocKeepAliveSlot
               key={slotDocId}
               slotDocId={slotDocId}
-              isVisible={isActive && activePane === "doc" && !pdfView}
+              isVisible={isActive && activePane === "doc"}
               onUnmount={pruneDocMaps}
             >
               <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
                 <DocPipeline key={slotDocId} docId={slotDocId}>
                   <SplitWithCode
-                    open={isActive && codeView}
+                    open={isActive && rightPane !== null}
                     ratio={prefs.codePaneRatio}
                     onRatioChange={setCodePaneRatio}
-                    onMoveCodeToText={() =>
-                      codeEditorHandleRef.current?.moveCodeToTextCursor()
+                    // The sync-position pill aligns text ↔ source; it has no
+                    // meaning beside a PDF, so only the code pane passes it.
+                    onMoveCodeToText={
+                      isActive && codeView ? moveCodeToTextCursor : undefined
                     }
-                    onMoveTextToCode={() =>
-                      codeEditorHandleRef.current?.moveTextToCodeCursor()
+                    onMoveTextToCode={
+                      isActive && codeView ? moveTextToCodeCursor : undefined
                     }
                     left={
                       <EditorChromeProvider value={FULL_CHROME}>
@@ -3202,6 +3240,46 @@ export default function EditorLayout() {
                             </button>
                           )}
                         </div>
+                      ) : isActive && pdfView ? (
+                        // Task 1320: the compiled PDF sits BESIDE the live
+                        // text in the same right-hand pane the code view uses
+                        // (it was a whole-surface replacement that hid the
+                        // editor). The pane-resize engine's drag shield covers
+                        // the iframe during a gutter drag.
+                        <FramedViewerSurface
+                          backdrop="dark"
+                          paddingLeft={0}
+                          paddingBottom={zenModeOn ? 4 : "var(--pod-gap)"}
+                        >
+                          {/* P6: the viewer reads this pane's bubbled PDF
+                              state — the single source of truth. `pdfBlobUrl`
+                              is the fresh-compile blob OR the pane's cold-start
+                              disk seed; `pdfStale` is owned solely by the
+                              pane's edit-vs-compile tracker. */}
+                          {paneState?.pdfBlobUrl ? (
+                            <iframe
+                              src={paneState.pdfBlobUrl}
+                              className="w-full h-full border-none"
+                              style={{ borderRadius: "var(--pod-radius)" }}
+                              title="Compiled PDF"
+                            />
+                          ) : (
+                            /* Task 454: never a bare dark surface —
+                               `CompilePaneStatus` renders the live phase, the
+                               last failure, or the honest "nothing yet"
+                               prompt, which "no pdfBlobUrl" cannot tell apart. */
+                            <CompilePaneStatus docId={slotDocId} />
+                          )}
+                          {/* Task 854: over a showing PDF, `PdfPaneOverlay`
+                              paints the live compile phase, else the "out of
+                              date" chip when the PDF lags the edits. */}
+                          {paneState?.pdfBlobUrl && (
+                            <PdfPaneOverlay
+                              docId={slotDocId}
+                              stale={!!paneState.pdfStale}
+                            />
+                          )}
+                        </FramedViewerSurface>
                       ) : null
                     }
                   />
@@ -3256,38 +3334,7 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
           />
         </div>
-      ) : currentDoc && (docPermState !== "granted" || activeLoadFailure) ? null : pdfView && currentDocId ? (
-        <FramedViewerSurface
-          backdrop="dark"
-          paddingBottom={zenModeOn ? 4 : 'var(--pod-gap)'}
-        >
-          {/* P6: the viewer reads the active pane's bubbled PDF state — the
-              single source of truth. `pdfBlobUrl` is the fresh-compile blob OR
-              the pane's cold-start disk seed; `pdfStale` is owned solely by the
-              pane's edit-vs-compile tracker (now a live value, not dead code). */}
-          {paneState?.pdfBlobUrl ? (
-            <iframe
-              src={paneState.pdfBlobUrl}
-              className="w-full h-full border-none"
-              style={{ borderRadius: 'var(--pod-radius)' }}
-              title="Compiled PDF"
-            />
-          ) : (
-            /* Task 454: never a bare dark surface. `CompilePaneStatus` reads the
-               compile progress record for this doc and renders the live phase,
-               the last failure, or the honest "nothing yet" prompt — three
-               states that "there is no pdfBlobUrl" cannot tell apart. */
-            <CompilePaneStatus docId={currentDocId} />
-          )}
-          {/* Task 854: the compile's voice is not silenced by a PDF being
-              present — over a showing PDF (a fresh blob or the disk seed of a
-              reopened paper) `PdfPaneOverlay` paints the live compile phase,
-              and otherwise the "out of date" chip when the PDF lags the edits. */}
-          {paneState?.pdfBlobUrl && (
-            <PdfPaneOverlay docId={currentDocId} stale={!!paneState.pdfStale} />
-          )}
-        </FramedViewerSurface>
-      ) : currentDocId ? null : (
+      ) : currentDoc && (docPermState !== "granted" || activeLoadFailure) ? null : currentDocId ? null : (
         <div className="flex flex-1 items-center justify-center canvas-paint">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-xl">
             {docs.length > 0 ? (

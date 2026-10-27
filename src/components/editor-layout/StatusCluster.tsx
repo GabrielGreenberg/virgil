@@ -660,17 +660,16 @@ function StatusClusterImpl(props: StatusClusterProps) {
         Compile
       </button>
       {/* PDF view toggle. Read local `pdfView` directly for the toggle's own
-          pressed state (the view flag lives at the shell level). NOTE (P6):
-          EditorPane is NOT unmounted in PDF view — KeepAliveSlot hides it via
-          `display:none`, so paneState keeps bubbling. That's exactly why the
-          PDF viewer and the `vbar.pdfStale` dot below can read the pane's live
-          state instead of a shell-owned disk read. */}
+          pressed state (the view flag lives at the shell level). Since task
+          1320 the PDF opens in the right-hand pane of the text split (the
+          slot code view uses), so the editor stays visible beside it; the
+          PDF and the `vbar.pdfStale` dot read the pane's live bubbled state. */}
       <button
         onClick={onTogglePdfView}
         disabled={!currentDocId}
         className="topbarbtn"
         aria-pressed={pdfView}
-        data-hint={pdfView ? "Back to editor" : "View PDF"}
+        data-hint={pdfView ? "Hide PDF" : "View PDF"}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
