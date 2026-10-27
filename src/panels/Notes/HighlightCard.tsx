@@ -7,19 +7,23 @@ import {
   CardEmptyText,
   PANEL,
   PanelCard,
+  clampCompressedText,
   compressedBodyStyle,
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getTextAnchor, type CardWithLinks } from "@/links/links";
 import { isModeB } from "@/links/_shared/types";
-import { useLinkedAnchorText } from "@/links/_shared/useLinkedAnchorText";
+import { useLinkedAnchorPassage } from "@/links/_shared/useLinkedAnchorPassage";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
-import { FONT_SERIF } from "@/lib/font-stacks";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { CapturedPassage, plainPassageContent } from "@/panels/_shared/captured-passage";
+import {
+  CapturedPassage,
+  capturedPassageOneLine,
+  plainPassageContent,
+} from "@/panels/_shared/captured-passage";
 
 export function HighlightCard({
   card,
@@ -48,10 +52,13 @@ export function HighlightCard({
   // The passage as it reads NOW (task 700): the live text under the
   // highlight's mark, falling back to the stored text only when the mark is
   // gone. The stored snapshot is the recovery key, not the display text — an
-  // edit inside the highlight must reach the card.
+  // edit inside the highlight must reach the card. The live read is RICH
+  // (task 1324): the plain `textBetween` string drops every inline atom (a
+  // citation, inline math, a footnote marker) and flattens the marks, so a
+  // highlight quoted its passage wrongly. The stored fallback is plain words
+  // only — highlights carry no rich capture.
   const textAnchor = getTextAnchor(card);
-  const liveText = useLinkedAnchorText(textAnchor?.anchorId);
-  const anchorText = liveText ?? storedHighlightText(card);
+  const live = useLinkedAnchorPassage(textAnchor?.anchorId);
   // Jump is the HOST's decision (task 699): every host hands `onJump` only
   // through the card-anchor authority's gate, so the card re-derives nothing.
   // (The old local `isOrphaned` could never be true — it required text with
@@ -75,24 +82,33 @@ export function HighlightCard({
     { anchorRef: cardRef },
   );
 
-  // The card body renders the highlighted text in the document's serif
-  // face (matching the editor) so the snippet reads like an excerpt.
   // No yellow pill inside the card — the in-doc tint is the actual
   // highlight; the H badge tells the user this card is a highlight.
-  const snippetFontStyle = {
-    fontFamily: FONT_SERIF,
-    color: "var(--editor-text-color)",
-  } as const;
-  const trimmedAnchor = anchorText.replace(/\s+/g, " ").trim();
-  // Main-text typography for the expanded quote, same as every captured
-  // passage (the archive-card treatment).
+  const storedText = live ? "" : storedHighlightText(card).replace(/\s+/g, " ").trim();
+  const passage = useMemo(
+    () =>
+      live
+        ? { latex: live.text, content: live.content }
+        : { latex: storedText, content: plainPassageContent(storedText) },
+    [live, storedText],
+  );
+  // ONE projection for the collapsed cue — the door's own one-liner, so the
+  // cue and the expanded excerpt cannot disagree (a citation reads as its
+  // display text, never a double space) — through the ONE compressed clamp.
+  const oneLine = useMemo(() => capturedPassageOneLine(passage), [passage]);
+  const compressedSnippet = clampCompressedText(oneLine, compressedLines);
+  // Main-text typography for the quote, expanded AND collapsed, same as every
+  // captured passage (the archive-card treatment). The collapsed cue drops
+  // `color` exactly as the door does, so both inherit the card's ink.
   const passageStyle = usePanelBodyStyle("footnote");
-  const passageContent = useMemo(() => plainPassageContent(trimmedAnchor), [trimmedAnchor]);
-  const snippetCap = 80 * Math.max(1, compressedLines);
-  const compressedSnippet =
-    trimmedAnchor.length > snippetCap
-      ? `${trimmedAnchor.slice(0, snippetCap - 3)}…`
-      : trimmedAnchor;
+  const cueStyle = useMemo(
+    () => ({
+      fontFamily: passageStyle.fontFamily,
+      fontSize: passageStyle.fontSize,
+      ...compressedBodyStyle(compressedLines),
+    }),
+    [passageStyle.fontFamily, passageStyle.fontSize, compressedLines],
+  );
 
   const cardEl = (
     <PanelCard
@@ -112,8 +128,8 @@ export function HighlightCard({
       {...(extraDataAttrs ?? {})}
     >
       {compressed ? (
-        <div className="px-3 pt-1.5 pb-1.5 text-sm">
-          <div style={{ ...snippetFontStyle, ...compressedBodyStyle(compressedLines) }}>
+        <div className="px-3 pt-1.5 pb-1.5">
+          <div style={cueStyle}>
             {compressedSnippet || <CardEmptyText label="empty highlight" />}
           </div>
         </div>
@@ -122,10 +138,10 @@ export function HighlightCard({
           {/* The highlighted words ARE a quote of the paper, so they render
               through the one door every quoting card uses (task 825) — the
               borrowed main-text treatment, not a hand-set serif line. */}
-          {trimmedAnchor ? (
+          {oneLine ? (
             <CapturedPassage
-              latex={trimmedAnchor}
-              content={passageContent}
+              latex={passage.latex}
+              content={passage.content}
               bodyStyle={passageStyle}
               className="py-1 break-words"
             />
