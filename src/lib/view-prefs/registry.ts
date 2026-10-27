@@ -115,6 +115,12 @@ interface EnumDef<V extends string> {
   promote?: boolean;
   /** See `EnumProjectionDecl` (task 927). */
   project?: EnumProjectionDecl;
+  /** For a menu-bearing enum (task 1317): the id of the collapsible row the
+   *  enum renders as inside its group (its `label` is that row's label), and
+   *  the prefix of its pick-one option rows (`${optionRowIdPrefix}${value}`).
+   *  Declared, not derived, for the same reason as a toggle's `menuRowId`. */
+  menuRowId?: string;
+  optionRowIdPrefix?: string;
 }
 interface SetDef<E extends string | number> {
   kind: "set";
@@ -136,9 +142,19 @@ interface SetDef<E extends string | number> {
    *  `toggleViewPrefMember` refuses to validate against `members` at all.
    *  `coerceRegistryPrefs` reads THIS. */
   domain?: readonly E[];
+  /** Whether a member IN the stored array means its row is CHECKED
+   *  (`present` — `dividerLevels` lists the levels shown) or UNCHECKED
+   *  (`hidden` — `hiddenMarginaliaTypes` lists the types hidden). Read by ONE
+   *  rule, `isMemberChecked` (task 1317); no surface re-decides it. */
   polarity: "present" | "hidden";
+  /** The accessible name of the member rows' `role="group"` in the View menu
+   *  (task 1317) — not a visible header; the group's header is
+   *  `VIEW_MENU_GROUPS[menu].header`. */
   label: string;
   menu?: ViewPrefMenuGroup;
+  /** For a menu-bearing set: member row ids are `${memberRowIdPrefix}${m}`
+   *  (task 1317 — declared, since tests and the menu registry address them). */
+  memberRowIdPrefix?: string;
   promote?: boolean;
   memberLabels: Record<string, string>;
 }
@@ -239,20 +255,20 @@ export const VIEW_PREF_REGISTRY = {
   showMarginalia:       { kind: "toggle", scope: "global", default: SHIPPED.showMarginalia, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: SHIPPED.hiddenMarginaliaTypes, members: HIDEABLE_MARKER_TYPES,
                           domain: ALL_MARKER_TYPES,
-                          polarity: "hidden", label: "Marginalia types", menu: "marginalia",
+                          polarity: "hidden", label: "Marginalia types", menu: "marginalia", memberRowIdPrefix: "marginalia-type-",
                           memberLabels: MARGINALIA_TYPE_LABELS },
   // Highlights
   showHighlights:       { kind: "toggle", scope: "global", default: SHIPPED.showHighlights, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
   hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
                           domain: ALL_HIGHLIGHT_TYPES,
-                          polarity: "hidden", label: "Highlight types", menu: "highlights",
+                          polarity: "hidden", label: "Highlight types", menu: "highlights", memberRowIdPrefix: "highlights-type-",
                           memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
   // Dividers
   dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: [0, 1, 2, 3, 4, 5, 6] as const,
-                   polarity: "present", label: "Show dividers for…", menu: "dividers",
+                   polarity: "present", label: "Divider levels", menu: "dividers", memberRowIdPrefix: "divider-level-",
                    memberLabels: { 0: "Parts", 1: "Chapters", 2: "Sections", 3: "Subsections", 4: "Subsubsections", 5: "Paragraph headings", 6: "Subparagraph headings" } },
   dividerWidth: { kind: "enum", scope: "global", default: SHIPPED.dividerWidth, values: ["full", "mid", "text"],
-                  label: "Divider preferences", menu: "dividers",
+                  label: "Divider preferences", menu: "dividers", menuRowId: "divider-prefs-group", optionRowIdPrefix: "divider-width-",
                   valueLabels: { full: "Full width", mid: "Mid width", text: "Text width" },
                   project: { classOf: (v: string) => `dividers-width-${v}` } },
   // Bibliography filter (NOT in the View menu; panel-local; window scope)
@@ -328,25 +344,96 @@ export const VIEW_PREF_KEYS = Object.keys(VIEW_PREF_REGISTRY) as ViewPrefKey[];
  *  `toggleViewPrefMember` adds to / removes from that array. */
 export type ViewPrefMember<K extends SetViewPrefKey> = RegistryPrefs[K][number];
 
-/** A menu-group's toggle rows, in registry declaration order: the key that
- *  supplies the row's value + its stable row id + its label. The View menu's
- *  Display block renders straight off this, so a new Display toggle is ONE
- *  registry row and zero MenuBar edits (task 274). */
-export function toggleRowsInMenuGroup(
-  group: ViewPrefMenuGroup,
-): ReadonlyArray<{ key: ToggleViewPrefKey; id: string; label: string; hint?: string }> {
-  return Object.entries(VIEW_PREF_REGISTRY)
-    .filter(([, d]) => d.kind === "toggle" && d.menu === group)
-    .map(([key, d]) => {
-      const def = d as ToggleDef;
-      return { key: key as ToggleViewPrefKey, id: def.menuRowId, label: def.label, hint: def.hint };
-    });
-}
+/**
+ * The View menu's groups (task 1317) — each group's visible HEADER and, for a
+ * collapsible group, the id of its expander row. `display` is a flat section
+ * (a section label, rows that close the menu); every other group is a
+ * collapsible row whose children keep the menu open. Exhaustive over
+ * `ViewPrefMenuGroup`, so a new group cannot ship without its chrome; the ids
+ * are declared because tests and the menu registry address them.
+ */
+export const VIEW_MENU_GROUPS: Readonly<
+  Record<ViewPrefMenuGroup, { readonly header: string; readonly groupRowId: string | null }>
+> = {
+  display:    { header: "Display",            groupRowId: null },
+  marginalia: { header: "Marginalia",         groupRowId: "marginalia-group" },
+  highlights: { header: "Highlights",         groupRowId: "highlights-group" },
+  dividers:   { header: "Show dividers for…", groupRowId: "dividers-group" },
+};
+
+/** The View menu's group order — the registry's own, derived. */
+export const VIEW_MENU_GROUP_ORDER = Object.keys(VIEW_MENU_GROUPS) as ViewPrefMenuGroup[];
 
 /** The registry keys whose `kind` is `"enum"`. */
 export type EnumViewPrefKey = {
   [K in ViewPrefKey]: (typeof VIEW_PREF_REGISTRY)[K] extends { kind: "enum" } ? K : never;
 }[ViewPrefKey];
+
+/** One row-producing registry entry of a View-menu group, in the shape the
+ *  menu renders: a toggle row, a set's member rows, or an enum's collapsible
+ *  pick-one subgroup. Every id and label is the registry's. */
+export type ViewMenuEntry =
+  | { kind: "toggle"; key: ToggleViewPrefKey; id: string; label: string; hint?: string }
+  | {
+      kind: "set";
+      key: SetViewPrefKey;
+      label: string;
+      members: ReadonlyArray<{ member: string | number; id: string; label: string }>;
+    }
+  | { kind: "enum"; key: EnumViewPrefKey; id: string; label: string; optionIdPrefix: string };
+
+/**
+ * A menu group's entries, in registry declaration order (task 1317). The View
+ * menu renders EVERY group straight off this — so a new row in any group is
+ * one registry entry and zero MenuBar edits (task 274's promise, extended from
+ * Display to all four groups). A menu-bearing set or enum that omits its row
+ * ids is a declaration error, thrown here rather than rendered id-less.
+ */
+export function menuEntriesInGroup(group: ViewPrefMenuGroup): ReadonlyArray<ViewMenuEntry> {
+  const out: ViewMenuEntry[] = [];
+  for (const [key, d] of Object.entries(VIEW_PREF_REGISTRY) as Array<[string, ViewPrefDef]>) {
+    if (d.menu !== group) continue;
+    if (d.kind === "toggle") {
+      out.push({ kind: "toggle", key: key as ToggleViewPrefKey, id: d.menuRowId, label: d.label, hint: d.hint });
+    } else if (d.kind === "set") {
+      const prefix = d.memberRowIdPrefix;
+      if (!prefix) throw new Error(`view-pref "${key}" is in a menu but declares no memberRowIdPrefix`);
+      out.push({
+        kind: "set",
+        key: key as SetViewPrefKey,
+        label: d.label,
+        members: d.members.map((m) => ({ member: m, id: `${prefix}${m}`, label: d.memberLabels[String(m)] })),
+      });
+    } else {
+      if (!d.menuRowId || !d.optionRowIdPrefix) {
+        throw new Error(`view-pref "${key}" is in a menu but declares no menuRowId/optionRowIdPrefix`);
+      }
+      out.push({ kind: "enum", key: key as EnumViewPrefKey, id: d.menuRowId, label: d.label, optionIdPrefix: d.optionRowIdPrefix });
+    }
+  }
+  return out;
+}
+
+/** A menu-group's toggle rows — the toggle slice of `menuEntriesInGroup`. */
+export function toggleRowsInMenuGroup(
+  group: ViewPrefMenuGroup,
+): ReadonlyArray<{ key: ToggleViewPrefKey; id: string; label: string; hint?: string }> {
+  return menuEntriesInGroup(group).flatMap((e) =>
+    e.kind === "toggle" ? [{ key: e.key, id: e.id, label: e.label, hint: e.hint }] : [],
+  );
+}
+
+/** Is `member`'s row CHECKED, given the set's stored value? The ONE reader of
+ *  `SetDef.polarity` (task 1317): `present` → checked iff listed; `hidden` →
+ *  checked iff NOT listed. */
+export function isMemberChecked(
+  key: SetViewPrefKey,
+  value: readonly unknown[],
+  member: unknown,
+): boolean {
+  const listed = value.includes(member);
+  return (VIEW_PREF_REGISTRY[key] as SetDef<string | number>).polarity === "present" ? listed : !listed;
+}
 
 /** An enum pref's pick-one options, `{ value, label }` in declared order — the
  *  shape `MenuRadioGroup` takes. Every enum-valued control (the View menu's

@@ -149,12 +149,15 @@ describe("menu-bearing registry labels are SOURCED from the registry, not hardco
   // would let them drift out of sync with persistence). The actual *rendered*
   // labels are pinned by menubar-dropdowns-keyboard.test.tsx.
   it("MenuBar references VIEW_PREF_REGISTRY for its rows + labels", () => {
-    expect(MENUBAR_SRC).toMatch(/VIEW_PREF_REGISTRY/);
-    // The Display rows, marginalia/highlight members, and divider members/values
-    // are all enumerated from the registry.
-    expect(MENUBAR_SRC).toMatch(/VIEW_PREF_REGISTRY\.dividerLevels\.members/);
+    // Every group (task 1317) — its header, expander id, toggle rows, set
+    // member rows and enum subgroups — is enumerated from the registry, and a
+    // set row's checkmark is the registry's polarity rule, not a hand `!`.
+    expect(MENUBAR_SRC).toMatch(/menuEntriesInGroup\(/);
+    expect(MENUBAR_SRC).toMatch(/VIEW_MENU_GROUPS\[/);
+    expect(MENUBAR_SRC).toMatch(/isMemberChecked\(/);
+    expect(MENUBAR_SRC).not.toMatch(/checked=\{!/);
     // Enum values + labels arrive through the registry's `enumOptions` (task 931).
-    expect(MENUBAR_SRC).toMatch(/enumOptions\("dividerWidth"\)/);
+    expect(MENUBAR_SRC).toMatch(/enumOptions\(e\.key\)/);
   });
 
   it("the per-value/member label strings are NOT hardcoded as literals in MenuBar", () => {
@@ -165,6 +168,10 @@ describe("menu-bearing registry labels are SOURCED from the registry, not hardco
       '"Parts"', '"Chapters"', '"Subsections"', '"Subsubsections"',
       '"Paragraph headings"', '"Subparagraph headings"',
       '"Full width"', '"Mid width"', '"Text width"',
+      // Group headers + row-id prefixes, hand-wired until task 1317.
+      '"Marginalia"', '"Highlights"', '"Show dividers for…"',
+      '`marginalia-type-', '`highlights-type-', '`divider-level-',
+      '"divider-width-"', '"marginalia-group"', '"highlights-group"', '"dividers-group"',
     ];
     const leaked = FORMERLY_INLINE.filter((lit) => MENUBAR_SRC.includes(lit));
     expect(leaked).toEqual([]);
