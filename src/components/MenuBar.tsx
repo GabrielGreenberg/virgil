@@ -4,10 +4,14 @@ import { memo, useCallback, useState, useRef, type ReactNode } from "react";
 import { Editor } from "@tiptap/react";
 import type { DividerLevel } from "@/hooks/useViewPrefs";
 import {
-  VIEW_PREF_REGISTRY,
-  toggleRowsInMenuGroup,
+  VIEW_MENU_GROUPS,
+  VIEW_MENU_GROUP_ORDER,
+  menuEntriesInGroup,
+  isMemberChecked,
   enumOptions,
   type RegistryPrefs,
+  type ViewMenuEntry,
+  type ViewPrefMenuGroup,
   type ViewPrefKey,
   type SetViewPrefKey,
   type ViewPrefMember,
@@ -64,26 +68,28 @@ export type { DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 // Row labels, member/value vocabularies AND stable row ids are all sourced from
 // VIEW_PREF_REGISTRY (the single source of truth), never re-declared here. Since
 // task 274 the VALUES and the WRITES travel by registry key too — every row
-// reads `viewPrefs[key]` and calls one of the three registry-driven writers — so
-// the ViewMenu holds no per-pref knowledge at all.
-const DIVIDER_LEVEL_LABELS = VIEW_PREF_REGISTRY.dividerLevels.memberLabels as Record<DividerLevel, string>;
-/** Display-group rows in registry declaration order — key + stable row id +
- *  label, all three sourced from `VIEW_PREF_REGISTRY` (task 274). The value and
- *  the write both travel BY KEY (`viewPrefs[key]` / `onToggleViewPref(key)`),
- *  so adding a Display toggle is one registry row and zero edits here — where
- *  it previously needed a row in this list, a prop pair on `MenuBarProps`, an
- *  entry in ViewMenu's `Pick`, and two entries in the checked/toggle maps. */
-const DISPLAY_ROWS = toggleRowsInMenuGroup("display");
-/** Marginalia per-type sub-rows (members + labels from the registry). */
-const MARGINALIA_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members.map((type) => ({
-  type,
-  label: VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.memberLabels[type],
-}));
-/** Highlight per-type sub-rows (members + labels from the registry). */
-const HIGHLIGHT_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenHighlightTypes.members.map((type) => ({
-  type,
-  label: VIEW_PREF_REGISTRY.hiddenHighlightTypes.memberLabels[type],
-}));
+// reads `viewPrefs[key]` and calls one of the three registry-driven writers —
+// and since task 1317 every GROUP (not only Display) renders off
+// `menuEntriesInGroup`, with its header + expander id from `VIEW_MENU_GROUPS`
+// and every set row's checkmark from `isMemberChecked` (the one reader of a
+// set's `polarity`). So the ViewMenu holds no per-pref knowledge at all: a new
+// row in ANY group is one registry entry and zero edits here.
+/** Each group's entries, in registry declaration order. */
+const VIEW_MENU_ENTRIES: ReadonlyArray<{
+  group: ViewPrefMenuGroup;
+  entries: ReadonlyArray<ViewMenuEntry>;
+}> = VIEW_MENU_GROUP_ORDER.map((group) => ({ group, entries: menuEntriesInGroup(group) }));
+/** Every expander row the menu can render — the collapsible groups, each
+ *  menu enum's subgroup, and the spelling dictionary. Right/Left arrows
+ *  expand/collapse exactly these. */
+const SPELL_DICTIONARY_GROUP_ID = "spell-dictionary-group";
+const EXPANDABLE_ROW_IDS: ReadonlySet<string> = new Set([
+  SPELL_DICTIONARY_GROUP_ID,
+  ...VIEW_MENU_ENTRIES.flatMap(({ group, entries }) => [
+    ...(VIEW_MENU_GROUPS[group].groupRowId ? [VIEW_MENU_GROUPS[group].groupRowId!] : []),
+    ...entries.flatMap((e) => (e.kind === "enum" ? [e.id] : [])),
+  ]),
+]);
 
 interface MenuBarProps {
   editor: Editor | null;
@@ -465,7 +471,7 @@ function SpellDictionaryGroup({ expanded, onToggle }: { expanded: boolean; onTog
   ] as const;
   return (
     <>
-      <ViewGroupRow id="spell-dictionary-group" label="Spelling dictionary" expanded={expanded} onToggle={onToggle} />
+      <ViewGroupRow id={SPELL_DICTIONARY_GROUP_ID} label="Spelling dictionary" expanded={expanded} onToggle={onToggle} />
       {expanded && scopes.map((scope) => (
         <div key={scope.key} className="pl-3">
           <MenuSectionLabel>{scope.caption}</MenuSectionLabel>
@@ -522,11 +528,17 @@ export function ViewMenu({
   | "onOpenMarginsMode"
 >) {
   const [open, setOpen] = useState(false);
-  const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
-  const [highlightsExpanded, setHighlightsExpanded] = useState(false);
-  const [dividersExpanded, setDividersExpanded] = useState(false);
-  const [dividerPrefsExpanded, setDividerPrefsExpanded] = useState(false);
-  const [spellDictExpanded, setSpellDictExpanded] = useState(false);
+  // One expanded flag per expander row id (`EXPANDABLE_ROW_IDS`), absent =
+  // collapsed — so a registry-declared group needs no state hook here.
+  const [rowsExpanded, setRowsExpanded] = useState<Readonly<Record<string, boolean>>>({});
+  const isExpanded = (id: string) => rowsExpanded[id] === true;
+  const setExpanded = useCallback((id: string, next: boolean | ((prev: boolean) => boolean)) => {
+    setRowsExpanded((rows) => {
+      const value = typeof next === "function" ? next(rows[id] === true) : next;
+      return (rows[id] === true) === value ? rows : { ...rows, [id]: value };
+    });
+  }, []);
+  const toggleExpanded = (id: string) => setExpanded(id, (p) => !p);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
   const setTrigger = useCallback((el: HTMLButtonElement | null) => {
@@ -581,21 +593,8 @@ export function ViewMenu({
           // no-op. The primitive hands Left/Right here only for a vertical list
           // (otherwise inert), so this can't shadow real nav.
           onArrowHorizontal={(dir, activeId) => {
-            const groups: Record<
-              string,
-              [boolean, React.Dispatch<React.SetStateAction<boolean>>]
-            > = {
-              "marginalia-group": [marginaliaExpanded, setMarginaliaExpanded],
-              "highlights-group": [highlightsExpanded, setHighlightsExpanded],
-              "dividers-group": [dividersExpanded, setDividersExpanded],
-              "divider-prefs-group": [dividerPrefsExpanded, setDividerPrefsExpanded],
-              "spell-dictionary-group": [spellDictExpanded, setSpellDictExpanded],
-            };
-            const g = activeId ? groups[activeId] : undefined;
-            if (!g) return;
-            const [expanded, setExpanded] = g;
-            if (dir === "right" && !expanded) setExpanded(true);
-            else if (dir === "left" && expanded) setExpanded(false);
+            if (!activeId || !EXPANDABLE_ROW_IDS.has(activeId)) return;
+            setExpanded(activeId, dir === "right");
           }}
           anchorRect={anchor}
           trackAnchor={anchor}
@@ -609,84 +608,92 @@ export function ViewMenu({
           containerClassName={dropdownClass}
         >
         <div>
-          <MenuSectionLabel>Display</MenuSectionLabel>
-          {/* Every row below reads its value as `viewPrefs[<registry key>]` and
-              writes through one of the three registry-driven writers, so the
-              menu holds no per-pref knowledge at all (task 274). */}
-          {DISPLAY_ROWS.map((row) => (
-            <MenuToggleRow
-              key={row.id}
-              id={row.id}
-              label={row.label}
-              hint={row.hint}
-              checked={viewPrefs[row.key]}
-              onToggle={() => { onToggleViewPref(row.key); setOpen(false); }}
-            />
-          ))}
-          <SpellDictionaryGroup expanded={spellDictExpanded} onToggle={() => setSpellDictExpanded((p) => !p)} />
-          <MenuSeparator />
-          <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
-          {marginaliaExpanded && (
-            <>
-              <MenuToggleRow id={VIEW_PREF_REGISTRY.showMarginalia.menuRowId} label={VIEW_PREF_REGISTRY.showMarginalia.label} checked={viewPrefs.showMarginalia} indent={1} onToggle={() => onToggleViewPref("showMarginalia")} />
-              {viewPrefs.showMarginalia && MARGINALIA_TYPE_ROWS.map(({ type, label }) => (
-                <MenuToggleRow
-                  key={type}
-                  id={`marginalia-type-${type}`}
-                  label={label}
-                  checked={!viewPrefs.hiddenMarginaliaTypes.includes(type)}
-                  indent={1}
-                  onToggle={() => onToggleViewPrefMember("hiddenMarginaliaTypes", type)}
-                />
-              ))}
-            </>
-          )}
-          <ViewGroupRow id="highlights-group" label="Highlights" expanded={highlightsExpanded} onToggle={() => setHighlightsExpanded((p) => !p)} />
-          {highlightsExpanded && (
-            <>
-              <MenuToggleRow id={VIEW_PREF_REGISTRY.showHighlights.menuRowId} label={VIEW_PREF_REGISTRY.showHighlights.label} checked={viewPrefs.showHighlights} indent={1} onToggle={() => onToggleViewPref("showHighlights")} />
-              {viewPrefs.showHighlights && HIGHLIGHT_TYPE_ROWS.map(({ type, label }) => (
-                <MenuToggleRow
-                  key={type}
-                  id={`highlights-type-${type}`}
-                  label={label}
-                  checked={!viewPrefs.hiddenHighlightTypes.includes(type)}
-                  indent={1}
-                  onToggle={() => onToggleViewPrefMember("hiddenHighlightTypes", type)}
-                />
-              ))}
-            </>
-          )}
-          {availableDividerLevels.size > 0 && (
-            <>
-              <ViewGroupRow id="dividers-group" label={VIEW_PREF_REGISTRY.dividerLevels.label} expanded={dividersExpanded} onToggle={() => setDividersExpanded((p) => !p)} />
-              {dividersExpanded && (
-                <>
-                  {VIEW_PREF_REGISTRY.dividerLevels.members.filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
-                    <MenuToggleRow
-                      key={lvl}
-                      id={`divider-level-${lvl}`}
-                      label={DIVIDER_LEVEL_LABELS[lvl]}
-                      checked={viewPrefs.dividerLevels.includes(lvl)}
-                      indent={1}
-                      onToggle={() => onToggleViewPrefMember("dividerLevels", lvl)}
-                    />
-                  ))}
-                  <ViewGroupRow id="divider-prefs-group" label={VIEW_PREF_REGISTRY.dividerWidth.label} expanded={dividerPrefsExpanded} indent={1} onToggle={() => setDividerPrefsExpanded((p) => !p)} />
-                  {dividerPrefsExpanded && (
+          {VIEW_MENU_ENTRIES.map(({ group, entries }, i) => {
+            const { header, groupRowId } = VIEW_MENU_GROUPS[group];
+            // A set's AVAILABLE members, where the host narrows them (only the
+            // heading levels the doc actually has). A group holding a narrowed
+            // set with nothing available is not rendered at all.
+            const availableOf = (key: SetViewPrefKey): ReadonlySet<unknown> | undefined =>
+              key === "dividerLevels" ? availableDividerLevels : undefined;
+            if (entries.some((e) => e.kind === "set" && availableOf(e.key)?.size === 0)) return null;
+            // A collapsible group's toggles are its MASTER switches: its set
+            // rows show only while every one of them is on (Show marginalia →
+            // the per-type rows). A flat section closes the menu on a toggle;
+            // a collapsible group's rows keep it open.
+            const flat = groupRowId === null;
+            const indent = flat ? 0 : 1;
+            const mastersOn = entries.every((e) => e.kind !== "toggle" || viewPrefs[e.key]);
+            const rows = entries.map((e) => {
+              if (e.kind === "toggle") {
+                return (
+                  <MenuToggleRow
+                    key={e.id}
+                    id={e.id}
+                    label={e.label}
+                    hint={e.hint}
+                    checked={viewPrefs[e.key]}
+                    indent={indent}
+                    onToggle={() => { onToggleViewPref(e.key); if (flat) setOpen(false); }}
+                  />
+                );
+              }
+              if (e.kind === "set") {
+                if (!mastersOn) return null;
+                const available = availableOf(e.key);
+                const value = viewPrefs[e.key] as readonly unknown[];
+                return (
+                  <div key={e.key} role="group" aria-label={e.label}>
+                    {e.members.filter((m) => !available || available.has(m.member)).map((m) => (
+                      <MenuToggleRow
+                        key={m.id}
+                        id={m.id}
+                        label={m.label}
+                        checked={isMemberChecked(e.key, value, m.member)}
+                        indent={indent}
+                        onToggle={() => onToggleViewPrefMember(e.key, m.member as never)}
+                      />
+                    ))}
+                  </div>
+                );
+              }
+              return (
+                <div key={e.key}>
+                  <ViewGroupRow id={e.id} label={e.label} expanded={isExpanded(e.id)} indent={1} onToggle={() => toggleExpanded(e.id)} />
+                  {isExpanded(e.id) && (
                     <MenuRadioGroup
-                      idPrefix="divider-width-"
-                      ariaLabel={VIEW_PREF_REGISTRY.dividerWidth.label}
-                      options={enumOptions("dividerWidth")}
-                      value={viewPrefs.dividerWidth}
+                      idPrefix={e.optionIdPrefix}
+                      ariaLabel={e.label}
+                      options={enumOptions(e.key)}
+                      value={viewPrefs[e.key]}
                       indent={2}
-                      onPick={(w) => onSetViewPref("dividerWidth", w)}
+                      onPick={(v) => onSetViewPref(e.key, v as never)}
                     />
                   )}
-                </>
-              )}
-            </>
-          )}
+                </div>
+              );
+            });
+            return (
+              <div key={group} data-view-menu-group={group}>
+                {/* The spelling dictionary is not a pref (its words live in
+                    the dictionaries), so it is appended to Display by hand. */}
+                {flat ? (
+                  <>
+                    <MenuSectionLabel>{header}</MenuSectionLabel>
+                    {rows}
+                    {group === "display" && (
+                      <SpellDictionaryGroup expanded={isExpanded(SPELL_DICTIONARY_GROUP_ID)} onToggle={() => toggleExpanded(SPELL_DICTIONARY_GROUP_ID)} />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {i > 0 && VIEW_MENU_GROUPS[VIEW_MENU_ENTRIES[i - 1].group].groupRowId === null && <MenuSeparator />}
+                    <ViewGroupRow id={groupRowId} label={header} expanded={isExpanded(groupRowId)} onToggle={() => toggleExpanded(groupRowId)} />
+                    {isExpanded(groupRowId) && rows}
+                  </>
+                )}
+              </div>
+            );
+          })}
           {/* Margins editor entry — opens an in-text drag mode with
               save/cancel buttons in the docked toolbar band. Sits in
               the same trailing block as Fonts… */}
