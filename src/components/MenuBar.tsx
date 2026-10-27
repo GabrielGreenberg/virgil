@@ -61,10 +61,6 @@ import { menuTriggerAria } from "@/components/menu/menu-trigger";
 // `exampleItem`s vs the serializer-correct `exampleItemList` wrapper) — that
 // dormant divergence is resolved in the canonical builder.
 
-// Types moved to useViewPrefs (the schema home for view-level prefs).
-// Re-exported here for back-compat with existing consumers.
-export type { DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
-
 // Row labels, member/value vocabularies AND stable row ids are all sourced from
 // VIEW_PREF_REGISTRY (the single source of truth), never re-declared here. Since
 // task 274 the VALUES and the WRITES travel by registry key too — every row

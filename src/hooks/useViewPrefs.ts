@@ -73,10 +73,10 @@ import {
  * the mismatch from the compiler. The stored `hiddenMarginaliaTypes` value is
  * now typed `MarkerType[]` straight from the card SSOT, and the MENU's subset
  * is `HIDEABLE_MARKER_TYPES` (`src/cards/marker-meta.ts`). */
-/** Heading depths 0–6, matching LaTeX (part…subparagraph). */
-export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-/** Heading-divider drawing width. */
-export type DividerWidth = "full" | "mid" | "text";
+/* `DividerLevel` / `DividerWidth` are DERIVED from the arrays in the
+ * zero-import leaf `@/lib/view-prefs/divider-vocab` (task 1318), the same
+ * array-first shape as `HighlightType`; re-exported here for existing imports. */
+export type { DividerLevel, DividerWidth } from "@/lib/view-prefs/divider-vocab";
 
 /** Every persisted panel slot: the canonical `PanelKind` set (the registry
  *  SSOT). The layout-only `"blank"` sentinel it once carried was retired with

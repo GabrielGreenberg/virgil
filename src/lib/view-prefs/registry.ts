@@ -15,7 +15,15 @@
  * `useViewPrefs` (`import type`), so there is no runtime import cycle
  * (`useViewPrefs` imports the runtime artifacts here, not vice-versa).
  */
-import type { DividerLevel } from "@/hooks/useViewPrefs";
+// Runtime import of the DIVIDER vocabulary from its zero-import leaf (task
+// 1318) — the `members` of `dividerLevels` and the `values` of `dividerWidth`,
+// so the unions and these rows are one list, not three.
+import {
+  DIVIDER_LEVELS,
+  DIVIDER_WIDTHS,
+  type DividerLevel,
+  type DividerWidth,
+} from "@/lib/view-prefs/divider-vocab";
 import type { MarkerType } from "@/cards/types";
 // Runtime import of the HIGHLIGHT vocabulary, from the zero-import leaf it was
 // moved to (task 677) precisely so this module can read it without importing
@@ -195,7 +203,7 @@ const SHIPPED = shippedDefaultsJson as unknown as {
   showHighlights: boolean;
   hiddenHighlightTypes: HighlightType[];
   dividerLevels: DividerLevel[];
-  dividerWidth: "full" | "mid" | "text";
+  dividerWidth: DividerWidth;
 };
 /**
  * Menu labels for the per-type marginalia hide rows. The ANNOTATION is the
@@ -264,10 +272,10 @@ export const VIEW_PREF_REGISTRY = {
                           polarity: "hidden", label: "Highlight types", menu: "highlights", memberRowIdPrefix: "highlights-type-",
                           memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
   // Dividers
-  dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: [0, 1, 2, 3, 4, 5, 6] as const,
+  dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: DIVIDER_LEVELS,
                    polarity: "present", label: "Divider levels", menu: "dividers", memberRowIdPrefix: "divider-level-",
                    memberLabels: { 0: "Parts", 1: "Chapters", 2: "Sections", 3: "Subsections", 4: "Subsubsections", 5: "Paragraph headings", 6: "Subparagraph headings" } },
-  dividerWidth: { kind: "enum", scope: "global", default: SHIPPED.dividerWidth, values: ["full", "mid", "text"],
+  dividerWidth: { kind: "enum", scope: "global", default: SHIPPED.dividerWidth, values: DIVIDER_WIDTHS,
                   label: "Divider preferences", menu: "dividers", menuRowId: "divider-prefs-group", optionRowIdPrefix: "divider-width-",
                   valueLabels: { full: "Full width", mid: "Mid width", text: "Text width" },
                   project: { classOf: (v: string) => `dividers-width-${v}` } },

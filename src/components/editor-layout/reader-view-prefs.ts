@@ -60,9 +60,12 @@ import type { EditorHandle } from "@/components/Editor";
 import {
   useViewPrefs,
   type Side,
-  type DividerLevel,
   type ViewPrefs,
 } from "@/hooks/useViewPrefs";
+import {
+  activeDividerLevels as activeDividerLevelsOf,
+  dividerLevelsPresent,
+} from "@/lib/view-prefs/divider-vocab";
 import {
   applyReaderHostProfile,
   type ReaderHostKind,
@@ -283,25 +286,17 @@ function useReaderMenuBarBundle(
   // identity over TOP-LEVEL blocks only (O(top-level children), never per
   // keystroke; the Reader is read-only so the doc never changes anyway).
   const availableDividerLevels = useMemo(() => {
-    const s = new Set<DividerLevel>();
+    const levels: unknown[] = [];
     editor?.state.doc.forEach((n) => {
-      if (n.type.name === "heading") {
-        const lv = n.attrs.level;
-        if (typeof lv === "number" && lv >= 0 && lv <= 6) {
-          s.add(lv as DividerLevel);
-        }
-      }
+      if (n.type.name === "heading") levels.push(n.attrs.level);
     });
-    return s;
+    return dividerLevelsPresent(levels);
   }, [editor]);
 
-  const activeDividerLevels = useMemo(() => {
-    const s = new Set<DividerLevel>();
-    for (const l of vp.prefs.dividerLevels) {
-      if (availableDividerLevels.has(l as DividerLevel)) s.add(l as DividerLevel);
-    }
-    return s;
-  }, [vp.prefs.dividerLevels, availableDividerLevels]);
+  const activeDividerLevels = useMemo(
+    () => activeDividerLevelsOf(vp.prefs.dividerLevels, availableDividerLevels),
+    [vp.prefs.dividerLevels, availableDividerLevels],
+  );
 
   return useMemo<EditorPaneMenuBarBundle>(
     () => ({

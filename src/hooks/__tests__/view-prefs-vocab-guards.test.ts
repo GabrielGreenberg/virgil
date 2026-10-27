@@ -25,6 +25,15 @@ import {
 } from "../useViewPrefs";
 import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
 import {
+  DIVIDER_LEVELS,
+  DIVIDER_WIDTHS,
+  activeDividerLevels,
+  dividerLevelsPresent,
+  isDividerLevel,
+  type DividerLevel,
+  type DividerWidth,
+} from "@/lib/view-prefs/divider-vocab";
+import {
   ALL_MARKER_TYPES,
   HIDEABLE_MARKER_TYPES,
   NON_HIDEABLE_MARKER_TYPES,
@@ -101,6 +110,35 @@ describe("audit-218 · view-prefs vocabulary lockstep", () => {
       // declaration move together.
       expect([...NON_HIDEABLE_MARKER_TYPES]).toEqual(["error"]);
       expect(VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members).not.toContain("error");
+    });
+  });
+
+  // ── M4 — divider vocabulary (task 1318) ─────────────────────────────────
+  describe("M4 · dividers (leaf arrays are SSOT; registry rows read them)", () => {
+    it("the registry's divider rows ARE the leaf arrays, not restatements", () => {
+      // Identity, not equality: a re-spelled literal list in the registry
+      // would still be `toEqual` today and drift tomorrow.
+      expect(VIEW_PREF_REGISTRY.dividerLevels.members).toBe(DIVIDER_LEVELS);
+      expect(VIEW_PREF_REGISTRY.dividerWidth.values).toBe(DIVIDER_WIDTHS);
+    });
+
+    it("every level has a menu label and every width a value label", () => {
+      const lv = VIEW_PREF_REGISTRY.dividerLevels.memberLabels;
+      expect(Object.keys(lv).map(Number).sort()).toEqual([...DIVIDER_LEVELS]);
+      const wv = VIEW_PREF_REGISTRY.dividerWidth.valueLabels;
+      expect(Object.keys(wv).sort()).toEqual([...DIVIDER_WIDTHS].sort());
+      // Compile-time twin: the unions are derived, so a new member must be
+      // enumerated here or this fails to typecheck.
+      ({ 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 }) satisfies Record<DividerLevel, 1>;
+      ({ full: 1, mid: 1, text: 1 }) satisfies Record<DividerWidth, 1>;
+    });
+
+    it("levels present: one rule, bounds from the vocabulary", () => {
+      expect([...dividerLevelsPresent([2, 2, 7, -1, 0, "3", 1.5, null])].sort()).toEqual([0, 2]);
+      const present = dividerLevelsPresent([1, 2, 3]);
+      expect([...activeDividerLevels([0, 2, 3, 9], present)].sort()).toEqual([2, 3]);
+      expect(isDividerLevel(6)).toBe(true);
+      expect(isDividerLevel(7)).toBe(false);
     });
   });
 
