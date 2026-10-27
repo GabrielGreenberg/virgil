@@ -681,3 +681,50 @@ describe("usePersistentState — a failed write reaches the user", () => {
     expect(getSidecarRefusal("doc-ok")).toBeNull();
   });
 });
+
+// Task 1327 — the write coalescer's maxWait reaches the sidecar hook: a
+// CONTENT sidecar typed into continuously still writes before the burst ends;
+// a VIEW sidecar stays a pure trailing debounce.
+describe("continuous update() bursts (task 1327)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function mountLoaded(filename: string) {
+    beginDocPipeline("doc-1");
+    mockRead.mockResolvedValue(EMPTY);
+    const hook = renderHook(() =>
+      usePersistentState<Shape>("doc-1", filename, EMPTY),
+    );
+    await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+    mockWrite.mockClear();
+    vi.useFakeTimers();
+    return hook;
+  }
+
+  async function typeFor(
+    result: { current: { update: (fn: (p: Shape) => Shape) => void } },
+    ms: number,
+  ) {
+    for (let t = 0; t < ms; t += 100) {
+      act(() => {
+        result.current.update((prev) => ({ items: [...prev.items, `k${t}`] }));
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+    }
+  }
+
+  it("a CONTENT sidecar writes during a 10 s unbroken burst (update every 100 ms)", async () => {
+    const { result } = await mountLoaded("notes.json");
+    await typeFor(result, 10_000);
+    expect(mockWrite.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a VIEW sidecar stays a pure trailing debounce — nothing during the burst", async () => {
+    const { result } = await mountLoaded("editor-state.json");
+    await typeFor(result, 2000);
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+});

@@ -17,7 +17,8 @@ import {
   writeSidecarMerged,
   type MergeBase,
 } from "@/lib/sidecar-merged-write";
-import { sidecarWriteDebounceMs } from "@/lib/sidecar-value";
+import { sidecarWriteDebounceMs, sidecarWriteMaxWaitMs } from "@/lib/sidecar-value";
+import { createWriteCoalescer } from "@/lib/write-coalescer";
 import { onTabHidden } from "@/lib/tab-hidden";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { useSidecarReread } from "./useSidecarReread";
@@ -268,10 +269,24 @@ export function usePersistentState<S>(
 
   // Debounce machinery: track the latest pending write so we can flush
   // it (synchronously where needed) on doc switch / unmount. `pendingRef`
-  // is non-null iff a debounced write is scheduled; the timer id is
-  // stored separately so we can cancel without losing the payload.
+  // is non-null iff a debounced write is scheduled; the timer lives in the
+  // coalescer so we can cancel without losing the payload.
   const pendingRef = useRef<S | null>(null);
-  const pendingTimerRef = useRef<number | null>(null);
+  // THE WRITE COALESCER (task 1327 — `@/lib/write-coalescer`, the one
+  // trailing-debounce + maxWait primitive). A CONTENT sidecar's burst is
+  // capped (`sidecarWriteMaxWaitMs`), so a card body typed into without a
+  // pause still reaches disk; a VIEW sidecar stays a pure trailing debounce.
+  // Created once; its timing is the file's, fixed for the hook's life (no
+  // caller varies `debounceMs`). The fire hands the parked payload to the
+  // CURRENT `persist`, through a ref synced in an effect below.
+  const fireWriteRef = useRef<() => void>(() => {});
+  const [writeCoalescer] = useState(() =>
+    createWriteCoalescer({
+      delayMs: debounceMs,
+      maxWaitMs: sidecarWriteMaxWaitMs(filename),
+      fire: () => fireWriteRef.current(),
+    }),
+  );
   // Writes this instance has handed to `writeSidecar` that have not yet
   // SETTLED (landed, refused, or thrown). Incremented in `persist` immediately
   // before its `await`, decremented in its `finally` — so between the debounce
@@ -279,17 +294,14 @@ export function usePersistentState<S>(
   // instance still reads as holding work (task 569, below).
   const inFlightRef = useRef(0);
 
-  // THE ONE PLACE the armed timer handle is compared and cleared. `persist`,
-  // `flushPending` and the debounce re-arm all cancel through this door, so
-  // the null-handle comparison appears in exactly two declarations — here and
-  // in `hasPendingWrite` — and a census can say so. Touches ONLY the handle:
-  // whether the parked PAYLOAD survives is each caller's own decision.
+  // THE ONE PLACE the armed timer is cancelled. `persist` and `flushPending`
+  // cancel through this door, so the coalescer is disarmed in exactly one
+  // declaration and read in one (`hasPendingWrite`) — and a census can say
+  // so. Touches ONLY the timer: whether the parked PAYLOAD survives is each
+  // caller's own decision.
   const cancelArmedTimer = useCallback((): void => {
-    if (pendingTimerRef.current !== null) {
-      window.clearTimeout(pendingTimerRef.current);
-      pendingTimerRef.current = null;
-    }
-  }, []);
+    writeCoalescer.cancel();
+  }, [writeCoalescer]);
 
   // ── THE ONE DIRTY PREDICATE (task 569) ─────────────────────────────────────
   // "Does this instance hold a write that has not yet LANDED?" — a debounced
@@ -297,7 +309,7 @@ export function usePersistentState<S>(
   // mistake from `useDocument` (`saveTimerRef.current !== null` as the dirty
   // test — "the debounce callback nulls the handle BEFORE calling save"), and
   // this hook carried its twin: the debounce callback, `flushPending` and
-  // `persist` all null `pendingTimerRef` BEFORE `await writeSidecar`, so for
+  // `persist` all disarmed the timer BEFORE `await writeSidecar`, so for
   // the whole in-flight window — the per-file queue, the cross-window doc
   // lock, the FSA `createWritable` + rename — a guard reading the timer alone
   // answered CLEAN. An external change to the same file polled in that window
@@ -314,8 +326,8 @@ export function usePersistentState<S>(
   // external change still re-hydrates. Stated rather than implied: memory
   // there holds an edit disk will never see, and that is the host's design.
   const hasPendingWrite = useCallback((): boolean => {
-    return pendingTimerRef.current !== null || inFlightRef.current > 0;
-  }, []);
+    return writeCoalescer.pending || inFlightRef.current > 0;
+  }, [writeCoalescer]);
 
   // ── THE MERGE BASE (task 719) ──────────────────────────────────────────────
   // What this instance last knew the FILE to hold: its load, its last adopted
@@ -694,17 +706,19 @@ export function usePersistentState<S>(
         void persist(next);
       } else {
         pendingRef.current = next;
-        cancelArmedTimer();
-        pendingTimerRef.current = window.setTimeout(() => {
-          pendingTimerRef.current = null;
-          const payload = pendingRef.current;
-          pendingRef.current = null;
-          if (payload !== null) void persist(payload);
-        }, debounceMs);
+        writeCoalescer.arm();
       }
     },
-    [persist, debounceMs, cancelArmedTimer, setState],
+    [persist, debounceMs, writeCoalescer, setState],
   );
+  // The coalescer's fire: hand the parked payload to the current `persist`.
+  useEffect(() => {
+    fireWriteRef.current = () => {
+      const payload = pendingRef.current;
+      pendingRef.current = null;
+      if (payload !== null) void persist(payload);
+    };
+  }, [persist]);
 
   // ── THE LOAD-TIME RECONCILE DOOR (task 570) ────────────────────────────────
   // See `PersistentStateApi.updateWhenLoaded`. Two halves: the CALL, which

@@ -160,8 +160,8 @@ describe("census · the preamble stash has one writer, one consumer, and two dis
     // `=> {` anchor would find the NEXT block; read the declaration's own slice.
     const at = code.indexOf("const hasWorkToWrite = useCallback(");
     expect(at).toBeGreaterThan(-1);
-    const slice = code.slice(at, code.indexOf("[docId],", at));
-    expect(slice).toContain("saveTimerRef.current !== null");
+    const slice = code.slice(at, code.indexOf("[docId, saveCoalescer],", at));
+    expect(slice).toContain("saveCoalescer.pending");
     expect(slice).toContain("hasUnlandedWork(docId)");
     expect(slice).toContain("pendingDelimitersRef.current !== null");
   });

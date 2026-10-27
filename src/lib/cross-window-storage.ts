@@ -35,6 +35,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createWriteCoalescer } from "@/lib/write-coalescer";
 
 import { onTabHidden } from "@/lib/tab-hidden";
 
@@ -262,7 +263,16 @@ export interface MirroredDraftOptions {
    * to coalesce and the simplest thing is also the safest).
    */
   debounceMs?: number;
+  /**
+   * Task 1327 — the burst cap: a draft typed into without a `debounceMs`
+   * pause still mirrors at least this often (the shared write coalescer's
+   * maxWait). Defaults to {@link DRAFT_MIRROR_MAX_WAIT_MS}.
+   */
+  maxWaitMs?: number;
 }
+
+/** A mirrored draft's default burst cap — a `localStorage` write is cheap. */
+export const DRAFT_MIRROR_MAX_WAIT_MS = 2000;
 
 /**
  * A `localStorage`-mirrored text buffer: React state that survives a reload,
@@ -326,7 +336,7 @@ export interface MirroredDraftOptions {
  */
 export function useMirroredDraft(
   key: string,
-  { debounceMs = 400 }: MirroredDraftOptions = {},
+  { debounceMs = 400, maxWaitMs = DRAFT_MIRROR_MAX_WAIT_MS }: MirroredDraftOptions = {},
 ): [string, (next: string | ((prev: string) => string)) => void, () => void] {
   const [value, setValueState] = useState(() => readMirror(key));
   /** Live mirror of `value`, so an edge callback can flush the CURRENT text
@@ -334,14 +344,20 @@ export function useMirroredDraft(
   const valueRef = useRef(value);
   /** What storage has CONFIRMED it holds — the dirty predicate's other half. */
   const persistedRef = useRef(value);
-  const timerRef = useRef<number | null>(null);
+  // The ONE write coalescer (task 1327, `@/lib/write-coalescer`): trailing
+  // `debounceMs`, capped at `maxWaitMs`. Its fire is the settle door, reached
+  // through `flushRef` (synced below) so the coalescer is created once.
+  const [mirrorCoalescer] = useState(() =>
+    createWriteCoalescer({
+      delayMs: debounceMs,
+      maxWaitMs,
+      fire: () => flushRef.current(),
+    }),
+  );
 
   const cancelArmedTimer = useCallback((): void => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+    mirrorCoalescer.cancel();
+  }, [mirrorCoalescer]);
 
   /** THE SETTLE DOOR: write NOW if dirty. Safe to call when clean. */
   const flush = useCallback((): void => {
@@ -362,13 +378,9 @@ export function useMirroredDraft(
         flush();
         return;
       }
-      cancelArmedTimer();
-      timerRef.current = window.setTimeout(() => {
-        timerRef.current = null;
-        flush();
-      }, debounceMs);
+      mirrorCoalescer.arm();
     },
-    [debounceMs, flush, cancelArmedTimer],
+    [debounceMs, flush, mirrorCoalescer],
   );
 
   // Peer sync, CLEAN-GATED. Adopting storage while this buffer holds an
