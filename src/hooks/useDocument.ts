@@ -56,7 +56,7 @@ import {
   registerRecoveryActions,
 } from "@/lib/mirror-recovery";
 import { hashContent } from "@/lib/disk-ledger";
-import { createWriteCoalescer } from "@/lib/write-coalescer";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import {
   TEX_DELIMITERS_CHANGED_EVENT,
   type TexDelimitersChangedDetail,
@@ -142,13 +142,11 @@ export function useDocument() {
   // is armed"; the fire body is `fireAutosave` below, reached through a ref so
   // the coalescer itself is created once and never re-armed by a re-render.
   const fireAutosaveRef = useRef<() => void>(() => {});
-  const [saveCoalescer] = useState(() =>
-    createWriteCoalescer({
-      delayMs: AUTOSAVE_DEBOUNCE_MS,
-      maxWaitMs: AUTOSAVE_MAX_WAIT_MS,
-      fire: () => fireAutosaveRef.current(),
-    }),
-  );
+  const saveCoalescer = useWriteCoalescer({
+    delayMs: AUTOSAVE_DEBOUNCE_MS,
+    maxWaitMs: AUTOSAVE_MAX_WAIT_MS,
+    fire: () => fireAutosaveRef.current(),
+  });
   // `latestContentRef` holds the last-debounce-fired JSON snapshot (or
   // the last-flushed snapshot). It's the *fallback* source for the
   // unmount cleanup, which fires AFTER React destroys the editor (child
@@ -450,7 +448,7 @@ export function useDocument() {
     if (!pending) return;
     latestContentRef.current = null;
     await save(pending);
-  }, [save, hasWorkToWrite]);
+  }, [save, hasWorkToWrite, saveCoalescer]);
 
   // Load the doc on mount. The `<DocPipeline key={docId}>` ancestor
   // forces a full remount when the docId changes, so this effect runs
@@ -565,7 +563,7 @@ export function useDocument() {
       // mirror tick in the sibling cleanup below is what covers this document.
       if (pending) void save(pending);
     };
-  }, [save, hasWorkToWrite, currentModel]);
+  }, [save, hasWorkToWrite, currentModel, saveCoalescer]);
 
   // Task 391 — the doc is leaving memory. Take a final forced mirror tick (the
   // flush above is fire-and-forget and may be refused), then stop reporting
@@ -645,7 +643,7 @@ export function useDocument() {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [save, docId, hasWorkToWrite]);
+  }, [save, docId, hasWorkToWrite, saveCoalescer]);
 
   // Debounced save — schedules a 1500 ms timer that, on fire, asks the
   // live editor for its current JSON snapshot and writes it. The doc
@@ -767,7 +765,7 @@ export function useDocument() {
       getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
     latestContentRef.current = doc;
     void save(doc);
-  }, [save, debouncedSave, docId]);
+  }, [save, debouncedSave, docId, saveCoalescer]);
 
   // Code-pane preamble commit: persist the live TipTap JSON with the
   // caller-supplied .tex delimiters. `writeDocBundle` skips its disk
@@ -835,7 +833,7 @@ export function useDocument() {
       latestContentRef.current = doc;
       void save(doc);
     },
-    [save, debouncedSave, docId],
+    [save, debouncedSave, docId, saveCoalescer],
   );
 
   // CHIP-C: immediate doc-bundle flush requested on a drop-mode re-anchor
@@ -1009,7 +1007,7 @@ export function useDocument() {
     // fail outright; either way the door must not report the user's version
     // "kept" while it sits in memory alone.
     return receipt.landed;
-  }, [currentModel, save]);
+  }, [currentModel, save, saveCoalescer]);
 
   /**
    * Task 851 — the user answered THIS offer: drop exactly its slot (never the
@@ -1071,7 +1069,7 @@ export function useDocument() {
     await refetch();
     await answerMirrorOffer(offer.entry);
     return true;
-  }, [docId, handle, save, refetch, answerMirrorOffer]);
+  }, [docId, handle, save, refetch, answerMirrorOffer, saveCoalescer]);
 
   /** Keep what is on disk. The mirror's content is NOT archived here: the disk
    *  copy is the one the user chose and the mirrored one is being declined —
@@ -1156,7 +1154,7 @@ export function useDocument() {
       if (receipt.landed || receipt.reason === "read-only") return { landed: true };
       return { landed: false, reason: receipt.reason };
     },
-    [docId, currentModel, save],
+    [docId, currentModel, save, saveCoalescer],
   );
 
   useEffect(

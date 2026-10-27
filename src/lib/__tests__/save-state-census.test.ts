@@ -93,7 +93,9 @@ describe("census · every silencing gate has a voice", () => {
     // A guard that discovered nothing would pass every leg below vacuously.
     expect(doors.length).toBeGreaterThanOrEqual(5);
     // …and the ones the incident ran through are among them.
-    for (const must of ["save", "flushPending", "debouncedSave", "flushNow"]) {
+    // (`fireAutosave` is the debounce's fire body since task 1327 moved the
+    // timer into the shared coalescer; `debouncedSave` now only arms it.)
+    for (const must of ["save", "flushPending", "fireAutosave", "flushNow"]) {
       expect(doors, `discovery missed ${must}`).toContain(must);
     }
   });

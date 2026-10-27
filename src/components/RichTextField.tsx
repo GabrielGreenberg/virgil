@@ -26,7 +26,7 @@ import {
   type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { createWriteCoalescer } from "@/lib/write-coalescer";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
@@ -380,17 +380,15 @@ function RichTextFieldImpl({
   // upstream — where the sidecar hook's own capped coalescer takes it to disk.
   // End-to-end, continuous card typing reaches disk within ~1 s + the content
   // tier's cap, instead of only when the typist pauses.
-  const [changeCoalescer] = useState(() =>
-    createWriteCoalescer({
-      delayMs: RICH_TEXT_DEBOUNCE_MS,
-      maxWaitMs: RICH_TEXT_MAX_WAIT_MS,
-      fire: () => {
-        const pending = pendingEditorRef.current;
-        pendingEditorRef.current = null;
-        if (pending) onChangeRef.current(pending.getJSON());
-      },
-    }),
-  );
+  const changeCoalescer = useWriteCoalescer({
+    delayMs: RICH_TEXT_DEBOUNCE_MS,
+    maxWaitMs: RICH_TEXT_MAX_WAIT_MS,
+    fire: () => {
+      const pending = pendingEditorRef.current;
+      pendingEditorRef.current = null;
+      if (pending) onChangeRef.current(pending.getJSON());
+    },
+  });
   const isFocusedRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
 

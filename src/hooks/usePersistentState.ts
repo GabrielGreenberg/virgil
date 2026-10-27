@@ -18,7 +18,7 @@ import {
   type MergeBase,
 } from "@/lib/sidecar-merged-write";
 import { sidecarWriteDebounceMs, sidecarWriteMaxWaitMs } from "@/lib/sidecar-value";
-import { createWriteCoalescer } from "@/lib/write-coalescer";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import { onTabHidden } from "@/lib/tab-hidden";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { useSidecarReread } from "./useSidecarReread";
@@ -280,13 +280,11 @@ export function usePersistentState<S>(
   // caller varies `debounceMs`). The fire hands the parked payload to the
   // CURRENT `persist`, through a ref synced in an effect below.
   const fireWriteRef = useRef<() => void>(() => {});
-  const [writeCoalescer] = useState(() =>
-    createWriteCoalescer({
-      delayMs: debounceMs,
-      maxWaitMs: sidecarWriteMaxWaitMs(filename),
-      fire: () => fireWriteRef.current(),
-    }),
-  );
+  const writeCoalescer = useWriteCoalescer({
+    delayMs: debounceMs,
+    maxWaitMs: sidecarWriteMaxWaitMs(filename),
+    fire: () => fireWriteRef.current(),
+  });
   // Writes this instance has handed to `writeSidecar` that have not yet
   // SETTLED (landed, refused, or thrown). Incremented in `persist` immediately
   // before its `await`, decremented in its `finally` — so between the debounce

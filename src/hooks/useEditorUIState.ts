@@ -13,7 +13,7 @@ import {
 import { isAnchorableNode } from "@/lib/marginalia";
 import { foldedSetOf } from "@/lib/section-folding";
 import { sidecarWriteDebounceMs, sidecarWriteMaxWaitMs } from "@/lib/sidecar-value";
-import { createWriteCoalescer } from "@/lib/write-coalescer";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import {
   registerPendingFlusher,
   unregisterPendingFlusher,
@@ -223,13 +223,11 @@ export function useEditorUIState(
   // file's tier cadence — VIEW tier, so a pure trailing debounce (maxWait ∞).
   // Its fire hands the parked payload to the current `persistNow`.
   const fireWriteRef = useRef<() => void>(() => {});
-  const [writeCoalescer] = useState(() =>
-    createWriteCoalescer({
-      delayMs: sidecarWriteDebounceMs(EDITOR_STATE_FILE),
-      maxWaitMs: sidecarWriteMaxWaitMs(EDITOR_STATE_FILE),
-      fire: () => fireWriteRef.current(),
-    }),
-  );
+  const writeCoalescer = useWriteCoalescer({
+    delayMs: sidecarWriteDebounceMs(EDITOR_STATE_FILE),
+    maxWaitMs: sidecarWriteMaxWaitMs(EDITOR_STATE_FILE),
+    fire: () => fireWriteRef.current(),
+  });
 
   const flushPending = useCallback((): Promise<void> => {
     writeCoalescer.cancel();

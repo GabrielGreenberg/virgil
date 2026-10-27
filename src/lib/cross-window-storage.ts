@@ -35,7 +35,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createWriteCoalescer } from "@/lib/write-coalescer";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 
 import { onTabHidden } from "@/lib/tab-hidden";
 
@@ -347,13 +347,11 @@ export function useMirroredDraft(
   // The ONE write coalescer (task 1327, `@/lib/write-coalescer`): trailing
   // `debounceMs`, capped at `maxWaitMs`. Its fire is the settle door, reached
   // through `flushRef` (synced below) so the coalescer is created once.
-  const [mirrorCoalescer] = useState(() =>
-    createWriteCoalescer({
-      delayMs: debounceMs,
-      maxWaitMs,
-      fire: () => flushRef.current(),
-    }),
-  );
+  const mirrorCoalescer = useWriteCoalescer({
+    delayMs: debounceMs,
+    maxWaitMs,
+    fire: () => flushRef.current(),
+  });
 
   const cancelArmedTimer = useCallback((): void => {
     mirrorCoalescer.cancel();
