@@ -20,25 +20,55 @@
  * from a shell-level copy of the same state; the reconciler's later CSS rule
  * always won the background, so the second channel was dead paint plus a
  * second DOM sweep per hover.
+ *
+ * HOST: `EditorPane`, once per pane (task 1316). It used to be mounted in
+ * EditorLayout's shell, so a pane with no shell around it — the Library
+ * Reader — got no washes and every Highlights toggle in its View menu was
+ * inert. The pane owns both inputs anyway: its editor, its `archivedAnchorIds`
+ * authority, and the view prefs its host hands it.
  */
 
 import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import { DATA_LINK_ID } from "../link-dom-contract";
 import { useDocStructureBus } from "@/lib/tiptap/doc-structure";
+import {
+  ALL_HIGHLIGHT_TYPES,
+  type HighlightType,
+} from "@/lib/view-prefs/highlight-types";
 
 /** Cross-layer DOM contract with `globals.css`'s archived-chrome rule. */
 export const DATA_ANCHOR_ARCHIVED = "data-anchor-archived";
 
-const ALL_KINDS = [
-  "note",
-  "todo",
-  "comment",
-  "cut",
-  "archive",
-  "report",
-] as const;
-type LinkAnchorKind = (typeof ALL_KINDS)[number];
+/**
+ * Every kind that carries a `data-show-hl-<kind>` root toggle — DERIVED from
+ * the Highlights-menu SSOT (`ALL_HIGHLIGHT_TYPES`) plus `"archive"`, whose
+ * wash is not menu-togglable and rides the master switch alone (task 1316).
+ * Never hand-listed: a kind added to the SSOT gets its menu row AND its root
+ * attribute from the same edit.
+ */
+export const LINK_ANCHOR_KINDS = [...ALL_HIGHLIGHT_TYPES, "archive"] as const;
+export type LinkAnchorKind = (typeof LINK_ANCHOR_KINDS)[number];
+
+/**
+ * The ONE rule from the two highlight prefs to the kinds whose persistent
+ * wash is on: nothing when the master switch is off; otherwise every
+ * menu kind not hidden, plus `"archive"`. Pure — the pane (which mounts the
+ * hook) and the shell (which gates the revisions text highlight on
+ * `"comment"`) both read it, so neither restates it.
+ */
+export function visibleHighlightKinds(prefs: {
+  showHighlights: boolean;
+  hiddenHighlightTypes: readonly HighlightType[];
+}): ReadonlySet<LinkAnchorKind> {
+  const out = new Set<LinkAnchorKind>();
+  if (!prefs.showHighlights) return out;
+  for (const t of ALL_HIGHLIGHT_TYPES) {
+    if (!prefs.hiddenHighlightTypes.includes(t)) out.add(t);
+  }
+  out.add("archive");
+  return out;
+}
 
 const dataAttrFor = (kind: LinkAnchorKind) => `data-show-hl-${kind}`;
 
@@ -49,8 +79,8 @@ export interface UseLinkHighlightArgs {
   visibleHighlightKinds: ReadonlySet<LinkAnchorKind>;
   /**
    * Mode-B `linkedAnchor` anchor ids owned by an ARCHIVED card, from the one
-   * authority (`archivedAnchorIds`, projected in EditorPane and bubbled through
-   * `PaneState`). REQUIRED, deliberately: an optional prop with an empty-set
+   * authority (`archivedAnchorIds`, projected in EditorPane — the hook's one
+   * host, task 1316). REQUIRED, deliberately: an optional prop with an empty-set
    * default would let a host silently restore the pre-497 behaviour — archived
    * notes leaving their wash standing in the prose — with no type error and no
    * test failure. A host that genuinely has no cards says so by passing an
@@ -71,7 +101,7 @@ export function useLinkHighlight({
   useEffect(() => {
     if (!editor) return;
     const root = editor.view.dom;
-    for (const kind of ALL_KINDS) {
+    for (const kind of LINK_ANCHOR_KINDS) {
       if (visibleHighlightKinds.has(kind)) {
         root.setAttribute(dataAttrFor(kind), "true");
       } else {
@@ -79,7 +109,7 @@ export function useLinkHighlight({
       }
     }
     return () => {
-      for (const kind of ALL_KINDS) root.removeAttribute(dataAttrFor(kind));
+      for (const kind of LINK_ANCHOR_KINDS) root.removeAttribute(dataAttrFor(kind));
     };
   }, [editor, visibleHighlightKinds]);
 

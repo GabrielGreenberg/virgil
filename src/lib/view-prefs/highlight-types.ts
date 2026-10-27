@@ -22,8 +22,11 @@
  *  shape (a hand-typed union + a `HighlightType[]`-annotated array) could not be
  *  made safe — the annotation permits a *proper subset*, so a kind added to the
  *  union while the array stayed stale would compile clean yet silently never
- *  render its highlights at the `ALL_HIGHLIGHT_TYPES` consumer (EditorLayout's
- *  `visibleHighlightKinds`). Deriving closes that omission direction for good. */
+ *  render its highlights at the `ALL_HIGHLIGHT_TYPES` consumer
+ *  (`visibleHighlightKinds` / `LINK_ANCHOR_KINDS` in
+ *  `src/links/_shared/useLinkHighlight.ts`, which derive the root-attribute
+ *  vocabulary from this array — task 1316). Deriving closes that omission
+ *  direction for good. */
 export const ALL_HIGHLIGHT_TYPES = [
   "note",
   "todo",
