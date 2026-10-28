@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
+import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 
 const source = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../ExampleCard.tsx"),
@@ -33,7 +34,11 @@ describe("Examples help-panel amber wash consumes the token (task 292)", () => {
     expect(source).not.toMatch(RAW_AMBER_50);
   });
 
-  it("washes the help panel via the `--amber-50` token", () => {
-    expect(source).toMatch(/bg-\[var\(--amber-50\)\]\/40/);
+  // Task 1341: the help pane no longer re-spells the wash — it consumes the
+  // amber-attention SSOT, whose own value is the `--amber-50` token at /40.
+  it("washes the help panel via the amber-attention SSOT (the `--amber-50` token)", () => {
+    expect(source).toMatch(/import \{ AMBER_ATTENTION_STRIP \} from "@\/panels\/_shared\/amber-attention"/);
+    expect(source).toMatch(/\$\{AMBER_ATTENTION_STRIP\}/);
+    expect(AMBER_ATTENTION_STRIP).toMatch(/bg-\[var\(--amber-50\)\]\/40/);
   });
 });

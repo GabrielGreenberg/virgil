@@ -52,6 +52,7 @@ import {
 import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
+import { exampleDialectOf, type ExampleDialect } from "@/lib/example-dialect";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { footnoteMarkupNodeAttrs, pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 import type { JSONContent as TipJSON } from "@tiptap/react";
@@ -238,6 +239,10 @@ export interface ExampleInfo {
   tag: string;
   /** Inner `\label{…}`, if any. */
   label: string;
+  /** The package syntax the example is written (and re-emitted) in — read
+   *  through `exampleDialectOf`, so it defaults exactly as the serializer
+   *  does. The card's "?" help is keyed by it (task 1341). */
+  dialect: ExampleDialect;
   /** First ~80 chars of the example body, flattened to plain text. */
   preview: string;
   /** Sub-label range for multi-part examples (e.g. "a–c"), empty for single. */
@@ -1256,6 +1261,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           kind: node.attrs.kind === "multi" ? "multi" : "single",
           tag: (node.attrs.tag as string) || "",
           label: (node.attrs.label as string) || "",
+          dialect: exampleDialectOf(node.attrs),
           preview: (preview.trim() || "(empty example)").slice(0, 120),
           subLabelRange,
           bodyText,

@@ -39,6 +39,7 @@ const example = {
   bodyText: "Colorless green ideas sleep furiously.",
   items: [],
   latex: "\\ex Colorless green ideas sleep furiously. \\xe",
+  dialect: "expex",
 } as unknown as ExampleInfo;
 
 function renderCard(storeSelected: boolean) {

@@ -151,3 +151,105 @@ export function dominantExampleDialect(counts: {
     ? "linguex"
     : DEFAULT_EXAMPLE_DIALECT;
 }
+
+/**
+ * **How to WRITE an example, per dialect** — the text the Example card's "?"
+ * help shows (task 1341). A per-dialect FACT, so it lives with the dialect
+ * vocabulary rather than as hand-written JSX in the card: before 1341 the
+ * card carried one fixed expex explainer, so a linguex example taught
+ * `\ex … \xe` / `\pex` / `\begingl` — syntax a linguex paper does not
+ * define, and whose package the requirements pass refuses to inject there
+ * (`EXAMPLE_PACKAGE_FAMILY`). Typed as a `Record` over `ExampleDialect`, so a
+ * third dialect cannot be added without its help; plain data (code / prose
+ * segments) so this leaf stays import-free and the card renders it.
+ *
+ * Every line states only what the PARSER MODELS for that dialect — the help
+ * must never advertise a construct Virgil carries raw. linguex `\gll`
+ * glosses and nested `\a.` tiers are carried, not modelled (latex-parser.ts
+ * `readLinguexExample` / `splitLinguexBody`), so they are not taught.
+ */
+/** One run of help text: LaTeX source (rendered mono) or plain prose. */
+export type HelpSegment = { code: string } | { text: string };
+
+export interface ExampleDialectHelp {
+  /** The lead sentence above the list. */
+  intro: HelpSegment[];
+  /** One bullet per construct. */
+  lines: HelpSegment[][];
+}
+
+export const EXAMPLE_DIALECT_HELP: Record<ExampleDialect, ExampleDialectHelp> = {
+  expex: {
+    intro: [{ code: "expex" }, { text: " renders numbered linguistic examples." }],
+    lines: [
+      [{ code: "\\ex … \\xe" }, { text: " — a single numbered example." }],
+      [
+        { code: "\\pex … \\xe" },
+        { text: " — a multi-part example; use " },
+        { code: "\\a" },
+        { text: " to introduce each sub-item (auto-labeled " },
+        { code: "a, b, c…" },
+        { text: ")." },
+      ],
+      [
+        { code: "\\label{name}" },
+        { text: " on either the top block or a " },
+        { code: "\\a" },
+        { text: " item makes it referenceable with " },
+        { code: "\\ref{name}" },
+        { text: "." },
+      ],
+      [
+        { code: "<tag>" },
+        { text: " right after " },
+        { code: "\\ex" },
+        { text: " / " },
+        { code: "\\a" },
+        { text: " sets a custom display tag (e.g. " },
+        { code: "\\ex<*>" },
+        { text: " for an ungrammatical example)." },
+      ],
+      [
+        { code: "\\begingl … \\endgl" },
+        { text: " with " },
+        { code: "\\gla / \\glb / \\glc" },
+        { text: " rows and a " },
+        { code: "\\glft" },
+        { text: " free-translation row produces an interlinear gloss." },
+      ],
+    ],
+  },
+  linguex: {
+    intro: [
+      { code: "linguex" },
+      { text: " renders numbered linguistic examples; this paper writes them in its syntax." },
+    ],
+    lines: [
+      [
+        { code: "\\ex." },
+        { text: " — a single numbered example, ended by a blank line (no closing command)." },
+      ],
+      [
+        { code: "\\ex." },
+        { text: " followed by " },
+        { code: "\\a." },
+        { text: ", " },
+        { code: "\\b." },
+        { text: ", " },
+        { code: "\\c." },
+        { text: " … — a multi-part example, one marker per sub-item." },
+      ],
+      [
+        { code: "\\label{name}" },
+        { text: " right after " },
+        { code: "\\ex." },
+        { text: " or a sub-item marker makes it referenceable with " },
+        { code: "\\ref{name}" },
+        { text: "." },
+      ],
+      [
+        { text: "A blank line inside an example ends it — keep each example one paragraph." },
+      ],
+    ],
+  },
+};

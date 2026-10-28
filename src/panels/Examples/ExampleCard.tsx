@@ -49,6 +49,12 @@ import {
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
 import { iconHint } from "@/components/Hint";
 import { InlineError } from "@/components/InlineError";
+import {
+  EXAMPLE_DIALECT_HELP,
+  type ExampleDialect,
+  type HelpSegment,
+} from "@/lib/example-dialect";
+import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -443,6 +449,52 @@ function ExampleCardEditor({
  *  expex editor (directly editable, identical to main text) when an editor
  *  context is available; in bare contexts (tests / no provider) it falls
  *  back to a read-only projection. A footer exposes a "?" help popover. */
+/** The collapsed preview's one line: the body (or first item) flattened to a
+ *  single whitespace-normalized line, `""` when empty. Shared by the static
+ *  far tier and the bare-mount fallback. */
+function firstBodyLine(example: ExampleInfo): string {
+  const text = example.bodyText || example.items[0]?.text || "";
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** The "?" help pane — renders `EXAMPLE_DIALECT_HELP` for the example's own
+ *  dialect (task 1341), so the help never teaches a package the paper does
+ *  not use. */
+function ExampleDialectHelpPane({
+  id,
+  dialect,
+}: {
+  id: string;
+  dialect: ExampleDialect;
+}) {
+  const help = EXAMPLE_DIALECT_HELP[dialect];
+  const renderSegments = (segments: HelpSegment[]) =>
+    segments.map((seg, i) =>
+      "code" in seg ? (
+        <span key={i} className="card-mono">
+          {seg.code}
+        </span>
+      ) : (
+        <span key={i}>{seg.text}</span>
+      ),
+    );
+  return (
+    <div
+      id={id}
+      data-example-help={dialect}
+      className={`${AMBER_ATTENTION_STRIP} text-[11px] leading-snug text-ink-body`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <p className="mb-1">{renderSegments(help.intro)}</p>
+      <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
+        {help.lines.map((line, i) => (
+          <li key={i}>{renderSegments(line)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function ExampleCard({
   example,
   isSelected,
@@ -516,7 +568,7 @@ export function ExampleCard({
               contentRev STRUCTURAL counters, never per keystroke), but it
               informs any future panel/omni virtualization decision. */}
           {canEdit && collapsedTier >= 2 ? (
-            <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}>
+            <div style={bodyStyle}>
               <ExampleCardEditor
                 exampleId={example.exampleId}
                 mainEditor={mainEditor}
@@ -537,27 +589,17 @@ export function ExampleCard({
                signature and the collapsed-projection test's discriminator. */
             <div
               data-example-tier="static"
-              style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}
+              style={{ ...bodyStyle, ...compressedBodyStyle(compressedLines) }}
             >
               <span className="mr-2">({example.number || "?"})</span>
-              {(() => {
-                const text = example.bodyText || example.items[0]?.text || "";
-                const trimmed = text.replace(/\s+/g, " ").trim();
-                if (trimmed) return trimmed;
-                return <CardEmptyText />;
-              })()}
+              {firstBodyLine(example) || <CardEmptyText />}
             </div>
           ) : (
-            <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
+            <div style={{ ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
               <span className="card-mono mr-2">
                 ({example.number || "?"})
               </span>
-              {(() => {
-                const text = example.bodyText || example.items[0]?.text || "";
-                const trimmed = text.replace(/\s+/g, " ").trim();
-                if (trimmed) return trimmed;
-                return <CardEmptyText />;
-              })()}
+              {firstBodyLine(example) || <CardEmptyText />}
             </div>
           )}
         </div>
@@ -566,7 +608,7 @@ export function ExampleCard({
       {/* ── Body — the real expex editor (directly editable) ──────── */}
       <div
         className="px-3 py-2 text-ink-body example-card-body"
-        style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}
+        style={bodyStyle}
         onClick={(e) => {
           // Keep clicks inside the editor from activating / jumping the card.
           if (canEdit) e.stopPropagation();
@@ -672,47 +714,13 @@ export function ExampleCard({
         <div className="flex-1" />
       </div>
 
-      {/* ── Help panel: brief expex explainer ────────────────────── */}
+      {/* ── Help panel: how to write an example, in ITS dialect ──
+          Read from the per-dialect table (task 1341) — a linguex example
+          must never be taught expex syntax its paper does not define. */}
       {showHelp && (
         <>
           <CardSeparator selected={isHaloed} theme={theme} />
-          <div
-            id={helpId}
-            className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-[var(--amber-50)]/40"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="mb-1">
-              <span className="card-mono">\expex</span> renders numbered linguistic examples.
-            </p>
-            <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
-              <li>
-                <span className="card-mono">\ex … \xe</span> — a single numbered example.
-              </li>
-              <li>
-                <span className="card-mono">\pex … \xe</span> — a multi-part example;
-                use <span className="card-mono">\a</span> to introduce each sub-item
-                (auto-labeled <span className="card-mono">a, b, c…</span>).
-              </li>
-              <li>
-                <span className="card-mono">\label{"{"}name{"}"}</span> on either the
-                top block or a <span className="card-mono">\a</span> item makes it
-                referenceable with <span className="card-mono">\ref{"{"}name{"}"}</span>.
-              </li>
-              <li>
-                <span className="card-mono">{"<tag>"}</span> right after
-                <span className="card-mono"> \ex</span> /
-                <span className="card-mono"> \a</span> sets a custom display tag
-                (e.g. <span className="card-mono">\ex{"<*>"}</span> for an
-                ungrammatical example).
-              </li>
-              <li>
-                <span className="card-mono">\begingl … \endgl</span> with
-                <span className="card-mono"> \gla / \glb / \glc</span> rows and a
-                <span className="card-mono"> \glft</span> free-translation row
-                produces an interlinear gloss.
-              </li>
-            </ul>
-          </div>
+          <ExampleDialectHelpPane id={helpId} dialect={example.dialect} />
         </>
       )}
       </>

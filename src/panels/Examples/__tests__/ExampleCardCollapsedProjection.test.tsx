@@ -158,6 +158,7 @@ const exampleInfo: ExampleInfo = {
   label: "",
   preview: "Top body.",
   subLabelRange: "",
+  dialect: "expex",
   bodyText: "Top body.",
   bodyContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Top body." }] }] },
   items: [],
