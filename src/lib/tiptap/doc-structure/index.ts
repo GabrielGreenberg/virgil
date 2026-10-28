@@ -21,7 +21,7 @@
  *
  * From a React component: per-category counters via
  * `useStructuralRevisions(editor)` (`@/hooks/useStructuralRevisions`) for
- * memo deps, or `useDocStructureBus(editor)` / `getBus(editor)` in an effect
+ * memo deps, or `getBus(editor)` in an effect
  * for a typed subscription:
  *
  *     useEffect(() => getBus(editor)?.onHeadingsRecomputable(fn), [editor]);
@@ -57,7 +57,7 @@ export {
 // bus behind it (task 924).
 export { getBus, type DocStructureBus } from "./bus";
 
-export { useDocStructureBus, useExampleContentRevision } from "./hook";
+export { useExampleContentRevision } from "./hook";
 
 export { buildInitial } from "./structure-index";
 

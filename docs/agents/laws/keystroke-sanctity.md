@@ -11,7 +11,7 @@ The diff is produced once per transaction by `DocStructureObserver` ([src/lib/ti
 **Consume the diff. Don't walk the doc.**
 
 - From a ProseMirror `appendTransaction`: `readDiffFor(transactions, newState)` returns the `StructureDiff` of exactly the transactions it was handed (from a plugin `apply`: `readDiffFor([tr], newState)`).
-- From a React component: `useStructuralRevisions(editor)` (per-category counters — the memo-dep door for panel/card data) / `useDocStructureBus(editor)` (the bus, to subscribe in an effect) / `useExampleContentRevision(editor, uuid)` (one example's content revision).
+- From a React component: `useStructuralRevisions(editor)` (per-category counters — the memo-dep door for panel/card data) / `getBus(editor)` inside an effect (the bus, to subscribe) / `useExampleContentRevision(editor, uuid)` (one example's content revision).
 - From a long-lived hook: `getBus(editor)` for direct subscription.
 
 **Keyed, uncounted channels.** Three bus channels dispatch per ENTITY and never count toward `emitCount`: `onBlockContentChanged(uuid)`, `onExampleContentChanged(uuid)` and `onAnchorExtentChanged(anchorId)` (task 1330 — fires when that anchor entered, left, or MOVED; `changedAnchors` wakes no structural watcher, so it is the only door a move reaches). All three share one `makeKeyedList` registry in `bus.ts`. A reader that derives a per-entity key set (e.g. the blocks a passage covers, `useLinkedAnchorPassage`) re-derives it on `onAnyChange` AND on its entity's own keyed channel — `onAnyChange` alone misses every change the structural predicate deliberately omits.

@@ -4238,31 +4238,15 @@ textarea {
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
 }
 
-/* ARCHIVED anchor chrome — an archived card draws none (task 497). Stamped by
- * `useLinkHighlight`'s archived sweep from the ONE authority
- * (`src/links/_shared/archived-anchor-chrome.ts`); the `linkedAnchor` MARK is
- * untouched in the document, because it is the durable anchor a restore needs
- * ("Transient state is never document content" — hiding is an attribute, never
- * an unsetMark).
- *
- * Same shape as the transient-handle rule far above: zero the colour var and
- * every `color-mix(… var(--link-anchor-color) …)` background collapses to
- * transparent, which covers the per-kind 18% wash and the Mode-B
- * hover/selection wash + selection ring in one line.
- *
- * `background: none !important` is REQUIRED, not stylistic: the persistent tint
- * band (`.linked-anchor[data-tint-color]`) carries an `!important` of its own
- * and paints from `--tint-color`, not `--link-anchor-color` — so nothing but a
- * later `!important` at equal specificity turns it off. That band is an
- * archived HIGHLIGHT card's entire in-text identity (`highlight` has
- * `markerType: null`), so without this line archiving one removed nothing
- * visible whatsoever. Hence also the POSITION: this rule must stay AFTER every
- * other `.linked-anchor` background rule in this file. */
-.linked-anchor[data-anchor-archived="true"] {
-  --link-anchor-color: transparent;
-  background: none !important;
-  box-shadow: none;
-}
+/* ARCHIVED anchor chrome — an archived card draws none (task 497). NOT a rule
+ * here: it selects the archived anchors' spans BY ID, so it is generated per
+ * pane by `archivedAnchorCss` (`src/links/_shared/useLinkHighlight.ts`, task
+ * 1331), scoped to that editor's root and `!important` at higher specificity
+ * than every `.linked-anchor` rule in this file, so its win does not depend on
+ * where this file's rules sit. A stamped attribute (the rule that lived here)
+ * was shed whenever ProseMirror re-minted the span — a mark split, e.g. bolding
+ * one word of the passage — and a selector cannot be. The `linkedAnchor` MARK
+ * stays untouched in the document: it is the durable anchor a restore needs. */
 
 /* Mode A paragraph anchors — a kind-colored vertical line on the same
  * side as the margin marker (data-margin-side="left|right"), with NO
@@ -6228,7 +6212,7 @@ body.perf-contain .static-borrowed-text {
      to transparent, which retires the footnote ring, BOTH sides of the Mode-A
      accent rail (the `::before` bar and the inset box-shadow), the Mode-B
      selection wash AND the Mode-B hover/active wash + ring in one declaration.
-     Same idiom as `.linked-anchor[data-anchor-archived]` far above, and it
+     Same idiom as the archived-anchor rule (`archivedAnchorCss`), and it
      leaves `--tint-color` untouched by construction.
 
      The marker rule ALSO zeroes `--tint-color` (task 836). The PENDING-AI
