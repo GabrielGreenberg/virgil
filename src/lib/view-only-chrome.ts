@@ -52,7 +52,7 @@
  *    document content by the app's own posture when that toggle is on. Instead the print block zeroes
  *    `--link-anchor-color`, the var the `--link-anchor-color` family paints
  *    from (`color-mix(… var(--link-anchor-color) …)` collapses to transparent)
- *    — the same idiom `.linked-anchor[data-anchor-archived]` already uses, and
+ *    — the same idiom the `data-anchor-archived` rule already uses, and
  *    it leaves `--tint-color` untouched by construction. The exception is
  *    stated at `ATTENTION_COLOR_VAR` below rather than glossed: the CITATION
  *    variant paints amber and is flattened by an older print rule.

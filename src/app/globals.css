@@ -4238,12 +4238,20 @@ textarea {
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
 }
 
-/* ARCHIVED anchor chrome — an archived card draws none (task 497). Stamped by
- * `useLinkHighlight`'s archived sweep from the ONE authority
- * (`src/links/_shared/archived-anchor-chrome.ts`); the `linkedAnchor` MARK is
- * untouched in the document, because it is the durable anchor a restore needs
- * ("Transient state is never document content" — hiding is an attribute, never
- * an unsetMark).
+/* ARCHIVED anchor chrome — an archived card draws none (task 497). Painted by
+ * `useLinkHighlight` from the ONE authority
+ * (`src/links/_shared/archived-anchor-chrome.ts`) as a DECORATION on the
+ * transient-highlight engine's `archived` channel (task 1331); the
+ * `linkedAnchor` MARK is untouched in the document, because it is the durable
+ * anchor a restore needs ("Transient state is never document content" — hiding
+ * is a decoration, never an unsetMark).
+ *
+ * `:has()` because the decoration's attribute lands on a wrapper span INSIDE
+ * the mark span (marks wrap outermost), and the chrome being turned off is the
+ * MARK span's own. `linkedAnchor` excludes itself, so a `.linked-anchor` never
+ * nests another — the wrapper it contains can only be its own anchor's. The
+ * decoration is re-applied on every redraw, so a mark split (bolding one word
+ * of the passage) cannot shed it the way the old imperative stamp was shed.
  *
  * Same shape as the transient-handle rule far above: zero the colour var and
  * every `color-mix(… var(--link-anchor-color) …)` background collapses to
@@ -4258,7 +4266,7 @@ textarea {
  * `markerType: null`), so without this line archiving one removed nothing
  * visible whatsoever. Hence also the POSITION: this rule must stay AFTER every
  * other `.linked-anchor` background rule in this file. */
-.linked-anchor[data-anchor-archived="true"] {
+.linked-anchor:has([data-anchor-archived="true"]) {
   --link-anchor-color: transparent;
   background: none !important;
   box-shadow: none;
@@ -6228,7 +6236,7 @@ body.perf-contain .static-borrowed-text {
      to transparent, which retires the footnote ring, BOTH sides of the Mode-A
      accent rail (the `::before` bar and the inset box-shadow), the Mode-B
      selection wash AND the Mode-B hover/active wash + ring in one declaration.
-     Same idiom as `.linked-anchor[data-anchor-archived]` far above, and it
+     Same idiom as the `data-anchor-archived` rule far above, and it
      leaves `--tint-color` untouched by construction.
 
      The marker rule ALSO zeroes `--tint-color` (task 836). The PENDING-AI

@@ -8,10 +8,11 @@
  *   - Sets `data-show-hl-<kind>="true"` on the editor scroll root for
  *     each kind whose persistent highlight is enabled — CSS scopes the
  *     subtle background per-kind by matching `data-link-card^="<kind>:"`.
- *   - Sets `data-anchor-archived="true"` on the span(s) of every ARCHIVED
- *     card, which one CSS rule turns into "no anchor chrome at all" (task
- *     497 — see `archived-anchor-chrome.ts` for the rule and why the key
- *     is the anchorId rather than the card id).
+ *   - Paints `data-anchor-archived="true"` over the passage of every ARCHIVED
+ *     card — as a DECORATION on the transient-highlight engine's `archived`
+ *     channel (task 1331) — which one CSS rule turns into "no anchor chrome
+ *     at all" (task 497 — see `archived-anchor-chrome.ts` for the rule and
+ *     why the key is the anchorId rather than the card id).
  *
  * HOVER / SELECTION are NOT here (task 1148). They are attention state, and
  * their one painter is the pane's `useAnchorHighlightReconciler`, which stamps
@@ -28,10 +29,15 @@
  * authority, and the view prefs its host hands it.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import { DATA_LINK_ID } from "../link-dom-contract";
+import type { EditorState } from "@tiptap/pm/state";
 import { useDocStructureBus } from "@/lib/tiptap/doc-structure";
+import {
+  setTransientHighlights,
+  type TransientAttrTarget,
+} from "@/lib/tiptap/transient-highlight";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import {
   ALL_HIGHLIGHT_TYPES,
   type HighlightType,
@@ -113,69 +119,102 @@ export function useLinkHighlight({
     };
   }, [editor, visibleHighlightKinds]);
 
-  // ── Archived-chrome sync (task 497) ────────────────────────────────────
+  // ── Archived-chrome sync (task 497; a DECORATION since task 1331) ──────
   //
   // An archived card draws no anchor chrome. The three CSS paths that paint a
   // Mode-B span — the per-kind 18% wash, the `!important` tint band, and the
   // hover / selection washes — are all keyed on attributes the MARK emits from
   // `renderHTML`, which knows nothing about card state; so the state arrives as
-  // one extra attribute here and one CSS rule turns it off.
-  // (The hover/selection wash is now stamped by the reconciler — task 1148 —
-  // and the same CSS rule zeroes it.)
+  // one extra attribute and one CSS rule turns the chrome off.
   //
   // Keyed on the ANCHOR id, never the card id: a reload-restored span carries
   // `data-link-card="note:"` with the card id deliberately empty
-  // (`applyLinkedAnchors`), so a card-keyed sweep would work in-session and die
+  // (`applyLinkedAnchors`), so a card-keyed paint would work in-session and die
   // on every reload. See `archived-anchor-chrome.ts`.
   //
-  // The attribute is PERSISTENT state, unlike its sibling above (the per-kind
-  // attrs live on the editor ROOT, which ProseMirror never recreates). So it must survive a redraw, and MEASURED against this
-  // tree the two redraw shapes fall out cleanly:
+  // CARRIER: the transient-highlight engine's `archived` channel — an inline
+  // decoration over each archived anchor's live range, replaced by a META-ONLY
+  // transaction ("Transient state is never document content"). It used to be
+  // an imperative `setAttribute` on the PM-owned `.linked-anchor` span, swept on
+  // `onAnyChange`; PM re-mints that span on any redraw, and a MARK SPLIT
+  // (bolding one word of the passage) is a redraw that wakes no structural
+  // watcher, so the fresh fragments came back unstamped and the archived note's
+  // wash reappeared (task 1331). A decoration is re-applied by the view on
+  // every redraw, so split, re-stamp and `setContent` are covered by
+  // construction rather than by a list of redraw shapes.
   //
-  //  - a structure-PRESERVING whole-doc replace (`setContent` with the same
-  //    blocks — the ordinary code-pane push) leaves the span element in place:
-  //    PM's viewdesc sync matches and REUSES the `MarkViewDesc`, so the stamp
-  //    rides through it unaided, and the bus stays silent (correctly — there is
-  //    nothing to re-stamp);
-  //  - a structure-CHANGING one (a block added in the code view) builds FRESH
-  //    span DOM and the stamp goes with the old elements. That is exactly the
-  //    shape the bus reports, so `onAnyChange` is what puts it back.
+  // Between repaints the set forward-maps (typing inside the passage stays
+  // covered; `emitCount` flat). It is REBUILT — one bounded range resolve per
+  // archived anchor — only when the archived set changes, on a structural
+  // emit (an anchor re-entering via undo, a structure-changing replace), or
+  // when an archived anchor's EXTENT changes (`onAnchorExtentChanged`: a text
+  // drag-drop moves it, which mapping would not reproduce). Rebuilds off a bus
+  // emit are deferred to a coalesced microtask: the bus emits from inside the
+  // observer's view `update()`, where a nested dispatch would re-enter it
+  // (the `useRequestWash` precedent).
   //
-  // `onAnyChange` is `emitCount`-gated: typing N plain characters fires it ZERO
-  // times (docs/agents/laws/keystroke-sanctity.md, "Keystroke sanctity"). The
-  // sweep is ONE query over the Mode-B spans and runs only off that channel or
-  // a prop change.
-  //
-  // Residual, stated: a MARK-ATTRS re-stamp (a card-kind morph rewriting
-  // `linkCard`) also recreates the span and does NOT wake the bus — but every
-  // such re-stamp is driven by a card record change, which mints a fresh
-  // `archivedAnchorIds` set upstream and re-fires this effect through its own
-  // deps. What is genuinely uncovered is a mark re-stamp with no card change at
-  // all, which today only `reapplyModeBAnchors` performs, on a fresh editor at
-  // load — before the sidecars have populated the set.
-  // The re-sweep is IMPERATIVE, never a React state bump: a structural
-  // transaction is ordinary editing (press Enter and a block is added), and
-  // re-rendering the shell for it would trade a stale attribute for a render
-  // storm. The subscription and the sweep therefore live in ONE effect that
-  // re-registers only when the editor or the archived set changes.
+  // The host re-derives the set on every card-collection change (a keystroke
+  // in a card body included), so the effect keys on its CONTENTS, not its
+  // identity: an equal set repaints nothing.
   const bus = useDocStructureBus(editor);
+  const archivedKey = [...archivedAnchorIds].sort().join("\u0000");
+  const archivedRef = useRef(archivedAnchorIds);
+  archivedRef.current = archivedAnchorIds;
   useEffect(() => {
-    if (!editor) return;
-    const root = editor.view.dom;
-    // ONE root query per sweep (task 937): every Mode-B span, each checked
-    // against the archived set by its id — O(spans), not O(archived × DOM)
-    // as the per-id `querySelectorAll` loop it replaced was. Equality-bailed,
-    // so a sweep that changes nothing writes nothing.
-    const sweep = () => {
-      const spans = root.querySelectorAll(`.linked-anchor[${DATA_LINK_ID}]`);
-      for (const el of spans) {
-        const want = archivedAnchorIds.has(el.getAttribute(DATA_LINK_ID) ?? "");
-        if (want === el.hasAttribute(DATA_ANCHOR_ARCHIVED)) continue;
-        if (want) el.setAttribute(DATA_ANCHOR_ARCHIVED, "true");
-        else el.removeAttribute(DATA_ANCHOR_ARCHIVED);
-      }
+    if (!editor || editor.isDestroyed) return;
+    const ids = archivedRef.current;
+    const paint = () => {
+      if (editor.isDestroyed) return;
+      setTransientHighlights(
+        editor.view,
+        archivedAnchorTargets(editor.state, ids),
+        "archived",
+      );
     };
-    sweep();
-    return bus?.onAnyChange(sweep);
-  }, [editor, bus, archivedAnchorIds]);
+    paint();
+    let scheduled = false;
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        paint();
+      });
+    };
+    const unsubs: Array<() => void> = [];
+    if (bus && ids.size > 0) {
+      unsubs.push(bus.onAnyChange(schedule));
+      for (const id of ids) {
+        unsubs.push(bus.onAnchorExtentChanged(id, schedule));
+      }
+    }
+    return () => {
+      for (const u of unsubs) u();
+    };
+  }, [editor, bus, archivedKey]);
+}
+
+/**
+ * The `archived` channel's COMPLETE desired set: one attr wrapper over the live
+ * range of every archived anchor present in the document. An anchor not in the
+ * document (its passage deleted, or a stale id) contributes nothing. O(#archived)
+ * bounded resolves, run only off the rebuild triggers above — never per keystroke.
+ */
+export function archivedAnchorTargets(
+  state: EditorState,
+  archivedAnchorIds: ReadonlySet<string>,
+): TransientAttrTarget[] {
+  const out: TransientAttrTarget[] = [];
+  for (const id of archivedAnchorIds) {
+    if (!id) continue;
+    const range = resolveLinkedAnchorRange(state, id);
+    if (!range || range.to <= range.from) continue;
+    out.push({
+      shape: "attrs",
+      from: range.from,
+      to: range.to,
+      attrs: { [DATA_ANCHOR_ARCHIVED]: "true" },
+    });
+  }
+  return out;
 }
