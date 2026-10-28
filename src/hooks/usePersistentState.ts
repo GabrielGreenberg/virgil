@@ -150,6 +150,13 @@ export interface PersistentStateApi<S> {
    * alone. Reset to false on every `docId` change. Additive.
    */
   loadError: boolean;
+  /**
+   * Re-read the file from disk NOW — a user's Refresh — under the shared
+   * re-read policy (task 1332, `useSidecarReread`'s `rereadNow`): deferred
+   * while a write is armed or in flight, merged into memory rather than
+   * adopted, a read a write overtook discarded. Never `readSidecar → setState`.
+   */
+  reread: () => void;
 }
 
 /** `loadedFor` key for the `docId === null` state (no real docId collides). */
