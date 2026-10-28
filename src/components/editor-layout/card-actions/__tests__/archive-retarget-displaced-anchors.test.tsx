@@ -51,6 +51,7 @@ import {
 } from "../drag-handle-actions";
 import {
   addTextObjectLink,
+  createLinkedAnchor,
   getLinkedTextObjectIds,
   removeTextObjectLink,
   detachAnchorSources,
@@ -82,6 +83,8 @@ import {
   resolveDisplacedAnchorPlacement,
 } from "@/text-objects/anchor-resolution";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
+import type { Link } from "@/links/_shared/types";
+import { buildResolveIndex } from "@/links/resolve-card-anchor";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -455,6 +458,76 @@ describe("task 491 — an archived passage re-homes the cards it displaced", () 
 
     expect(store.pidsOf("archive", "safe")).toEqual(["p-target"]);
     expect(editor.state.doc.textContent).toContain("Target passage.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 1328 — a Mode-B link's stored pids are its BIRTH RECORD, not where it
+// is. Highlight words in P, press Enter before them: the mark rides into P'
+// while the stored pid stays P (the task-934 state). Archiving P used to read
+// the stored pid as the anchor — `unanchor(P)` (a no-op on a Mode-B link) then
+// `reanchor(neighbour)` — so a highlight whose live mark was never touched
+// gained a spurious second marker on the neighbour.
+// ---------------------------------------------------------------------------
+
+function modeBArchiveLink(anchorId: string, textObjectIds: string[]): Link {
+  return {
+    id: anchorId,
+    kind: "anchor",
+    anchor: {
+      type: "textObject",
+      targetKind: "linkedRange",
+      textObjectIds,
+      textRange: { anchorId, textSnapshot: "passage" },
+    },
+    target: { type: "card", ref: { kind: "archive", id: "hl" } },
+    createdAt: "",
+  };
+}
+
+/** Highlight "passage" in p-target; return its mark id. */
+function highlightPassage(editor: Editor): string {
+  const from = 1 + "Before.".length + 2 + "Target ".length;
+  const rec = createLinkedAnchor(editor, "note", { from, to: from + "passage".length });
+  if (!rec) throw new Error("expected a linkedAnchor record");
+  return rec.anchorId;
+}
+
+describe("task 1328 — the archive re-home reads where a Mode-B link IS, not where it was born", () => {
+  it("archiving the block a highlight's STORED pid names, while its mark lives in P', changes nothing", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const anchorId = highlightPassage(editor);
+    // Enter before the highlighted word: the mark rides into the new tail P'.
+    editor.chain().setTextSelection(1 + "Before.".length + 2 + "Target ".length).splitBlock().run();
+    const markPid = buildResolveIndex(editor).anchorIdToParagraph.get(anchorId)!;
+    expect(markPid).not.toBe("p-target");
+
+    const store = makeCardStore();
+    const card = store.seed("archive", "hl", []);
+    const links = [modeBArchiveLink(anchorId, ["p-target"])];
+    card.links = links;
+    const h = makeHarness(editor, store.handlers, store.carry);
+
+    await h.dispatch("archive", TARGET_REF);
+
+    expect(editor.state.doc.textContent).not.toContain("Target passage");
+    expect(store.cardOf("archive", "hl")!.links, "no new link, no unanchor").toEqual(links);
+    expect(buildResolveIndex(editor).anchorIdToParagraph.get(anchorId)).toBe(markPid);
+    expect(h.archiveCalls[0].displaced ?? []).toEqual([]);
+  });
+
+  it("CONTROL — a Mode-B link whose mark IS in the archived block still re-homes as before", async () => {
+    const editor = mountDoc(threeParagraphDoc());
+    const anchorId = highlightPassage(editor);
+    const store = makeCardStore();
+    const card = store.seed("archive", "hl", []);
+    card.links = [modeBArchiveLink(anchorId, ["p-target"])];
+    const h = makeHarness(editor, store.handlers, store.carry);
+
+    await h.dispatch("archive", TARGET_REF);
+
+    expect(store.pidsOf("archive", "hl")).toContain("p-before");
+    expect(h.archiveCalls[0].displaced?.map((d) => d.id)).toEqual(["hl"]);
   });
 });
 

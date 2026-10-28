@@ -3204,11 +3204,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ((event: BlockAbsorbedEvent) => void) | null
   >(null);
   onBlockAbsorbedRef.current = (event) => {
+    const editor = innerRef.current?.getEditor() ?? null;
     rehomeAbsorbedAnchor({
       event,
       retarget: anchorRetarget,
-      snapshotFor: (uuid) =>
-        captureParagraphSnapshot(innerRef.current?.getEditor() ?? null, uuid),
+      snapshotFor: (uuid) => captureParagraphSnapshot(editor, uuid),
+      // O(doc) once, on a join's deferred verdict — never per keystroke.
+      anchorPidsOf: buildCardAnchorPass(editor).anchorPidsOf,
     });
   };
 
