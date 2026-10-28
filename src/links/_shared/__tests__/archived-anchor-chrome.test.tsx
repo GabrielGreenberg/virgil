@@ -40,14 +40,14 @@ import {
 } from "@/lib/editor-extensions";
 import {
   useLinkHighlight,
-  DATA_ANCHOR_ARCHIVED,
+  archivedAnchorCss,
+  DATA_ARCHIVED_ANCHOR_STYLE,
 } from "@/links/_shared/useLinkHighlight";
 import {
   archivedAnchorIds,
   archivedCardIds,
   cardIsArchived,
 } from "@/links/_shared/archived-anchor-chrome";
-import { transientHighlightKeyFor } from "@/lib/tiptap/transient-highlight";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
@@ -144,37 +144,38 @@ function spanFor(editor: Editor, anchorId: string): HTMLElement {
   return el;
 }
 
+/** Every selector the live archived `<style>` sheets carry. */
+function archivedSelectors(): string[] {
+  const out: string[] = [];
+  for (const el of document.querySelectorAll(`style[${DATA_ARCHIVED_ANCHOR_STYLE}]`)) {
+    const sheet = (el as HTMLStyleElement).sheet;
+    if (!sheet) continue;
+    for (const rule of Array.from(sheet.cssRules)) {
+      if ("selectorText" in rule) out.push((rule as CSSStyleRule).selectorText);
+    }
+  }
+  return out;
+}
+
 /**
- * Is EVERY character of `anchorId`'s passage covered by the archived
- * decoration? Task 1331: the attribute is a DECORATION now, so it lands on a
- * wrapper INSIDE the `.linked-anchor` mark span (marks wrap outermost) — CSS
- * reaches the mark span through `:has()`. A mark split renders the passage as
- * SEVERAL spans, so the question is asked of every span for the id and of
- * every text node inside each: "all" only when nothing of the passage is left
- * uncovered, "none" when nothing is covered, "partial" otherwise (the bug).
+ * Is EVERY `.linked-anchor` span of `anchorId`'s passage matched by the
+ * archived rule? Task 1331: "archived" is a per-pane stylesheet rule that
+ * SELECTS the spans by id — so the question is asked of the real CSS engine
+ * (`Element.matches`) for every span the editor rendered. A mark split renders
+ * the passage as SEVERAL spans: "all" only when every one is matched, "none"
+ * when none is, "partial" otherwise (the bug the old stamp had).
  */
 function archivedCoverage(editor: Editor, anchorId: string): "all" | "none" | "partial" {
   const spans = editor.view.dom.querySelectorAll(
     `.linked-anchor[data-link-id="${anchorId}"]`,
   );
   if (spans.length === 0) throw new Error(`no .linked-anchor span for ${anchorId}`);
+  const selectors = archivedSelectors();
   let covered = 0;
-  let bare = 0;
   for (const span of spans) {
-    const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (!n.textContent) continue;
-      let el = n.parentElement;
-      let hit = false;
-      while (el && el !== span.parentElement) {
-        if (el.getAttribute(DATA_ANCHOR_ARCHIVED) === "true") hit = true;
-        el = el.parentElement;
-      }
-      if (hit) covered++;
-      else bare++;
-    }
+    if (selectors.some((sel) => span.matches(sel))) covered++;
   }
-  if (covered > 0 && bare === 0) return "all";
+  if (covered === spans.length) return "all";
   if (covered === 0) return "none";
   return "partial";
 }
@@ -262,11 +263,11 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     element.remove();
   });
 
-  it("paints through the decoration channel, never by querying the DOM (task 1331, was 937)", () => {
+  it("one sheet per pane, one selector per archived id, and no DOM writes on PM-owned spans (task 1331, was 937)", () => {
     // Task 937 bounded the old imperative sweep at one root query; task 1331
-    // retired the sweep. The paint is the engine's `archived` channel: one
-    // decoration per archived anchor PRESENT in the document, an absent id
-    // (a stale / deleted passage) contributing nothing, and zero DOM queries.
+    // retired the sweep. The hook neither queries nor stamps the editor's
+    // spans: it writes ONE <style> whose rule selects the archived ids, scoped
+    // to its own editor root.
     const { editor, element } = mountTwoAnchors();
     const spy = vi.spyOn(editor.view.dom, "querySelectorAll");
     const many = new Set([ARCHIVED_ANCHOR]);
@@ -280,16 +281,62 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
     );
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
-    const set = transientHighlightKeyFor("archived").getState(editor.state);
-    const decos = set?.find() ?? [];
-    expect(decos).toHaveLength(1);
-    expect(decos[0].from).toBe(1);
-    expect(decos[0].to).toBe(6);
+    expect(document.querySelectorAll(`style[${DATA_ARCHIVED_ANCHOR_STYLE}]`)).toHaveLength(1);
+    expect(archivedSelectors()).toHaveLength(1); // one rule, a selector LIST
     expect(archivedCoverage(editor, ARCHIVED_ANCHOR)).toBe("all");
+    // Nothing is stamped on the span itself — PM owns it.
+    const span = spanFor(editor, ARCHIVED_ANCHOR);
+    expect([...span.attributes].map((a) => a.name).filter((n) => n.includes("archived"))).toEqual([]);
 
+    // Unmount takes the sheet with it.
     hook.unmount();
+    expect(document.querySelectorAll(`style[${DATA_ARCHIVED_ANCHOR_STYLE}]`)).toHaveLength(0);
     editor.destroy();
     element.remove();
+  });
+
+  it("a pane's rule never reaches another pane's spans (multi-doc keep-alive)", () => {
+    const a = mountTwoAnchors();
+    const b = mountTwoAnchors();
+    const hook = renderHook(() =>
+      useLinkHighlight({
+        editor: a.editor,
+        visibleHighlightKinds: NO_KINDS,
+        archivedAnchorIds: new Set([ARCHIVED_ANCHOR]),
+      }),
+    );
+    expect(archivedCoverage(a.editor, ARCHIVED_ANCHOR)).toBe("all");
+    // Same anchor id in the OTHER pane's document — not archived there.
+    expect(archivedCoverage(b.editor, ARCHIVED_ANCHOR)).toBe("none");
+    hook.unmount();
+    for (const m of [a, b]) {
+      m.editor.destroy();
+      m.element.remove();
+    }
+  });
+
+  it("an anchor id cannot break out of the selector it sits in", () => {
+    const css = archivedAnchorCss("a1", new Set(['x"] , body { color: red } [y="']));
+    expect(css).not.toBeNull();
+    // The whole string must parse as ONE rule over `.linked-anchor` spans.
+    const style = document.createElement("style");
+    style.textContent = css!;
+    document.head.appendChild(style);
+    const rules = Array.from(style.sheet!.cssRules) as CSSStyleRule[];
+    expect(rules).toHaveLength(1);
+    expect(rules[0].selectorText).toContain(".linked-anchor");
+    // It matches a span carrying exactly that hostile id under the scope…
+    const root = document.createElement("div");
+    root.setAttribute("data-archived-anchor-scope", "a1");
+    const span = document.createElement("span");
+    span.className = "linked-anchor";
+    span.setAttribute("data-link-id", 'x"] , body { color: red } [y="');
+    root.appendChild(span);
+    expect(span.matches(rules[0].selectorText)).toBe(true);
+    // …and nothing outside it: the id did not open a selector of its own.
+    expect(document.body.matches(rules[0].selectorText)).toBe(false);
+    style.remove();
+    expect(archivedAnchorCss("a1", new Set())).toBeNull();
   });
 
   it("works on the POST-RELOAD span shape, whose data-link-card carries NO card id", () => {
@@ -397,8 +444,9 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
         editor.commands.insertContentAt(editor.state.doc.content.size - 1, ch);
       }
     });
-    // A plain in-block keystroke is structurally null, so the paint's only
-    // non-prop triggers never fire — the decoration just forward-maps.
+    // A plain in-block keystroke is structurally null, and the archived set
+    // is unchanged, so the hook does nothing at all while typing.
+    // non-prop trigger never fires — the sheet is not touched.
     expect(bus.emitCount).toBe(before);
     // …and the passage is still covered.
     expect(archivedCoverage(editor, ARCHIVED_ANCHOR)).toBe("all");
@@ -413,10 +461,10 @@ describe("useLinkHighlight — the archived-chrome sweep", () => {
 
 describe("useLinkHighlight — the archived paint survives a mark split (task 1331)", () => {
   for (const [label, markName] of [
-    ["bold", "bold"],
-    ["italic", "italic"],
+    ["bolding", "bold"],
+    ["italicizing", "italic"],
   ] as const) {
-    it(`${label}ing a sub-range of an ARCHIVED passage leaves the whole passage un-washed`, async () => {
+    it(`${label} a sub-range of an ARCHIVED passage leaves the whole passage un-washed`, async () => {
       const { editor, element } = mountTwoAnchors();
       const hook = renderHook(
         ({ archived }: { archived: ReadonlySet<string> }) =>
@@ -474,13 +522,12 @@ describe("useLinkHighlight — the archived paint survives a mark split (task 13
       }),
     );
     await waitForEditorInit(editor);
-    // Delete the whole passage: the mapped decoration is gone with it…
+    // Delete the whole passage…
     act(() => {
       editor.view.dispatch(editor.state.tr.delete(1, 6));
     });
     await flushRepaint();
-    // …and comes back with the text, because the anchor's re-entry is a
-    // structural emit (`addedAnchors`) and the extent channel fires for it.
+    // …and undo it: the re-minted span is matched by the rule like any other.
     act(() => {
       editor.commands.undo();
     });
@@ -637,30 +684,38 @@ describe("census — every archived answer comes from the ONE authority", () => 
     expect(src).toContain("m.unanchored && !archivedIds.has(m.entityId)");
   });
 
-  it("the CSS rule exists, is !important, and sits AFTER every other .linked-anchor background", () => {
-    const css = read("src/app/globals.css");
-    // `:has()` since task 1331 — the attribute rides a decoration wrapper
-    // INSIDE the mark span, and the chrome being zeroed is the span's own.
-    const at = css.indexOf('.linked-anchor:has([data-anchor-archived="true"])');
-    expect(at).toBeGreaterThan(-1);
+  it("the archived rule is !important and OUT-SPECIFIES every !important .linked-anchor background", () => {
+    // Task 1331: the rule is GENERATED per pane (`archivedAnchorCss`) — it
+    // selects spans by anchor id — so the pin moves from globals.css to it.
+    const rule = archivedAnchorCss("a1", new Set(["x"]))!;
     // `!important` is required, not stylistic — the tint band carries one.
-    const rule = css.slice(at, css.indexOf("}", at));
     expect(rule).toContain("background: none !important");
-    expect(rule).toContain("--link-anchor-color: transparent");
-    // Position is load-bearing: two `!important` declarations at equal
-    // specificity are resolved by SOURCE ORDER, so a rule placed above the
-    // tint band would lose to it and M2 would still paint.
-    expect(at).toBeGreaterThan(css.indexOf(".linked-anchor[data-tint-color]"));
-    expect(at).toBeGreaterThan(css.indexOf('[data-show-hl-note="true"]'));
-    expect(at).toBeGreaterThan(css.indexOf('.linked-anchor[data-card-hovered="true"]'));
+    expect(rule).toContain("--link-anchor-color: transparent !important");
+    expect(rule).toContain("box-shadow: none !important");
+    // A `<style>` appended at runtime cannot promise SOURCE ORDER against the
+    // bundler's stylesheet, so the win must come from specificity: count
+    // (class + attribute) selectors — none of these rules use ids.
+    const weight = (sel: string) => (sel.match(/\.[\w-]+|\[[^\]]+\]/g) ?? []).length;
+    const ours = weight(rule.slice(0, rule.indexOf("{")));
+    const css = read("src/app/globals.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rivals: string[] = [];
+    for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (!/background[^;]*!important/.test(m[2])) continue;
+      for (const sel of m[1].split(",")) {
+        if (sel.includes(".linked-anchor")) rivals.push(sel.trim());
+      }
+    }
+    // Premise: the tint band is one of them (or this leg proves nothing).
+    expect(rivals).toContain(".linked-anchor[data-tint-color]");
+    for (const sel of rivals) expect(weight(sel)).toBeLessThan(ours);
   });
 
-  it("the attribute name has ONE speller in TS (the CSS is the only other side)", () => {
-    // JSX/CSS cannot import the constant, so the contract is a two-sided pin:
-    // the hook exports the name, and nothing else in src/ writes it by hand.
+  it("globals.css carries no stamped archived selector any more", () => {
+    // The stamp is what a mark split shed; it must not come back as a rule
+    // that something would then have to stamp.
+    const css = read("src/app/globals.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toContain("data-anchor-archived");
     const hook = read("src/links/_shared/useLinkHighlight.ts");
-    expect(hook).toContain('export const DATA_ANCHOR_ARCHIVED = "data-anchor-archived"');
-    const css = read("src/app/globals.css");
-    expect(css).toContain("data-anchor-archived");
+    expect(hook).not.toMatch(/setAttribute\(\s*DATA_ANCHOR_ARCHIVED/);
   });
 });

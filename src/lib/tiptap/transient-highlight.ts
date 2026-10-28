@@ -58,9 +58,7 @@ import {
  * `Decoration.inline` (a node decoration cannot paint a partial-block span);
  * the `anchor` channel's attrs must be `Decoration.node` (see
  * `anchor-highlight-deco.ts` for why an inline wrapper would put them on the
- * wrong element). A target's `shape` picks which — one engine, three shapes
- * (the `archived` channel's `shape: "attrs"` is an inline wrapper carrying
- * attributes instead of a colour).
+ * wrong element). A target's `shape` picks which — one engine, two shapes.
  *
  * (Unlike the card-attr case, an inline decoration's fresh inner `<span>` is
  * harmless here: the only thing being painted is a background color, not an
@@ -123,37 +121,8 @@ export type TransientHighlightTarget = {
  *                   every open AI request (`src/links/_shared/request-wash.ts`).
  *   - `anchor`    — the card hover/selection attrs on in-editor node/atom
  *                   anchors (`useAnchorHighlightReconciler`), NODE-shaped.
- *   - `archived`  — the "this card is archived, draw no chrome" attr over every
- *                   ARCHIVED card's Mode-B passage (`useLinkHighlight`, task
- *                   1331), ATTRS-shaped. It used to be an imperative
- *                   `setAttribute` on the PM-owned `.linked-anchor` span, which
- *                   a mark split (bolding one word of the passage) re-minted
- *                   unstamped with no structural emit to re-sweep it; as a
- *                   decoration it is re-applied by the view on EVERY redraw.
  */
-export type TransientHighlightChannel =
-  | "search"
-  | "ai-request"
-  | "anchor"
-  | "archived";
-
-/**
- * An inline target that carries ATTRIBUTES rather than a colour: the view
- * wraps every text run in `from..to` in its own `<span>` bearing `attrs`, and
- * re-applies the wrapper on every redraw of that text — a mark split, a mark
- * re-stamp, a structure-changing `setContent` — because a decoration is part
- * of what the view renders, not a stamp on what it rendered last time.
- *
- * The wrapper sits INSIDE every mark span (marks wrap outermost), so CSS that
- * must reach the enclosing mark element selects it with `:has()` — see the
- * archived rule in `globals.css`.
- */
-export type TransientAttrTarget = {
-  shape: "attrs";
-  from: number;
-  to: number;
-  attrs: Record<string, string>;
-};
+export type TransientHighlightChannel = "search" | "ai-request" | "anchor";
 
 /** What each channel paints: the band channels take inline ranges, the
  *  `anchor` channel node targets. Typing the setter through this keeps a node
@@ -162,14 +131,10 @@ export interface TransientChannelTargets {
   search: TransientHighlightTarget;
   "ai-request": TransientHighlightTarget;
   anchor: AnchorHighlightTarget;
-  archived: TransientAttrTarget;
 }
 
 /** Any target the engine can paint. */
-type TransientTarget =
-  | TransientHighlightTarget
-  | AnchorHighlightTarget
-  | TransientAttrTarget;
+type TransientTarget = TransientHighlightTarget | AnchorHighlightTarget;
 
 /** The channel a caller gets when it does not name one. */
 export const DEFAULT_TRANSIENT_CHANNEL: TransientHighlightChannel = "search";
@@ -181,7 +146,6 @@ const TRANSIENT_CHANNELS: readonly TransientHighlightChannel[] = [
   "search",
   "ai-request",
   "anchor",
-  "archived",
 ];
 
 const CHANNEL_KEYS: Record<
@@ -191,7 +155,6 @@ const CHANNEL_KEYS: Record<
   search: new PluginKey<DecorationSet>("transientHighlightDeco"),
   "ai-request": new PluginKey<DecorationSet>("transientHighlightDeco:aiRequest"),
   anchor: new PluginKey<DecorationSet>("anchorHighlightDeco"),
-  archived: new PluginKey<DecorationSet>("transientHighlightDeco:archived"),
 };
 
 /** Meta payload: the COMPLETE desired band list for this channel, this frame.
@@ -223,22 +186,6 @@ function buildSet(
     if (t.shape === "node") {
       const deco = anchorNodeDecoration(t);
       if (deco) decos.push(deco);
-      continue;
-    }
-    if (t.shape === "attrs") {
-      // `nodeName` for the reason the band's is below: the attrs land on a
-      // wrapper of our own, never merged onto an atom's element. Never
-      // inclusive — it tracks a RANGE (the `linkedAnchor` mark is
-      // `inclusive: false`, so text typed at its edge is outside it), and the
-      // owner rebuilds it whenever that range's extent changes.
-      decos.push(
-        Decoration.inline(
-          t.from,
-          t.to,
-          { nodeName: "span", ...t.attrs },
-          { inclusiveStart: false, inclusiveEnd: false },
-        ),
-      );
       continue;
     }
     decos.push(

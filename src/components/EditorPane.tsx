@@ -3457,7 +3457,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   // The SAME rule over the SAME collections, projected onto the Mode-B
   // `linkedAnchor` anchor ids those archived cards own — the DOM-stable key
-  // `useLinkHighlight` sweeps `data-anchor-archived` onto — mounted below in
+  // `useLinkHighlight` selects in its archived rule — mounted below in
   // this same pane (task 1316), so the set never leaves it.
   const archivedAnchorIdSet = useMemo(
     () => archivedAnchorIds(archivableCollections),

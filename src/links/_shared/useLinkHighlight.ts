@@ -8,11 +8,10 @@
  *   - Sets `data-show-hl-<kind>="true"` on the editor scroll root for
  *     each kind whose persistent highlight is enabled — CSS scopes the
  *     subtle background per-kind by matching `data-link-card^="<kind>:"`.
- *   - Paints `data-anchor-archived="true"` over the passage of every ARCHIVED
- *     card — as a DECORATION on the transient-highlight engine's `archived`
- *     channel (task 1331) — which one CSS rule turns into "no anchor chrome
- *     at all" (task 497 — see `archived-anchor-chrome.ts` for the rule and
- *     why the key is the anchorId rather than the card id).
+ *   - Turns OFF all anchor chrome on the passage of every ARCHIVED card
+ *     (task 497) through a per-pane stylesheet rule that selects those
+ *     anchors' spans by id (task 1331) — see `archived-anchor-chrome.ts` for
+ *     why the key is the anchorId rather than the card id.
  *
  * HOVER / SELECTION are NOT here (task 1148). They are attention state, and
  * their one painter is the pane's `useAnchorHighlightReconciler`, which stamps
@@ -31,20 +30,11 @@
 
 import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import type { EditorState } from "@tiptap/pm/state";
-import { useDocStructureBus } from "@/lib/tiptap/doc-structure";
-import {
-  setTransientHighlights,
-  type TransientAttrTarget,
-} from "@/lib/tiptap/transient-highlight";
-import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { DATA_LINK_ID } from "../link-dom-contract";
 import {
   ALL_HIGHLIGHT_TYPES,
   type HighlightType,
 } from "@/lib/view-prefs/highlight-types";
-
-/** Cross-layer DOM contract with `globals.css`'s archived-chrome rule. */
-export const DATA_ANCHOR_ARCHIVED = "data-anchor-archived";
 
 /**
  * Every kind that carries a `data-show-hl-<kind>` root toggle — DERIVED from
@@ -119,102 +109,109 @@ export function useLinkHighlight({
     };
   }, [editor, visibleHighlightKinds]);
 
-  // ── Archived-chrome sync (task 497; a DECORATION since task 1331) ──────
+  // ── Archived-chrome sync (task 497; a STYLESHEET since task 1331) ──────
   //
   // An archived card draws no anchor chrome. The three CSS paths that paint a
   // Mode-B span — the per-kind 18% wash, the `!important` tint band, and the
   // hover / selection washes — are all keyed on attributes the MARK emits from
-  // `renderHTML`, which knows nothing about card state; so the state arrives as
-  // one extra attribute and one CSS rule turns the chrome off.
+  // `renderHTML`, which knows nothing about card state.
   //
-  // Keyed on the ANCHOR id, never the card id: a reload-restored span carries
-  // `data-link-card="note:"` with the card id deliberately empty
-  // (`applyLinkedAnchors`), so a card-keyed paint would work in-session and die
-  // on every reload. See `archived-anchor-chrome.ts`.
+  // Keyed on the ANCHOR id (the span's `data-link-id`), never the card id: a
+  // reload-restored span carries `data-link-card="note:"` with the card id
+  // deliberately empty (`applyLinkedAnchors`), so a card-keyed rule would work
+  // in-session and die on every reload. See `archived-anchor-chrome.ts`.
   //
-  // CARRIER: the transient-highlight engine's `archived` channel — an inline
-  // decoration over each archived anchor's live range, replaced by a META-ONLY
-  // transaction ("Transient state is never document content"). It used to be
-  // an imperative `setAttribute` on the PM-owned `.linked-anchor` span, swept on
-  // `onAnyChange`; PM re-mints that span on any redraw, and a MARK SPLIT
+  // CARRIER: one `<style>` element per pane whose rule SELECTS the archived
+  // anchors' spans by id, scoped to this editor's root. It used to be an
+  // imperative `setAttribute` on each PM-owned `.linked-anchor` span, re-swept
+  // on `onAnyChange`; but PM re-mints that span on any redraw, and a MARK SPLIT
   // (bolding one word of the passage) is a redraw that wakes no structural
-  // watcher, so the fresh fragments came back unstamped and the archived note's
-  // wash reappeared (task 1331). A decoration is re-applied by the view on
-  // every redraw, so split, re-stamp and `setContent` are covered by
-  // construction rather than by a list of redraw shapes.
+  // watcher, so the fresh fragments came back unstamped and the archived
+  // note's wash reappeared (task 1331). A selector matches whatever span PM
+  // renders — a split fragment, a re-stamped mark, a `setContent` rebuild, an
+  // undo that brings the passage back — so every redraw shape is covered by
+  // construction, with no list of shapes to keep current, and nothing is ever
+  // written onto PM-owned DOM. (A decoration cannot carry it: its wrapper lands
+  // INSIDE the mark span, and reaching the span from there needs `:has()`,
+  // which globals.css bans — `css-invalidation-guardrail.test.ts`.)
   //
-  // Between repaints the set forward-maps (typing inside the passage stays
-  // covered; `emitCount` flat). It is REBUILT — one bounded range resolve per
-  // archived anchor — only when the archived set changes, on a structural
-  // emit (an anchor re-entering via undo, a structure-changing replace), or
-  // when an archived anchor's EXTENT changes (`onAnchorExtentChanged`: a text
-  // drag-drop moves it, which mapping would not reproduce). Rebuilds off a bus
-  // emit are deferred to a coalesced microtask: the bus emits from inside the
-  // observer's view `update()`, where a nested dispatch would re-enter it
-  // (the `useRequestWash` precedent).
-  //
-  // The host re-derives the set on every card-collection change (a keystroke
-  // in a card body included), so the effect keys on its CONTENTS, not its
-  // identity: an equal set repaints nothing.
-  const bus = useDocStructureBus(editor);
+  // Cost: the sheet is rewritten only when the archived set's CONTENTS change
+  // (the host re-derives the set on every card-collection change, a keystroke
+  // in a card body included, so the effect keys on contents, not identity).
+  // No doc walk, no bus subscription, nothing per keystroke.
   const archivedKey = [...archivedAnchorIds].sort().join("\u0000");
   const archivedRef = useRef(archivedAnchorIds);
   archivedRef.current = archivedAnchorIds;
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    const ids = archivedRef.current;
-    const paint = () => {
-      if (editor.isDestroyed) return;
-      setTransientHighlights(
-        editor.view,
-        archivedAnchorTargets(editor.state, ids),
-        "archived",
-      );
-    };
-    paint();
-    let scheduled = false;
-    const schedule = () => {
-      if (scheduled) return;
-      scheduled = true;
-      queueMicrotask(() => {
-        scheduled = false;
-        paint();
-      });
-    };
-    const unsubs: Array<() => void> = [];
-    if (bus && ids.size > 0) {
-      unsubs.push(bus.onAnyChange(schedule));
-      for (const id of ids) {
-        unsubs.push(bus.onAnchorExtentChanged(id, schedule));
-      }
-    }
-    return () => {
-      for (const u of unsubs) u();
-    };
-  }, [editor, bus, archivedKey]);
+    const root = editor.view.dom;
+    const css = archivedAnchorCss(nextArchivedScope(root), archivedRef.current);
+    if (!css) return;
+    const style = root.ownerDocument.createElement("style");
+    style.setAttribute(DATA_ARCHIVED_ANCHOR_STYLE, "");
+    style.textContent = css;
+    root.ownerDocument.head.appendChild(style);
+    return () => style.remove();
+  }, [editor, archivedKey]);
+}
+
+/** Root attribute that scopes a pane's archived rule to its own editor — N
+ *  panes are mounted at once (multi-doc keep-alive), and an anchor id archived
+ *  in one paper says nothing about a span in another. The root is the one
+ *  element ProseMirror never recreates (the per-kind attrs above live there
+ *  for the same reason). */
+export const DATA_ARCHIVED_ANCHOR_SCOPE = "data-archived-anchor-scope";
+/** Marks the pane's `<style>` element (inspection / test door). */
+export const DATA_ARCHIVED_ANCHOR_STYLE = "data-archived-anchor-style";
+
+let archivedScopeSeq = 0;
+/** The root's scope token, minted once per root and kept for its lifetime. */
+function nextArchivedScope(root: HTMLElement): string {
+  const have = root.getAttribute(DATA_ARCHIVED_ANCHOR_SCOPE);
+  if (have) return have;
+  const token = `a${++archivedScopeSeq}`;
+  root.setAttribute(DATA_ARCHIVED_ANCHOR_SCOPE, token);
+  return token;
+}
+
+/** A CSS string literal's body: backslash, quote and control characters
+ *  escaped, so an anchor id can never close the selector it sits in. */
+function cssString(value: string): string {
+  return value.replace(/[\\"\u0000-\u001f\u007f]/g, (c) =>
+    c === "\\" || c === '"' ? `\\${c}` : `\\${c.charCodeAt(0).toString(16)} `,
+  );
 }
 
 /**
- * The `archived` channel's COMPLETE desired set: one attr wrapper over the live
- * range of every archived anchor present in the document. An anchor not in the
- * document (its passage deleted, or a stale id) contributes nothing. O(#archived)
- * bounded resolves, run only off the rebuild triggers above — never per keystroke.
+ * The ONE rule that turns an archived card's anchor chrome off, for every id in
+ * `archivedAnchorIds`, scoped to the editor root carrying `scope`. Null when
+ * nothing is archived (no sheet at all).
+ *
+ * The declarations are what the global rule carried before task 1331:
+ *  - zero `--link-anchor-color`, and every `color-mix(… var(--link-anchor-color)
+ *    …)` background collapses to transparent — the per-kind 18% wash and the
+ *    Mode-B hover/selection wash + selection ring in one line;
+ *  - `background: none !important` is REQUIRED, not stylistic: the persistent
+ *    tint band (`.linked-anchor[data-tint-color]`) carries an `!important` of
+ *    its own and paints from `--tint-color`, not `--link-anchor-color`. That
+ *    band is an archived HIGHLIGHT card's entire in-text identity, so without
+ *    this line archiving one removed nothing visible. The scope attribute
+ *    gives this selector MORE specificity than the band's, so the win no longer
+ *    depends on source order — which a `<style>` appended at runtime could not
+ *    promise against a stylesheet the bundler injects.
+ * Every declaration is `!important` for that same order-independence.
  */
-export function archivedAnchorTargets(
-  state: EditorState,
+export function archivedAnchorCss(
+  scope: string,
   archivedAnchorIds: ReadonlySet<string>,
-): TransientAttrTarget[] {
-  const out: TransientAttrTarget[] = [];
+): string | null {
+  const selectors: string[] = [];
   for (const id of archivedAnchorIds) {
     if (!id) continue;
-    const range = resolveLinkedAnchorRange(state, id);
-    if (!range || range.to <= range.from) continue;
-    out.push({
-      shape: "attrs",
-      from: range.from,
-      to: range.to,
-      attrs: { [DATA_ANCHOR_ARCHIVED]: "true" },
-    });
+    selectors.push(
+      `[${DATA_ARCHIVED_ANCHOR_SCOPE}="${cssString(scope)}"] .linked-anchor[${DATA_LINK_ID}="${cssString(id)}"]`,
+    );
   }
-  return out;
+  if (selectors.length === 0) return null;
+  return `${selectors.join(",\n")} {\n  --link-anchor-color: transparent !important;\n  background: none !important;\n  box-shadow: none !important;\n}\n`;
 }
