@@ -60,7 +60,21 @@ export interface SidecarRereadOptions<S> {
  * KEYSTROKE SANCTITY: a `window` listener for a wall-clock watcher event, not
  * an `editor.on(...)` subscriber. Typing runs zero code here.
  */
-export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): () => void {
+export interface SidecarReread {
+  /** Pays a deferred re-read once the hook's writes have drained. */
+  replayDeferred: () => void;
+  /**
+   * THE MANUAL RE-READ (task 1332) — a user's Refresh, under the SAME policy
+   * as a watcher signal: deferred as a debt while a write is armed or in
+   * flight, otherwise read with the stale-read guard and MERGED into memory
+   * (base advanced). Never a raw `readSidecar → setState` adopt, which let a
+   * Refresh inside the 300 ms write window drop a just-filed record from memory
+   * and the next write delete it from disk.
+   */
+  rereadNow: () => void;
+}
+
+export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarReread {
   const { docId, filename, baselineRef } = opts;
   // Latest callbacks/values in a ref, so the listener effect keys on `docId`
   // alone (a re-render must not re-subscribe).
@@ -77,6 +91,15 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): () => void {
     if (optsRef.current.hasPendingWrite()) return;
     deferredRef.current = false;
     rehydrateRef.current?.();
+  }, []);
+
+  const rereadNow = useCallback((): void => {
+    if (!rehydrateRef.current) return;
+    if (optsRef.current.hasPendingWrite()) {
+      deferredRef.current = true;
+      return;
+    }
+    rehydrateRef.current();
   }, []);
 
   useEffect(() => {
@@ -146,5 +169,5 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): () => void {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
 
-  return replayDeferred;
+  return { replayDeferred, rereadNow };
 }
