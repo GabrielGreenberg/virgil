@@ -103,6 +103,7 @@ const ATOM_ATTRS: Record<string, Record<string, unknown>> = {
   inlineMath: { latex: "\\lambda" },
   citation: { command: "\\cite{smith2020}", citationId: "c1" },
   labelRef: { label: "sec:a", refCommand: "ref" },
+  latexDynamic: { command: "today", term: "{}" },
   footnote: { footnoteId: "f9", content: null },
   displayMath: { latex: "E=mc^2" },
   texBlock: { code: "\\begin{align}x\\end{align}" },

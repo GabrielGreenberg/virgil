@@ -1,3 +1,4 @@
+import { LATEX_DYNAMIC_NODE, emitDynamicCommand } from "@/lib/latex-dynamic-commands";
 import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import {
@@ -465,13 +466,10 @@ function serializeTitleField(node: JSONContent): string {
   // whichever side the parser read it from.
   const shortTitle = node.attrs?.shortTitle;
   const shortArg = typeof shortTitle === "string" ? `[${shortTitle}]` : "";
-  if (node.attrs?.isToday) {
-    // Interpolate rawPrefix exactly as the non-today branch below does — the
-    // parser strips a sizing/weight prefix (`\small`, `\Large`, …) into
-    // rawPrefix even on the \today path (latex-parser.ts), so dropping it here
-    // silently rewrites `\date{\small\today}` → `\date{\today}` on round-trip.
-    return `\\${field}${shortArg}{${rawPrefix}\\today}${anchor}\n`;
-  }
+  // No `\today` branch (task 1335): `\date{\today}` holds a `latexDynamic`
+  // chip, which the inline sequence emits like any atom. The retired
+  // `isToday` flag wrote `\today` whatever the field held, so an edit to the
+  // shown date was displayed and then silently thrown away on save.
   const inner = serializeInlineSequence(node.content || []);
   return `\\${field}${shortArg}{${rawPrefix}${inner}}${anchor}\n`;
 }
@@ -967,6 +965,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "labelRef":
       return serializeLabelRef(node);
+
+    // `\today` (task 1335). Inside an inline run the neighbour-aware arm in
+    // `serializeInlineSequence` answers first; this is the context-free form.
+    case LATEX_DYNAMIC_NODE:
+      return emitDynamicCommand(node, null);
 
     case "exampleBlock":
       return serializeExampleBlock(node);
@@ -1578,10 +1581,14 @@ function serializeInlineSequence(
       return prefix;
     },
 
-    inner: (node) =>
+    inner: (node, index) =>
       node.type === "text"
         ? inlineTextBytes(node.text || "", node.marks)
-        : // ONE dispatcher (task 357). `serializeInline` was a second if-chain
+        : node.type === LATEX_DYNAMIC_NODE
+          ? // The one atom whose bytes depend on its NEIGHBOUR (task 1335): a
+            // bare `\today` before a letter needs its `{}` token break back.
+            emitDynamicCommand(node, nodes[index + 1])
+          : // ONE dispatcher (task 357). `serializeInline` was a second if-chain
           // whose five non-text arms were byte-identical duplicates of
           // `serializeNode`'s — and whose trailing `return ""` was the second
           // of that task's two silent drops: an inline node type that chain had

@@ -138,8 +138,8 @@ Hello.
   });
 
   it("preserves a sizing prefix on the \\today path (\\date{\\small\\today})", () => {
-    // The parser strips `\small` into rawPrefix AND sets isToday=true; the
-    // serializer's isToday branch must re-emit the prefix or `\small` is lost.
+    // The parser strips `\small` into rawPrefix; the field's content is the
+    // `\today` chip (task 1335), re-emitted after the prefix.
     const withPrefix = `\\documentclass{article}
 
 \\date{\\small\\today}

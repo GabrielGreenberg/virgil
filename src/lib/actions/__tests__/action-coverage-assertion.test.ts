@@ -113,7 +113,7 @@ const FORMAT_IDS = [
 // `\ref` cross-reference atom; slash + the new lightning 'Cross-ref' cell) then
 // the 3 title-field ids (`title`/`author`/`date`; SLASH-ONLY by design). With
 // these the registry is the COMPLETE SSOT (every ActionId has a row).
-const ATOM_IDS = ["ref"] as const;
+const ATOM_IDS = ["ref", "today"] as const;
 const TITLE_IDS = ["title", "author", "date"] as const;
 
 // Task 639 — the typed-only `latex-comment` row, appended LAST. Its own family

@@ -45,6 +45,7 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Slice, Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { atomMetaForNodeName, type AtomKind } from "./atom-registry";
+import { renderDynamicCommand } from "@/lib/latex-dynamic-commands";
 import type { JSONContent } from "@tiptap/core";
 import { collectAtomIds } from "./node-identity";
 import { remintNestedAtomIds } from "@/lib/inline-content";
@@ -59,6 +60,7 @@ import { emitInlineMath } from "@/lib/latex-lexer";
  *   - inline math → its source, in its own delimiters (`$…$`, `$$…$$`, … —
  *     task 1070's `emitInlineMath`; the source — no plain-text rendering of math
  *     exists, and the source is what a reader of the `.tex` sees);
+ *   - dynamic (`\today`) → the value it shows (task 1335);
  *   - footnote → "" — the marker is apparatus, not prose; the HTML flavour
  *     carries the whole footnote for an in-app paste.
  */
@@ -69,6 +71,9 @@ export const ATOM_PLAIN_TEXT: Record<AtomKind, (node: PMNode) => string> = {
     (n.attrs.label ? `\\${(n.attrs.refCommand as string) || "ref"}{${n.attrs.label as string}}` : ""),
   "inline-math": (n) => emitInlineMath(n.attrs.latex, n.attrs.delim),
   footnote: () => "",
+  // Task 1335: the value the chip shows — a reader copying "Dated \today"
+  // wants the date, as with a ref's number.
+  dynamic: (n) => renderDynamicCommand(n.attrs.command as string),
 };
 
 /** Plain text of a clipboard slice: text, atoms via `ATOM_PLAIN_TEXT`, display

@@ -80,6 +80,7 @@ import {
   DisplayMath,
   Citation,
   LabelRef,
+  LatexDynamic,
   Footnote,
   LatexCommandMark,
   LatexVerbatimMark,
@@ -490,6 +491,7 @@ export const BORROWED_INLINE_ATOM_NAMES = [
   "citation",
   "labelRef",
   "footnote",
+  "latexDynamic",
   "latexCommand",
   "latexVerbatim",
   "latexCommentTail",
@@ -566,6 +568,9 @@ export function buildBorrowedAtomSchema(
     Citation,
     ...(wantLabelRef ? [LabelRef] : []),
     ...(wantFootnote ? [Footnote] : []),
+    // `\today` (task 1335) — on every card surface: a footnote or note body
+    // parses it like the main text does.
+    LatexDynamic,
     LatexCommandMark,
     LatexVerbatimMark,
     LatexCommentTailMark,

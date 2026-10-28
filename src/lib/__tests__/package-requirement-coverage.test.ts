@@ -176,6 +176,8 @@ const NODE_FIXTURES: Record<
   footnote: { body: "a\\footnote{f}" },
   citation: { body: "\\citep{k}", packages: "\\usepackage{natbib}" },
   labelRef: { body: "\\getref{s}", packages: EXPEX },
+  // pdfTeX expands `\today` natively — no package (task 1335).
+  latexDynamic: { body: "Dated \\today." },
 };
 
 /** Node types that never sit at the TOP level and are covered INSIDE a

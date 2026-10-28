@@ -62,6 +62,7 @@ describe("borrowed-schema (backlog #11)", () => {
     expect(got).toEqual([
       "inlineMath",
       "citation",
+      "latexDynamic",
       "latexCommand",
       "latexVerbatim",
       "latexCommentTail",
@@ -89,6 +90,7 @@ describe("borrowed-schema (backlog #11)", () => {
       "citation",
       "labelRef",
       "footnote",
+      "latexDynamic",
       "latexCommand",
       "latexVerbatim",
       "latexCommentTail",
@@ -114,6 +116,7 @@ describe("borrowed-schema (backlog #11)", () => {
       "inlineMath",
       "citation",
       "labelRef",
+      "latexDynamic",
       "latexCommand",
       "latexVerbatim",
       "latexCommentTail",

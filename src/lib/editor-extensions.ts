@@ -69,6 +69,7 @@ import {
   LatexComment,
   Citation,
   LabelRef,
+  LatexDynamic,
   LatexCommandMark,
   LatexVerbatimMark,
   LatexCommentTailMark,
@@ -1884,6 +1885,8 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // Its marker click names the owning doc (task 1252), like Footnote's.
     Citation.configure({ docIdRef: ctx.docIdRef ?? null }),
     LabelRef,
+    // `\today` — a computed-text command chip (task 1335).
+    LatexDynamic,
     // The atoms' paste identity + plain-text clipboard (task 1068). A float's
     // doc is one node of MAIN's, so it asks MAIN "is this id free?" (task
     // 1074) — and re-mints every pasted card-bearing id only while MAIN is

@@ -10,6 +10,7 @@ export { Footnote } from "./footnote";
 export { LatexComment } from "./latex-comment";
 export { Citation } from "./citation";
 export { LabelRef, LabelHandler } from "./label";
+export { LatexDynamic } from "./latex-dynamic";
 export {
   ExampleBlock,
   ExampleItemList,

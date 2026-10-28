@@ -93,7 +93,6 @@ export const TitleField = Node.create({
     return {
       field: { default: "title" },
       rawPrefix: { default: null },
-      isToday: { default: false },
       uuid: UUID_ATTR_SPEC.uuid,
       // Raw `\title[Short]{Long}` running-head argument (task 376) — opaque
       // LaTeX, the title twin of `heading.shortTitle` and

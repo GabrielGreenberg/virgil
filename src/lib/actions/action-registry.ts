@@ -113,6 +113,7 @@
  */
 
 import { markSlashNames } from "@/lib/mark-composition";
+import { LATEX_DYNAMIC_NODE } from "@/lib/latex-dynamic-commands";
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
 // VALUE import: `exampleRun` (CHIP 5c) parks the caret inside the freshly
@@ -314,12 +315,13 @@ export type CardActionId =
   | "archive"
   | "delete";
 
-/** Inline-Atom actions. Only `ref` (`\ref{}`) is an action surface today —
- *  it is created from the `\ref` slash command. The other atoms (footnote /
+/** Inline-Atom actions: `ref` (`\ref{}`, created from the `\ref` slash
+ *  command through its popover) and `today` (the `\today` dynamic-command
+ *  chip, task 1335 — inserted directly, no popover). The other atoms (footnote /
  *  citation / inline-math) are spelled under their own categories: footnote
  *  and citation are CARD actions (they own a Card); inline-math is a BLOCK
  *  action (a format/insert). See `ATOM_REGISTRY` for the detection side. */
-export type AtomActionId = "ref";
+export type AtomActionId = "ref" | "today";
 
 /** Block / structural insert-or-convert tools.
  *
@@ -1927,8 +1929,8 @@ function headingRun(level: number): (ctx: ActionContext) => void {
 //   - canonical order (title=0 / author=1 / date=2; always BEFORE any
 //     non-titleField, incl. `\maketitle`, since `\maketitle` reads `\title` at
 //     expansion time),
-//   - `\date` pre-fills today (pretty-printed `\today`; `isToday: true` so the
-//     serializer emits `\date{\today}`).
+//   - `\date` pre-fills today: a `latexDynamic` `\today` chip (task 1335),
+//     which the serializer emits as `\date{\today}`.
 // ---------------------------------------------------------------------------
 function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
@@ -2010,21 +2012,15 @@ function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
     const attrs = {
       field,
       rawPrefix: null,
-      isToday: field === "date",
       uuid: generateShortId(existingUuids),
     };
     let nodeContent = null;
     if (field === "date") {
-      // Mirror the parser's pretty-printed `\today` rendering so the lozenge
-      // shows the date immediately. The `isToday: true` flag tells the
-      // serializer to emit `\date{\today}` rather than the expanded string.
-      const now = new Date();
-      const pretty = now.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      nodeContent = state.schema.text(pretty);
+      // The `\today` chip — what the parser reads `\date{\today}` into, so a
+      // fresh field and a parsed one are the same model (task 1335). Falls back
+      // to an empty field on a schema without the atom.
+      const dynamicType = state.schema.nodes[LATEX_DYNAMIC_NODE];
+      if (dynamicType) nodeContent = dynamicType.create({ command: "today", term: "" });
     }
     const node = titleFieldType.create(attrs, nodeContent);
 
@@ -2406,6 +2402,46 @@ const REF_ACTION_ROW: ActionSpec = {
   applies: inlineAtomInsertApplies("labelRef"),
   refusal: inlineAtomInsertRefusal("labelRef"),
   run: refRun,
+};
+
+/**
+ * `todayRun` — insert the `\today` chip (a `latexDynamic` atom, task 1335) at
+ * the caret. Pure ProseMirror, so the slash row is a VIEW row (no bridge): a
+ * raw `replaceSelectionWith` dispatch with no `scrollIntoView`, the same
+ * no-scroll insert `\footnote`'s synchronous slash insert makes. A fresh chip
+ * takes the `{}` token break, so a space typed after it survives TeX.
+ *
+ * Defence-in-depth: the row's own container question (`inlineRangeAllowsAtom`)
+ * is re-asked here, so a caller that skips `applies()` cannot land the atom in
+ * a markless verbatim block and split it (task 396).
+ */
+function todayRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return;
+  const { state } = ctx.view;
+  const type = state.schema.nodes[LATEX_DYNAMIC_NODE];
+  if (!type) return;
+  const { from, to } = state.selection;
+  if (!inlineRangeAllowsAtom(state.doc, from, to, type)) return;
+  ctx.view.dispatch(state.tr.replaceSelectionWith(type.create({ command: "today", term: "{}" })));
+}
+
+/**
+ * The `today` registry row — `category: "atom"`, SLASH-ONLY (`\today`). Not on
+ * the lightning grid: the grid is a hand-laid 4-column layout of insert/format
+ * tools and a date chip is a rare insert (task 1335 named grid membership
+ * optional). `applies` is the shared inline-atom container gate, as `ref`'s.
+ */
+const TODAY_ACTION_ROW: ActionSpec = {
+  id: "today",
+  label: "Today's date",
+  category: "atom",
+  selection: "optional",
+  surfaces: { slash: true },
+  slashName: "today",
+  makes: { node: LATEX_DYNAMIC_NODE },
+  applies: inlineAtomInsertApplies(LATEX_DYNAMIC_NODE),
+  refusal: inlineAtomInsertRefusal(LATEX_DYNAMIC_NODE),
+  run: todayRun,
 };
 
 // ---------------------------------------------------------------------------
@@ -4147,6 +4183,7 @@ const LATEX_COMMENT_ACTION_ROWS: Readonly<
  *  `eqref` to the union shipped it row-less, `tsc` green, assertion green). */
 const ATOM_ACTION_ROWS: Readonly<Record<AtomActionId, ActionSpec>> = {
   ref: REF_ACTION_ROW,
+  today: TODAY_ACTION_ROW,
 };
 
 /** The 8 NON-heading block rows, in registration order. Exhaustive over
@@ -4353,6 +4390,7 @@ export const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   subsection: "heading-subsection",
   subsubsection: "heading-subsubsection",
   ref: "ref",
+  today: "today",
   ex: "example",
   cite: "citation",
   footnote: "footnote",
@@ -4882,9 +4920,9 @@ export function assertActionCoverage(): string[] {
     }
   }
 
-  // (3e) the ATOM slice (CHIP 7a: `ref`) is fully + correctly covered. The `ref`
-  // row must be `category: "atom"`, claim the slash (`\ref`) AND lightning (the
-  // 'Cross-ref' grid cell) surfaces with a `slashName` (reconciled below against
+  // (3e) the ATOM slice (CHIP 7a: `ref`; task 1335: `today`) is fully + correctly
+  // covered. Each row must be `category: "atom"`, claim the slash surface
+  // (`\ref` / `\today`; `ref` is ALSO the 'Cross-ref' grid cell) with a `slashName` (reconciled below against
   // `VIRGIL_COMMAND_NAMES`), and never claim grab/typed/keyboard (a cross-ref is
   // not a grab-handle action and has no `\ref{}`-style typed input rule).
   for (const id of COVERED_ATOM_IDS) {
@@ -4901,10 +4939,9 @@ export function assertActionCoverage(): string[] {
         `[actions] atom id "${id}" has category "${row.category}" (expected "atom")`,
       );
     }
-    if (!row.surfaces.slash || !row.surfaces.lightning) {
-      problems.push(
-        `[actions] atom id "${id}" must set surfaces.slash AND surfaces.lightning`,
-      );
+    // Lightning is per-row: `ref` is a grid cell, `today` is not (task 1335).
+    if (!row.surfaces.slash) {
+      problems.push(`[actions] atom id "${id}" must set surfaces.slash`);
     }
     if (row.surfaces.grab || row.surfaces.keyboard) {
       problems.push(
