@@ -130,8 +130,6 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Allowlist = {
     count: 2,
     why: "[cost: O(1)/tx; debounced body O(doc) outline memo off-path] Two 'update' subscribers: (1) PDF-stale tracker — stamp lastEditTimeRef, flip pdfStale at most once per compile cycle; (2) Outline-panel doc tick — clear+reset a 300 ms timer, then one counter bump; the doc walk happens later inside the outlineContent memo. The tick effect returns early when docProductsEnabled, a MODULE constant read once at page load (readFlag), so its `[editor]` deps are exact — it is never mounted flag-on.",
   },
-  "components/Marginalia.tsx":
-    "[cost: O(1)/tx] RAF-coalesced host-element notify.",
   "components/PendingChangePill.tsx":
     "[cost: O(1)/tx; RAF body O(marks) + 1 coordsAtPos] Pending-change margin-pill reposition: schedules a RAF (early-returns if one is pending) + placementsEqual bail on the single coordsAtPosCached placement. Same RAF-coalesced fixed portal recorded on the scroll allowlist.",
   "components/SelectionActionsMenu.tsx":

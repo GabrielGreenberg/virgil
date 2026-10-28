@@ -76,36 +76,48 @@ interface MarginaliaProps {
  * `data-marginalia-host`). Under unified row scroll the editor has no
  * inner scroll, so marginalia is positioned relative to the host pod —
  * which is `position: relative` and naturally tall.
+ *
+ * The host is a MOUNT fact (the nearest marked ancestor of the view DOM), not
+ * a per-transaction one, so it is re-resolved on mount-shaped signals only
+ * (task 1339): the editor's `create`, one RAF after subscribe (the view DOM
+ * attaches in EditorContent's own effect), and the geometry service's
+ * viewport channel — which fires when the editor element's box changes,
+ * i.e. when it attaches to or detaches from a pod. No `update` subscriber:
+ * a keystroke cannot move the editor to another pod. `useSyncExternalStore`
+ * also re-reads the snapshot on every render. `subscribe` / `getSnapshot` are
+ * memoized on the editor so a re-render (every `registryVersion` bump) does
+ * not tear down and re-add the listeners.
  */
 function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
-  const subscribe = (notify: () => void) => {
-    if (!editor) return () => {};
-    // RAF-batch notify so a typing burst produces one notify per
-    // frame, not one per keystroke. The host element's identity
-    // doesn't change per character — at most it appears/disappears
-    // on mount/unmount, which RAF cadence handles fine.
-    let pending = 0;
-    const recheck = () => {
-      if (pending) return;
-      pending = requestAnimationFrame(() => {
-        pending = 0;
-        notify();
-      });
-    };
-    editor.on("create", recheck);
-    editor.on("update", recheck);
-    const id = requestAnimationFrame(recheck);
-    return () => {
-      cancelAnimationFrame(id);
-      if (pending) cancelAnimationFrame(pending);
-      editor.off("create", recheck);
-      editor.off("update", recheck);
-    };
-  };
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      if (!editor || editor.isDestroyed) return () => {};
+      let pending = 0;
+      const recheck = () => {
+        if (pending) return;
+        pending = requestAnimationFrame(() => {
+          pending = 0;
+          notify();
+        });
+      };
+      editor.on("create", recheck);
+      const offViewport = getOrCreateGeometry(editor).subscribeViewport(recheck);
+      recheck();
+      return () => {
+        if (pending) cancelAnimationFrame(pending);
+        offViewport();
+        editor.off("create", recheck);
+      };
+    },
+    [editor],
+  );
   // Only the resolution is shared (`resolveMarginaliaHost`, the same helper the
-  // registry measures against); the subscription + RAF-coalesced notify plumbing
-  // stays here.
-  const getSnapshot = (): HTMLElement | null => resolveMarginaliaHost(editor);
+  // registry and the geometry service measure against); the subscription +
+  // RAF-coalesced notify plumbing stays here.
+  const getSnapshot = useCallback(
+    (): HTMLElement | null => resolveMarginaliaHost(editor),
+    [editor],
+  );
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
