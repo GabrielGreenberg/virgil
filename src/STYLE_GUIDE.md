@@ -2008,7 +2008,9 @@ through the RENDERED, archive-filtered set, wrapping) and Enter on the list
 itself (re-activate the selected card); the stepped-to card scrolls into view.
 Arrows inside a card's own field edit text. A panel supplies only what a
 keyboard activation does beyond selecting — `onActivateItem`, usually the jump
-to the card's anchor through its own Jump gate (`dockedKeyboardJump`). No panel
+to the card's anchor through its own Jump gate (`dockedJumpDoors(…).keyboard`,
+minted together with the card's Jump button, `.button(card)` — task 1343; no
+docked panel spells `.withJump(` itself). No panel
 wires `useCycle`/`useListNavKeys` itself; the five that never copied those
 lines had no keyboard nav at all. Task 964, pinned by
 `panels/_shared/__tests__/card-list-keyboard-nav.test.tsx`.

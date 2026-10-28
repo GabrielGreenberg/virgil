@@ -1,6 +1,6 @@
 "use client";
 
-import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedJumpDoors, type DockedJumpGate } from "@/links/card-anchor-rows";
 import { memo, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
@@ -45,9 +45,9 @@ function ArchivePanel({
   onEditorFocus,
 }: ArchivePanelProps) {
   // Keyboard activation (task 964): the shell selects; this jumps through the
-  // card's own gate, the twin of its Jump button.
-  const keyboardJump = useMemo(
-    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+  // card's own gate, minted with its Jump button by one door (task 1343).
+  const { keyboard: keyboardJump, button: buttonJump } = useMemo(
+    () => dockedJumpDoors(jumpGate, onJumpToCard),
     [jumpGate, onJumpToCard],
   );
 
@@ -75,7 +75,6 @@ function ArchivePanel({
       renderCard={(s, { selected }) => {
         // Task 699: ONE gate answers the Jump door — the same verdict the
         // float and the margin read (task 966: the card does not re-gate).
-        const gate = jumpGate(s);
         return (
         <ArchiveCard
           snippet={s}
@@ -84,7 +83,7 @@ function ArchivePanel({
           onEdit={onEdit}
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
-          onJump={onJumpToCard ? gate.withJump((sourceEl?: HTMLElement | null) => onJumpToCard(s, sourceEl)) : undefined}
+          onJump={buttonJump(s)}
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}

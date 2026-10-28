@@ -1,6 +1,6 @@
 "use client";
 
-import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedJumpDoors, type DockedJumpGate } from "@/links/card-anchor-rows";
 import type { CardMorphHandler } from "@/cards/types";
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
@@ -88,9 +88,9 @@ export default function ReportsPanel({
   );
 
   // Keyboard activation (task 964): the shell selects; this jumps through the
-  // card's own gate, the twin of its Jump button.
-  const keyboardJump = useMemo(
-    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+  // card's own gate, minted with its Jump button by one door (task 1343).
+  const { keyboard: keyboardJump, button: buttonJump } = useMemo(
+    () => dockedJumpDoors(jumpGate, onJumpToCard),
     [jumpGate, onJumpToCard],
   );
 
@@ -127,11 +127,7 @@ export default function ReportsPanel({
               onConvert={onConvertCard}
               onDelete={onDelete}
               onSelect={onSelect}
-              onJump={
-                onJumpToCard
-                  ? jumpGate(it.data).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(it.data, sourceEl))
-                  : undefined
-              }
+              onJump={buttonJump(it.data)}
               onEditorFocus={onEditorFocus}
               getCitationDisplayText={getCitationDisplayText}
               onCitationCreated={onCitationCreated}
@@ -147,11 +143,7 @@ export default function ReportsPanel({
             onSetAiRequest={onSetRequestAiRequest}
             onDelete={onDelete}
             onSelect={onSelect}
-            onJump={
-              onJumpToCard
-                ? jumpGate(it.data).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(it.data, sourceEl))
-                : undefined
-            }
+            onJump={buttonJump(it.data)}
             onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}

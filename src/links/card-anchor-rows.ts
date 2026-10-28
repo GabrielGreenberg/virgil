@@ -622,26 +622,47 @@ export function cardJumpGate(
 /**
  * A docked panel's Jump door (task 699): card → its `cardJumpGate` over the
  * pane's shared pass. The six docked panels take one as a REQUIRED prop and
- * apply `jumpGate(card).withJump(handler)` — they never re-derive the decision
- * from the card's stored links.
+ * apply it through `dockedJumpDoors` — they never re-derive the decision from
+ * the card's stored links, and never spell `.withJump(` themselves.
  */
 export type DockedJumpGate = (card: CardWithLinks) => CardJumpGate;
 
 /**
- * The KEYBOARD twin of a docked card's Jump button (task 964). An Arrow step or
- * Enter in a docked card list selects the card (the `CardListPanel` shell does
- * that) and then jumps to its anchor through the SAME gate the button reads —
- * so a dead anchor selects without a no-op navigation (task 699), on every
- * docked panel alike rather than on whichever ones remembered to spell it.
- * `undefined` when the host passed no jump handler.
+ * A docked card's two Jump doors, minted TOGETHER from one gate (tasks 964,
+ * 1343) so the twins cannot drift:
+ *
+ * - `button(card)` — the card's Jump button handler, passed through the card's
+ *   `jumpGate(card).withJump`; `undefined` when the anchor is dead (task 699:
+ *   no Jump that no-ops) or the host passed no jump handler. A panel's whole
+ *   button wiring is `onJump={button(card)}`.
+ * - `keyboard` — an Arrow step or Enter in a docked card list selects the card
+ *   (the `CardListPanel` shell does that) and then jumps through the SAME gate,
+ *   so a dead anchor selects without a no-op navigation. `undefined` when the
+ *   host passed no jump handler (the shell then only selects).
+ *
+ * Before 1343 only the keyboard half had a door; the button half was
+ * hand-spelled at ten sites across six panels — the "whichever ones remembered
+ * to spell it" shape 964 retired. `docked-jump-gate.test.tsx`'s census pins
+ * that no docked panel spells `.withJump(` itself.
  */
-export function dockedKeyboardJump<C extends CardWithLinks>(
+export interface DockedJumpDoors<C extends CardWithLinks> {
+  button: (card: C) => ((sourceEl?: HTMLElement | null) => void) | undefined;
+  keyboard: ((card: C) => void) | undefined;
+}
+
+const NO_BUTTON = () => undefined;
+
+export function dockedJumpDoors<C extends CardWithLinks>(
   jumpGate: DockedJumpGate,
-  onJumpToCard: ((card: C) => void) | undefined,
-): ((card: C) => void) | undefined {
-  if (!onJumpToCard) return undefined;
-  return (card) => {
-    jumpGate(card).withJump(onJumpToCard)?.(card);
+  onJumpToCard: ((card: C, sourceEl?: HTMLElement | null) => void) | undefined,
+): DockedJumpDoors<C> {
+  if (!onJumpToCard) return { button: NO_BUTTON, keyboard: undefined };
+  return {
+    button: (card) =>
+      jumpGate(card).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(card, sourceEl)),
+    keyboard: (card) => {
+      jumpGate(card).withJump(onJumpToCard)?.(card);
+    },
   };
 }
 

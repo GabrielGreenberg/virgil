@@ -1,6 +1,6 @@
 "use client";
 
-import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedJumpDoors, type DockedJumpGate } from "@/links/card-anchor-rows";
 import type { CardMorphHandler } from "@/cards/types";
 import { useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
@@ -75,10 +75,10 @@ export default function NotesPanel({
   );
 
   // Keyboard activation (task 964): the shell selects; this jumps through the
-  // card's own gate, the twin of its Jump button — a dead anchor selects
+  // card's own gate, minted with its Jump button by one door (task 1343) — a dead anchor selects
   // without a no-op navigation (task 699).
-  const keyboardJump = useMemo(
-    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+  const { keyboard: keyboardJump, button: buttonJump } = useMemo(
+    () => dockedJumpDoors(jumpGate, onJumpToCard),
     [jumpGate, onJumpToCard],
   );
   const getNoteArchived = useCallback((c: NoteCardItem) => !!c.archived, []);
@@ -126,11 +126,7 @@ export default function NotesPanel({
               onSetAiRequest={onSetHighlightAiRequest}
               onDelete={onDelete}
               onSelect={onSelectNote}
-              onJump={
-                onJumpToCard
-                  ? jumpGate(card).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(card, sourceEl))
-                  : undefined
-              }
+              onJump={buttonJump(card)}
             />
           );
         }
@@ -144,11 +140,7 @@ export default function NotesPanel({
             onSetAiRequest={onSetNoteAiRequest}
             onDelete={onDelete}
             onSelect={onSelectNote}
-            onJump={
-              onJumpToCard
-                ? jumpGate(card).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(card, sourceEl))
-                : undefined
-            }
+            onJump={buttonJump(card)}
             onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}
