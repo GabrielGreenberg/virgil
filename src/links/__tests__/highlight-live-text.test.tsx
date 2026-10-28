@@ -20,6 +20,10 @@
 //      the collapsed cue, and the 80×lines clamp exists once.
 //   5. The load reconcile REFRESHES a stale `textSnapshot` from the live mark
 //      (the chosen cadence: once per doc-open) and is idempotent.
+//   6. (task 1330) A passage that MOVES into another block (text drag-drop,
+//      and its undo) keeps reaching its card: the bus publishes the anchor's
+//      `changedAnchors` on a keyed, uncounted per-anchor channel and the hook
+//      re-derives its covering blocks from it.
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("@/lib/storage", async () =>
@@ -348,5 +352,67 @@ describe("task 1324 — a highlight quotes its passage with atoms and marks", ()
     expect(viaSummary.endsWith("…")).toBe(true);
     expect(viaSummary.length).toBeLessThanOrEqual(81);
     expect(clampCompressedText("short", 1)).toBe("short");
+  });
+});
+
+/** Drag-drop "alpha beta" (with its mark) out of p1 into p0, after "Other" —
+ *  delete + insert in ONE transaction, the shape a ProseMirror text drop
+ *  dispatches. p0 precedes p1, so the delete leaves the insert point alone. */
+function moveHighlightIntoP0(editor: Editor, words = "alpha beta") {
+  const { from, to } = findWords(editor, words);
+  const slice = editor.state.doc.slice(from, to);
+  const at = findWords(editor, "Other").to;
+  editor.view.dispatch(editor.state.tr.delete(from, to).insert(at, slice.content).setMeta("uiEvent", "drop"));
+}
+
+describe("task 1330 — a MOVED passage keeps reaching its card", () => {
+  it("the move lands on the per-anchor extent channel, keyed and uncounted; plain typing fires nothing", () => {
+    const editor = mountHighlighted();
+    const bus = getBus(editor)!;
+    const mine = vi.fn();
+    const other = vi.fn();
+    bus.onAnchorExtentChanged(ANCHOR, mine);
+    bus.onAnchorExtentChanged("some-other-anchor", other);
+
+    const before = bus.emitCount;
+    act(() => {
+      const { to } = findWords(editor, "Other paragraph");
+      editor.view.dispatch(editor.state.tr.insertText("xyz", to));
+    });
+    act(() => editInsideHighlight(editor));
+    expect(mine).not.toHaveBeenCalled();
+    expect(bus.emitCount).toBe(before);
+
+    act(() => moveHighlightIntoP0(editor, "alpha gamma"));
+    expect(mine).toHaveBeenCalled();
+    expect(other).not.toHaveBeenCalled();
+    expect(editor.state.doc.child(0).textContent).toContain("alpha gamma");
+    editor.destroy();
+  });
+
+  it("typing inside the moved run updates the passage — and again after undoing the move", () => {
+    const editor = mountHighlighted();
+    const { result } = renderHook(() => useLinkedAnchorPassage(ANCHOR)?.text ?? null, { wrapper: wrapperFor(editor) });
+    expect(result.current).toBe("alpha beta");
+
+    act(() => moveHighlightIntoP0(editor));
+    expect(result.current).toBe("alpha beta");
+    expect(editor.state.doc.child(0).textContent).toContain("alpha beta");
+
+    // The run now lives in p0: an edit inside it must reach the card.
+    act(() => editInsideHighlight(editor));
+    expect(result.current).toBe("alpha gamma");
+
+    // Undo the edit, then the move: the passage is back in p1, and an edit
+    // inside it there still reaches the card.
+    act(() => {
+      editor.commands.undo();
+    });
+    expect(editor.state.doc.child(1).textContent).toContain("alpha beta");
+    expect(result.current).toBe("alpha beta");
+    act(() => editInsideHighlight(editor));
+    expect(editor.state.doc.child(1).textContent).toContain("alpha gamma");
+    expect(result.current).toBe("alpha gamma");
+    editor.destroy();
   });
 });
