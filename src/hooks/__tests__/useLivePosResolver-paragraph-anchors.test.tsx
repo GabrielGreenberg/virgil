@@ -72,9 +72,14 @@ describe("buildParagraphAnchorMap", () => {
       { id: "todo:c", anchorUuid: "P3" },
     ]);
     expect([...m.entries()]).toEqual([
-      ["note:a", "P1"],
-      ["todo:c", "P3"],
+      ["note:a", { uuid: "P1" }],
+      ["todo:c", { uuid: "P3" }],
     ]);
+  });
+
+  it("carries a span item's anchorId (task 1334)", () => {
+    const m = buildParagraphAnchorMap([{ id: "note:s", anchorUuid: "P2", anchorId: "A1" }]);
+    expect(m.get("note:s")).toEqual({ uuid: "P2", anchorId: "A1" });
   });
 });
 
@@ -93,7 +98,7 @@ describe("useLivePosResolver — paragraph-anchored cards track live", () => {
     });
 
     const noteId = cardPopKey("note", "n1");
-    const anchors = new Map<string, string>([[noteId, "P3"]]);
+    const anchors = new Map([[noteId, { uuid: "P3" }]]);
     const { result } = renderHook(() =>
       useLivePosResolver(editor, cardPopKey, anchors),
     );
@@ -133,12 +138,85 @@ describe("useLivePosResolver — paragraph-anchored cards track live", () => {
     });
     // Anchor a card to a uuid that isn't in the doc.
     const ghostId = cardPopKey("todo", "ghost");
-    const anchors = new Map<string, string>([[ghostId, "P-DEAD"]]);
+    const anchors = new Map([[ghostId, { uuid: "P-DEAD" }]]);
     const { result } = renderHook(() =>
       useLivePosResolver(editor, cardPopKey, anchors),
     );
     expect(bus.structure.blocks.has("P-DEAD")).toBe(false);
     expect(result.current(ghostId)).toBeUndefined();
+    editor.destroy();
+  });
+});
+
+// Task 1334 — a SPAN-anchored (Mode-B) card resolves to its words, not to its
+// paragraph's top; a whole-paragraph card is unchanged; a dead mark falls back.
+describe("useLivePosResolver — span-anchored cards sit at their span", () => {
+  function mountSpanDoc(): Editor {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    return new Editor({
+      element,
+      editable: true,
+      extensions: buildEditorExtensions(mainCtx()),
+      content: {
+        type: "doc",
+        content: [
+          { type: "paragraph", attrs: { uuid: "P1" }, content: [{ type: "text", text: "First." }] },
+          {
+            type: "paragraph",
+            attrs: { uuid: "P2" },
+            content: [
+              { type: "text", text: "The start of it, then " },
+              {
+                type: "text",
+                text: "the marked words",
+                marks: [{ type: "linkedAnchor", attrs: { anchorId: "A1", linkCard: "note" } }],
+              },
+              { type: "text", text: " and the rest." },
+            ],
+          },
+        ],
+      },
+    });
+  }
+
+  it("resolves a Mode-B row to the span's live from, a Mode-A row to the block, and tracks an upstream edit", () => {
+    const editor = mountSpanDoc();
+    const bus = getBus(editor)!;
+    const spanId = cardPopKey("note", "span");
+    const blockId = cardPopKey("note", "block");
+    const anchors = new Map([
+      [spanId, { uuid: "P2", anchorId: "A1" }],
+      [blockId, { uuid: "P2" }],
+    ]);
+    const { result } = renderHook(() => useLivePosResolver(editor, cardPopKey, anchors));
+
+    const block = bus.structure.blocks.get("P2")!.pos;
+    const from = bus.structure.anchors.get("A1")!.from;
+    expect(from).toBeGreaterThan(block + 1);
+    expect(result.current(blockId)).toBe(block);
+    expect(result.current(spanId)).toBe(from);
+
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insertText("xxxxx", 1));
+    });
+    expect(result.current(spanId)).toBe(from + 5);
+    expect(result.current(blockId)).toBe(block + 5);
+    editor.destroy();
+  });
+
+  it("falls back to the block top when the span's mark has died", () => {
+    const editor = mountSpanDoc();
+    const bus = getBus(editor)!;
+    const spanId = cardPopKey("note", "span");
+    const anchors = new Map([[spanId, { uuid: "P2", anchorId: "A1" }]]);
+    const { result } = renderHook(() => useLivePosResolver(editor, cardPopKey, anchors));
+    act(() => {
+      const { doc, schema } = editor.state;
+      editor.view.dispatch(editor.state.tr.removeMark(0, doc.content.size, schema.marks.linkedAnchor));
+    });
+    expect(bus.structure.anchors.has("A1")).toBe(false);
+    expect(result.current(spanId)).toBe(bus.structure.blocks.get("P2")!.pos);
     editor.destroy();
   });
 });

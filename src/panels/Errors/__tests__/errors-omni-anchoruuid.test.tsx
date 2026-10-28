@@ -87,7 +87,7 @@ describe("buildErrorOmniItems — anchorUuid enrollment (task 068)", () => {
     // carrying an `anchorUuid`, so an unstamped error would be absent here and
     // `useLivePosResolver` could never re-resolve its live pos.
     const map = buildParagraphAnchorMap(items);
-    expect(map.get(anchoredId)).toBe(PARA_UUID);
+    expect(map.get(anchoredId)).toEqual({ uuid: PARA_UUID });
   });
 
   it("leaves a free error (no resolved paragraph) unenrolled and pos:null", () => {

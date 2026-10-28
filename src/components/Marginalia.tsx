@@ -20,12 +20,14 @@ import {
   MARGINALIA_ICON_SIZE,
   resolveMarkerCols,
   resolveMarginaliaHost,
+  type AnchorNodeMetrics,
   type GridCell,
   type MarginaliaMarker,
   type MarkerOverflowGroup,
   type PositionedMarker,
 } from "@/lib/marginalia";
 import { getOrCreateGeometry } from "@/lib/editor-geometry";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
@@ -187,6 +189,35 @@ function useLaneCols(editor: Editor | null): { left: number; right: number } {
 }
 
 /**
+ * Which line of its node a span-anchored marker's words start on (task 1334)
+ * — the `lineOf` reader `computeMarkerPositions` takes. The span's LIVE `from`
+ * comes off the DocStructure snapshot (remapped per transaction, so a marker
+ * built before the last keystroke still reads where its words are now), and
+ * the line is the line-box distance from the node's first line, in units of
+ * the node's measured line pitch. Two `coordsAtPosCached` reads per span
+ * marker on a MEASURED, multi-line node (the grid asks nothing else), and only
+ * when this memo re-runs — a registry measure, a marker rebuild or a lane
+ * change, never a keystroke or a scroll frame. `null` ⇒ row 0.
+ */
+function spanLineOf(
+  editor: Editor | null,
+  m: MarginaliaMarker,
+  node: AnchorNodeMetrics,
+): number | null {
+  if (!m.anchorId || node.isAtom || node.lineCount <= 1) return null;
+  if (!editor || editor.isDestroyed) return null;
+  const s = getBus(editor)?.structure;
+  const a = s?.anchors.get(m.anchorId);
+  const b = s?.blocks.get(m.textObjectId);
+  if (!a || !b || a.from <= b.pos) return null;
+  const geo = getOrCreateGeometry(editor);
+  const first = geo.coordsAtPosCached(b.pos + 1);
+  const at = geo.coordsAtPosCached(a.from);
+  if (!first || !at || !(node.lineHeight > 0)) return null;
+  return Math.round((at.top - first.top) / node.lineHeight);
+}
+
+/**
  * Marginalia margin — renders icon markers in a line-aligned grid on each
  * side of the editor column. Each UUID-bearing text element generates an
  * implicit 2-column grid where rows correspond to actual text lines.
@@ -216,13 +247,16 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
   const { positioned, overflowGroups } = useMemo(
     () =>
-      computeMarkerPositions(registry.getMetrics, markers, panelSides, {
-        left: colsLeft,
-        right: colsRight,
-      }),
+      computeMarkerPositions(
+        registry.getMetrics,
+        markers,
+        panelSides,
+        { left: colsLeft, right: colsRight },
+        (m, node) => spanLineOf(editor, m, node),
+      ),
     // registryVersion is the re-render trigger; getMetrics itself is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registry, markers, panelSides, registryVersion, colsLeft, colsRight],
+    [registry, markers, panelSides, registryVersion, colsLeft, colsRight, editor],
   );
 
   // The margin-pin re-anchor gesture is no longer native HTML5 DnD: grabbing
@@ -593,7 +627,7 @@ export function MarginColumn({
         <MarkerButton key={`${m.type}:${m.id}`} m={m} cell={m.cell} dragEnabled={dragEnabled} />
       ))}
       {overflow.map((g) => (
-        <OverflowPill key={`overflow:${g.side}:${g.textObjectId}`} group={g} dragEnabled={dragEnabled} />
+        <OverflowPill key={`overflow:${g.side}:${g.textObjectId}:${g.cell.row}`} group={g} dragEnabled={dragEnabled} />
       ))}
     </div>
   );

@@ -154,6 +154,7 @@ export function buildCardMarkers<T extends CardWithLinks>(
       entityKind: kind,
       type,
       textObjectId: pid,
+      ...(row.anchorId ? { anchorId: row.anchorId } : {}),
       title,
       ...(muted !== undefined ? { muted } : {}),
       unanchored,
