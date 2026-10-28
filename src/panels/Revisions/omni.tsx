@@ -99,6 +99,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
         id: omniId,
         pos: row.pos,
         anchorUuid: row.anchorUuid,
+        anchorId: row.anchorId,
         anchorState: row.anchorState,
         content: renderCard(row),
       });

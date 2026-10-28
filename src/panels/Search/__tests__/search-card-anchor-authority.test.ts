@@ -26,7 +26,7 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { buildCardAnchorPass } from "@/links/card-anchor-rows";
+import { buildCardAnchorPass, rowAnchorPos } from "@/links/card-anchor-rows";
 import type { CardWithLinks } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import {
@@ -144,8 +144,12 @@ function expectAgreesWithAuthority(
   expect(mine.length).toBeGreaterThan(0);
   for (const h of mine) {
     expect(h.unanchored).toBe(false);
-    expect(h.from).toBe(res.rows[0].pos);
-    expect(h.from).toBe(livePos(editor, pid));
+    // Task 1334 — the hit sits where the row is anchored: its span for a
+    // Mode-B row, its block otherwise; the block-relative id agrees.
+    const block = livePos(editor, pid);
+    expect(res.rows[0].pos).toBe(block);
+    expect(h.from).toBe(rowAnchorPos(res.rows[0]));
+    expect(h.from).toBe(res.rows[0].anchorId ? block + 1 : block);
     expect(h.blockId).toEqual({ blockUuid: pid, offset: 0, length: 0 });
   }
 }

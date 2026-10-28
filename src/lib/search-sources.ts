@@ -16,7 +16,7 @@ import {
 } from "@/panels/_shared/suggestion-field-vocabulary";
 import { compileLiteral } from "@/lib/whole-word";
 import type { CardWithLinks } from "@/links/links";
-import type { CardAnchorResolver } from "@/links/card-anchor-rows";
+import { rowAnchorPos, type CardAnchorResolver } from "@/links/card-anchor-rows";
 import type {
   ArchivedSnippet,
   CitationRef,
@@ -346,6 +346,9 @@ function scanText(text: string, re: RegExp): ScanMatch[] {
 interface CardAnchor {
   pos: number;
   pid: string;
+  /** `pos` as an offset from the block's content start (`blockId.offset`):
+   *  0 for a whole-paragraph row, the span's distance for a span row. */
+  offset: number;
 }
 
 function cardAnchor(
@@ -354,7 +357,11 @@ function cardAnchor(
 ): CardAnchor | null {
   const { rows, anchored } = resolve(card);
   const row = anchored ? rows[0] : undefined;
-  return row && row.pos != null ? { pos: row.pos, pid: row.pid } : null;
+  if (!row || row.pos == null) return null;
+  // Task 1334 — a span row's hit sits at its words, the same place its card
+  // and margin icon do; `rowAnchorPos` is the one fallback rule.
+  const pos = rowAnchorPos(row) ?? row.pos;
+  return { pos, pid: row.pid, offset: Math.max(0, pos - (row.pos + 1)) };
 }
 
 /** Turn a matched string + context into a SearchHit. `archived` is the
@@ -383,7 +390,7 @@ function hitFromMatch(
     field,
     unanchored: !anchored,
     archived: archived || undefined,
-    ...(card ? { blockId: { blockUuid: card.pid, offset: 0, length: 0 } } : {}),
+    ...(card ? { blockId: { blockUuid: card.pid, offset: card.offset, length: 0 } } : {}),
   };
 }
 

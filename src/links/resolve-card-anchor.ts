@@ -97,6 +97,13 @@ export interface ResolveIndex {
   uuidToPos: Map<string, number>;
   /** Live `linkedAnchor` mark anchorId → its enclosing paragraph uuid. */
   anchorIdToParagraph: Map<string, string>;
+  /** Live `linkedAnchor` mark anchorId → the position of its FIRST marked
+   *  character (document order — the span's `from`), filled by the same walk
+   *  as `anchorIdToParagraph` and agreeing with it entry for entry (task
+   *  1334). It is what lets a Mode-B card's row sit at its words rather than
+   *  at its paragraph's top. Optional only so a hand-built test index can omit
+   *  it; an index without it answers every row at its block position. */
+  anchorIdToPos?: Map<string, number>;
   /** Normalized whole-paragraph `textContent` → live paragraph uuid
    *  (first-match-wins on duplicated text). Returns `null` when no live
    *  paragraph matches, OR when the normalized text is empty. */
@@ -144,6 +151,7 @@ export interface ResolveIndex {
  */
 export function buildResolveIndex(editor: Editor): ResolveIndex {
   const anchorIdToParagraph = new Map<string, string>();
+  const anchorIdToPos = new Map<string, number>();
   const uuidToPos = new Map<string, number>();
 
   // Normalized whole-paragraph text → uuid, first-match-wins. A second
@@ -162,7 +170,10 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
         const anchorId = (m.attrs.anchorId as string) || "";
         if (!anchorId || anchorIdToParagraph.has(anchorId)) continue;
         const paragraphId = paragraphUuidAt(doc, pos);
-        if (paragraphId) anchorIdToParagraph.set(anchorId, paragraphId);
+        if (paragraphId) {
+          anchorIdToParagraph.set(anchorId, paragraphId);
+          anchorIdToPos.set(anchorId, pos);
+        }
       }
       return true;
     }
@@ -193,7 +204,7 @@ export function buildResolveIndex(editor: Editor): ResolveIndex {
     return normTextToParagraph.get(normalizedSnapshot) ?? null;
   };
 
-  return { uuidToParagraph, uuidToPos, anchorIdToParagraph, snapshotToParagraph };
+  return { uuidToParagraph, uuidToPos, anchorIdToParagraph, anchorIdToPos, snapshotToParagraph };
 }
 
 // ---------------------------------------------------------------------------

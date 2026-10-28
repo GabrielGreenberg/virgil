@@ -352,6 +352,12 @@ export interface MarginaliaMarker {
    *  exampleItem, atom blocks, etc.) — the field is kind-agnostic.
    *  Renamed from `paragraphId` in Phase D7. */
   textObjectId: string;
+  /** The live `linkedAnchor` mark this marker sits AT, when its card is
+   *  anchored to a text span inside `textObjectId` (task 1334 — the row's
+   *  `CardAnchorRow.anchorId`, the same answer its omni card reads). The grid
+   *  then starts the marker on the span's first LINE instead of the block's
+   *  row 0 (`computeMarkerPositions`' `lineOf`). Absent ⇒ row 0, as before. */
+  anchorId?: string;
   /** Optional: per-marker side override. Omitted by every production builder
    *  (the margin follows the panel dock); it is the first rung of
    *  `marginSideForMarkerType`'s override > dock > registry-default ladder and

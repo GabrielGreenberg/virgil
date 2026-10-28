@@ -27,6 +27,7 @@ import {
   PASS_JUMP,
   NO_JUMP,
   anchorRowId,
+  rowAnchorPos,
   type CardAnchorResolver,
   type WithJump,
 } from "@/links/card-anchor-rows";
@@ -39,7 +40,7 @@ import { isFullyDormant } from "@/links/dormant";
  * `content`, nothing else.
  */
 export interface OmniAnchorRow
-  extends Pick<OmniItem, "pos" | "anchorUuid" | "anchorState"> {
+  extends Pick<OmniItem, "pos" | "anchorUuid" | "anchorId" | "anchorState"> {
   /** The omni item id — `baseId`, plus `@<pid>` when the card has >1 row. */
   omniId: string;
   /**
@@ -137,13 +138,16 @@ export function buildOmniAnchorRows(
   return rows.map((row) => {
     // A live WITNESS for an anchored row (the authority already said this pid
     // resolves); the card's own intent decides free-vs-orphaned otherwise.
-    const witness = anchored ? row.pos : null;
+    // The row's ANCHOR position — its span's first character for a span row
+    // (task 1334), else its block — is the seed `pos` the cascade orders on.
+    const witness = anchored ? rowAnchorPos(row) : null;
     const intent = anchored ? null : (card as AnchorIntent);
     const canJump = witness != null;
     return {
       omniId: anchorRowId(baseId, multi ? row.pid : undefined),
       pos: witness,
       anchorUuid: row.pid,
+      ...(anchored && row.anchorId ? { anchorId: row.anchorId } : {}),
       anchorState: resolveAnchorState(witness, intent),
       anchored: canJump,
       withJump: canJump ? PASS_JUMP : NO_JUMP,

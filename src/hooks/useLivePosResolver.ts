@@ -121,12 +121,16 @@ export function useLivePosResolver(
    * its paragraph live during typing instead of riding the stale baked `pos`.
    * The map identity changes only when the items (structurally) rebuild, so it
    * participates in the cache key alongside the snapshot identity.
+   *
+   * A SPAN-anchored card (task 1334 — its entry carries an `anchorId`)
+   * resolves to its live mark's `from` instead, so it sits beside its words;
+   * see `resolveParagraphAnchorPos` for the fallback rule.
    */
-  paragraphAnchors?: ReadonlyMap<string, string>,
+  paragraphAnchors?: ReadonlyMap<string, ParagraphAnchorRef>,
 ): LivePosResolver {
   const cacheRef = useRef<{
     s: DocStructure | null;
-    anchors: ReadonlyMap<string, string> | undefined;
+    anchors: ReadonlyMap<string, ParagraphAnchorRef> | undefined;
     map: Map<string, number>;
   }>({ s: null, anchors: undefined, map: new Map() });
 
@@ -151,9 +155,9 @@ export function useLivePosResolver(
         // added → the resolver returns `undefined` for it and the caller falls
         // back to the baked pos / orphan binning.
         if (paragraphAnchors) {
-          for (const [omniId, uuid] of paragraphAnchors) {
-            const b = s.blocks.get(uuid);
-            if (b) map.set(omniId, b.pos);
+          for (const [omniId, ref] of paragraphAnchors) {
+            const pos = resolveParagraphAnchorPos(s, ref);
+            if (pos != null) map.set(omniId, pos);
           }
         }
         cacheRef.current = { s, anchors: paragraphAnchors, map };
@@ -167,19 +171,54 @@ export function useLivePosResolver(
   );
 }
 
+/** Where a paragraph-anchored card is anchored: its block, plus the span
+ *  inside it when it is anchored to one (`OmniItem.anchorId`, task 1334). */
+export interface ParagraphAnchorRef {
+  uuid: string;
+  anchorId?: string;
+}
+
 /**
- * Build the `omniItemId → paragraph UUID` map `useLivePosResolver` consumes,
+ * The ONE live answer to "where is this paragraph-anchored card?" (task 1334):
+ * the span's live `from` when `ref.anchorId` names a mark the snapshot still
+ * carries past the block's opening position, else the block's opening
+ * position; `undefined` when the block itself is gone. O(1): two map lookups.
+ *
+ * WHICH block a mark sits in is the row builder's verdict
+ * (`CardAnchorRow.anchorId` is set only when the mark lies in `uuid`), and a
+ * mark crossing into another block is an anchor change that rebuilds the rows
+ * — so between rebuilds only liveness is asked here. A mark that has died
+ * degrades to the block top rather than leaving the card nowhere.
+ */
+export function resolveParagraphAnchorPos(
+  s: DocStructure,
+  ref: ParagraphAnchorRef,
+): number | undefined {
+  const b = s.blocks.get(ref.uuid);
+  if (!b) return undefined;
+  if (ref.anchorId) {
+    const a = s.anchors.get(ref.anchorId);
+    if (a && a.from > b.pos) return a.from;
+  }
+  return b.pos;
+}
+
+/**
+ * Build the `omniItemId → paragraph anchor` map `useLivePosResolver` consumes,
  * from a list of omni items. Only paragraph-anchored items (those carrying an
- * `anchorUuid`) are included. Memoize on the items array so the map identity is
- * stable until the items (structurally) rebuild — that stability is what keeps
- * the resolver's snapshot cache from churning on plain typing.
+ * `anchorUuid`) are included, with their span `anchorId` when they have one.
+ * Memoize on the items array so the map identity is stable until the items
+ * (structurally) rebuild — that stability is what keeps the resolver's
+ * snapshot cache from churning on plain typing.
  */
 export function buildParagraphAnchorMap(
-  items: ReadonlyArray<{ id: string; anchorUuid?: string }>,
-): Map<string, string> {
-  const m = new Map<string, string>();
+  items: ReadonlyArray<{ id: string; anchorUuid?: string; anchorId?: string }>,
+): Map<string, ParagraphAnchorRef> {
+  const m = new Map<string, ParagraphAnchorRef>();
   for (const it of items) {
-    if (it.anchorUuid) m.set(it.id, it.anchorUuid);
+    if (it.anchorUuid) {
+      m.set(it.id, it.anchorId ? { uuid: it.anchorUuid, anchorId: it.anchorId } : { uuid: it.anchorUuid });
+    }
   }
   return m;
 }

@@ -60,6 +60,25 @@ export interface CardAnchorRow {
    *  seed, refreshed on every structural change, not a live value. */
   pos: number | null;
   /**
+   * The live `linkedAnchor` mark this row is drawn AT, when it is drawn at a
+   * span rather than at its whole paragraph (task 1334). Set iff EVERY link
+   * behind the row is a Mode-B link whose live mark lies in `pid` — the row
+   * then sits beside the words, at the earliest such mark. A row any Mode-A
+   * (whole-paragraph) link draws stays at the block top, and so does a row
+   * whose mark is dead or lies in another paragraph.
+   *
+   * This is the ONE answer to "where on its paragraph is this card?": the
+   * omni card (via `OmniItem.anchorId` → `useLivePosResolver`), the margin
+   * marker (via `MarginaliaMarker.anchorId` → `computeMarkerPositions`) and
+   * the search hit all read it, so the card and its icon cannot sit on
+   * different lines.
+   */
+  anchorId?: string;
+  /** The seed position of `anchorId`'s first character, beside it (a baked
+   *  value, like `pos`). Use {@link rowAnchorPos} rather than reading the two
+   *  fields with a hand-written fallback. */
+  anchorPos?: number;
+  /**
    * The links that DRAW this row, each with what detaching the row from it
    * means (task 1149). A per-row gesture — the margin's Delete — acts on these
    * by identity; it must never re-derive "which link is this?" by matching
@@ -303,7 +322,46 @@ export function resolveCardAnchorRows(
   for (const link of links) {
     for (const pid of liveParagraphsOfLink(link, index)) draw(pid, link);
   }
+  for (const row of rows) placeRowAtSpan(row, index);
   return { rows, anchored: true };
+}
+
+/**
+ * Seat a row at its span (task 1334) — see `CardAnchorRow.anchorId`.
+ *
+ * Every source must be a live mark IN this row's paragraph: one whole-
+ * paragraph binding (a source that stores the pid, a link without a mark, a
+ * dead mark) keeps the row at the block top, since the card is ABOUT the
+ * paragraph as well. A cross-block span is seated only on the row whose
+ * paragraph holds its first character — on any other row its mark's
+ * paragraph is not `pid`, so that row stays at its block top.
+ */
+function placeRowAtSpan(row: CardAnchorRow, index: ResolveIndex): void {
+  const toPos = index.anchorIdToPos;
+  if (!toPos || row.sources.length === 0) return;
+  let best: { anchorId: string; pos: number } | null = null;
+  for (const s of row.sources) {
+    const pos = s.anchorId != null ? toPos.get(s.anchorId) : undefined;
+    if (
+      s.pid != null ||
+      s.anchorId == null ||
+      pos == null ||
+      index.anchorIdToParagraph.get(s.anchorId) !== row.pid
+    ) {
+      return;
+    }
+    if (!best || pos < best.pos) best = { anchorId: s.anchorId, pos };
+  }
+  if (best) {
+    row.anchorId = best.anchorId;
+    row.anchorPos = best.pos;
+  }
+}
+
+/** Where a row is anchored, as a seed position: its span's first character
+ *  when it is drawn at one (`anchorId`), else its block (`pos`). */
+export function rowAnchorPos(row: CardAnchorRow): number | null {
+  return row.anchorPos ?? row.pos;
 }
 
 /**
@@ -393,6 +451,8 @@ function liveParagraphsOfLink(link: Link, index: ResolveIndex): string[] {
 /** One margin marker's paragraph, plus the SURFACE-not-cull flag. */
 export interface MarginMarkerRow {
   pid: string;
+  /** The row's span anchor, when it is drawn at one (`CardAnchorRow.anchorId`). */
+  anchorId?: string;
   /** True ⇒ the anchor is dead; the marker is surfaced (re-pin dock), not
    *  painted as an ordinary anchored marker. */
   unanchored: boolean;
@@ -436,6 +496,7 @@ export function buildMarginMarkerRows(
   const cardPids = rows.map((r) => r.pid);
   return rows.map((r) => ({
     pid: r.pid,
+    ...(anchored && r.anchorId ? { anchorId: r.anchorId } : {}),
     unanchored: !anchored,
     cardPids,
     sources: r.sources,

@@ -124,6 +124,12 @@ function sanitizeMetrics(
   return lineCount === node.lineCount ? node : { ...node, lineCount };
 }
 
+/** A caller's line answer, made a usable row of `node` (task 1334). */
+function clampLine(line: number | null, node: AnchorNodeMetrics): number {
+  if (line == null || !Number.isFinite(line)) return 0;
+  return Math.min(Math.max(0, Math.floor(line)), Math.max(0, node.lineCount - 1));
+}
+
 /**
  * Compute final pixel positions for all margin markers using the
  * line-aligned grid system.
@@ -168,6 +174,14 @@ export function computeMarkerPositions(
   markers: readonly MarginaliaMarker[],
   panelSides: PanelSideMap,
   laneCols: { left: number; right: number },
+  /**
+   * Task 1334 — which LINE of its node a span-anchored marker (`m.anchorId`)
+   * sits on: 0-based, measured by the caller (the grid stays DOM-free).
+   * `null`/absent ⇒ row 0, the whole-paragraph answer; out-of-range answers
+   * are clamped into the node. Consulted only for markers that carry an
+   * `anchorId`, once per marker per call.
+   */
+  lineOf?: (m: MarginaliaMarker, node: AnchorNodeMetrics) => number | null,
 ): MarkerPositionsResult {
   if (markers.length === 0)
     return { positioned: [], overflowGroups: [] };
@@ -178,8 +192,14 @@ export function computeMarkerPositions(
   // the reserved-last-cell rule needs.
   interface NodeGroup {
     side: "left" | "right";
+    /** The node's metrics as seen from `rowBase`: a group that starts on a
+     *  later line (task 1334) is a node whose `top` is that line's and whose
+     *  `lineCount` is the lines left below it, so the walk below needs no
+     *  second notion of "where a group starts". */
     node: AnchorNodeMetrics;
     textObjectId: string;
+    /** The node line this group's row 0 is (0 unless span-anchored). */
+    rowBase: number;
     items: MarginaliaMarker[];
   }
   const groups = new Map<string, NodeGroup>();
@@ -235,10 +255,25 @@ export function computeMarkerPositions(
     // cannot use (`sanitizeMetrics`) — all three are the same fact here.
     if (!node) continue;
 
-    const key = `${m.textObjectId}|${side}`;
+    // Task 1334 — a span-anchored marker starts on its span's LINE. Markers
+    // of one node that start on different lines are separate groups (each a
+    // grid hanging from its own line); the side walk below packs them like
+    // any two nodes, so collisions and the "+K" pill need no new case.
+    const rowBase = m.anchorId && lineOf ? clampLine(lineOf(m, node), node) : 0;
+    const key = `${m.textObjectId}|${side}|${rowBase}`;
     let g = groups.get(key);
     if (!g) {
-      g = { side, node, textObjectId: m.textObjectId, items: [] };
+      g = {
+        side,
+        node: rowBase === 0 ? node : {
+          ...node,
+          top: node.top + rowBase * node.lineHeight,
+          lineCount: node.lineCount - rowBase,
+        },
+        textObjectId: m.textObjectId,
+        rowBase,
+        items: [],
+      };
       groups.set(key, g);
     }
     g.items.push(m);
@@ -329,13 +364,14 @@ export function computeMarkerPositions(
     // INTRINSIC, hence stable. Falling through to Array#sort's stability
     // instead would order them by whichever panel emitted its markers first,
     // and the pack would visibly reshuffle when an unrelated panel's list
-    // changed. `textObjectId` is unique within a side (pass 1 keys the group
-    // map on it), so this rung always decides.
+    // changed. `textObjectId` + `rowBase` is unique within a side (pass 1
+    // keys the group map on it), so these rungs always decide.
     list.sort(
       (a, b) =>
         rowY(a.node, 0) - rowY(b.node, 0) ||
         a.node.domTop - b.node.domTop ||
-        (a.textObjectId < b.textObjectId ? -1 : a.textObjectId > b.textObjectId ? 1 : 0),
+        (a.textObjectId < b.textObjectId ? -1 : a.textObjectId > b.textObjectId ? 1 : 0) ||
+        a.rowBase - b.rowBase,
     );
 
     // Bottom edge of the last row placed on this side.
@@ -442,7 +478,7 @@ export function computeMarkerPositions(
         positioned.push({
           ...g.items[idx],
           side,
-          cell: { col, row, x: colX(side, col), y: ys[row] },
+          cell: { col, row: g.rowBase + row, x: colX(side, col), y: ys[row] },
         });
       }
 
@@ -453,7 +489,7 @@ export function computeMarkerPositions(
         overflowGroups.push({
           side,
           textObjectId: g.textObjectId,
-          cell: { col, row, x: colX(side, col), y: ys[row] },
+          cell: { col, row: g.rowBase + row, x: colX(side, col), y: ys[row] },
           hidden: g.items.slice(visibleCount),
         });
       }

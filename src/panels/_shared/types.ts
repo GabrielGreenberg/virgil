@@ -41,7 +41,9 @@ export interface OmniItem {
    *  (built by `cardPopKey`/`popKey`); a multi-anchor card appends an
    *  `@<index>` suffix per anchor. */
   id: string;
-  /** Editor document position (null for unanchored items).
+  /** Editor document position (null for unanchored items) — the item's
+   *  ANCHOR position: for a span-anchored (Mode-B) row the first character of
+   *  its span (`anchorId`), else the anchor block's opening position.
    *
    *  NOTE: this is a *baked* position — captured by the builder's
    *  `findParagraphPos` only when the omni `items` memo last (structurally)
@@ -62,6 +64,14 @@ export interface OmniItem {
    *  stale baked `pos`. Absent for entity-anchored kinds (their live pos comes
    *  from `cardPopKey(kind, entityId)`) and for `free` items (no anchor). */
   anchorUuid?: string;
+  /** The live `linkedAnchor` mark this item sits AT, when it is anchored to
+   *  a text span inside `anchorUuid` rather than to the whole paragraph (task
+   *  1334, `CardAnchorRow.anchorId`). `useLivePosResolver` then resolves the
+   *  item to the span's LIVE `from` (the `DocStructure` anchor index) instead
+   *  of the block top, so the card sits beside its words and orders after the
+   *  paragraph's whole-paragraph cards; a mark that has died, or left this
+   *  block, falls back to the block top. Absent for a whole-paragraph row. */
+  anchorId?: string;
   /** Where this item sits relative to the document:
    *  - `"anchored"`  — has a link AND it resolved to a live doc position.
    *  - `"free"`      — carries no link at all (no in-text marker / no

@@ -106,6 +106,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
         id: row.omniId,
         pos: row.pos,
         anchorUuid: row.anchorUuid,
+        anchorId: row.anchorId,
         anchorState: row.anchorState,
         content: renderCard(row),
       });
