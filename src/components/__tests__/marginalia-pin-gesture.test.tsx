@@ -17,6 +17,11 @@
 //      mousedown starts NO session.
 //   3. A read-only host (`dragEnabled=false`) starts NO session.
 //   4. A non-primary (right-click) press starts NO session.
+//   5. Task 1338 — the gate is the SURFACE-editability door, not
+//      `editor.isEditable`: a MAIN editor whose pen is up (`view.editable`
+//      true) but whose host mounted it read-only (the Reader's `editableRef`)
+//      offers no grab; and the gate is re-asked at PRESS time, so a flip since
+//      the last render decides the press.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -50,7 +55,8 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import { MarkerButton } from "@/components/Marginalia";
 import { buildFloatKey } from "@/floats/float-key";
-import type { MarginaliaMarker } from "@/lib/marginalia";
+import { markerRepinGate, type MarginaliaMarker } from "@/lib/marginalia";
+import { SURFACE_EDITABLE_STORAGE_KEY } from "@/lib/tiptap/surface-editable";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 
 beforeEach(() => {
@@ -254,5 +260,82 @@ describe("margin-pin gesture guards", () => {
     await new Promise((r) => setTimeout(r, 0));
     fireEvent.click(screen.getByRole("button"));
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Task 1338 — a fake MAIN editor: PM's `view.editable` pinned true (as
+// `Editor.tsx` does for its whole life), the user-facing answer in the
+// `readOnlyEnforcer` storage's `editableRef`.
+function mainEditor(hostEditable: boolean, penEditable = true) {
+  const editableRef = { current: hostEditable };
+  const editor = {
+    view: { editable: penEditable },
+    storage: { [SURFACE_EDITABLE_STORAGE_KEY]: { editableRef } },
+  };
+  return { editor, editableRef };
+}
+
+describe("task 1338 — the re-pin gate is the surface-editability door", () => {
+  const card = () => marker({ type: "note", entityKind: "note", entityId: "n1" });
+
+  it("a Reader host (view.editable true, editableRef false) offers no grab and starts no session; click still activates", () => {
+    const { editor } = mainEditor(false);
+    const onClick = vi.fn();
+    render(
+      <MarkerButton
+        m={{ ...card(), onClick }}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dragEnabled={markerRepinGate(editor as any)}
+      />,
+    );
+    expect(screen.getByRole("button").style.cursor).toBe("pointer");
+    pressPin(0);
+    promotePress();
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+    expect(beginDropSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button"));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pen held elsewhere (view.editable false) also gates", () => {
+    const { editor } = mainEditor(true, false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    render(<MarkerButton m={card()} dragEnabled={markerRepinGate(editor as any)} />);
+    pressPin(0);
+    promotePress();
+    expect(beginDropSession).not.toHaveBeenCalled();
+  });
+
+  it("an editable surface grabs", () => {
+    const { editor } = mainEditor(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    render(<MarkerButton m={card()} dragEnabled={markerRepinGate(editor as any)} />);
+    expect(screen.getByRole("button").style.cursor).toBe("grab");
+    pressPin(0);
+    promotePress();
+    expect(beginDropSession).toHaveBeenCalledTimes(1);
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+  });
+
+  it("an editability loss since the last render blocks the press — no re-render needed", () => {
+    const { editor, editableRef } = mainEditor(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    render(<MarkerButton m={card()} dragEnabled={markerRepinGate(editor as any)} />);
+    expect(screen.getByRole("button").style.cursor).toBe("grab");
+    editableRef.current = false; // flip with no render behind it
+    pressPin(0);
+    promotePress();
+    expect(beginDropSession).not.toHaveBeenCalled();
+  });
+
+  it("an editability GAIN since the last render lets the press through", () => {
+    const { editor, editableRef } = mainEditor(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    render(<MarkerButton m={card()} dragEnabled={markerRepinGate(editor as any)} />);
+    editableRef.current = true;
+    pressPin(0);
+    promotePress();
+    expect(beginDropSession).toHaveBeenCalledTimes(1);
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
   });
 });

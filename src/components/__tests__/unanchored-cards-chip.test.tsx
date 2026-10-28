@@ -65,7 +65,9 @@ import { promotePress } from "@/components/drop-mode/__tests__/_promote-press";
 import { MarginColumn } from "@/components/Marginalia";
 import { UnanchoredCardsChip } from "@/components/UnanchoredCardsChip";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
+import { SURFACE_EDITABLE_STORAGE_KEY } from "@/lib/tiptap/surface-editable";
 import {
+  markerRepinGate,
   resolveMarkerCols,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
@@ -282,6 +284,26 @@ describe("UnanchoredCardsChip — the relocated affordance", () => {
       document.querySelector("[data-marginalia-marker]") as HTMLElement,
       { button: 0, buttons: 1, clientX: 10, clientY: 10 },
     );
+    promotePress();
+    expect(beginDropSession).not.toHaveBeenCalled();
+  });
+
+  it("task 1338 — a Reader MAIN editor (view.editable true, host read-only) is click-only through the shared gate", () => {
+    const editor = {
+      view: { editable: true },
+      storage: { [SURFACE_EDITABLE_STORAGE_KEY]: { editableRef: { current: false } } },
+    };
+    render(
+      <UnanchoredCardsChip
+        markers={[unanchored(0, "right")]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dragEnabled={markerRepinGate(editor as any)}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 unanchored card/i }));
+    const btn = document.querySelector("[data-marginalia-marker]") as HTMLElement;
+    expect(btn.style.cursor).toBe("pointer");
+    fireEvent.mouseDown(btn, { button: 0, buttons: 1, clientX: 10, clientY: 10 });
     promotePress();
     expect(beginDropSession).not.toHaveBeenCalled();
   });

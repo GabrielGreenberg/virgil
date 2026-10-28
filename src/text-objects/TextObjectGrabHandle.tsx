@@ -1045,13 +1045,15 @@ export function TextObjectGrabHandle({ editor }: Props) {
         setPlacements((p) => (p.length === 0 ? p : []));
         return;
       }
-      // Read-only surfaces (the Library Reader) have nothing draggable, so
-      // the grab handle is pure clutter in the margin. Yield ZERO placements
-      // when the editor isn't editable — mirrors `Marginalia.tsx`, which gates
-      // its drag affordance on `editor.isEditable`. O(1), no doc walk, so it
-      // doesn't regress keystroke sanctity. (Decision D-2: gate here in the
-      // shared layer rather than adding a chrome flag, so a future Reader that
-      // wants handles just passes `editable={true}`.)
+      // The PEN axis only: yield ZERO placements while `view.editable` is
+      // false (a collab pen held elsewhere, a read-only float body). This is
+      // deliberately NOT the surface-editability door (`surfaceEditableNow`):
+      // MAIN pins `view.editable = true` in the Library Reader precisely so
+      // this handle still shows there — a read-only reader may still lift
+      // text OUT to a card or another paper (`Editor.tsx`, the `editableRef`
+      // comment). The margin markers' re-pin grab is the opposite case — it
+      // WRITES into this doc — so it asks the door (task 1338); this gate
+      // does not mirror it. O(1), no doc walk (keystroke sanctity).
       if (!editor.isEditable) {
         setPlacements((p) => (p.length === 0 ? p : []));
         return;
@@ -1257,10 +1259,12 @@ export function TextObjectGrabHandle({ editor }: Props) {
 
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
-    // Read-only surfaces (the Library Reader) sync PM's selection from the
-    // DOM. Evaluated against THIS effect's editor, so a late-arriving or
-    // swapped read-only editor installs it (task 736 — it used to read a
-    // still-null ref once and never install).
+    // A surface whose `view.editable` is false is not contenteditable, so PM
+    // does not sync its selection from the DOM — this listener does. (The
+    // Library Reader is NOT such a surface: MAIN keeps `view.editable` true
+    // there, so PM syncs natively — see `Editor.tsx`.) Evaluated against THIS
+    // effect's editor, so a late-arriving or swapped read-only editor installs
+    // it (task 736 — it used to read a still-null ref once and never install).
     const installSelectionChange = editor !== null && !editor.isEditable;
     if (installSelectionChange) {
       document.addEventListener("selectionchange", onDocSelectionChange);

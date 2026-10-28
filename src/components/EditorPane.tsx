@@ -158,6 +158,7 @@ import {
   MARGINALIA_MIN_MARGIN_RIGHT,
   resolveHorizontalMargin,
   resolveMarginaliaLane,
+  markerRepinGate,
 } from "@/lib/marginalia";
 import { useCitations, type CitationsHook } from "@/hooks/useCitations";
 import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
@@ -7499,11 +7500,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         render at all. */}
                     <UnanchoredCardsChip
                       markers={chipMarkers}
-                      // The SAME predicate `<Marginalia>` applies to its own
+                      // The SAME gate `<Marginalia>` applies to its own
                       // markers — these are the same `MarkerButton`s, so the
                       // two surfaces must agree about whether a re-pin grab is
                       // available (a read-only Reader host is click-only).
-                      dragEnabled={editor?.isEditable !== false}
+                      // Task 1338: the surface-editability door, re-asked at
+                      // press time — never `editor.isEditable` (constant on MAIN).
+                      dragEnabled={markerRepinGate(editor)}
                     />
                     {chromeHeaderTrailing}
                     {menuBar && (
