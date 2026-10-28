@@ -213,13 +213,17 @@ describe("Mode-B collection set — (B) every consumer READS it", () => {
     // The EditorPane load pass used to build its alive-set from a hand array of
     // six collections ("the SAME six the hook tracks") — agreeing with the
     // SSOT only by coincidence, so a seventh Mode-B slot would be reaped on
-    // every doc open. Both sweeps now call `aliveLinkedAnchorIds(bag)`.
+    // every doc open. Both sweeps now call `aliveLinkedAnchorIds(bag, held)` —
+    // the bag plus the agent-archived cards' held anchors (task 1336), the SAME
+    // two inputs in both.
     const pane = read("src/components/EditorPane.tsx");
-    expect(pane).toMatch(/aliveLinkedAnchorIds\(modeBCardsRef\.current\)/);
+    expect(pane).toMatch(
+      /aliveLinkedAnchorIds\(\s*modeBCardsRef\.current,\s*archiveHeldAnchorIdsRef\.current,?\s*\)/,
+    );
     expect(pane).not.toMatch(/aliveIds\.add\(/);
     expect(pane).not.toMatch(/the SAME six/);
     const hook = read("src/links/_shared/useLinkedAnchorReconciler.ts");
-    expect(hook).toMatch(/useMemo\(\(\) => aliveLinkedAnchorIds\(cards\)/);
+    expect(hook).toMatch(/aliveLinkedAnchorIds\(cards, heldAnchorIds\)/);
   });
 
   it("the shell reads the PANE's bag, and resolves no hover anchor of its own", () => {

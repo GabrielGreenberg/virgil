@@ -93,8 +93,15 @@ export function reapOrphanLinkedAnchors(
  * the load pass used to hand-list six collections and agreed only by
  * coincidence). O(cards), never a doc walk.
  */
-export function aliveLinkedAnchorIds(bag: ModeBBag): Set<string> {
-  const ids = new Set<string>();
+export function aliveLinkedAnchorIds(
+  bag: ModeBBag,
+  /** Anchors an agent-ARCHIVED card still owns from `archive.json`
+   *  (`archiveHeldAnchorIds`, task 1336) — not in the bag, because
+   *  `/editor/archive-card` moved the card out of its panel; not orphans,
+   *  because `/editor/restore-card` re-anchors the card from them. */
+  held: Iterable<string> = [],
+): Set<string> {
+  const ids = new Set<string>(held);
   forEachModeBCard(bag, (record) => {
     const ta = getTextAnchor(record);
     if (ta) ids.add(ta.anchorId);
@@ -137,19 +144,26 @@ export interface UseLinkedAnchorReconcilerArgs {
    *  narrower copy of the same list did cause for hover). Pass a MEMOIZED bag —
    *  the alive-set memoizes on its identity. */
   cards: ModeBBag;
+  /** `aliveLinkedAnchorIds`' `held` — the agent-archived cards' anchors. Pass a
+   *  MEMOIZED set (the alive-set memoizes on its identity). */
+  heldAnchorIds?: ReadonlySet<string>;
 }
 
 export function useLinkedAnchorReconciler({
   editor,
   ready,
   cards,
+  heldAnchorIds,
 }: UseLinkedAnchorReconcilerArgs): void {
   // Memoize on the BAG identity. EditorPane rebuilds collection wrappers on
   // every render, so the bag it passes is itself memoized on the six
   // collection-array identities — each hook only produces a new array when its
   // data actually changed. The alive-set is built from card stores (O(cards)),
   // never a per-keystroke doc walk.
-  const aliveAnchorIds = useMemo(() => aliveLinkedAnchorIds(cards), [cards]);
+  const aliveAnchorIds = useMemo(
+    () => aliveLinkedAnchorIds(cards, heldAnchorIds),
+    [cards, heldAnchorIds],
+  );
 
   useLayoutEffect(() => {
     if (!editor) return;

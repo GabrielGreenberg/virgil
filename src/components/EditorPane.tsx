@@ -124,6 +124,7 @@ import {
   visibleHighlightKinds,
 } from "@/links/_shared/useLinkHighlight";
 import {
+  archiveHeldAnchorIds,
   archivedAnchorIds,
   archivedCardIds,
 } from "@/links/_shared/archived-anchor-chrome";
@@ -2136,6 +2137,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => ({ ...archiveHookRaw, deleteSnippet: deletePassage }),
     [archiveHookRaw, deletePassage],
   );
+  // Anchors an AGENT-archived card still owns from `archive.json` (task 1336):
+  // `/editor/archive-card` moves the card out of its panel, so the Mode-B bag no
+  // longer names its anchor — yet the anchor is not an orphan, because
+  // `/editor/restore-card` re-anchors the card from it. Both orphan sweeps (the
+  // in-session reaper and the load pass) read it beside the bag. O(snippets),
+  // recomputed only when `archive.json` changes.
+  const archiveHeldAnchorIdSet = useMemo(
+    () => archiveHeldAnchorIds(archiveHookRaw.snippets),
+    [archiveHookRaw.snippets],
+  );
+  const archiveHeldAnchorIdsRef = useRef(archiveHeldAnchorIdSet);
+  archiveHeldAnchorIdsRef.current = archiveHeldAnchorIdSet;
   // "Is this passage still in the Archive?" off the LIVE collection (task
   // 1295's `getSnippets`) — the restorability a later reader can honestly
   // answer (task 1329): a retired snippet and a hand-set-aside one share one
@@ -2477,7 +2490,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // reaper reads (`aliveLinkedAnchorIds` over the total Mode-B bag — task
     // 938), so a mark we just re-applied/reconciled above is alive and is NOT
     // reaped, and a Mode-B collection added to the SSOT reaches this pass too.
-    const aliveIds = aliveLinkedAnchorIds(modeBCardsRef.current);
+    const aliveIds = aliveLinkedAnchorIds(
+      modeBCardsRef.current,
+      archiveHeldAnchorIdsRef.current,
+    );
     // DESTRUCTIVE: only reap when every sidecar loaded SUCCESSFULLY. If any
     // read threw, that kind's collection is the empty default (non-authoritative
     // — see `anyCardSidecarLoadError`), so `aliveIds` is missing its live
@@ -6242,6 +6258,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // is a collection whose marks the next sweep reaps as orphans, so totality
     // is a data-loss guard, not tidiness.
     cards: modeBCards,
+    heldAnchorIds: archiveHeldAnchorIdSet,
   });
 
   // ── Open-AI-request wash (task 021; re-carried as a decoration, task 667) ──

@@ -65,6 +65,7 @@
 
 import type { Link } from "./types";
 import { isRangedModeB } from "./types";
+import { archiveOriginOf } from "@/lib/archive-origin";
 
 /** The minimum a card must expose to answer "is this archived?". */
 export interface ArchivableCardLike {
@@ -72,9 +73,13 @@ export interface ArchivableCardLike {
   archived?: boolean;
 }
 
-/** …plus its links, for the Mode-B anchor projection. */
+/** …plus its links, for the Mode-B anchor projection. An Archive-panel
+ *  snippet also carries its ORIGIN record when `/editor/archive-card` put it
+ *  there (task 712) — see `holdsArchivedCard`. */
 export interface AnchoredArchivableCardLike extends ArchivableCardLike {
   links?: Link[];
+  originalPanel?: string;
+  originalCard?: Record<string, unknown>;
 }
 
 /**
@@ -87,6 +92,29 @@ export function cardIsArchived(card: ArchivableCardLike): boolean {
 }
 
 /**
+ * True when this record is an Archive-panel snippet HOLDING a whole card that
+ * `/editor/archive-card` set aside (`cmd_archive`: the card leaves its panel
+ * sidecar and lands in `archive.json` with `originalPanel` + `originalCard`).
+ *
+ * That is the AGENT's spelling of "archived", and until task 1336 the app read
+ * only its own (the `archived` flag on a card left in its panel). An agent
+ * archive of a passage-anchored note therefore did not count as archived for
+ * the in-text chrome: the wash stood until the `notes.json` re-read dropped the
+ * card and the reaper STRIPPED the mark — which also lost the anchor
+ * `/editor/restore-card` needs to put the note back on its words. Both
+ * spellings now name ONE fact for the anchor surfaces: the held card's
+ * anchors are archived anchors (no chrome) AND held anchors (not orphans).
+ *
+ * `archiveOriginOf` is the one reader of the excerpt-vs-card distinction; an
+ * origin record that is present but unusable is still a card, never an
+ * excerpt, so it counts here too.
+ */
+export function holdsArchivedCard(card: AnchoredArchivableCardLike): boolean {
+  if (card.originalPanel == null && card.originalCard == null) return false;
+  return archiveOriginOf(card as Parameters<typeof archiveOriginOf>[0]).kind !== "excerpt";
+}
+
+/**
  * Every Mode-B `linkedAnchor` anchorId this card owns.
  *
  * Deliberately ALL of them, not `getTextAnchor`'s first-wins answer: that
@@ -96,8 +124,19 @@ export function cardIsArchived(card: ArchivableCardLike): boolean {
  * this module exists to remove.
  */
 function textAnchorIdsOf(card: AnchoredArchivableCardLike, into: Set<string>): void {
-  for (const link of card.links ?? []) {
-    if (isRangedModeB(link) && link.anchor.textRange.anchorId) {
+  addRangedAnchorIds(card.links, into);
+  // A held card's verbatim record carries the links it will be restored WITH —
+  // the restore re-anchors from these, so they are its anchors too (the
+  // snippet's own `links` normally mirror them; this reads the source).
+  if (holdsArchivedCard(card)) addRangedAnchorIds(card.originalCard?.links, into);
+}
+
+function addRangedAnchorIds(links: unknown, into: Set<string>): void {
+  if (!Array.isArray(links)) return;
+  // `originalCard` is a verbatim agent-written record, tolerated rather than
+  // trusted: a link with no `anchor` is skipped, not dereferenced.
+  for (const link of links as Link[]) {
+    if (link?.anchor && isRangedModeB(link) && link.anchor.textRange.anchorId) {
       into.add(link.anchor.textRange.anchorId);
     }
   }
@@ -131,7 +170,25 @@ export function archivedAnchorIds(
 ): Set<string> {
   const out = new Set<string>();
   for (const arr of collections) {
-    for (const c of arr) if (cardIsArchived(c)) textAnchorIdsOf(c, out);
+    for (const c of arr) {
+      if (cardIsArchived(c) || holdsArchivedCard(c)) textAnchorIdsOf(c, out);
+    }
   }
+  return out;
+}
+
+/**
+ * Mode-B anchor ids HELD by an agent-archived card (`holdsArchivedCard`) — the
+ * ids the orphan reaper must treat as owned, beside every live Mode-B card's
+ * (`aliveLinkedAnchorIds`' `held` argument). An in-app archive keeps its card
+ * in its panel, so the bag already covers it; this is the agent spelling's
+ * half of the same guarantee: an archived card's mark survives for restore.
+ * O(snippets), and only when `archive.json` changes.
+ */
+export function archiveHeldAnchorIds(
+  snippets: ReadonlyArray<AnchoredArchivableCardLike>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const s of snippets) if (holdsArchivedCard(s)) textAnchorIdsOf(s, out);
   return out;
 }
