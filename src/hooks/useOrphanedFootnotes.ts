@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, type Dispatch, type SetStateAc
 import { carryUnknownKeys, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { usePersistentState } from "./usePersistentState";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
+import { footnoteTitleRecord, pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import type { OrphanedFootnote, OrphanedFootnotesState } from "@/lib/types";
 
 /**
@@ -191,7 +191,14 @@ export function useOrphanedFootnotes(docId: string | null): OrphanedFootnotesApi
   const editOrphanTitle = useCallback(
     (id: string, title: string) => {
       updateOrphanList((prev) =>
-        prev.map((o) => (o.footnoteId === id ? { ...o, title } : o)),
+        prev.map((o) => {
+          if (o.footnoteId !== id) return o;
+          // One spelling for "untitled" (task 1337): ABSENT, as the ref's
+          // `setFootnoteTitle` stores it — never `""`.
+          const { title: _prev, ...rest } = o;
+          const kept = footnoteTitleRecord(title);
+          return kept === undefined ? rest : { ...rest, title: kept };
+        }),
       );
     },
     [updateOrphanList],

@@ -94,6 +94,14 @@ export function footnoteMarkupEqual(
   );
 }
 
+/** A footnote title in its ONE record spelling: a blank title is ABSENT
+ *  (`undefined`), never `""` — "untitled" has one spelling on the ref, the
+ *  orphan record and every pick (task 1337: the orphan title editor stored
+ *  `""` where the ref's setter stored absent). */
+export function footnoteTitleRecord(title: unknown): string | undefined {
+  return typeof title === "string" && title.trim() !== "" ? title : undefined;
+}
+
 /** EVERY carried attr in the record spelling — the body, the title, the
  *  markup — as a footnote leaves the document (task 1073). Absent ≡ default
  *  for `title` and the markup, exactly like {@link FootnoteMarkupAttrs}; the
@@ -115,7 +123,8 @@ export function pickFootnoteCarriedAttrs(
 ): FootnoteCarriedRecord {
   const src = (raw ?? {}) as Readonly<Record<string, unknown>>;
   const out: FootnoteCarriedRecord = { content: src.content ?? null };
-  if (typeof src.title === "string" && src.title !== "") out.title = src.title;
+  const title = footnoteTitleRecord(src.title);
+  if (title !== undefined) out.title = title;
   return { ...out, ...pickFootnoteMarkupAttrs(raw) };
 }
 

@@ -14,6 +14,7 @@
 // `ensureRef` lets the archive path capture BEFORE it deletes.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { StrictMode } from "react";
 import { renderHook, act } from "@testing-library/react";
 import type { FootnotesState } from "@/lib/types";
 
@@ -277,6 +278,97 @@ describe("useFootnotes — the upsert door (task 703)", () => {
     expect(ok).toBe(true);
     expect(writes.length).toBe(n);
     expect(result.current.markupFor("fn-old")).toEqual({ thanks: true });
+  });
+});
+
+// Task 1337: the capture and clone doors read the ONE carried-attrs pick, so
+// the title travels with the body and the markup — and the ref stays the
+// title's home (a live title fills an untitled ref, never overwrites a rename).
+describe("useFootnotes — every carried attr through the one pick (task 1337)", () => {
+  it("a fresh ref minted from the live atom carries its title and markup", async () => {
+    beginDocPipeline(DOC);
+    const live = (id: string) =>
+      id === "fn-t" ? { content: BODY, title: "T", thanks: true } : null;
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, live));
+    await flushLoad();
+
+    act(() => { result.current.setArchived("fn-t", true); });
+    const ref = lastFootnotes()?.footnotes.find((f) => f.id === "fn-t");
+    expect(ref).toMatchObject({ title: "T", thanks: true, archived: true, content: BODY });
+    expect(ref?.content).not.toBe(BODY);
+  });
+
+  it("the seed still wins for the body; the title still comes from the atom", async () => {
+    beginDocPipeline(DOC);
+    const SEED = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "edited" }] }] };
+    const live = (id: string) => (id === "fn-t" ? { content: BODY, title: "T" } : null);
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, live));
+    await flushLoad();
+
+    act(() => { result.current.updateFootnoteContent("fn-t", SEED); });
+    expect(lastFootnotes()?.footnotes[0]).toMatchObject({ id: "fn-t", title: "T", content: SEED });
+  });
+
+  it("an existing UNTITLED ref is filled from the atom's title; a titled one is never overwritten", async () => {
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [
+        { id: "fn-bare", content: BODY, createdAt: "2026-01-01T00:00:00.000Z" },
+        { id: "fn-named", content: BODY, createdAt: "2026-01-01T00:00:00.000Z", title: "Renamed" },
+      ],
+    } satisfies FootnotesState;
+    const live = (id: string) => ({ content: BODY, title: id === "fn-bare" ? "Atom" : "Stale" });
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, live));
+    await flushLoad();
+
+    act(() => { result.current.ensureRef("fn-bare"); });
+    expect(lastFootnotes()?.footnotes.find((f) => f.id === "fn-bare")?.title).toBe("Atom");
+    const n = writes.length;
+    act(() => { result.current.ensureRef("fn-named"); });
+    expect(writes.length).toBe(n);
+    expect(result.current.footnoteRefs.find((f) => f.id === "fn-named")?.title).toBe("Renamed");
+  });
+
+  it("cloneFootnote carries every carried attr, deep-copied, under a fresh id", async () => {
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [{
+        id: "fn-src", content: BODY, createdAt: "2026-01-01T00:00:00.000Z",
+        title: "T", thanks: true, numberOverride: "3", aiRequest: true,
+      }],
+    } satisfies FootnotesState;
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, liveBody));
+    await flushLoad();
+
+    let id: string | null = null;
+    act(() => { id = result.current.cloneFootnote("fn-src"); });
+    const clone = lastFootnotes()?.footnotes.find((f) => f.id === id);
+    expect(id).not.toBe("fn-src");
+    expect(clone).toMatchObject({ title: "T", thanks: true, numberOverride: "3", content: BODY });
+    // Carried attrs only — a flag is not the user's source.
+    expect(clone).not.toHaveProperty("aiRequest");
+    const source = result.current.footnoteRefs.find((f) => f.id === "fn-src");
+    expect(clone?.content).not.toBe(source?.content);
+  });
+
+  it("deleteFootnote persists exactly once, outside any setState updater", async () => {
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [{ id: "fn-x", content: BODY, createdAt: "2026-01-01T00:00:00.000Z" }],
+    } satisfies FootnotesState;
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, undefined, liveBody), {
+      wrapper: StrictMode,
+    });
+    await flushLoad();
+
+    const n = writes.length;
+    await act(async () => {
+      result.current.deleteFootnote("fn-x");
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    expect(writes.length).toBe(n + 1);
+    expect(lastFootnotes()?.footnotes).toEqual([]);
+    expect(result.current.footnoteRefs).toEqual([]);
   });
 });
 

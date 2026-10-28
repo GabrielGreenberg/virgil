@@ -204,7 +204,7 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { footnoteRequestText, useFootnotes, type FootnoteCapture } from "@/hooks/useFootnotes";
-import { pickFootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
+import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 import { selectAtomlessFootnoteRefs } from "@/panels/Footnotes/atomless-refs";
 import { staleAtomIntentIds } from "@/links/_shared/live-atom-intent";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
@@ -2186,16 +2186,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // upsert door. A toolbar/slash/parsed footnote has no footnotes.json ref, so
   // archive / AI-request / body-edit must capture one from the doc first.
   // Task 947: with its MARKUP (`\thanks` / `\footnote[3]`), so the archived
-  // ref can rebuild the same command. Stable (reads `innerRef.current` at call
+  // ref can rebuild the same command; task 1337: EVERY carried attr through the
+  // one pick, so the title travels too. Stable (reads `innerRef.current` at call
   // time); gesture-only.
   const resolveFootnoteCapture = useCallback(
     (footnoteId: string): FootnoteCapture | null => {
       const fn = innerRef.current
         ?.getFootnotes()
         .find((f) => f.footnoteId === footnoteId);
-      return fn
-        ? { content: fn.content as JSONContent, ...pickFootnoteMarkupAttrs(fn) }
-        : null;
+      return fn ? pickFootnoteCarriedAttrs(fn) : null;
     },
     [],
   );

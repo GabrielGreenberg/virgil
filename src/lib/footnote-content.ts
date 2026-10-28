@@ -1211,30 +1211,10 @@ function htmlToPlain(html: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Legacy aliases — old call sites kept compiling while we migrate.
-// These will shrink/disappear as the panel + extensions move over to JSON.
+// HTML helpers. (The four `@deprecated` HTML-era aliases that once sat here
+// had no callers left and were deleted — task 1337.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/** @deprecated — use normalizeRichContent + Tiptap rendering instead. */
-export function normalizeFootnoteContent(content: unknown): JSONContent {
-  return normalizeRichContent(content);
-}
-
-/** @deprecated — use richJsonToLatex instead. */
-export function footnoteHtmlToLatex(content: unknown): string {
-  return richJsonToLatex(normalizeRichContent(content));
-}
-
-/** @deprecated — use richJsonToPlainText instead. */
-export function footnoteHtmlToPlainText(content: unknown): string {
-  return richJsonToPlainText(content);
-}
-
-/** @deprecated — use richLatexToJson instead. */
-export function footnoteLatexToHtml(latex: string): JSONContent {
-  return richLatexToJson(latex);
 }
