@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "./field-primitives";
 import { useMenuDismiss } from "./menu/useMenuDismiss";
+import { MenuSectionLabel } from "./menu/MenuChrome";
 import { MAIN_TEXT_FONTS } from "@/lib/font-catalogue";
 import { resolvePreviewFontStack } from "@/lib/panel-typography";
 
@@ -99,9 +100,7 @@ export default function FontPicker({
             )}
             {groups.map((g) => (
               <div key={g.group}>
-                <div className="px-3 pt-2 pb-1 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-                  {g.group}
-                </div>
+                <MenuSectionLabel padding="px-3 pt-2 pb-1">{g.group}</MenuSectionLabel>
                 {g.fonts.map((f) => {
                   const selected = f === value;
                   return (

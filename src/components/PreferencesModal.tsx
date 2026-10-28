@@ -438,7 +438,7 @@ export default function PreferencesModal({
       <div className="flex-1 overflow-y-auto px-5 py-3 space-y-4">
         <SmartPreferences prefs={prefs} onUpdate={onUpdate} />
         <div className="flex items-center gap-2 pt-1">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-muted">
+          <span className="section-caption">
             All preferences
           </span>
           <div className="flex-1 h-px bg-edge-subtle" />

@@ -34,14 +34,18 @@ export function MenuSeparator() {
 
 export interface MenuSectionLabelProps {
   children: ReactNode;
+  /** Replaces the default padding (`px-3 pt-1 pb-0.5`) — the caption's
+   *  type recipe is `.section-caption` and is not the caller's to change. */
+  padding?: string;
 }
 
-/** Small uppercase caption above a cluster of rows ("Display", "Sort by"). */
-export function MenuSectionLabel({ children }: MenuSectionLabelProps) {
+/** Small uppercase caption above a cluster of rows ("Display", "Sort by").
+ *  Wears `.section-caption` — the same class as a panel-body caption. */
+export function MenuSectionLabel({ children, padding = "px-3 pt-1 pb-0.5" }: MenuSectionLabelProps) {
   return (
     <div
       role="presentation"
-      className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide"
+      className={`section-caption ${padding}`}
     >
       {children}
     </div>

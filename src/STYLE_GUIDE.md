@@ -841,6 +841,25 @@ tracking-wider` (that twin is how a popped card's label drifted to
 `@layer components`, so a call site composes `truncate` or a `hover:text-*`
 over it with plain utilities. Census: `card-ui-consistency.test.tsx`.
 
+**Outside a card body — the section caption** (task 1333). The small
+uppercase caption has ONE class per register, and the panel/window body's is
+`.section-caption` — 10px / 500 / uppercase / 0.025em (`tracking-wide`) /
+`--ink-muted` ("Request entry", "Pending requests (n)", "Recent", "Browse",
+font groups, the preferences dividers, the compile-log header):
+
+| Register | Token |
+|---|---|
+| card body (meta tier, kind label) | `.card-meta-label` / `CardMetaLabel` |
+| panel / window body | `.section-caption` |
+| menu | `<MenuSectionLabel>` — composes `.section-caption` (padding via `padding`) |
+| dialog field label | `field-primitives` `register: "section"` (11px by spec) |
+
+Named non-captions: `PanelHeader` (the 11px/600 header scale) and chips (9–10px,
+`rounded`, the membership-chip dialect). A caption in a tinted box takes
+`text-[var(--accent)]` over the class (Word Count's "Selection"). Never
+hand-type `text-[10px] … uppercase tracking-…`. Census:
+`section-caption-census.test.ts`.
+
 Mono inside cards always routes through the override-first stack
 `var(--font-mono-override, var(--font-mono)), monospace` — the `.card-mono`
 class (Tailwind's `font-mono` skips the user's mono override pref; apply

@@ -56,7 +56,7 @@ export default function CompileLogDisclosure({
            `.hover-on-light` is UNLAYERED, so it beat the utility and this
            header — disabled whenever there is no log — painted its hover fill
            anyway. The utility now owns the disabled state itself (task 509). */
-        className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-medium text-ink-subtle uppercase tracking-wide hover-on-light text-left disabled:cursor-default focus-ring"
+        className="section-caption flex items-center gap-2 px-3 py-1.5 hover-on-light text-left disabled:cursor-default focus-ring"
       >
         <Chevron open={open} />
         <span>Compile log</span>

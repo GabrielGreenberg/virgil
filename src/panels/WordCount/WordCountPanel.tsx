@@ -74,7 +74,9 @@ export default function WordCountPanel({
       </div>
 
       <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-4 py-3">
-        <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
+        {/* A caption, not a title: the shared panel caption in the box's
+            accent ink (task 1333). */}
+        <div className="section-caption text-[var(--accent)] mb-2">
           Selection
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-1">
@@ -86,7 +88,7 @@ export default function WordCountPanel({
       {catsWithWords.length > 0 && (
         <div className="rounded-lg border border-edge-subtle bg-surface overflow-hidden">
           <div className="px-4 py-2 border-b border-edge-subtle">
-            <span className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
+            <span className="section-caption">
               Breakdown
             </span>
           </div>

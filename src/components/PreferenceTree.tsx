@@ -224,7 +224,7 @@ function SectionNode({
           onToggle={() => setOpen(!open)}
           className="w-full text-left py-1 hover-on-light rounded text-ink-muted"
         >
-          <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider">
+          <span className="section-caption">
             {group.label}
           </span>
         </PodDisclosure>

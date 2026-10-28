@@ -430,7 +430,7 @@ function CitationsPanel({
           <div data-citation-nested-group={nestedInfo.kind}>
             {showSectionDivider && (
               <div className="mt-1 mb-1 px-1 flex items-center gap-2">
-                <span className="text-[10px] font-medium text-ink-muted uppercase tracking-wide">
+                <span className="section-caption">
                   {nestedInfo.kind === "example" ? "In examples" : "In footnotes"}
                 </span>
                 <span className="flex-1 border-t border-edge-subtle" />
