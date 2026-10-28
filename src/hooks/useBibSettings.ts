@@ -2,7 +2,6 @@
 
 import { useCallback } from "react";
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar } from "@/lib/storage";
 import type { BibSettings, BibEntryRequest } from "@/lib/types";
 import { usePersistentState } from "./usePersistentState";
 
@@ -19,20 +18,19 @@ function migrate(raw: unknown): BibSettings {
 }
 
 export function useBibSettings(docId: string | null) {
-  const { state, setState, update } = usePersistentState<BibSettings>(
+  const { state, update, reread } = usePersistentState<BibSettings>(
     docId,
     "bib-settings.json",
     EMPTY,
     { migrate, errorLabel: "bib settings" },
   );
 
-  /** Re-read the sidecar from disk. Used when another pane edits it. */
-  const refresh = useCallback(() => {
-    if (!docId) return;
-    readSidecar<BibSettings>(docId, "bib-settings.json", EMPTY)
-      .then((data) => setState(migrate(data)))
-      .catch(() => {});
-  }, [docId, setState]);
+  /**
+   * Re-read the sidecar from disk (the AI window's Refresh). The shared re-read
+   * policy (task 1332): deferred while a write is armed or in flight, merged —
+   * never adopted — so a just-filed entry request survives a Refresh.
+   */
+  const refresh = reread;
 
   const addEntryRequest = useCallback(
     (description: string) => {

@@ -150,6 +150,13 @@ export interface PersistentStateApi<S> {
    * alone. Reset to false on every `docId` change. Additive.
    */
   loadError: boolean;
+  /**
+   * Re-read the file from disk NOW — a user's Refresh — under the shared
+   * re-read policy (task 1332, `useSidecarReread`'s `rereadNow`): deferred
+   * while a write is armed or in flight, merged into memory rather than
+   * adopted, a read a write overtook discarded. Never `readSidecar → setState`.
+   */
+  reread: () => void;
 }
 
 /** `loadedFor` key for the `docId === null` state (no real docId collides). */
@@ -358,8 +365,9 @@ export function usePersistentState<S>(
   // The policy — dirty guard, deferral-as-debt, merge-not-adopt, stale-read
   // guard — is the ONE every sidecar hook shares (`useSidecarReread`); what it
   // returns pays a deferred read once this instance's writes drain, and
-  // `persist` calls it on every exit.
-  const maybeReplayDeferredRead = useSidecarReread<S>({
+  // `persist` calls it on every exit; `reread` is the MANUAL re-read (a
+  // Refresh) under the same policy (task 1332).
+  const { replayDeferred: maybeReplayDeferredRead, rereadNow: reread } = useSidecarReread<S>({
     docId,
     filename,
     baselineRef,
@@ -787,5 +795,6 @@ export function usePersistentState<S>(
     stateRef,
     loaded,
     loadError,
+    reread,
   };
 }

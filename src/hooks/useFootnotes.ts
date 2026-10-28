@@ -187,7 +187,7 @@ export function useFootnotes(
   // THE EXTERNAL RE-READ (task 1078). Until it, this hook read `footnotes.json`
   // once per doc and never again, so a skill's footnote write (draft-footnote's
   // revise path, edit-card) was invisible until the paper was reopened.
-  const replayDeferredRead = useSidecarReread<FootnotesState>({
+  const { replayDeferred: replayDeferredRead } = useSidecarReread<FootnotesState>({
     docId,
     filename: "footnotes.json",
     baselineRef,

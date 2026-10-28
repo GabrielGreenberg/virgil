@@ -202,7 +202,7 @@ export function useBibReview(
   // SidecarWatcher that already polls this file every 3 s.
   const inFlightRef = useRef(0);
   const hasPendingWrite = useCallback(() => inFlightRef.current > 0, []);
-  const replayDeferredRead = useSidecarReread<BibReviewState>({
+  const { replayDeferred: replayDeferredRead, rereadNow } = useSidecarReread<BibReviewState>({
     docId,
     filename: "bib-review-requests.json",
     baselineRef,
@@ -387,10 +387,10 @@ export function useBibReview(
     [persist, matchesKey, commit],
   );
 
-  const refresh = useCallback(() => {
-    const id = docIdRef.current;
-    if (id) fetchState(id);
-  }, [fetchState]);
+  // The manual Refresh is the shared re-read (task 1332), NOT the mount
+  // loader: `fetchState` adopts disk wholesale and moves the merge base, so a
+  // Refresh during an in-flight request write dropped the new row from memory.
+  const refresh = rereadNow;
 
   /**
    * Re-key this sidecar for a citekey rename — the IdentityCascade migrator
