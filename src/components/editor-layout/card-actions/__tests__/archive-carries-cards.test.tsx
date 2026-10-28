@@ -48,10 +48,13 @@ import {
   markDormant,
   reviveLiveLinks,
   reviveRemapped,
+  settleDormancy,
   type CarriedKeys,
   type DormantCardShape,
+  type IsPassageRestorable,
   type ReturningRemap,
 } from "@/links/dormant";
+import { hasLiveAnchor, hasLiveBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
 import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
 import {
   carryDisplacedAnchors,
@@ -221,7 +224,16 @@ function makeStore(cards: Card[]) {
   const returnRemapped = (snippetId: string, remap: ReturningRemap) => {
     for (let i = 0; i < all.length; i++) all[i] = reviveRemapped(all[i], snippetId, remap);
   };
-  return { byId, carry, handlers, revive, returnRemapped, rehomed };
+  /** The stores' `settle` door, with the liveness `EditorPane` reads (the
+   *  live document's structure index) — task 1329. */
+  const settle = (editor: Editor, restorable: IsPassageRestorable) => {
+    const live = {
+      isUuidLive: (u: string) => hasLiveBlock(editor.state, u),
+      isAnchorIdLive: (a: string) => hasLiveAnchor(editor.state, a),
+    };
+    for (let i = 0; i < all.length; i++) all[i] = settleDormancy(all[i], restorable, live);
+  };
+  return { byId, carry, handlers, revive, returnRemapped, settle, rehomed };
 }
 
 function fixtureStore() {
@@ -569,6 +581,83 @@ describe("task 1269 — an EDITED archive body never moves a mark onto other wor
     };
     expect(restore(editor, legacy)).toBe(true);
     expect(markedText(editor, "A-note")).toBe("beta gamma");
+  });
+});
+
+describe("task 1329 — Restore's end edge: no card stays dormant in the snippet it retired", () => {
+  /** What `handleArchiveRestore` does once the landing succeeded: the
+   *  restored snippet is the one stranded; every other passage is not. */
+  const endEdge = (editor: Editor, store: ReturnType<typeof makeStore>, snippetId: string) =>
+    store.settle(editor, (id) => id !== snippetId);
+
+  it("the run's own words were edited: its card is RELEASED (an ordinary archived card), the rest revive", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const snip = h.snippets[0];
+    const edited = editBody(snip, (t) => t.replace("beta gamma", "beta GAMMA"));
+
+    expect(restore(editor, edited)).toBe(true);
+    endEdge(editor, store, snip.id);
+
+    const m1 = store.byId("m1");
+    expect(m1.links!.some(isDormantLink)).toBe(false);
+    expect(dormantSnippetOf(m1)).toBeNull();
+    expect(m1.archived).toBe(true); // never deleted; task 1195's release rule
+    for (const id of ["h1", "n1"]) {
+      expect(store.byId(id).archived, id).toBeUndefined();
+      expect(store.byId(id).links!.length, id).toBe(1);
+      expect(store.byId(id).links!.some(isDormantLink), id).toBe(false);
+    }
+  });
+
+  it("the run's words now appear twice: same — released, never guessed onto either copy", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const snip = h.snippets[0];
+    expect(restore(editor, editBody(snip, (t, i) => (i === 0 ? `delta ${t}` : t)))).toBe(true);
+    endEdge(editor, store, snip.id);
+    expect(markedText(editor, "A-hl")).toBe("");
+    expect(dormantSnippetOf(store.byId("h1"))).toBeNull();
+    expect(store.byId("h1").links!.some(isDormantLink)).toBe(false);
+    expect(store.byId("m1").archived).toBeUndefined();
+  });
+
+  it("the carried PARAGRAPH was deleted from the body: its Mode-A card is released, not stranded", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const snip = h.snippets[0];
+    // The user deleted the carried paragraph and wrote a new one in its place.
+    const swap = (n: JSONContent): JSONContent => ({
+      ...n,
+      ...(n.attrs?.uuid === "p-target" ? { attrs: { ...n.attrs, uuid: "p-rewritten" } } : {}),
+      ...(n.content ? { content: n.content.map(swap) } : {}),
+    });
+    expect(restore(editor, { ...snip, content: swap(snip.content) })).toBe(true);
+    endEdge(editor, store, snip.id);
+
+    const n1 = store.byId("n1");
+    expect(n1.links).toEqual([]);
+    expect(dormantSnippetOf(n1)).toBeNull();
+  });
+
+  it("CONTROL: a clean restore leaves the settle nothing to do", async () => {
+    const editor = mountDoc(doc());
+    const store = fixtureStore();
+    const h = makeHarness(editor, store);
+    await h.dispatch("archive", P_REF);
+    const snip = h.snippets[0];
+    expect(restore(editor, snip)).toBe(true);
+    endEdge(editor, store, snip.id);
+    for (const id of ["m1", "h1", "n1"]) {
+      expect(store.byId(id).archived, id).toBeUndefined();
+      expect(store.byId(id).links!.length, id).toBe(1);
+    }
   });
 });
 

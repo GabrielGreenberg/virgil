@@ -251,11 +251,20 @@ export function reviveLiveLinks<T extends DormantCardShape>(
   card: T,
   live: AnchorLiveness,
 ): T {
+  return reviveWhere(card, live, () => true);
+}
+
+/** {@link reviveLiveLinks} over the dormant links `which` admits only. */
+function reviveWhere<T extends DormantCardShape>(
+  card: T,
+  live: AnchorLiveness,
+  which: (link: Link) => boolean,
+): T {
   const links = card.links;
   if (!links || !links.some(isDormantLink)) return card;
   let revived = false;
   const next = links.map((l) => {
-    if (!isDormantLink(l) || !isTargetLive(l, live)) return l;
+    if (!isDormantLink(l) || !which(l) || !isTargetLive(l, live)) return l;
     revived = true;
     return stripLinkDormancy(l);
   });
@@ -437,6 +446,66 @@ export function releaseFromSnippet<T extends DormantCardShape>(card: T, snippetI
     if (still) out.archivedWith = still;
     else delete out.archivedWith;
   }
+  return out;
+}
+
+/** Can snippet `snippetId` still bring its text back? The CALLER answers,
+ *  because only it knows: Restore's end edge knows the snippet it just
+ *  retired; a later reader cannot tell a retired snippet from one the user
+ *  set aside by hand (one `archived` flag, and un-setting it makes either
+ *  restorable again), so load and reinstate strand only a MISSING one. */
+export type IsPassageRestorable = (snippetId: string) => boolean;
+
+/** Is every link a record the dormancy predicates can read? A reinstated
+ *  card arrives as an unvalidated sidecar record (task 712). */
+function hasReadableLinks(card: DormantCardShape): boolean {
+  const links: unknown = card.links;
+  if (links === undefined) return true;
+  if (!Array.isArray(links)) return false;
+  return links.every((l) => {
+    if (!l || typeof l !== "object") return false;
+    const anchor = (l as { anchor?: unknown }).anchor;
+    if (!anchor || typeof anchor !== "object") return false;
+    const ids = (anchor as { textObjectIds?: unknown }).textObjectIds;
+    return (anchor as { type?: unknown }).type !== "textObject" || Array.isArray(ids);
+  });
+}
+
+/**
+ * THE dormancy invariant (task 1329): **a link dormant in snippet S has a way
+ * back** — S is in the Archive, unretired, and restoring it revives the link.
+ * A link dormant in a snippet that can no longer do that (RETIRED by a Restore
+ * that could not place its carried word run or paragraph, or MISSING — deleted
+ * while the card sat in `archive.json`) is SETTLED here: revived when its
+ * target is live in the document (the Restore did bring it back, under the
+ * same id), otherwise RELEASED by {@link releaseFromSnippet}'s rule — the card
+ * reads unanchored, or stays an ordinary archived card. Never deletes a card.
+ *
+ * Links dormant in a restorable snippet are untouched, and the revival is
+ * scoped to the stranded links, so a dormant link of a still-archived passage
+ * is never revived onto a squatter holding its id. Identity-preserving when
+ * nothing is stranded (and for a record whose links it cannot read). Every
+ * door that can end a snippet's restorability settles through this
+ * (`EditorPane`): Restore's end edge (the snippet it just retired), the
+ * archive-origin reinstate and the load reconcile (snippets no longer in the
+ * Archive — which also heals a sidecar left pinned to a deleted passage); a
+ * passage delete keeps its direct `release`.
+ */
+export function settleDormancy<T extends DormantCardShape>(
+  card: T,
+  restorable: IsPassageRestorable,
+  live: AnchorLiveness,
+): T {
+  if (!hasReadableLinks(card)) return card;
+  const stranded = new Set<string>();
+  for (const l of card.links ?? []) {
+    if (isDormantLink(l) && !restorable(l.archivedWith!)) stranded.add(l.archivedWith!);
+  }
+  const own = dormantSnippetOf(card);
+  if (own && !restorable(own)) stranded.add(own);
+  if (stranded.size === 0) return card;
+  let out = reviveWhere(card, live, (l) => stranded.has(l.archivedWith!));
+  for (const snippetId of stranded) out = releaseFromSnippet(out, snippetId);
   return out;
 }
 

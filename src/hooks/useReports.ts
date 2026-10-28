@@ -410,7 +410,7 @@ export function useReports(
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const { carry, returnRemapped, release } = useDormantRevival<ReportsState, ReportItem>(
+  const { carry, returnRemapped, release, settle } = useDormantRevival<ReportsState, ReportItem>(
     docId,
     update,
     state,
@@ -601,6 +601,7 @@ export function useReports(
       carry,
       returnRemapped,
       release,
+      settle,
       loaded,
       loadError,
       deleteCard,
@@ -629,6 +630,7 @@ export function useReports(
       carry,
       returnRemapped,
       release,
+      settle,
       loaded,
       loadError,
       deleteCard,
