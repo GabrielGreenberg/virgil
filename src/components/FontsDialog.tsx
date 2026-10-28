@@ -48,7 +48,7 @@ function CategoryCard({
       }}
     >
       <div className="flex items-baseline justify-between mb-3">
-        <h3 className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">{label}</h3>
+        <h3 className="section-caption">{label}</h3>
         <ResetButton onReset={onReset} atDefault={!!resetDisabled} target={label} />
       </div>
       {children}

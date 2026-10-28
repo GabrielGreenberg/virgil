@@ -996,7 +996,7 @@ export default function AIWindow({
         <div className="flex-1 flex min-h-0">
           {/* Left nav */}
           <nav className="w-[200px] shrink-0 border-r border-[var(--border)] bg-surface-muted/60 py-3 px-2 overflow-y-auto">
-            <div className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider px-2 mb-1.5">
+            <div className="section-caption px-2 mb-1.5">
               Browse
             </div>
             <ul className="flex flex-col gap-0.5">
@@ -1049,7 +1049,7 @@ export default function AIWindow({
                   ) : (
                     <>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
+                        <span className="section-caption">
                           New request
                         </span>
                         <Select
@@ -1214,7 +1214,7 @@ function Bucket({
           className="inline-block w-1.5 h-1.5 rounded-full"
           style={{ background: meta.dot }}
         />
-        <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
+        <span className="section-caption">
           {title}
         </span>
         <span className="text-[10px] text-ink-muted">{items.length}</span>

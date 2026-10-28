@@ -824,7 +824,7 @@ function BibliographyPanel({
       {showRequestForm && (
         <div className={`${AMBER_ATTENTION_STRIP} border-b`}>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide">
+            <span className="section-caption">
               Request entry
             </span>
             <button
@@ -880,7 +880,7 @@ function BibliographyPanel({
   const listTrailing =
     entryRequests.length > 0 ? (
       <div className="mt-2 pt-2 border-t border-edge-subtle">
-        <div className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide px-2 mb-1.5">
+        <div className="section-caption px-2 mb-1.5">
           Pending requests ({entryRequests.length})
         </div>
         {entryRequests.map((req) => (

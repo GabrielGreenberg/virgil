@@ -2497,6 +2497,21 @@ textarea {
     letter-spacing: 0.05em; /* Tailwind v4 tracking-wider */
     color: var(--muted);
   }
+  /* The PANEL/WINDOW-BODY section caption (task 1333) — "Request entry",
+   * "Pending requests (n)", "Recent", "Browse", a font group, a preferences
+   * divider. The ONE spelling of the small uppercase caption outside card
+   * bodies (cards wear .card-meta-label above): 10px / 500 / uppercase /
+   * tracking-wide / --ink-muted. `<MenuSectionLabel>` composes this class,
+   * so a menu caption and a panel caption cannot drift apart. In
+   * @layer components so a call site's padding, `text-[var(--accent)]`, or
+   * `hover:` ink composes over it. Census: section-caption-census.test.ts. */
+  .section-caption {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.025em; /* Tailwind v4 tracking-wide */
+    color: var(--ink-muted);
+  }
 }
 .card-content-row {
   font-size: 12px;

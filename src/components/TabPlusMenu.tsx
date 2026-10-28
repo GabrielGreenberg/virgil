@@ -43,7 +43,7 @@ import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
 import { MenuActionRow } from "./menu/MenuActionRow";
-import { MenuSeparator } from "./menu/MenuChrome";
+import { MenuSectionLabel, MenuSeparator } from "./menu/MenuChrome";
 import { NEW_WINDOW_SHORTCUT } from "@/lib/multi-window/new-window-shortcut";
 import { iconHint } from "@/components/Hint";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
@@ -169,9 +169,7 @@ export function TabPlusMenu({
     >
       {recents.length > 0 && (
         <>
-          <div className="text-[11px] uppercase tracking-wide text-ink-subtle px-3 pt-1 pb-1">
-            Recent
-          </div>
+          <MenuSectionLabel padding="px-3 pt-1 pb-1">Recent</MenuSectionLabel>
           <div className="px-1 flex flex-col gap-0.5">
             {recents.map((doc) => (
               <RecentRowItem

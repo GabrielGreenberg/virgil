@@ -404,7 +404,7 @@ export default function ManageStylesModal({
           )}
           <div className="border border-edge-subtle rounded-md overflow-hidden bg-surface">
             <div
-              className="grid items-center gap-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-ink-subtle border-b border-edge-subtle bg-surface-muted/40"
+              className="section-caption grid items-center gap-2 px-3 py-2 border-b border-edge-subtle bg-surface-muted/40"
               style={{ gridTemplateColumns: gridTemplate }}
             >
               <span data-hint="Default style for new docs">Default</span>

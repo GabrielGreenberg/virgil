@@ -372,7 +372,7 @@ export default function BugReportWindow({
 
           {images.length > 0 && (
             <div className="shrink-0">
-              <div className="text-[10px] font-medium text-ink-muted uppercase tracking-wider mb-1">
+              <div className="section-caption mb-1">
                 {images.length} screenshot{images.length === 1 ? "" : "s"}
               </div>
               <div className="flex gap-2 flex-wrap">

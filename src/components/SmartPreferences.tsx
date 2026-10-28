@@ -198,10 +198,10 @@ function PanelTypographyGrid() {
       className="grid gap-x-2 gap-y-1 items-center"
       style={{ gridTemplateColumns: "auto 1fr auto auto auto" }}
     >
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-ink-muted pt-1">Panel</div>
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-ink-muted pt-1">Font</div>
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-ink-muted pt-1">Size</div>
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-ink-muted pt-1">Color</div>
+      <div className="section-caption pt-1">Panel</div>
+      <div className="section-caption pt-1">Font</div>
+      <div className="section-caption pt-1">Size</div>
+      <div className="section-caption pt-1">Color</div>
       <div />
       {keys.map((k) => (
         <PanelTypographyGridRow key={k} panelKey={k} />
@@ -373,7 +373,7 @@ export default function SmartPreferences({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--accent)]">
+        <span className="section-caption text-[var(--accent)]">
           Smart preferences
         </span>
         <div className="flex-1 h-px bg-edge-subtle" />

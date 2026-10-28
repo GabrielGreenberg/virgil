@@ -62,7 +62,7 @@ export function RecentPapersList({
 
   return (
     <div className="flex flex-col w-full">
-      <div className="text-[11px] uppercase tracking-wide text-ink-subtle mb-2 px-1">
+      <div className="section-caption mb-2 px-1">
         Recent papers
       </div>
       <ul className="flex flex-col gap-0.5">
