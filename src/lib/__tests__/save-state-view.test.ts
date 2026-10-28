@@ -13,11 +13,11 @@ import {
   UNSAVED_ESCALATE_MS,
   UNSAVED_WARN_MS,
   deriveSaveState,
-  describeAge,
   describeBlockReason,
   describeLandedAt,
   isSaveTierProtected,
 } from "@/lib/save-state";
+import { describeDuration } from "@/lib/relative-time";
 import type { UnsavedBlockReason, UnsavedWorkState } from "@/lib/unsaved-work";
 
 const NOW = 1_700_000_000_000;
@@ -160,12 +160,14 @@ describe("the reason VOCABULARY", () => {
 });
 
 describe("the labels", () => {
-  it("describeAge reads in the units a person uses", () => {
-    expect(describeAge(3_000)).toBe("a few seconds");
-    expect(describeAge(60_000)).toBe("1 minute");
-    expect(describeAge(47 * 60_000)).toBe("47 minutes");
-    expect(describeAge(60 * 60_000)).toBe("1 hour");
-    expect(describeAge(90 * 60_000)).toBe("1h 30m");
+  it("describeDuration reads in the units a person uses", () => {
+    expect(describeDuration(3_000)).toBe("a few seconds");
+    expect(describeDuration(60_000)).toBe("1 minute");
+    expect(describeDuration(47 * 60_000)).toBe("47 minutes");
+    expect(describeDuration(60 * 60_000)).toBe("1 hour");
+    expect(describeDuration(90 * 60_000)).toBe("1h 30m");
+    // Task 1340: past a day the register is days, never "72h 5m".
+    expect(describeDuration((72 * 60 + 5) * 60_000)).toBe("3 days");
   });
 
   it("describeLandedAt states the time, and says only 'Saved' with no clock", () => {

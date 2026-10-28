@@ -74,7 +74,7 @@ import type {
 import type { ConflictChoice } from "@/lib/conflict-resolution";
 import { StatusDot } from "./StatusDot";
 import { useUnsavedAgeLabel } from "@/hooks/useUnsavedWork";
-import { describeAge } from "@/lib/save-state";
+import { describeDuration } from "@/lib/relative-time";
 import { toneForInterruptionKind } from "@/lib/interruption-tone";
 import { useBlockingFlowRequest } from "@/hooks/useSaveState";
 import { useDocumentInterruption } from "@/hooks/useDocumentInterruption";
@@ -201,7 +201,7 @@ function ExternalChangeBadge() {
   const diskCtx = useDiskWatcherOrNull();
   // TASK 391 — the age of the unsaved work this pause is holding. Null when
   // nothing is unsaved, which is the ordinary 'change'-tier case.
-  const unsavedAge = useUnsavedAgeLabel(diskCtx?.activeDocId, describeAge);
+  const unsavedAge = useUnsavedAgeLabel(diskCtx?.activeDocId, describeDuration);
   // TASK 545 — the writer-attributed view of the same change (null with no
   // doc, or when a higher-priority state — the cowork hold, a refusal —
   // outranks it; the pill then keeps its generic copy, and the band speaks).

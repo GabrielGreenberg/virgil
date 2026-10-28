@@ -1,5 +1,6 @@
 "use client";
 
+import { formatWhen } from "@/lib/relative-time";
 import { AuthorChip } from "@/panels/_shared/suggestion-fields";
 
 /** Author + timestamp byline for Report cards.
@@ -18,7 +19,7 @@ export function AuthorByline({
   author: "human" | "ai";
   createdAt: string;
 }) {
-  const when = formatByline(createdAt);
+  const when = formatWhen(createdAt);
   return (
     <div className="px-3 pb-2 flex items-center gap-1.5">
       <AuthorChip author={author} />
@@ -27,17 +28,3 @@ export function AuthorByline({
   );
 }
 
-function formatByline(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
-}

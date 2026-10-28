@@ -60,11 +60,11 @@ import {
 import type { PreservationNotice } from "./preservation-notice";
 import type { SidecarRefusal } from "./sidecar-refusal";
 import {
-  describeAge,
   UNSAVED_WARN_MS,
   type SaveStateView,
 } from "./save-state";
 import type { UnsavedBlockReason } from "./unsaved-work";
+import { describeDuration } from "./relative-time";
 import type { ConflictOutcome } from "./conflict-resolution";
 import {
   toneForInterruptionKind,
@@ -349,7 +349,7 @@ export function deriveDocumentInterruption(
     const ai = writer === "virgil-ai";
     const removed = external.changes.some((c) => c.kind === "removed");
     if (external.severity === "conflict") {
-      const age = describeAge(save.ageMs);
+      const age = describeDuration(save.ageMs);
       const young = save.ageMs < UNSAVED_WARN_MS;
       if (ai) {
         return {
@@ -421,7 +421,7 @@ export function deriveDocumentInterruption(
       writer: "unknown",
       title: "Virgil couldn't save this paper",
       body:
-        `The last write to this paper's folder failed, and ${describeAge(save.ageMs)} of edits are waiting. Check that Virgil still has access to the folder, then try again. Your work is safe in Virgil meanwhile, and an emergency copy is kept in this browser.`,
+        `The last write to this paper's folder failed, and ${describeDuration(save.ageMs)} of edits are waiting. Check that Virgil still has access to the folder, then try again. Your work is safe in Virgil meanwhile, and an emergency copy is kept in this browser.`,
       recommended: RETRY,
       alternatives: [],
       detectedAt: null,

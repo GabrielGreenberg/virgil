@@ -29,7 +29,7 @@ import { memo, useCallback, useState } from "react";
 
 import { useMirrorRecoveryOffer } from "@/hooks/useMirrorRecovery";
 import { getRecoveryActions } from "@/lib/mirror-recovery";
-import { describeAge } from "@/lib/save-state";
+import { describeDuration, formatWhen } from "@/lib/relative-time";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
@@ -73,13 +73,12 @@ function MirrorRecoveryBadgeImpl({ docId }: { docId: string | null }) {
   const { confirm, dialog } = useConfirmDialog();
   const [busy, setBusy] = useState(false);
 
-  const takenAt = offer
-    ? new Date(offer.entry.savedAt).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "";
-  const age = offer ? describeAge(Date.now() - offer.entry.savedAt) : "";
+  // Task 1340: mirrors never expire, so the copy may be days old — the label
+  // names its day whenever it is not today ("Oct 25, 3:15 PM"), never a bare
+  // clock time that reads as "this afternoon".
+  const now = Date.now();
+  const takenAt = offer ? formatWhen(offer.entry.savedAt, now) : "";
+  const age = offer ? describeDuration(now - offer.entry.savedAt) : "";
 
   const handleRestore = useCallback(async () => {
     if (!docId || busy) return;

@@ -47,7 +47,8 @@
 import { memo, useCallback, useState } from "react";
 
 import { useSaveState } from "@/hooks/useSaveState";
-import { describeAge, describeBlockReason } from "@/lib/save-state";
+import { describeBlockReason } from "@/lib/save-state";
+import { describeDuration } from "@/lib/relative-time";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 import { type InterruptionTone } from "@/lib/interruption-tone";
 import { BarStatusAction, BarStatusPill } from "./status/BarStatusPill";
@@ -107,7 +108,7 @@ function SaveStateBadgeImpl({ docId }: { docId: string | null }) {
   // ── the two loud tiers ─────────────────────────────────────────────────
   const blocked = view.tier === "blocked" && view.reason !== null;
   const desc = blocked && view.reason ? describeBlockReason(view.reason) : null;
-  const age = describeAge(view.ageMs);
+  const age = describeDuration(view.ageMs);
   const label = desc ? `${desc.short} · ${age} unsaved` : `Unsaved · ${age}`;
   // The vocabulary decides the button's words — and whether there IS one.
   const action = desc ? desc.action : "Save now";

@@ -48,7 +48,8 @@ import {
   type UnlandedDoc,
   type WindowUnlandedDoc,
 } from "@/lib/reload-door";
-import { describeAge, describeBlockReason } from "@/lib/save-state";
+import { describeBlockReason } from "@/lib/save-state";
+import { describeDuration } from "@/lib/relative-time";
 import { useAnyUnlandedWork } from "@/hooks/useUnsavedWork";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { BarStatusPill } from "./status/BarStatusPill";
@@ -92,7 +93,7 @@ function UpdateIcon() {
 export function describeBlock(d: UnlandedDoc | WindowUnlandedDoc): string {
   const where =
     "windowId" in d && d.windowId !== null ? " (in another Virgil window)" : "";
-  const head = `“${d.docId}”${where} — ${describeAge(d.ageMs)} of unsaved changes`;
+  const head = `“${d.docId}”${where} — ${describeDuration(d.ageMs)} of unsaved changes`;
   if (!d.reason) return `${head} that have not reached disk yet.`;
   return `${head}; ${describeBlockReason(d.reason).sentence}`;
 }

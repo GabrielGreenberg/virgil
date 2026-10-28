@@ -44,6 +44,7 @@ import {
 } from "@/lib/view-prefs/registry";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { formatWhen } from "@/lib/relative-time";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -905,7 +906,7 @@ function BibliographyPanel({
               </button>
             </div>
             <div className="text-[10px] text-ink-muted mt-1">
-              {new Date(req.createdAt).toLocaleDateString()}
+              {formatWhen(req.createdAt, Date.now(), { dateOnly: true })}
               {req.status === "pending" && (
                 <span className="ml-1.5 inline-flex items-center gap-1">
                   <StatusDot tone="pending" size="sm" motion="pulse" />
