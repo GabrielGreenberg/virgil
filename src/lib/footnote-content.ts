@@ -7,6 +7,12 @@
 // Legacy footnote/note content was an HTML string. The migrate helpers below
 // promote those old strings to JSON the first time they're read.
 
+import {
+  LATEX_DYNAMIC_NODE,
+  emitDynamicCommand,
+  matchDynamicCommandAt,
+  renderDynamicCommand,
+} from "@/lib/latex-dynamic-commands";
 import type { JSONContent } from "@tiptap/react";
 import type { CardBodyBlockAtom } from "@/lib/node-attr-sets";
 import { mintParseId, withDeclaredIds } from "@/lib/parse-id-scope";
@@ -405,7 +411,7 @@ function inlineTextBytes(text: string, marks?: MarkLike[] | null): string {
   return escapeLatex(text, { codeSpan: isCodeWrapped(marks) });
 }
 
-function serializeInlineNode(node: JSONContent): string {
+function serializeInlineNode(node: JSONContent, next?: JSONContent): string {
   // Wrappers are NOT applied here: they compose over a RUN, in
   // `serializeInlineRun` below. See `mark-composition.ts` for why.
   if (node.type === "text") return inlineTextBytes(node.text || "", node.marks as MarkLike[] | undefined);
@@ -428,6 +434,9 @@ function serializeInlineNode(node: JSONContent): string {
     if (cmd === "getfullref") return `\\getfullref{${label}}`;
     return `\\ref{${label}}`;
   }
+  // `\today` (task 1335) — the twin of the main serializer's arm, with the
+  // same neighbour rule (`emitDynamicCommand`).
+  if (node.type === LATEX_DYNAMIC_NODE) return emitDynamicCommand(node, next);
   if (node.type === "hardBreak") return " ";
   return "";
 }
@@ -450,7 +459,7 @@ function serializeInlineRun(
   declare?: (requirementId: string) => void,
 ): string {
   return composeInlineRun<JSONContent>(nodes, {
-    inner: (node) => serializeInlineNode(node),
+    inner: (node, index) => serializeInlineNode(node, nodes[index + 1]),
     declare,
   });
 }
@@ -1018,6 +1027,21 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         }
       }
 
+      // A DYNAMIC command (`\today`, task 1335) — the twin of the main
+      // parser's rung, at the same place in the branch order.
+      if (!inCode) {
+        const dyn = matchDynamicCommandAt(text, i);
+        if (dyn) {
+          flush();
+          nodes.push({
+            type: LATEX_DYNAMIC_NODE,
+            attrs: { command: dyn.command, term: dyn.term },
+          });
+          i = dyn.end;
+          continue;
+        }
+      }
+
       // Unknown \command — preserve as raw text marked latexCommand. The
       // control-WORD read comes from the lexer SSOT (`matchCommandToken`), the
       // same one the main inline parser reads, so this fork cannot drift on
@@ -1106,6 +1130,8 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
       const cmd = (node.attrs?.refCommand as string) || "ref";
       return `\\${cmd}{${(node.attrs?.label as string) || ""}}`;
     }
+    // `\today` (task 1335) — the value the chip shows, like a ref's number.
+    if (node.type === LATEX_DYNAMIC_NODE) return renderDynamicCommand(node.attrs?.command as string);
     if (node.type === "hardBreak") return "\n";
     if (node.type === "paragraph") return (node.content || []).map(walk).join("");
     if (node.type === "bulletList" || node.type === "orderedList") {

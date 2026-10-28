@@ -161,7 +161,7 @@ export const SINGLE_BLOCK_CONFIG: Partial<
   // here it's just another kind. The seed carries the full node (attrs incl.
   // `field`) so the NodeView renders the right "Title"/"Author"/"Date"
   // annotation; the whole-node write-back preserves main's attrs
-  // (field/rawPrefix/isToday/uuid).
+  // (field/rawPrefix/uuid).
   titleField: {
     schemaType: "titleField",
     floatIdPrefix: "title",

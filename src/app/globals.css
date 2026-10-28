@@ -4879,6 +4879,21 @@ body.perf-contain .static-borrowed-text {
   color: var(--amber-highlight-ink);
 }
 
+/* A computed-text command chip (`\today`, task 1335) — the `\ref` chip's
+   quiet frame, with the prose ink: it reads as part of the sentence (a date),
+   not as a link. Nothing opens on click, so no hover wash. */
+.latex-dynamic-node {
+  display: inline;
+  background: var(--label-ref-bg, #f0f0f0);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--label-ref-border-color, #d5d3ce);
+  padding: 0px 4px;
+  color: inherit;
+  /* The base every atom keeps (atom-grab-affordance census): upgraded to
+     `grab` where the gesture is live — the chip moves with the text. */
+  cursor: pointer;
+}
+
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
    `pointer` (click → Card / edit popover) is upgraded to `grab`; the
    press shows `grabbing` until the drop-mode crosshair takes over.
@@ -4897,10 +4912,10 @@ body.perf-contain .static-borrowed-text {
    Do NOT re-derive the scope from `contenteditable`: MAIN pins it "true"
    whatever the user-facing state (Editor.tsx), so it would exempt exactly
    the surface this fix is about. */
-.ProseMirror[data-atoms-graspable="true"] :is(.footnote-marker, .citation-node, .label-ref-node, .inline-math) {
+.ProseMirror[data-atoms-graspable="true"] :is(.footnote-marker, .citation-node, .label-ref-node, .inline-math, .latex-dynamic-node) {
   cursor: grab;
 }
-.ProseMirror[data-atoms-graspable="true"] :is(.footnote-marker, .citation-node, .label-ref-node, .inline-math):active {
+.ProseMirror[data-atoms-graspable="true"] :is(.footnote-marker, .citation-node, .label-ref-node, .inline-math, .latex-dynamic-node):active {
   cursor: grabbing;
 }
 

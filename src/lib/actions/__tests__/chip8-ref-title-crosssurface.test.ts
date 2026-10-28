@@ -30,8 +30,8 @@
 //          works regardless of the field's doc position, canonical order
 //          (title=0/author=1/date=2 + the `\maketitle`=99 ordering subtlety),
 //          `\date` pre-fills today AND serializes to `\date{\today}` (NOT the
-//          expanded literal) AND a re-parse reproduces `isToday:true` (the
-//          round-trip identity invariant), find-existing does NOT overwrite a
+//          expanded literal) AND a re-parse reproduces the same `\today` chip
+//          (the round-trip identity invariant; task 1335 retired `isToday`), find-existing does NOT overwrite a
 //          user-edited date, and SLASH-ONLY surface exposure (no menu twin).
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
@@ -47,6 +47,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import { COMMAND_MAP, VIRGIL_COMMAND_NAMES } from "@/lib/tiptap/commands";
+import { formatLatexToday } from "@/lib/latex-dynamic-commands";
 import {
   VIRGIL_ACTION_REGISTRY,
   refRun,
@@ -507,7 +508,7 @@ describe("TITLE-FIELDS: find-existing works regardless of the field's doc positi
       { type: "paragraph", attrs: { uuid: "p0" }, content: [{ type: "text", text: "intro" }] },
       {
         type: "titleField",
-        attrs: { field: "title", rawPrefix: null, isToday: false, uuid: "tf-1" },
+        attrs: { field: "title", rawPrefix: null, uuid: "tf-1" },
         content: [{ type: "text", text: "My Paper" }],
       },
     ]);
@@ -572,20 +573,13 @@ describe("TITLE-FIELDS: canonical doc-top order (title=0 / author=1 / date=2)", 
 });
 
 describe("TITLE-FIELDS: \\date pre-fills today + serializes to \\date{\\today} (round-trip identity)", () => {
-  const prettyToday = () =>
-    new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-  it("INSERT pre-fills today's pretty date with isToday:true", () => {
+  it("INSERT pre-fills a \\today chip — the model the parser reads \\date{\\today} into (task 1335)", () => {
     const editor = mountParagraph("");
     COMMAND_MAP.get("date")!.action(editor.view, "\\date");
     const d = titleFields(editor)[0];
     expect(d.attrs.field).toBe("date");
-    expect(d.attrs.isToday).toBe(true);
-    expect(d.textContent).toBe(prettyToday());
+    expect("isToday" in d.attrs).toBe(false);
+    expect(d.firstChild?.type.name).toBe("latexDynamic");
   });
 
   it("serializes to \\date{\\today} — NOT the expanded literal date string", () => {
@@ -593,38 +587,57 @@ describe("TITLE-FIELDS: \\date pre-fills today + serializes to \\date{\\today} (
     COMMAND_MAP.get("date")!.action(editor.view, "\\date");
     const tex = serializeToLatex(editor.getJSON());
     expect(tex).toContain("\\date{\\today}");
-    expect(tex).not.toContain(`\\date{${prettyToday()}}`);
+    expect(tex).not.toContain(`\\date{${formatLatexToday()}}`);
   });
 
-  it("round-trip identity: serialize \\date{\\today} → re-parse reproduces isToday:true + same pretty content", () => {
-    // Oracle line 126 invariant: the inserted date (isToday:true) serializes to
-    // \date{\today}, and re-parsing \date{\today} must reproduce isToday:true +
-    // the same pretty rendering — so the minted attrs == the parser's attrs.
+  it("round-trip identity: the inserted field and a re-parse of its \\date{\\today} are the same model", () => {
     const editor = mountParagraph("");
     COMMAND_MAP.get("date")!.action(editor.view, "\\date");
     const tex = serializeToLatex(editor.getJSON());
 
     const reparsed = parseLatex(tex);
-    let parsedDate: { isToday?: unknown; field?: unknown; content?: unknown } | null = null;
-    const walk = (n: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) => {
-      if (n.type === "titleField" && n.attrs?.field === "date") parsedDate = n as never;
-      (n.content as { type?: string }[] | undefined)?.forEach((c) => walk(c as never));
+    type Parsed = { type?: string; attrs?: Record<string, unknown>; content?: Parsed[] };
+    const found: Parsed[] = [];
+    const walk = (n: Parsed) => {
+      if (n.type === "titleField" && n.attrs?.field === "date") found.push(n);
+      n.content?.forEach(walk);
     };
-    walk(reparsed as never);
-    expect(parsedDate).not.toBeNull();
-    expect((parsedDate as unknown as { attrs: Record<string, unknown> }).attrs.isToday).toBe(true);
-    // Pretty content identical to what the run minted.
-    const node = parsedDate as unknown as { content?: Array<{ text?: string }> };
-    expect(node.content?.[0]?.text).toBe(prettyToday());
+    walk(reparsed as Parsed);
+    expect(found).toHaveLength(1);
+    const node = found[0] as Parsed & { attrs: Record<string, unknown> };
+    expect(node.attrs.isToday).toBeUndefined();
+    expect(node.content?.map((c) => c.type)).toEqual(["latexDynamic"]);
+    expect(node.content?.[0]?.attrs?.command).toBe("today");
+    expect(serializeToLatex(reparsed)).toContain("\\date{\\today}");
+  });
+
+  it("MEMBER (task 1335): an edit to a \\date{\\today} field is SAVED, not silently replaced by \\today", () => {
+    // Pre-1335 the field carried `isToday:true`, nothing ever cleared it, and the
+    // serializer wrote `\\today` whatever the field held — the edit was shown and
+    // then thrown away on save.
+    const editor = mountParagraph("");
+    COMMAND_MAP.get("date")!.action(editor.view, "\\date");
+    const d = titleFields(editor)[0];
+    let fieldPos = -1;
+    editor.state.doc.forEach((n, off) => {
+      if (n === d) fieldPos = off;
+    });
+    // Replace the field's whole content with a typed date.
+    const from = fieldPos + 1;
+    const to = fieldPos + 1 + d.content.size;
+    editor.view.dispatch(editor.state.tr.insertText("Spring 2027", from, to));
+    const tex = serializeToLatex(editor.getJSON());
+    expect(tex).toContain("\\date{Spring 2027}");
+    expect(tex).not.toContain("\\today");
   });
 
   it("FIND-EXISTING does NOT overwrite a user-edited date with today", () => {
     // Oracle row 35 risk (2): re-firing \date on an existing user-edited date is a
-    // pure caret-move — the content stays the user's literal, isToday stays false.
+    // pure caret-move — the content stays the user's literal.
     const editor = mountEditor([
       {
         type: "titleField",
-        attrs: { field: "date", rawPrefix: null, isToday: false, uuid: "d-1" },
+        attrs: { field: "date", rawPrefix: null, uuid: "d-1" },
         content: [{ type: "text", text: "January 1, 1970" }],
       },
       { type: "paragraph", attrs: { uuid: "p" }, content: [{ type: "text", text: "body" }] },
@@ -633,7 +646,6 @@ describe("TITLE-FIELDS: \\date pre-fills today + serializes to \\date{\\today} (
 
     const d = titleFields(editor)[0];
     expect(titleFields(editor)).toHaveLength(1); // no duplicate
-    expect(d.attrs.isToday).toBe(false); // NOT flipped to today
     expect(d.textContent).toBe("January 1, 1970"); // user's value preserved
   });
 });

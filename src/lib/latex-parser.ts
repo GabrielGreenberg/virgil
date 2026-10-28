@@ -1,3 +1,4 @@
+import { LATEX_DYNAMIC_NODE, matchDynamicCommandAt } from "@/lib/latex-dynamic-commands";
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
@@ -388,16 +389,12 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
     let rawContent = occ.inner;
     const rawPrefix = matchTitlePrefix(rawContent);
     rawContent = rawContent.slice(rawPrefix.length);
-    let isToday = false;
-    if (rawContent.trim() === "\\today") {
-      isToday = true;
-      const now = new Date();
-      rawContent = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    }
+    // `\today` is no longer special here (task 1335): the inline parser reads
+    // it into a `latexDynamic` chip, so `\date{\today}` is a field CONTAINING
+    // the chip, and an edit to the field is serialized like any other.
     const attrs: Record<string, unknown> = {
       field: occ.field,
       rawPrefix: rawPrefix || null,
-      isToday,
       uuid: occ.uuid,
     };
     if (occ.shortTitle !== null) attrs.shortTitle = occ.shortTitle;
@@ -990,6 +987,24 @@ function parseInlineInScope(
         if (special) {
           buffer += special.glyph;
           i = special.end;
+          continue;
+        }
+      }
+
+      // A DYNAMIC command (`\today`, task 1335) → the `latexDynamic` atom,
+      // which holds the NAME and paints the computed value. Just before the
+      // unknown-command carrier it would otherwise fall to; suppressed in a
+      // code span like the text-macro rung (the emit side writes a code run's
+      // bytes literally). Twin rung: footnote-content.ts (task 341).
+      if (!inCode) {
+        const dyn = matchDynamicCommandAt(text, i);
+        if (dyn) {
+          flush();
+          nodes.push({
+            type: LATEX_DYNAMIC_NODE,
+            attrs: { command: dyn.command, term: dyn.term },
+          });
+          i = dyn.end;
           continue;
         }
       }
@@ -1588,17 +1603,11 @@ function parseBody(
         let rawContent = inner.content;
         const rawPrefix = matchTitlePrefix(rawContent);
         rawContent = rawContent.slice(rawPrefix.length);
-        // Replace \today with actual date for display
-        let isToday = false;
-        if (rawContent.trim() === "\\today") {
-          isToday = true;
-          const now = new Date();
-          rawContent = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-        }
+        // `\today` → the inline `latexDynamic` chip (task 1335); see
+        // `parsePreambleTitleFields`.
         const tfAttrs: Record<string, unknown> = {
           field,
           rawPrefix: rawPrefix || null,
-          isToday,
           uuid: titleUuid,
         };
         if (titleArgs.optional !== null) tfAttrs.shortTitle = titleArgs.optional;

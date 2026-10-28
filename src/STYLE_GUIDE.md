@@ -524,6 +524,10 @@ The token scales:
   censuses each registry kind's rest rule for raw literals AND checks every
   token it reads resolves to a live preference — so a new atom kind inherits
   both halves the moment its registry row lands.
+  The `\today` chip (`.latex-dynamic-node`, task 1335) BORROWS the label-ref
+  frame tokens (`--label-ref-bg`/`-border-color`) with `color: inherit`: it is
+  a computed WORD of the sentence (a date), so it wears the prose ink and no
+  hover wash — the frame alone says "this is computed, not typed".
 - **Rendered math ink** (`--math-color`, pref `mathColor`, shipped `#6b4fa0`):
   the one atom whose chrome is not a pill — KaTeX glyphs, painted by a `color`
   on `.inline-math` / `.display-math` / `.math-popover-preview`. KaTeX's own

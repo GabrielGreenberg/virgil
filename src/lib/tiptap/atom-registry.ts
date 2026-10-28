@@ -28,7 +28,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 
-export type AtomKind = "footnote" | "citation" | "ref" | "inline-math";
+export type AtomKind = "footnote" | "citation" | "ref" | "inline-math" | "dynamic";
 
 export interface AtomMeta {
   /** Registry kind. */
@@ -141,6 +141,18 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: true,
+  },
+  // Task 1335: a computed-text command (`\today`) — id-less like `ref`, and
+  // `selectable:false` for the same resting-NodeSelection scroll. See
+  // `latex-dynamic-commands.ts` for the vocabulary.
+  dynamic: {
+    kind: "dynamic",
+    nodeName: "latexDynamic",
+    domType: "latex-dynamic",
+    domClass: "latex-dynamic-node",
+    idAttr: null,
+    domIdAttr: null,
+    selectable: false,
   },
   // `as const satisfies` rather than a plain `Record<AtomKind, AtomMeta>`
   // annotation: the rows are still type-checked against `AtomMeta` (a typo'd

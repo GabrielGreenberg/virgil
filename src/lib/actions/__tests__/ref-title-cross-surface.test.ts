@@ -257,7 +257,7 @@ describe("\\title / \\author / \\date (title fields)", () => {
     expect(fields.map((f) => f.attrs.field)).toEqual(["title", "author", "date"]);
   });
 
-  it("\\date pre-fills today (pretty-printed) with isToday set", () => {
+  it("\\date pre-fills a \\today chip (task 1335 — no isToday flag)", () => {
     const editor = mountEditor("");
     COMMAND_MAP.get("date")!.action(editor.view, "\\date");
 
@@ -265,13 +265,10 @@ describe("\\title / \\author / \\date (title fields)", () => {
     expect(fields).toHaveLength(1);
     const dateField = fields[0];
     expect(dateField.attrs.field).toBe("date");
-    expect(dateField.attrs.isToday).toBe(true);
-    const expected = new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-    expect(dateField.textContent).toBe(expected);
+    expect("isToday" in dateField.attrs).toBe(false);
+    expect(dateField.childCount).toBe(1);
+    expect(dateField.firstChild!.type.name).toBe("latexDynamic");
+    expect(dateField.firstChild!.attrs.command).toBe("today");
   });
 
   it("each title command is idempotent independently (no cross-duplication)", () => {
