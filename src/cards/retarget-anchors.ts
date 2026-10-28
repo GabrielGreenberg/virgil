@@ -56,6 +56,9 @@
 
 import { useMemo, useRef } from "react";
 import { getLinkedTextObjectIds } from "@/links/links";
+import { anchorPidsOfLink } from "@/links/card-anchor-rows";
+import { withoutDormantLinks } from "@/links/dormant";
+import type { ResolveIndex } from "@/links/resolve-card-anchor";
 import { isAnchorableBlock } from "@/text-objects/anchor-resolution";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -100,6 +103,17 @@ export interface RetargetDisplacedAnchorsArgs {
   /** The target paragraph's normalized text, so the fresh Mode-A link is
    *  self-healing on reload exactly as the re-anchor gesture's is. */
   snapshot: string | null;
+  /**
+   * The LIVE document's resolve index (task 1328) — taken when the sweep runs,
+   * i.e. AFTER the capture's delete / the join has landed — so "is this card
+   * displaced?" is asked of where each link is anchored NOW
+   * (`anchorPidsOfLink`), not of its stored pids. A Mode-B link's stored
+   * `textObjectIds` are its birth record: once the highlighted words moved
+   * (an Enter split, a join) they can name a block the mark no longer sits
+   * in, and removing THAT block displaces nothing. `null` (no editor) reads
+   * the stored pids, the pre-1328 answer.
+   */
+  index: ResolveIndex | null;
   /** Cards this sweep leaves where they are because they TRAVEL with the
    *  capture instead (task 1194 — {@link carryDisplacedAnchors}). Absent for
    *  the join re-home, which has no snippet to travel into. */
@@ -107,7 +121,12 @@ export interface RetargetDisplacedAnchorsArgs {
 }
 
 /**
- * Move every displaced Mode-A anchor onto `target`. Returns one
+ * Move every displaced anchor onto `target` — every link whose CURRENT
+ * anchor (`anchorPidsOfLink` against `index`) names a removed block. That is
+ * every Mode-A link naming one, and a Mode-B link only when its mark is gone
+ * (removed with the range, so it falls back to its stored pids — the
+ * pre-1328 behaviour, unchanged). A Mode-B link whose mark is LIVE elsewhere
+ * is not displaced: its words were never touched (task 1328). Returns one
  * {@link DisplacedAnchorRecord} per card moved — the archive capture records
  * them on its snippet so Restore can hand the cards back (task 1079); the join
  * re-home has no inverse and only counts them.
@@ -130,6 +149,7 @@ export function retargetDisplacedAnchors({
   removed,
   target,
   snapshot,
+  index,
   keep,
 }: RetargetDisplacedAnchorsArgs): DisplacedAnchorRecord[] {
   if (!target || removed.size === 0) return [];
@@ -143,7 +163,7 @@ export function retargetDisplacedAnchors({
     const bundle = handlers[kind];
     for (const card of bundle.cards) {
       if (keep?.(kind, card)) continue;
-      const pids = getLinkedTextObjectIds(card);
+      const pids = currentAnchorPids(card, index);
       const displaced = pids.filter((pid) => removed.has(pid));
       if (displaced.length === 0) continue;
       for (const pid of displaced) bundle.unanchor(card.id, pid);
@@ -155,6 +175,17 @@ export function retargetDisplacedAnchors({
     }
   }
   return moved;
+}
+
+/** Every block a card is anchored on NOW, deduped and order-stable — the
+ *  live (non-dormant) links, each read through the ONE per-link answer
+ *  (`anchorPidsOfLink`), never a Mode-B link's raw stored pids. */
+function currentAnchorPids(card: CardWithLinks, index: ResolveIndex | null): string[] {
+  const out: string[] = [];
+  for (const link of withoutDormantLinks(card).links ?? []) {
+    for (const pid of anchorPidsOfLink(link, index)) if (!out.includes(pid)) out.push(pid);
+  }
+  return out;
 }
 
 /** The spine kind of a card in a margin bundle — `cut` / `revision` /
@@ -284,9 +315,14 @@ export function rehomeAbsorbedAnchor({
   event,
   retarget,
   snapshotFor,
+  index,
 }: {
   event: BlockAbsorbedEvent;
   retarget: Pick<AnchorRetargetApi, "retarget">;
+  /** The post-join document's resolve index (task 1328): a highlight whose
+   *  words the join carried into the survivor is anchored THERE now, so its
+   *  stored (absorbed) pid displaces nothing. */
+  index: ResolveIndex | null;
   /** Normalized text of the survivor, so the fresh Mode-A link is self-healing
    *  on reload exactly as the re-anchor gesture's is. */
   snapshotFor: (uuid: string) => string | null;
@@ -302,6 +338,7 @@ export function rehomeAbsorbedAnchor({
     removed: new Set([absorbed.uuid]),
     target: { uuid: survivor.uuid, kind: survivor.typeName },
     snapshot: snapshotFor(survivor.uuid),
+    index,
   }).length;
 }
 

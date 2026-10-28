@@ -375,6 +375,7 @@ import {
   type PendingChangeIndex,
 } from "./PendingChangePill";
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
+import { buildResolveIndex } from "@/links/resolve-card-anchor";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import {
@@ -3204,11 +3205,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ((event: BlockAbsorbedEvent) => void) | null
   >(null);
   onBlockAbsorbedRef.current = (event) => {
+    const editor = innerRef.current?.getEditor() ?? null;
     rehomeAbsorbedAnchor({
       event,
       retarget: anchorRetarget,
-      snapshotFor: (uuid) =>
-        captureParagraphSnapshot(innerRef.current?.getEditor() ?? null, uuid),
+      snapshotFor: (uuid) => captureParagraphSnapshot(editor, uuid),
+      // O(doc) once, on a join's deferred verdict — never per keystroke.
+      index: editor ? buildResolveIndex(editor) : null,
     });
   };
 

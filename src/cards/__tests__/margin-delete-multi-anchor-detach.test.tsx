@@ -204,6 +204,38 @@ describe("margin Delete on one marker of a multi-anchor card (task 1149)", () =>
     editor.destroy();
   });
 
+  // Task 1328 — a Mode-B link whose mark is DEAD is bound by its stored pids
+  // (the rung-2b self-heal draws a row per live one), so its rows are sibling
+  // ANCHORS, not one range. `sourceOf` used to answer `pid: null` for every
+  // Mode-B row, so Delete on one dropped the whole link and every sibling
+  // marker with it — no confirm, no card delete, zero anchors left.
+  it("a DEAD-mark Mode-B link stored on [P, Q]: deleting the P marker keeps Q", async () => {
+    const editor = mountDoc();
+    const card = { id: "c1", links: [modeBLink("dead-anchor", ["P", "Q"])] };
+    expect(rowPids(editor, card)).toEqual(["P", "Q"]);
+
+    const s = store(card);
+    await deleteRow(editor, s, "P");
+
+    expect(s.card.links!.map((l) => l.id)).toEqual(["dead-anchor"]);
+    const anchor = s.card.links![0].anchor;
+    expect(anchor.type === "textObject" && anchor.textObjectIds).toEqual(["Q"]);
+    expect(rowPids(editor, s.card), "the sibling marker still paints").toEqual(["Q"]);
+    expect(s.del).not.toHaveBeenCalled();
+    expect(s.confirm).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
+  it("CONTROL — a LIVE-mark Mode-B row still detaches the whole link (its range is the binding)", () => {
+    const editor = mountDoc();
+    const anchorId = highlight(editor);
+    const card = { id: "c1", links: [modeBLink(anchorId, ["P", "Q"])] };
+    const rows = buildMarginMarkerRows(card, buildCardAnchorPass(editor).resolve);
+    expect(rows.map((r) => r.pid)).toEqual(["P"]);
+    expect(rows[0].sources).toEqual([{ linkId: anchorId, pid: null, anchorId }]);
+    editor.destroy();
+  });
+
   it("CONTROL — a multi-pid Mode-A link loses just the one pid", async () => {
     const editor = mountDoc();
     const s = store({ id: "c1", links: [modeALink(["P", "Q"])] });

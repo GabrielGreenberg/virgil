@@ -234,7 +234,7 @@ export function resolveCardAnchorRows(
     // to the live resolver, so `null` here is the honest answer.
     if (pids.length === 0) return NO_ROWS;
     return {
-      rows: pids.map((pid) => ({ pid, pos: null, sources: storedSourcesOf(card, pid) })),
+      rows: pids.map((pid) => ({ pid, pos: null, sources: storedSourcesOf(card, pid, null) })),
       anchored: true,
     };
   }
@@ -253,7 +253,7 @@ export function resolveCardAnchorRows(
     // first stored pid (a stable id for the marker + the re-pin gesture).
     return pids.length > 0
       ? {
-          rows: [{ pid: pids[0], pos: null, sources: storedSourcesOf(card, pids[0]) }],
+          rows: [{ pid: pids[0], pos: null, sources: storedSourcesOf(card, pids[0], index) }],
           anchored: false,
         }
       : NO_ROWS;
@@ -288,7 +288,7 @@ export function resolveCardAnchorRows(
       rows.push(row);
     }
     if (link && !row.sources.some((s) => s.linkId === link.id)) {
-      row.sources.push(sourceOf(link, pid));
+      row.sources.push(sourceOf(link, pid, index));
     }
   };
   draw(res.paragraphId, res.linkIndex == null ? undefined : links[res.linkIndex]);
@@ -299,49 +299,78 @@ export function resolveCardAnchorRows(
 }
 
 /**
- * What detaching `pid`'s row from `link` means: a Mode-A link that STORES the
- * pid loses that pid; anything else — a Mode-B link (live mark or not: its
- * range IS the binding), or a link the ladder recovered onto a paragraph it
- * does not store — loses the whole link.
+ * What detaching `pid`'s row from `link` means: a link that STORES the pid as
+ * its binding loses that pid; anything else — a Mode-B link whose mark is LIVE
+ * (its range IS the binding), or a link the ladder recovered onto a paragraph
+ * it does not store — loses the whole link.
+ *
+ * A Mode-B link whose mark is DEAD is bound by its stored pids (the rung-2b
+ * self-heal draws one row per live stored pid — task 1328), so it detaches per
+ * pid exactly like Mode-A: Delete on one of those rows must not take its
+ * sibling rows with it. With no index (mount gap) a mark's liveness is
+ * unknown, and a Mode-B link keeps the whole-link answer.
  */
-function sourceOf(link: Link, pid: string): AnchorRowSource {
+function sourceOf(link: Link, pid: string, index: ResolveIndex | null): AnchorRowSource {
   const anchor = link.anchor.type === "textObject" ? link.anchor : null;
   const anchorId = anchor?.textRange?.anchorId ?? null;
   const storesPid = !!anchor && anchor.textObjectIds.includes(pid);
+  const boundByPids = !isModeB(link) || (!!index && liveMarkParagraphOf(link, index) == null);
   return {
     linkId: link.id,
-    pid: !isModeB(link) && storesPid ? pid : null,
+    pid: boundByPids && storesPid ? pid : null,
     anchorId,
   };
 }
 
 /** The sources of a row keyed on a STORED pid (mount gap / unresolved). */
-function storedSourcesOf(card: CardWithLinks, pid: string): AnchorRowSource[] {
+function storedSourcesOf(
+  card: CardWithLinks,
+  pid: string,
+  index: ResolveIndex | null,
+): AnchorRowSource[] {
   return (card.links ?? [])
     .filter((l) => l.anchor.type === "textObject" && l.anchor.textObjectIds.includes(pid))
-    .map((l) => sourceOf(l, pid));
+    .map((l) => sourceOf(l, pid, index));
+}
+
+/** The paragraph a Mode-B link's mark lives in NOW, or null (not Mode-B, no
+ *  mark id, or the mark is not in the document). */
+function liveMarkParagraphOf(link: Link, index: ResolveIndex): string | null {
+  if (!isModeB(link) || link.anchor.type !== "textObject") return null;
+  const anchorId = link.anchor.textRange?.anchorId;
+  return (anchorId && index.anchorIdToParagraph.get(anchorId)) || null;
 }
 
 /**
- * The live paragraphs ONE link is anchored on — the per-link reading of the
- * resolver's rungs 1, 2 and 2b (task 934):
+ * The blocks ONE link is anchored on NOW — the one answer to "where is this
+ * link?" that every door asks (task 1328), live or not:
  *
- *   - Mode-A → every live stored pid (multi-paragraph legacy links included);
+ *   - Mode-A → its stored pids;
  *   - Mode-B with a LIVE mark → the mark's paragraph, and ONLY that — the
- *     stored pids name where the highlight was born, not where it is;
- *   - Mode-B whose mark is dead → its live stored pids (the RC1 self-heal);
+ *     stored `textObjectIds` are a BIRTH RECORD (where the highlight was born,
+ *     plus any block folded in later), not where it is;
+ *   - Mode-B whose mark is dead → its stored pids (the RC1 self-heal binding);
  *   - anything else → none.
+ *
+ * `index: null` (mount gap) cannot see marks, so it answers the stored pids.
+ * A door that must not mistake the birth record for identity — the row
+ * authority below, the archive/join re-home (`retargetDisplacedAnchors`) —
+ * reads THIS, never `textObjectIds` raw for a Mode-B link.
+ */
+export function anchorPidsOfLink(link: Link, index: ResolveIndex | null): string[] {
+  if (link.anchor.type !== "textObject") return [];
+  const markPid = index ? liveMarkParagraphOf(link, index) : null;
+  if (markPid) return [markPid];
+  return link.anchor.textObjectIds.filter((p) => !!p);
+}
+
+/**
+ * The live paragraphs ONE link is anchored on — {@link anchorPidsOfLink}
+ * narrowed to the live ones: the per-link reading of the resolver's rungs 1,
+ * 2 and 2b (task 934).
  */
 function liveParagraphsOfLink(link: Link, index: ResolveIndex): string[] {
-  if (link.anchor.type !== "textObject") return [];
-  if (isModeB(link)) {
-    const anchorId = link.anchor.textRange?.anchorId;
-    const markPid = anchorId ? index.anchorIdToParagraph.get(anchorId) : undefined;
-    if (markPid) return [markPid];
-  }
-  return link.anchor.textObjectIds.filter(
-    (p) => !!p && index.uuidToParagraph.has(p),
-  );
+  return anchorPidsOfLink(link, index).filter((p) => index.uuidToParagraph.has(p));
 }
 
 // ---------------------------------------------------------------------------
