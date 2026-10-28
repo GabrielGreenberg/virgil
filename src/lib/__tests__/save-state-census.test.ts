@@ -436,6 +436,11 @@ describe("census · ONE tone table for every surface that presents an interrupti
     "@/hooks/useSaveState",
     "@/hooks/usePreservationNotice",
     "@/lib/cowork-pen",
+    // Task 1340: the recovery badge's vocabulary is the mirror's own. It used
+    // to be discovered only through `describeAge`'s save-state import — a
+    // label helper, not a membership fact — and fell out when that moved to
+    // `relative-time.ts`.
+    "@/hooks/useMirrorRecovery",
   ];
   /** A hand-spelled palette token of the two families the register paints.
    *  The needle lives INSIDE a string literal, so the legs that ask it read
@@ -467,6 +472,7 @@ describe("census · ONE tone table for every surface that presents an interrupti
       "src/components/CoworkPenBadge.tsx",
       "src/components/ExternalChangeBadge.tsx",
       "src/components/PreservationNoticeBadge.tsx",
+      "src/components/MirrorRecoveryBadge.tsx",
     ]) {
       expect(pop, `discovery missed ${must}`).toContain(must);
     }

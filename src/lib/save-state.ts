@@ -124,19 +124,6 @@ export function isSaveTierProtected(tier: SaveTier): boolean {
   return tier === "unsaved" || tier === "blocked";
 }
 
-/** "47 minutes", "2 minutes", "a few seconds" — the age the user recognises. */
-export function describeAge(ms: number): string {
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 1) return "a few seconds";
-  if (mins === 1) return "1 minute";
-  if (mins < 60) return `${mins} minutes`;
-  const hours = Math.floor(mins / 60);
-  const rest = mins % 60;
-  if (hours === 1 && rest === 0) return "1 hour";
-  if (rest === 0) return `${hours} hours`;
-  return `${hours}h ${rest}m`;
-}
-
 /**
  * Which surface owns the flow that is holding this write.
  *
