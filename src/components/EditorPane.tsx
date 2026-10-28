@@ -457,7 +457,14 @@ import type {
   RevisionSuggestionCard,
   CutterSuggestionCard,
 } from "@/lib/types";
-import { cardsArchivedWith, type DormantCardShape } from "@/links/dormant";
+import {
+  cardsArchivedWith,
+  settleDormancy,
+  type AnchorLiveness,
+  type DormantCardShape,
+  type IsPassageRestorable,
+} from "@/links/dormant";
+import { hasLiveAnchor, hasLiveBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
 import {
   ArchivedWithProvider,
   buildArchivedWithApi,
@@ -1507,6 +1514,24 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisions: revisionsHookRaw,
     reports: reportsHookRaw,
   });
+  // THE DORMANCY INVARIANT (task 1329): a link dormant in a snippet has a way
+  // back. Liveness is read off the live document's structure index (O(1) per
+  // key, no walk); `restorable` is the caller's, since only Restore knows the
+  // snippet it just retired. Every carrying store, off the one table.
+  const dormancyLiveness = useCallback((): AnchorLiveness => {
+    const state = innerRef.current?.getEditor()?.state ?? null;
+    return {
+      isUuidLive: (u) => !!state && hasLiveBlock(state, u),
+      isAnchorIdLive: (a) => !!state && hasLiveAnchor(state, a),
+    };
+  }, []);
+  const settleDormantStores = useCallback(
+    (restorable: IsPassageRestorable) => {
+      const live = dormancyLiveness();
+      for (const store of Object.values(dormantStores)) store.settle(restorable, live);
+    },
+    [dormancyLiveness, dormantStores],
+  );
   // Per-family deps bag for the shared `pending-change-actions` sequence. Built
   // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
   // identity is keystroke-stable (deps: the keystroke-stable hook object), which
@@ -2111,6 +2136,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => ({ ...archiveHookRaw, deleteSnippet: deletePassage }),
     [archiveHookRaw, deletePassage],
   );
+  // "Is this passage still in the Archive?" off the LIVE collection (task
+  // 1295's `getSnippets`) — the restorability a later reader can honestly
+  // answer (task 1329): a retired snippet and a hand-set-aside one share one
+  // flag, and either comes back once un-set, so only a MISSING one strands.
+  const getArchiveSnippets = archiveHookRaw.getSnippets;
+  const inArchive = useCallback((): IsPassageRestorable => {
+    const ids = new Set(getArchiveSnippets().map((s) => s.id));
+    return (snippetId) => ids.has(snippetId);
+  }, [getArchiveSnippets]);
   // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
   // bridged AI-request carries `paragraphIds` and is actually drainable (the
   // skill halts on empty paragraphIds). A footnote's anchor isn't in the
@@ -2430,6 +2464,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisionsHookRaw.reconcileAnchors(editor);
     reportsHookRaw.reconcileAnchors(editor);
     archiveHook.reconcileAnchors(editor);
+    // The dormancy invariant at LOAD (task 1329): a card whose links are
+    // dormant in a passage no longer in the Archive (deleted while the card
+    // sat in `archive.json`, or by an agent) has no way back — release it,
+    // after the reconciles above revived everything that is live. DESTRUCTIVE
+    // (it ends a way back), so like the reaper below it stands down when any
+    // sidecar read threw: an unread `archive.json` is not an empty Archive.
+    if (!anyCardSidecarLoadError) settleDormantStores(inArchive());
     // LAST, once: reap any in-doc `linkedAnchor` mark with no live owning card
     // (e.g. a parser-resurrected orphan `\vlid` whose card was deleted before
     // this reload). The alive-set comes from the ONE function the in-session
@@ -2459,6 +2500,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisionsHookRaw.reconcileAnchors,
     reportsHookRaw.reconcileAnchors,
     archiveHook.reconcileAnchors,
+    settleDormantStores,
+    inArchive,
     // The Mode-B re-apply reads these live arrays once, at the single
     // latched firing. The `modeAReconciledDocRef` guard makes any re-fire a
     // no-op, so listing them is for exhaustive-deps correctness only — it
@@ -5203,7 +5246,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           snapshotOf: (uuid) =>
             captureParagraphSnapshot(innerRef.current?.getEditor() ?? null, uuid),
         }),
-      (panel, card) => dormantStores[panel].reinstate(card),
+      // REINSTATE settles first (task 1329): a card set aside by
+      // `/editor/archive-card` while its links were dormant missed every
+      // door its passage went through since — revive on text that came back,
+      // release links whose passage is no longer in the Archive.
+      (panel, card) =>
+        dormantStores[panel].reinstate(
+          settleDormancy(card as unknown as DormantCardShape, inArchive(), dormancyLiveness()),
+        ),
     );
     if (!restored && origin && origin.kind !== "excerpt") {
       // A card, not an excerpt: the only ways back to its panel failing are a
@@ -5246,6 +5296,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       });
       return;
     }
+    if (origin?.kind !== "card") {
+      // RESTORE'S END EDGE (task 1329): the snippet is retired, so it can no
+      // longer bring anything back. The landing revived what it placed (same
+      // transaction, and `onRemap` for collisions) — a carried word run it
+      // could not place (edited or duplicated words) or a carried paragraph
+      // deleted from the body is SETTLED now: revived if live, else
+      // released, never left archived with a passage that is back in the
+      // paper. Only THIS snippet is stranded; every other passage keeps its
+      // dormant links.
+      settleDormantStores((snippetId) => snippetId !== id);
+    }
     if (origin?.kind === "card") {
       // A reinstated CARD leaves the Archive outright (`restoreSnippet` removes
       // the snippet — it does not retire it), so the archive card is gone as
@@ -5270,6 +5331,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     anchorPass,
     anchorRetarget,
     dormantStores,
+    dormancyLiveness,
+    inArchive,
+    settleDormantStores,
     dragHandleNotify,
     cardLifecycleSignal,
   ]);

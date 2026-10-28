@@ -14,7 +14,8 @@ import type { DormantDoors } from "./useDormantRevival";
  *
  * The dormant-link round trip has three doors — `carry` (the archive),
  * `returnRemapped` (Restore's collision remap) and `release` (the passage is
- * deleted for good) — plus the archive-origin `reinstate`. All four are
+ * deleted for good) — plus `settle` (task 1329: the dormancy invariant, run at
+ * Restore's end edge, reinstate and load) and the archive-origin `reinstate`. All four are
  * per-STORE, not per-kind, so they live in ONE table: a `DormantStoreTable`
  * entry supplies every door or fails to type-check, and the exhaustive key
  * makes a missing store a type error. `EditorPane` builds the table once and
@@ -54,10 +55,10 @@ export function dormantStoreOfKind(kind: CardKind): ArchiveOriginPanel | null {
 /** One store's doors, memoized on the door identities (each is a stable
  *  callback) rather than on the hook object, whose identity follows its cards. */
 function useStore(s: DormantStore): DormantStore {
-  const { carry, returnRemapped, release, reinstate } = s;
+  const { carry, returnRemapped, release, settle, reinstate } = s;
   return useMemo(
-    () => ({ carry, returnRemapped, release, reinstate }),
-    [carry, returnRemapped, release, reinstate],
+    () => ({ carry, returnRemapped, release, settle, reinstate }),
+    [carry, returnRemapped, release, settle, reinstate],
   );
 }
 

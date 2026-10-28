@@ -549,7 +549,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const { carry, returnRemapped, release } = useDormantRevival<NotesState, NoteCardItem>(
+  const { carry, returnRemapped, release, settle } = useDormantRevival<NotesState, NoteCardItem>(
     docId,
     update,
     state,
@@ -812,6 +812,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       carry,
       returnRemapped,
       release,
+      settle,
       loaded,
       loadError,
       preserveModeBAnchor,
@@ -850,6 +851,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       carry,
       returnRemapped,
       release,
+      settle,
       loaded,
       loadError,
       preserveModeBAnchor,

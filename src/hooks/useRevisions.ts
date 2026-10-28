@@ -674,7 +674,7 @@ export function useRevisions(
   );
 
   // Dormant-link revival on re-insertion (task 1193) — see useDormantRevival.
-  const { carry, returnRemapped, release } = useDormantRevival<RevisionsState, RevisionCard>(
+  const { carry, returnRemapped, release, settle } = useDormantRevival<RevisionsState, RevisionCard>(
     docId,
     update,
     state,
@@ -879,6 +879,7 @@ export function useRevisions(
       carry,
       returnRemapped,
       release,
+      settle,
       loaded,
       loadError,
       deleteCard,
@@ -913,6 +914,7 @@ export function useRevisions(
       carry,
       returnRemapped,
       release,
+      settle,
       loaded,
       loadError,
       deleteCard,

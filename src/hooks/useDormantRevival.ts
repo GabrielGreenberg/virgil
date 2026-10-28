@@ -8,9 +8,12 @@ import {
   reviveLiveLinks,
   releaseFromSnippet,
   reviveRemapped,
+  settleDormancy,
+  type AnchorLiveness,
   type CarriedKeys,
   type DormantCardShape,
   type DormantKeys,
+  type IsPassageRestorable,
   type ReturningRemap,
 } from "@/links/dormant";
 import { useAnchorsArchived, useAnchorsRevived } from "@/lib/tiptap/orphan-events";
@@ -48,11 +51,18 @@ export type ReturnRemapped = (snippetId: string, remap: ReturningRemap) => void;
  *  See `releaseFromSnippet`. */
 export type ReleaseSnippet = (snippetId: string) => void;
 
+/** Settle every card of this kind against the dormancy invariant (task
+ *  1329): links dormant in a snippet that can no longer bring them back revive
+ *  on live text or are released. See `settleDormancy`. Calls `update()` ONLY
+ *  when some card changes, so a not-yet-loaded store is never poisoned. */
+export type SettleDormancy = (restorable: IsPassageRestorable, live: AnchorLiveness) => void;
+
 /** The writes a card hook exposes for the dormant state. */
 export interface DormantDoors {
   carry: CarryCard;
   returnRemapped: ReturnRemapped;
   release: ReleaseSnippet;
+  settle: SettleDormancy;
 }
 
 export function useDormantRevival<S, C extends DormantCardShape>(
@@ -88,8 +98,8 @@ export function useDormantRevival<S, C extends DormantCardShape>(
   // state. Same `update` / select / map the reviver uses, so making a link
   // dormant and reviving it are one vocabulary over one store. Identity-stable
   // (the lifecycle table is a memo; the selectors are inline lambdas).
-  const io = useRef({ update, selectCards, mapCards });
-  io.current = { update, selectCards, mapCards };
+  const io = useRef({ update, selectCards, mapCards, state });
+  io.current = { update, selectCards, mapCards, state };
   const mapEach = useCallback((step: (c: C) => C) => {
     const { update: write, selectCards: select, mapCards: map } = io.current;
     write((prev) => {
@@ -124,9 +134,20 @@ export function useDormantRevival<S, C extends DormantCardShape>(
     (snippetId) => mapEach((c) => releaseFromSnippet(c, snippetId)),
     [mapEach],
   );
+  const settle = useCallback<SettleDormancy>(
+    (restorable, live) => {
+      // Loader invariant (`useReconcileModeAAnchors`): decide off the latest
+      // rendered cards and write only when something is stranded — a store
+      // with nothing dormant (or not loaded yet) sees no `update()` at all.
+      const { selectCards: select, state: cur } = io.current;
+      const stranded = select(cur).some((c) => settleDormancy(c, restorable, live) !== c);
+      if (stranded) mapEach((c) => settleDormancy(c, restorable, live));
+    },
+    [mapEach],
+  );
   return useMemo(
-    () => ({ carry, returnRemapped, release }),
-    [carry, returnRemapped, release],
+    () => ({ carry, returnRemapped, release, settle }),
+    [carry, returnRemapped, release, settle],
   );
 }
 

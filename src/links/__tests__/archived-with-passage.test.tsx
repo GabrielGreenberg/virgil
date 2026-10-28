@@ -25,6 +25,8 @@ import {
   releaseFromSnippet,
   reviveLiveLinks,
   setArchivedFlag,
+  settleDormancy,
+  type AnchorLiveness,
   type DormantCardShape,
 } from "@/links/dormant";
 import { resolveAnchorState } from "@/links/anchor-state";
@@ -220,6 +222,89 @@ function api(open: (panel: string, id: string) => void) {
   return buildArchivedWithApi(map, () => "The annotation passage", open);
 }
 
+describe("task 1329 — the dormancy invariant: a dormant link has a way back", () => {
+  const NOTHING_LIVE: AnchorLiveness = { isUuidLive: () => false, isAnchorIdLive: () => false };
+  const liveUuids = (...u: string[]): AnchorLiveness => ({
+    isUuidLive: (x) => u.includes(x),
+    isAnchorIdLive: () => false,
+  });
+  const inArchive = (...ids: string[]) => (id: string) => ids.includes(id);
+
+  it("a passage still in the Archive keeps its cards dormant (identity)", () => {
+    const card = travelled("n1", "P1");
+    expect(settleDormancy(card, inArchive("snip"), NOTHING_LIVE)).toBe(card);
+    // ...even when the text is live: only a STRANDED link revives here, so a
+    // still-archived passage's link is never revived onto a squatter.
+    expect(settleDormancy(card, inArchive("snip"), liveUuids("P1"))).toBe(card);
+  });
+
+  it("archive-card → passage deleted → reinstate: the card is released, not pinned to a deleted snippet", () => {
+    // The card sat in archive.json while its passage was deleted, so the
+    // delete's release never reached it. Reinstate settles against the Archive.
+    const record = travelled("n1", "P1");
+    const out = settleDormancy(record, inArchive(/* "snip" is gone */), NOTHING_LIVE);
+    expect(out.id).toBe("n1");
+    expect(out.links).toEqual([]);
+    expect(passageOf(out)).toBeNull();
+    expect(out.archived).toBe(true); // an ordinary archived card — never deleted
+    // ...so the derivation no longer lists it under a deleted passage.
+    expect(cardsArchivedWith([{ cards: [out], kindOf: () => "note" }]).size).toBe(0);
+  });
+
+  it("the stranded passage's text is back in the paper: the link revives instead", () => {
+    const out = settleDormancy(travelled("n1", "P1"), inArchive(), liveUuids("P1"));
+    expect(out.links).toHaveLength(1);
+    expect(isFullyDormant(out)).toBe(false);
+    expect(out.archived).toBeUndefined();
+    expect(passageOf(out)).toBeNull();
+  });
+
+  it("two passages, one gone: only the gone one's links go; the card stays archived with the other", () => {
+    let card = travelled("n1", "P1");
+    card = markDormant<Card>(
+      { ...card, links: [...card.links!, modeA("l-2", "Q1")] },
+      "snip-2",
+      { pids: new Set(["Q1"]) },
+    );
+    expect(card.archivedWith).toBe("snip-2");
+    const out = settleDormancy(card, inArchive("snip"), NOTHING_LIVE);
+    expect(out.links!.map((l) => l.archivedWith)).toEqual(["snip"]);
+    expect(out.archivedWith).toBe("snip");
+    expect(out.archived).toBe(true);
+  });
+
+  it("an unreadable reinstated record passes through untouched (reinstate validates it)", () => {
+    const junk = { id: "x", links: "nope" } as unknown as Card;
+    expect(settleDormancy(junk, inArchive(), NOTHING_LIVE)).toBe(junk);
+    const holey = { id: "y", links: [null] } as unknown as Card;
+    expect(settleDormancy(holey, inArchive(), NOTHING_LIVE)).toBe(holey);
+  });
+
+  it("the hook door writes only when something is stranded (the loader invariant)", () => {
+    type S = { cards: Card[] };
+    const writes: number[] = [];
+    const { result } = renderHook(() => {
+      const [state, setState] = useState<S>({ cards: [travelled("n1", "P1")] });
+      const doors = useDormantRevival<S, Card>(
+        "doc-1",
+        (fn) => {
+          writes.push(1);
+          setState(fn);
+        },
+        state,
+        (s) => s.cards,
+        (_s, cards) => ({ cards }),
+      );
+      return { state, doors };
+    });
+    act(() => result.current.doors.settle(inArchive("snip"), NOTHING_LIVE));
+    expect(writes).toHaveLength(0);
+    act(() => result.current.doors.settle(inArchive(), NOTHING_LIVE));
+    expect(writes).toHaveLength(1);
+    expect(passageOf(result.current.state.cards[0])).toBeNull();
+  });
+});
+
 describe("the archive-relation row", () => {
   it("Archive card: lists what travelled; each chip opens its card", () => {
     const open = vi.fn();
@@ -308,6 +393,27 @@ describe("archived-with CENSUS", () => {
     expect(body).toMatch(/Object\.values\(dormantStores\)/);
     expect(body.indexOf("await deleteArchiveSnippet(id)")).toBeLessThan(body.indexOf(".release(id)"));
     expect(code).toMatch(/deleteSnippet:\s*deletePassage\b/);
+  });
+
+  it("every door that can end a passage's restorability settles dormancy (task 1329)", () => {
+    const code = read("src/components/EditorPane.tsx");
+    // Restore's end edge: after the landing, strands exactly the restored snippet.
+    const restore = code.slice(code.indexOf("const handleArchiveRestore = useCallback("));
+    const body = restore.slice(0, restore.indexOf("const handleArchiveDelete"));
+    expect(body.indexOf("archiveHook.restoreSnippet(")).toBeGreaterThan(-1);
+    expect(body).toMatch(/settleDormantStores\(\(snippetId\) => snippetId !== id\)/);
+    expect(body.indexOf("archiveHook.restoreSnippet(")).toBeLessThan(
+      body.indexOf("settleDormantStores("),
+    );
+    // Reinstate: the record is settled against the Archive before it lands.
+    expect(body).toMatch(/\.reinstate\(\s*settleDormancy\(/);
+    // Load: after the reconciles, and standing down on a sidecar load error.
+    expect(code).toMatch(/if \(!anyCardSidecarLoadError\) settleDormantStores\(inArchive\(\)\)/);
+    expect(code.indexOf("archiveHook.reconcileAnchors(editor);")).toBeLessThan(
+      code.indexOf("settleDormantStores(inArchive())"),
+    );
+    // Every carrying store, off the one table.
+    expect(code).toMatch(/for \(const store of Object\.values\(dormantStores\)\) store\.settle\(/);
   });
 
   it("the relation row is a SHELL slot — no card passes it by hand", () => {
