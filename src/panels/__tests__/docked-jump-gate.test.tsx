@@ -184,7 +184,16 @@ describe("task 699 — census", () => {
     expect(src).not.toMatch(/getLinkedTextObjectIds\s*\(/);
     // Every Jump handler handed to a card passes through the gate.
     expect(src).toMatch(/jumpGate:\s*DockedJumpGate;/);
-    expect(src).toMatch(/\.withJump\(/);
+    // …and through the ONE door that mints the button and its keyboard twin
+    // together (task 1343). A panel spelling `.withJump(` itself is the
+    // "whichever ones remembered" shape 964 retired on the keyboard side: the
+    // next panel to copy it can drop the gate and paint a dead Jump (699).
+    expect(src).toMatch(/dockedJumpDoors\(jumpGate, onJumpToCard\)/);
+    expect(src).not.toMatch(/\.withJump\(/);
+    // Every card the panel hands an `onJump` gets it from the button door.
+    const jumps = src.match(/onJump=\{[^}]*\}/g) ?? [];
+    expect(jumps.length).toBeGreaterThan(0);
+    for (const j of jumps) expect(j).toMatch(/^onJump=\{buttonJump\([\w.]+\)\}$/);
   });
 
   it.each(HOSTS)("%s supplies the shared gate", (rel) => {

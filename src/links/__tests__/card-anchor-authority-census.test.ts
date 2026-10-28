@@ -218,8 +218,10 @@ describe("card-anchor authority census (task 369)", () => {
     expect(
       archivePanel,
       "The docked Archive card's Jump must pass through the SAME verdict the " +
-        "float and margin read — the task-369 authority via `jumpGate` (task 699).",
-    ).toMatch(/gate\.withJump\(/);
+        "float and margin read — the task-369 authority via `jumpGate` (task 699), " +
+        "applied through the one docked door `dockedJumpDoors` (task 1343).",
+    ).toMatch(/dockedJumpDoors\(jumpGate, onJumpToCard\)/);
+    expect(archivePanel).toMatch(/onJump=\{buttonJump\(s\)\}/);
     // …and never re-gated by a second `orphaned` prop (task 966).
     expect(archivePanel).not.toMatch(/\borphaned=\{/);
     expect(archivePanel).not.toMatch(/\bgetLinkedTextObjectIds\b|\bdescendants\s*\(/);

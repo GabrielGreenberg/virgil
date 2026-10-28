@@ -1,6 +1,6 @@
 "use client";
 
-import { dockedKeyboardJump, type DockedJumpGate } from "@/links/card-anchor-rows";
+import { dockedJumpDoors, type DockedJumpGate } from "@/links/card-anchor-rows";
 import { useMemo } from "react";
 import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
@@ -81,9 +81,9 @@ export default function TodoPanel({
   };
 
   // Keyboard activation (task 964): the shell selects; this jumps through the
-  // card's own gate, the twin of its Jump button.
-  const keyboardJump = useMemo(
-    () => dockedKeyboardJump(jumpGate, onJumpToCard),
+  // card's own gate, minted with its Jump button by one door (task 1343).
+  const { keyboard: keyboardJump, button: buttonJump } = useMemo(
+    () => dockedJumpDoors(jumpGate, onJumpToCard),
     [jumpGate, onJumpToCard],
   );
 
@@ -122,11 +122,7 @@ export default function TodoPanel({
           onSetAiRequest={onSetAiRequest}
           onDelete={onDelete}
           onSelect={onSelectTodo}
-          onJump={
-            onJumpToCard
-              ? jumpGate(item).withJump((sourceEl?: HTMLElement | null) => onJumpToCard(item, sourceEl))
-              : undefined
-          }
+          onJump={buttonJump(item)}
         />
       )}
       footer={
