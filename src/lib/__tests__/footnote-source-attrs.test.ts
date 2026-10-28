@@ -41,6 +41,8 @@ import {
   FOOTNOTE_MARKUP_ATTRS,
   footnoteMarkupEqual,
   footnoteMarkupNodeAttrs,
+  footnoteTitleRecord,
+  pickFootnoteCarriedAttrs,
   pickFootnoteMarkupAttrs,
 } from "../footnote-source-attrs";
 
@@ -69,6 +71,19 @@ describe("footnote source attrs — the census (task 947)", () => {
     expect(footnoteMarkupNodeAttrs({})).toEqual({ thanks: false, numberOverride: null });
     expect(footnoteMarkupEqual({}, { thanks: undefined })).toBe(true);
     expect(footnoteMarkupEqual({}, { numberOverride: "3" })).toBe(false);
+  });
+
+  it("untitled has ONE spelling: a blank title is absent on every pick (task 1337)", () => {
+    expect(footnoteTitleRecord("")).toBeUndefined();
+    expect(footnoteTitleRecord("   ")).toBeUndefined();
+    expect(footnoteTitleRecord(null)).toBeUndefined();
+    expect(footnoteTitleRecord("T")).toBe("T");
+    expect(pickFootnoteCarriedAttrs({ content: null, title: "  " })).not.toHaveProperty("title");
+    expect(pickFootnoteCarriedAttrs({ content: null, title: "T", thanks: true })).toEqual({
+      content: null,
+      title: "T",
+      thanks: true,
+    });
   });
 });
 

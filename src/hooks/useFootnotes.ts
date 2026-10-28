@@ -15,7 +15,10 @@ import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import {
   footnoteMarkupEqual,
+  footnoteTitleRecord,
+  pickFootnoteCarriedAttrs,
   pickFootnoteMarkupAttrs,
+  type FootnoteCarriedRecord,
   type FootnoteMarkupAttrs,
 } from "@/lib/footnote-source-attrs";
 import { generateShortId } from "@/lib/uuid";
@@ -67,9 +70,11 @@ export type FootnoteAnchorResolver = (
   footnoteId: string,
 ) => { paragraphIds?: string[]; selectedText?: string };
 
-/** What the mirror captures from a footnote's LIVE `\footnote` atom: its body
- *  AND its markup attrs (`\thanks` vs `\footnote`, `\footnote[3]`'s mark —
- *  task 947), or null when the doc holds no such atom. The seed for the
+/** What the mirror captures from a footnote's LIVE `\footnote` atom: EVERY
+ *  carried attr — its body, its title, its markup (`\thanks` vs `\footnote`,
+ *  `\footnote[3]`'s mark — task 947) — as `pickFootnoteCarriedAttrs` reads them
+ *  (task 1337: this used to be body + markup alone, so a fresh ref lost the
+ *  atom's title), or null when the doc holds no such atom. The seed for the
  *  mirror's ONE upsert door (`ensureRef`, task 703): a footnote made in the app
  *  (toolbar / slash) or parsed from the `.tex` has NO `footnotes.json` ref —
  *  only the stack-pull factory ever called `addFootnote` — so a setter that
@@ -77,7 +82,7 @@ export type FootnoteAnchorResolver = (
  *  `@/lib/footnote-source-attrs`, not this signature's choice. Same
  *  owner-supplied shape as `FootnoteAnchorResolver` (EditorPane closes over the
  *  editor ref); called only on a gesture, never per keystroke. */
-export type FootnoteCapture = { content: JSONContent } & FootnoteMarkupAttrs;
+export type FootnoteCapture = FootnoteCarriedRecord;
 export type FootnoteCaptureResolver = (footnoteId: string) => FootnoteCapture | null;
 
 /** The request TEXT a footnote contributes to `ai-requests.json` — its body,
@@ -257,21 +262,34 @@ export function useFootnotes(
       if (existing) {
         if (!live) return current;
         const markup = pickFootnoteMarkupAttrs(live);
-        if (footnoteMarkupEqual(pickFootnoteMarkupAttrs(existing), markup)) return current;
+        // The ref is the title's persistent home (task 705), so a live title
+        // only FILLS an untitled ref — never overwrites a rename (task 1337).
+        const fillTitle =
+          existing.title === undefined ? footnoteTitleRecord(live.title) : undefined;
+        if (
+          fillTitle === undefined &&
+          footnoteMarkupEqual(pickFootnoteMarkupAttrs(existing), markup)
+        ) {
+          return current;
+        }
         return {
-          footnotes: current.footnotes.map((f) =>
-            f.id === id ? withFootnoteMarkup(f, markup) : f,
-          ),
+          footnotes: current.footnotes.map((f) => {
+            if (f.id !== id) return f;
+            const synced = withFootnoteMarkup(f, markup);
+            return fillTitle === undefined ? synced : { ...synced, title: fillTitle };
+          }),
         };
       }
-      const body = seed ?? live?.content ?? null;
+      const body = seed ?? (live?.content as JSONContent | null | undefined) ?? null;
       if (!body) return null;
+      // Every carried attr through the ONE pick (task 1337) — the seed still
+      // wins for the body.
       const ref: FootnoteRef = {
         id,
+        createdAt: new Date().toISOString(),
+        ...pickFootnoteCarriedAttrs(live),
         // Deep copy: never alias the live node's attr JSON (see `contentFor`).
         content: structuredClone(normalizeRichContent(body)),
-        createdAt: new Date().toISOString(),
-        ...pickFootnoteMarkupAttrs(live),
       };
       return { footnotes: [...current.footnotes, ref] };
     },
@@ -368,7 +386,7 @@ export function useFootnotes(
    *  title is stored as ABSENT, so "untitled" has one spelling. Returns whether
    *  the ref took the write. */
   const setFootnoteTitle = useCallback((id: string, title: string): boolean => {
-    const kept = title.trim() ? title : "";
+    const kept = footnoteTitleRecord(title);
     const ok = patchRef(id, (f) => {
       const { title: _prev, ...rest } = f;
       return kept ? { ...rest, title: kept } : rest;
@@ -396,12 +414,13 @@ export function useFootnotes(
 
   const deleteFootnote = useCallback((id: string) => {
     pristine?.markDirty(id);
-    setState((prev) => {
-      const next = { footnotes: prev.footnotes.filter((f) => f.id !== id) };
-      stateRef.current = next;
-      persist(next);
-      return next;
-    });
+    // Same shape as every sibling mutator (task 1337): read `stateRef`, commit,
+    // persist — never a side effect inside a `setState` updater (StrictMode
+    // double-invokes it, so the write went out twice).
+    const next = { footnotes: stateRef.current.footnotes.filter((f) => f.id !== id) };
+    stateRef.current = next;
+    setState(next);
+    persist(next);
   }, [persist, pristine]);
 
   /** The card's live body, read by the footnote drop spec's "anchor the
@@ -531,15 +550,16 @@ export function useFootnotes(
   const cloneFootnote = useCallback((sourceId: string): string | null => {
     const source = stateRef.current.footnotes.find((f) => f.id === sourceId);
     if (!source) return null;
+    // Every carried attr through the ONE pick (task 1337): the title is the
+    // card's own writing (task 705) and the markup is the duplicated atom's
+    // command (task 947), so a duplicate keeps both — and any attr added to
+    // `FOOTNOTE_CARRIED_ATTRS` later survives Duplicate without an edit here.
     const newRef: FootnoteRef = {
       id: generateShortId(),
-      content: normalizeRichContent(source.content),
       createdAt: new Date().toISOString(),
-      // The title is the card's own writing (task 705) — a duplicate keeps it.
-      ...(source.title ? { title: source.title } : {}),
-      // As does its markup (task 947): the duplicated block's atom is still a
-      // `\thanks` / `\footnote[3]`, so its mirror says so too.
-      ...pickFootnoteMarkupAttrs(source),
+      ...pickFootnoteCarriedAttrs(source),
+      // Deep copy: never alias the source ref's body (see `contentFor`).
+      content: structuredClone(normalizeRichContent(source.content)),
     };
     const next = { footnotes: [...stateRef.current.footnotes, newRef] };
     stateRef.current = next;
@@ -553,9 +573,9 @@ export function useFootnotes(
   // the MIRROR that outlives an atom (archived / unanchored refs, the aiRequest
   // flag, the edited body via `updateFootnoteContent`). The editor-derived
   // reconcile this hook used to export had no production caller since the
-  // keystroke-sanctity work of 2026-05, and this hook has no `loaded` gate —
-  // wired into a mount effect it would run over the pre-load EMPTY and write
-  // the loss (the citations defect). A reconcile that writes a sidecar from
+  // keystroke-sanctity work of 2026-05, and nothing would gate it on
+  // `loadedRef` — wired into a mount effect it would run over the pre-load
+  // EMPTY and write the loss (the citations defect). A reconcile that writes a sidecar from
   // editor-derived inputs belongs on `usePersistentState.updateWhenLoaded`.
 
   return useMemo(
