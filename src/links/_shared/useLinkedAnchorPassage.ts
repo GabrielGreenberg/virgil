@@ -52,8 +52,13 @@ interface LivePassage extends LinkedAnchorPassage {
  *     block(s) the range covers (`onBlockContentChanged` — a keyed dispatch,
  *     content-only, never counted in `emitCount`), so typing elsewhere wakes
  *     nothing and typing inside the passage costs O(passage);
- *   - the covering-block set is re-derived on STRUCTURAL emits only
- *     (`onAnyChange` — a split/merge, an anchor added or removed).
+ *   - the covering-block set is re-derived on STRUCTURAL emits (`onAnyChange`
+ *     — a split/merge, an anchor added or removed) AND on this anchor's own
+ *     extent channel (`onAnchorExtentChanged` — keyed, uncounted, task 1330).
+ *     The second is load-bearing: a passage that MOVES (a text drag-drop into
+ *     another block, or its undo) is a `changedAnchors` entry, which wakes no
+ *     structural watcher — without it the subscription stayed keyed on the
+ *     block the passage LEFT, and typing inside the moved run reached nothing.
  * A wake whose range content is `Fragment.eq` to the last read keeps the SAME
  * object, so typing inside the block but outside the mark re-renders nothing
  * and re-captures nothing.
@@ -90,12 +95,15 @@ export function useLinkedAnchorPassage(
     };
     resubscribe();
     refresh();
-    const unsubAny = bus.onAnyChange(() => {
+    const rederive = () => {
       resubscribe();
       refresh();
-    });
+    };
+    const unsubAny = bus.onAnyChange(rederive);
+    const unsubExtent = bus.onAnchorExtentChanged(anchorId, rederive);
     return () => {
       unsubAny();
+      unsubExtent();
       for (const u of blockUnsubs) u();
     };
   }, [editor, anchorId]);

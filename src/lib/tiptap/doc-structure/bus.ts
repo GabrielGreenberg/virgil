@@ -95,6 +95,16 @@ export interface DocStructureBus {
 
   onAnchorsAdded(fn: AnchorHandler): Unsub;
   onAnchorsRemoved(fn: AnchorHandler): Unsub;
+  /** Fires only when THIS linkedAnchor id's EXTENT changed in a way mapping
+   *  the old one would not reproduce — it entered (`addedAnchors`), left
+   *  (`removedAnchors`), or MOVED (`changedAnchors`, task 1128: a text
+   *  drag-drop, or the undo of one). The anchor-space sibling of
+   *  `onBlockContentChanged` (task 1330): `changedAnchors` deliberately wakes
+   *  no structural watcher, so before this channel a reader that derived a
+   *  per-anchor block set on `onAnyChange` never learned its passage had
+   *  LEFT those blocks. Keyed and uncounted — never counted against
+   *  `emitCount`; plain typing touches no anchor key, so it fires nothing. */
+  onAnchorExtentChanged(anchorId: string, fn: () => void): Unsub;
 
   onExamplesAdded(fn: ExampleHandler): Unsub;
   onExamplesRemoved(fn: ExampleHandler): Unsub;
@@ -157,6 +167,46 @@ function makeList<T>(): { add(fn: T): Unsub; emit(call: (fn: T) => void): void }
           // Don't let one bad subscriber kill the rest.
           // eslint-disable-next-line no-console
           console.error("[DocStructureBus] subscriber threw:", err);
+        }
+      }
+    },
+  };
+}
+
+/** A KEYED handler registry — the shape of every per-entity channel
+ *  (per-block content, per-example content, per-anchor extent): `add` under a
+ *  key, `emit` dispatches only that key's handlers (O(subscribers of the key),
+ *  never O(all subscribers)), and an emptied key is dropped so the map stays
+ *  proportional to live subscriptions. */
+function makeKeyedList(label: string): {
+  add(key: string, fn: () => void): Unsub;
+  emit(key: string): void;
+} {
+  const byKey = new Map<string, Set<() => void>>();
+  return {
+    add(key, fn) {
+      let handlers = byKey.get(key);
+      if (!handlers) {
+        handlers = new Set();
+        byKey.set(key, handlers);
+      }
+      handlers.add(fn);
+      return () => {
+        const set = byKey.get(key);
+        if (!set) return;
+        set.delete(fn);
+        if (set.size === 0) byKey.delete(key);
+      };
+    },
+    emit(key) {
+      const handlers = byKey.get(key);
+      if (!handlers) return;
+      for (const fn of handlers) {
+        try {
+          fn();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error(`[DocStructureBus] ${label} subscriber threw:`, err);
         }
       }
     },
@@ -253,8 +303,9 @@ export function createDocStructureBus(): DocStructureBus {
   const labelsRecomputable = makeList<DiffHandler>();
 
   const contentChanged = makeList<ContentChangeHandler>();
-  const perBlockContent = new Map<string, Set<() => void>>();
-  const perExampleContent = new Map<string, Set<() => void>>();
+  const perBlockContent = makeKeyedList("per-block");
+  const perExampleContent = makeKeyedList("per-example");
+  const perAnchorExtent = makeKeyedList("per-anchor");
 
   const bus: MutableBus = {
     get structure() {
@@ -312,6 +363,12 @@ export function createDocStructureBus(): DocStructureBus {
 
       if (diff.addedAnchors.length > 0) anchorsAdded.emit((fn) => fn(diff.addedAnchors, s()));
       if (diff.removedAnchors.length > 0) anchorsRemoved.emit((fn) => fn(diff.removedAnchors, s()));
+      // Per-anchor extent fan-out (task 1330) — keyed, uncounted. `changed`
+      // is the case nothing else publishes; added/removed ride along so the
+      // channel is the complete "this anchor's extent changed" door.
+      for (const a of diff.addedAnchors) perAnchorExtent.emit(a.id);
+      for (const a of diff.removedAnchors) perAnchorExtent.emit(a.id);
+      for (const a of diff.changedAnchors) perAnchorExtent.emit(a.id);
 
       if (diff.addedExamples.length > 0) examplesAdded.emit((fn) => fn(diff.addedExamples, s()));
       if (diff.removedExamples.length > 0) examplesRemoved.emit((fn) => fn(diff.removedExamples, s()));
@@ -328,19 +385,7 @@ export function createDocStructureBus(): DocStructureBus {
 
       if (diff.contentChangedUuids.size > 0) {
         contentChanged.emit((fn) => fn(diff.contentChangedUuids, s()));
-        for (const uuid of diff.contentChangedUuids) {
-          const handlers = perBlockContent.get(uuid);
-          if (handlers) {
-            for (const fn of handlers) {
-              try {
-                fn();
-              } catch (err) {
-                // eslint-disable-next-line no-console
-                console.error("[DocStructureBus] per-block subscriber threw:", err);
-              }
-            }
-          }
-        }
+        for (const uuid of diff.contentChangedUuids) perBlockContent.emit(uuid);
       }
 
       // Per-exampleBlock content fan-out. Content-only (does NOT bump
@@ -348,19 +393,7 @@ export function createDocStructureBus(): DocStructureBus {
       // cards that subscribed to THIS uuid are notified, so a content edit
       // to example A re-seeds card A and never touches card B.
       if (diff.exampleContentChangedUuids.size > 0) {
-        for (const uuid of diff.exampleContentChangedUuids) {
-          const handlers = perExampleContent.get(uuid);
-          if (handlers) {
-            for (const fn of handlers) {
-              try {
-                fn();
-              } catch (err) {
-                // eslint-disable-next-line no-console
-                console.error("[DocStructureBus] per-example subscriber threw:", err);
-              }
-            }
-          }
-        }
+        for (const uuid of diff.exampleContentChangedUuids) perExampleContent.emit(uuid);
       }
     },
 
@@ -393,34 +426,9 @@ export function createDocStructureBus(): DocStructureBus {
     onLabelsRemoved: labelsRemoved.add,
     onLabelsRecomputable: labelsRecomputable.add,
     onContentChanged: contentChanged.add,
-    onBlockContentChanged(uuid, fn) {
-      let handlers = perBlockContent.get(uuid);
-      if (!handlers) {
-        handlers = new Set();
-        perBlockContent.set(uuid, handlers);
-      }
-      handlers.add(fn);
-      return () => {
-        const set = perBlockContent.get(uuid);
-        if (!set) return;
-        set.delete(fn);
-        if (set.size === 0) perBlockContent.delete(uuid);
-      };
-    },
-    onExampleContentChanged(uuid, fn) {
-      let handlers = perExampleContent.get(uuid);
-      if (!handlers) {
-        handlers = new Set();
-        perExampleContent.set(uuid, handlers);
-      }
-      handlers.add(fn);
-      return () => {
-        const set = perExampleContent.get(uuid);
-        if (!set) return;
-        set.delete(fn);
-        if (set.size === 0) perExampleContent.delete(uuid);
-      };
-    },
+    onBlockContentChanged: perBlockContent.add,
+    onExampleContentChanged: perExampleContent.add,
+    onAnchorExtentChanged: perAnchorExtent.add,
   };
 
   return bus;
