@@ -20,6 +20,9 @@ import {
   MARGINALIA_ICON_SIZE,
   resolveMarkerCols,
   resolveMarginaliaHost,
+  markerRepinGate,
+  repinGateOpen,
+  type RepinGate,
   type AnchorNodeMetrics,
   type GridCell,
   type MarginaliaMarker,
@@ -229,6 +232,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // observed block's metrics change (or blocks enter/leave the near-zone).
   const registryVersion = useRegistryVersion(registry);
   const scrollEl = useMarginaliaHost(editor);
+  const repinGate = useMemo(() => markerRepinGate(editor), [editor]);
 
   // The host pod is already `position: relative` (set on the white pod
   // wrapper in EditorLayout), so no need to mutate position here.
@@ -273,9 +277,11 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   const leftOverflow = overflowGroups.filter((g) => g.side === "left");
   const rightOverflow = overflowGroups.filter((g) => g.side === "right");
 
-  // When the host editor is read-only (Library Reader), suppress
-  // drag-to-rebind on every marker. Click + Delete still work.
-  const dragEnabled = editor?.isEditable !== false;
+  // When the surface is read-only — the host (Library Reader) OR the pen
+  // (collab) — suppress drag-to-rebind on every marker. Click + Delete still
+  // work. The ONE gate (task 1338): a live predicate each button re-asks at
+  // press time, so it needs no editor subscription of its own.
+  const dragEnabled = repinGate;
 
   return createPortal(
     <>
@@ -314,7 +320,7 @@ export function MarkerButton({
   m: MarginaliaMarker;
   /** Grid cell for absolute placement; omit for in-flow (popover) layout. */
   cell?: GridCell;
-  dragEnabled: boolean;
+  dragEnabled: RepinGate;
   /** Called after the marker's own onClick ran (popover closes itself). */
   onActivated?: () => void;
 }) {
@@ -377,10 +383,15 @@ export function MarkerButton({
   // band runs that kind's registered `dropSpec` (the same `links.ts`
   // add/removeTextObjectLink the panel mutates), so the re-anchor is identical
   // to the old native path — just routed through the one controller.
-  const reanchorKey =
-    dragEnabled && m.entityKind
-      ? buildFloatKey({ domain: "card", kind: m.entityKind, id: m.entityId })
-      : null;
+  //
+  // Task 1338 — the gate is asked TWICE, by design: at render for the cursor
+  // hint only, and again at PRESS time as the floor, so an editability flip
+  // since the last render (a collab pen loss, the Reader's host axis) can
+  // neither start a session that cannot land nor block one that can.
+  const reanchorKey = m.entityKind
+    ? buildFloatKey({ domain: "card", kind: m.entityKind, id: m.entityId })
+    : null;
+  const grabHint = reanchorKey !== null && repinGateOpen(dragEnabled);
 
   return (
     <button
@@ -402,7 +413,7 @@ export function MarkerButton({
         boxShadow: interactionShadow,
         transition: "box-shadow 120ms ease-out",
         opacity: m.muted ? 0.4 : undefined,
-        cursor: reanchorKey ? "grab" : "pointer",
+        cursor: grabHint ? "grab" : "pointer",
         padding: 0,
         lineHeight: 1,
       }}
@@ -412,6 +423,9 @@ export function MarkerButton({
         // behavior. The predicate is the engine's SSOT
         // (lib/pane-resize/pointer-invariants), never re-derived.
         if (!isPrimaryDragStart(e)) return;
+        // Read-only right now → a plain press: no swallow, no session, the
+        // click path runs exactly as on a never-draggable marker.
+        if (!repinGateOpen(dragEnabled)) return;
         // Don't let the press bubble into the card-root lift / native drag.
         e.stopPropagation();
         e.preventDefault();
@@ -475,7 +489,7 @@ function OverflowPill({
   dragEnabled,
 }: {
   group: MarkerOverflowGroup;
-  dragEnabled: boolean;
+  dragEnabled: RepinGate;
 }) {
   const count = group.hidden.length;
   const label = `${count} hidden marker${count === 1 ? "" : "s"}`;
@@ -542,7 +556,7 @@ export function MarkerMenuRow({
   onActivated,
 }: {
   m: MarginaliaMarker;
-  dragEnabled: boolean;
+  dragEnabled: RepinGate;
   onActivated: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -604,7 +618,7 @@ export function MarginColumn({
   side: "left" | "right";
   markers: PositionedMarker[];
   overflow: MarkerOverflowGroup[];
-  dragEnabled: boolean;
+  dragEnabled: RepinGate;
 }) {
   // Subscribe to panel color changes so the margin re-renders when the user
   // picks a new color for a panel.

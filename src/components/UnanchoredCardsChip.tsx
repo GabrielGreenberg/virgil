@@ -1,6 +1,6 @@
 "use client";
 
-import type { MarginaliaMarker } from "@/lib/marginalia";
+import type { MarginaliaMarker, RepinGate } from "@/lib/marginalia";
 import { BadgeOrphaned, CARD_THEMES } from "@/components/panel-primitives";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MarkerMenuRow } from "@/components/Marginalia";
@@ -74,7 +74,7 @@ export function UnanchoredCardsChip({
   dragEnabled,
 }: {
   markers: readonly MarginaliaMarker[];
-  dragEnabled: boolean;
+  dragEnabled: RepinGate;
 }) {
   const count = markers.length;
   // The chip only exists while something is unanchored, so an empty set is a

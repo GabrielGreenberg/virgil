@@ -42,10 +42,41 @@ import {
 } from "@/components/editor-layout/constants";
 // Import-free leaf (node-attr-sets.ts), so no cycle.
 import { deferringParent } from "@/lib/node-attr-sets";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 // Canonical home moved to `src/cards/types.ts` (beside `CardMeta.markerType`,
 // A6/R17). Re-exported here so this module's existing importers are unchanged.
 export type { MarkerType } from "@/cards/types";
+
+// ---------------------------------------------------------------------------
+// Re-pin gate — "may a card re-pin grab begin here?" (task 1338)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a margin marker (or an unanchored-cards chip entry — the same
+ * `MarkerButton`) may begin a re-pin grab. Either a constant (a static host, a
+ * test) or a LIVE predicate the button re-asks at PRESS time, so a pen lost
+ * since the last render can never start a drop session that cannot land.
+ * The render-time read is only the cursor hint.
+ */
+export type RepinGate = boolean | (() => boolean);
+
+/** Read a {@link RepinGate} now. [cost: O(1).] */
+export function repinGateOpen(gate: RepinGate): boolean {
+  return typeof gate === "function" ? gate() : gate;
+}
+
+/**
+ * The ONE live gate for an editor's markers: the surface-editability door
+ * (`surfaceEditableNow`, task 579/733) — both axes, the pen (`view.editable`)
+ * AND the host (`editableRef`, the Library Reader). Never `editor.isEditable`,
+ * which MAIN pins `true` for its whole life, so the Reader offered a grab
+ * whose drop the hit-test (same door) then refused everywhere.
+ * `marker-repin-gate-census.test.ts` pins both call sites to this.
+ */
+export function markerRepinGate(editor: Editor | null | undefined): () => boolean {
+  return () => surfaceEditableNow(editor);
+}
 
 // ---------------------------------------------------------------------------
 // Anchor-target detection (schema-based)
