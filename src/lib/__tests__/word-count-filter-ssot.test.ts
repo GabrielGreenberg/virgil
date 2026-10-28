@@ -297,4 +297,31 @@ describe("census: nothing re-derives a total (the leg that catches the ORIGINAL 
       );
     }
   });
+
+  it("the paper's tallies have ONE owner — EditorPane — and every word surface reads it (task 1342)", () => {
+    // The filter door above is shared; the TALLIES it filters must be too.
+    // The Cutter once re-derived them through its own flag-forked counter (a
+    // second `useWordCount` — a duplicate whole-doc walk per typing pause the
+    // moment `virgil:doc-products` is OFF — or a second pipeline subscription),
+    // so "how many words does this paper have" had two owners. A counter
+    // instantiated anywhere but EditorPane is that shape again.
+    const OWNER = "src/components/EditorPane.tsx";
+    // The two PRODUCERS (the legacy hook's definition, the pipeline that
+    // publishes `snapshot.wordCounts`) are where the counting lives, not
+    // consumers of it.
+    const PRODUCERS = new Set(["src/hooks/useWordCount.ts", "src/lib/doc-products/pipeline.ts"]);
+    for (const needle of [/\buseWordCount\(/, /\buseWordCountsProduct\b/, /snapshot\(?\)?\.wordCounts\b/]) {
+      const hits = PROD.filter(([f, code]) => needle.test(code) && !PRODUCERS.has(rel(f)))
+        .map(([f]) => rel(f));
+      // `useWordCountsProduct` (the pipeline door only the Cutter called) is
+      // DELETED with its caller — a door no one reads is not a door.
+      expect(hits, `${needle} instantiates a word counter outside its owner`).toEqual(
+        needle.source.includes("useWordCountsProduct") ? [] : [OWNER],
+      );
+    }
+    // …and both word surfaces EditorPane mounts are handed that one owner.
+    const pane = PROD.find(([f]) => rel(f) === OWNER)![1];
+    expect(pane).toMatch(/<WordCountPanel[^>]*counts=\{wordCountHook\.counts\}/);
+    expect(pane).toMatch(/<CutterHost[^>]*wordCounts=\{wordCountHook\.counts\}/);
+  });
 });

@@ -11,16 +11,8 @@ import type {
   CutterSuggestionCard as CutterSuggestionCardData,
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
-import { useWordCount } from "@/hooks/useWordCount";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
-import {
-  EMPTY_CATEGORY_COUNTS,
-  includedTotals,
-} from "@/lib/word-count-core";
-import {
-  docProductsEnabled,
-  useWordCountsProduct,
-} from "@/lib/doc-products/use-doc-products";
+import { includedTotals, type CategoryCounts } from "@/lib/word-count-core";
 import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
@@ -54,6 +46,7 @@ export default function CutterPanel({
   jumpGate,
   editor,
   recentlyAddedId,
+  wordCounts,
 }: {
   cards: CutterCard[];
   goal: CutterGoal | null;
@@ -79,28 +72,22 @@ export default function CutterPanel({
   jumpGate: DockedJumpGate;
   editor?: Editor | null;
   recentlyAddedId?: string | null;
+  /** The paper's word tallies — the SAME object EditorPane hands the Word
+   *  Count panel (`wordCountHook.counts`, task 1342). The panel owns no
+   *  counter of its own: it used to re-derive these through a second
+   *  `useWordCount` (flag OFF — a duplicate whole-doc walk per typing pause)
+   *  or a second pipeline subscription (flag ON), two owners of one fact. */
+  wordCounts: CategoryCounts;
 }) {
-  // Flag-on (perf Wave 1) the pipeline's shared product replaces what used
-  // to be a SECOND full useWordCount instance on the same editor (a
-  // duplicate 47ms whole-doc walk per typing pause at 2,883 blocks).
-  const { counts: legacyCounts } = useWordCount(
-    docProductsEnabled ? null : (editor ?? null),
-  );
-  const productCounts = useWordCountsProduct(
-    docProductsEnabled ? (editor ?? null) : null,
-  );
-  const counts = docProductsEnabled
-    ? (productCounts ?? EMPTY_CATEGORY_COUNTS)
-    : legacyCounts;
-
-  // The cut goal counts what the Word Count panel counts — same tallies, same
-  // include-set, one filter door (task 122). It used to read the precomputed
+  // The cut goal counts what the Word Count panel counts — same tallies (one
+  // owner, threaded from EditorPane), same include-set, one filter door
+  // (task 122). It used to read the precomputed
   // unfiltered `counts.total`, so with the default config (comments OFF) a
   // document the panel called 10 words drove a goal measured against 15, and
   // the baseline `initialWords` this strip captures on first set was frozen
   // on that other ruler for the goal's whole life.
   const { config: wordCountConfig } = useWordCountConfig();
-  const currentWords = includedTotals(counts, wordCountConfig.include).words;
+  const currentWords = includedTotals(wordCounts, wordCountConfig.include).words;
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = cards.map((c) =>
