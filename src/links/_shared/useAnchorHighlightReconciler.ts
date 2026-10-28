@@ -68,7 +68,7 @@
  * `cardStore`.
  */
 
-import { useEffect, useLayoutEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 // Names from the view-only vocabulary (task 523) — the print block neutralises
 // view-only paint BY these names, so a local copy is a rename away from
 // printing a selection halo.
@@ -293,6 +293,29 @@ export function useAnchorHighlightReconciler({
     // inline kinds never change `stableCollections`); `editor` so the set is
     // read from the current instance.
   }, [store, stableCollections, atomRevision, editor]);
+
+  // Release the hover / selection a card held at the moment it was ARCHIVED
+  // (task 1336). The prune above keeps a ref to any card that still EXISTS, and
+  // an archived card does; and an archive button unmounts the card under the
+  // pointer, which dispatches no `mouseout` (`usePanelCardHoverBridge`). So the
+  // ref used to survive the archive — harmless while the gate in
+  // `collectTargets` held it back, and a phantom hover/selection wash the
+  // moment the card was RESTORED, with the pointer long gone.
+  //
+  // Keyed on the TRANSITION (ids that just entered the archived set), not on
+  // membership: hovering or selecting an archived card in its panel's Archives
+  // view is legitimate, and must not be undone on the next unrelated archive.
+  // O(archived ids), and only when that set changes — never on a keystroke.
+  const prevArchivedRef = useRef(archivedCardIds);
+  useEffect(() => {
+    const prev = prevArchivedRef.current;
+    prevArchivedRef.current = archivedCardIds;
+    if (prev === archivedCardIds) return;
+    const s = store.getState();
+    const justArchived = (id: string) => archivedCardIds.has(id) && !prev.has(id);
+    if (s.selected && justArchived(s.selected.id)) store.clearSelection();
+    if (s.hover && justArchived(s.hover.id)) store.setHoverFor(s.hover, false);
+  }, [store, archivedCardIds]);
 
   // Reconcile from the current (selection, hover, collections) tuple.
   // Idempotent: recomputes the desired in-editor NODE-decoration targets, the

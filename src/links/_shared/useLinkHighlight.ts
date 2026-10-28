@@ -28,7 +28,7 @@
  * authority, and the view prefs its host hands it.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { DATA_LINK_ID } from "../link-dom-contract";
 import {
@@ -139,10 +139,15 @@ export function useLinkHighlight({
   // (the host re-derives the set on every card-collection change, a keystroke
   // in a card body included, so the effect keys on contents, not identity).
   // No doc walk, no bus subscription, nothing per keystroke.
+  //
+  // A LAYOUT effect (task 1336), not a passive one: the archive gesture's
+  // commit and the sheet must reach the same paint. A passive effect lands
+  // after the browser has painted the commit, so the archived passage flashed
+  // its wash for one frame — the visible half of "the highlight sticks".
   const archivedKey = [...archivedAnchorIds].sort().join("\u0000");
   const archivedRef = useRef(archivedAnchorIds);
   archivedRef.current = archivedAnchorIds;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor || editor.isDestroyed) return;
     const root = editor.view.dom;
     const css = archivedAnchorCss(nextArchivedScope(root), archivedRef.current);

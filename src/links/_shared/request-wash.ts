@@ -78,6 +78,7 @@ import {
   type CardWithLinks,
 } from "../links";
 import { PENDING_AI_TINT } from "@/cards/legacy-token-crosswalk";
+import { cardIsArchived } from "./archived-anchor-chrome";
 import {
   setTransientHighlights,
   type TransientHighlightChannel,
@@ -101,11 +102,14 @@ export const REQUEST_WASH_COLOR = `color-mix(in oklab, ${PENDING_AI_TINT} 35%, t
 export type RequestWashCardLike = CardWithLinks & {
   kind?: string;
   aiRequest?: boolean;
+  /** The envelope's archived flag — read through `cardIsArchived`, never raw. */
+  archived?: boolean;
 };
 
 /**
- * True when the card wants a wash: its `aiRequest` flag is set and it has an
- * anchor to wash — EITHER a Mode-B text range OR a Mode-A block anchor.
+ * True when the card wants a wash: its `aiRequest` flag is set, it is not
+ * archived, and it has an anchor to wash — EITHER a Mode-B text range OR a
+ * Mode-A block anchor. Exactly "`requestWashAnchor` has an answer".
  *
  * Both modes qualify. The predecessor answered Mode-A only, and not because a
  * selection-anchored request is a different feature — purely because a second
@@ -113,8 +117,7 @@ export type RequestWashCardLike = CardWithLinks & {
  * talking; the decoration has no such constraint.
  */
 export function isRequestCard(card: RequestWashCardLike): boolean {
-  if (card.aiRequest !== true) return false;
-  return getTextAnchor(card) !== null || getLinkedTextObjectIds(card).length > 0;
+  return requestWashAnchor(card) !== null;
 }
 
 /**
@@ -127,6 +130,17 @@ export function requestWashAnchor(
   card: RequestWashCardLike,
 ): { mode: "range"; anchorId: string } | { mode: "block"; uuid: string } | null {
   if (card.aiRequest !== true) return null;
+  // An ARCHIVED card draws no anchor chrome (task 497's rule, stated in
+  // `archived-anchor-chrome.ts`) — and this wash is anchor chrome the 1331
+  // sheet cannot reach: it is a decoration whose wrapper sits INSIDE the
+  // `.linked-anchor` span, so the sheet's span selector never matches it.
+  // The archive lifecycle normally lowers `aiRequest` first, which masked
+  // this; legacy data and any path that flips `archived` directly
+  // (`pending-change-actions.ts`) did not (task 1336). Gated HERE, the one
+  // anchor answer every reader of this module goes through (`isRequestCard`,
+  // the desired-set key, the targets, the re-entry test), so no reader can
+  // wash an archived card by asking a different question.
+  if (cardIsArchived(card)) return null;
   const range = getTextAnchor(card);
   if (range) return { mode: "range", anchorId: range.anchorId };
   const uuid = getLinkedTextObjectIds(card)[0];
