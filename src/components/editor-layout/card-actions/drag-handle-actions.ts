@@ -96,7 +96,7 @@ import {
 } from "@/lib/tiptap/card-body-capture";
 import { bodySchemaForCardKind } from "@/cards/predicates";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
-import { buildResolveIndex } from "@/links/resolve-card-anchor";
+import { buildCardAnchorPass } from "@/links/card-anchor-rows";
 import type {
   ConfirmDescriptor,
   TextObjectKind,
@@ -1043,7 +1043,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 // The LANDED doc (task 1328): a highlight whose mark lives
                 // outside the passage is anchored there, whatever its stored
                 // pids say — it is not displaced.
-                index: buildResolveIndex(ed),
+                anchorPidsOf: buildCardAnchorPass(ed).anchorPidsOf,
                 // A travelling card is carried below, never re-homed.
                 keep: (kind, card) => travelsWithArchive(kind, card, cardLifecycle),
               });

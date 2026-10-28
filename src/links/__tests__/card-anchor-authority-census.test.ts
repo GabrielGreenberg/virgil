@@ -225,6 +225,29 @@ describe("card-anchor authority census (task 369)", () => {
     expect(archivePanel).not.toMatch(/\bgetLinkedTextObjectIds\b|\bdescendants\s*\(/);
   });
 
+  // Task 1328 — a Mode-B link's stored `textObjectIds` are its BIRTH RECORD.
+  // Two doors read them as its live anchor: the row Delete's `sourceOf` (every
+  // Mode-B row detached the whole link, so a dead-mark link's sibling rows went
+  // with it) and the archive/join re-home (a stored-but-vacated block counted
+  // as displaced). Both now ask the authority's ONE per-link answer.
+  it("E — the re-home and the row-detach read where a link IS, never its raw stored pids", () => {
+    const retarget = codeOnly(readFileSync(path.join(SRC, "cards", "retarget-anchors.ts"), "utf8"));
+    const body = retarget.slice(
+      retarget.indexOf("export function retargetDisplacedAnchors("),
+      retarget.indexOf("export function marginCardKind("),
+    );
+    expect(body, "the re-home must not read the stored pid list").not.toMatch(
+      /getLinkedTextObjectIds|textObjectIds/,
+    );
+    expect(body).toContain("anchorPidsOf");
+
+    const rows = codeOnly(readFileSync(path.join(SRC, "links", "card-anchor-rows.ts"), "utf8"));
+    const sourceOf = rows.slice(rows.indexOf("function sourceOf("), rows.indexOf("function storedSourcesOf("));
+    expect(sourceOf, "a Mode-B row's detach depends on whether its MARK is live").toContain(
+      "liveMarkParagraphOf(",
+    );
+  });
+
   it("D — only the authority and the load-time reconcile call the recovery ladder", () => {
     const LADDER = /\b(buildResolveIndex|resolveCardAnchor)\s*\(/;
     /** The reconcile pass asks a DIFFERENT question: it MUTATES the stored

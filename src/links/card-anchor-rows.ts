@@ -126,6 +126,13 @@ export interface CardAnchorPass {
    * the bare block. `null` when the card is not anchored, or in the mount gap.
    */
   jumpTarget: (card: CardWithLinks, rowPid?: string | null) => CardJumpTarget | null;
+  /**
+   * The blocks ONE link is anchored on NOW ({@link anchorPidsOfLink}) — for a
+   * door that acts on a link outside the row vocabulary (the archive / join
+   * re-home, task 1328). A Mode-B link with a live mark answers its mark's
+   * paragraph, never its stored birth record.
+   */
+  anchorPidsOf: (link: Link) => string[];
 }
 
 /** A Jump's landing place, read off one pass's index (see `jumpTarget`). */
@@ -171,6 +178,7 @@ export function buildCardAnchorPass(editor: Editor | null): CardAnchorPass {
     posOf: (uuid) => (uuid ? index?.uuidToPos.get(uuid) ?? null : null),
     jumpTarget: (card, rowPid) =>
       bound ? resolveCardJumpTarget(card, editor, bound, rowPid ?? null) : null,
+    anchorPidsOf: (link) => anchorPidsOfLink(link, bound),
   };
 }
 

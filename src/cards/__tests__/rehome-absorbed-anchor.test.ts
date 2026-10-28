@@ -47,7 +47,7 @@ describe("514 — rehomeAbsorbedAnchor", () => {
     const moved = rehomeAbsorbedAnchor({
       event: evt("P2", "P1"),
       retarget: api,
-      index: null,
+      anchorPidsOf: () => [],
       snapshotFor: (uuid) => (uuid === "P1" ? "alpha beta" : null),
     });
 
@@ -64,7 +64,7 @@ describe("514 — rehomeAbsorbedAnchor", () => {
     rehomeAbsorbedAnchor({
       event: evt("i2", "i1", "listItem"),
       retarget: api,
-      index: null,
+      anchorPidsOf: () => [],
       snapshotFor: () => null,
     });
     expect(calls[0].target).toEqual({ uuid: "i1", kind: "listItem" });
@@ -78,7 +78,7 @@ describe("514 — rehomeAbsorbedAnchor", () => {
     const moved = rehomeAbsorbedAnchor({
       event: evt("P2", "P1", "glossCell"),
       retarget: api,
-      index: null,
+      anchorPidsOf: () => [],
       snapshotFor: () => null,
     });
     expect(moved).toBe(0);
@@ -91,7 +91,7 @@ describe("514 — rehomeAbsorbedAnchor", () => {
       rehomeAbsorbedAnchor({
         event: evt("P1", "P1"),
         retarget: api,
-      index: null,
+      anchorPidsOf: () => [],
         snapshotFor: () => null,
       }),
     ).toBe(0);
@@ -105,7 +105,7 @@ describe("514 — rehomeAbsorbedAnchor", () => {
     rehomeAbsorbedAnchor({
       event: evt("P2", "P1"),
       retarget: api,
-      index: null,
+      anchorPidsOf: () => [],
       snapshotFor: () => null,
     });
     expect(calls[0].snapshot).toBeNull();

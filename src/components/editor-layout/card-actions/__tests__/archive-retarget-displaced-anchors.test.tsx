@@ -488,7 +488,7 @@ function modeBArchiveLink(anchorId: string, textObjectIds: string[]): Link {
 /** Highlight "passage" in p-target; return its mark id. */
 function highlightPassage(editor: Editor): string {
   const from = 1 + "Before.".length + 2 + "Target ".length;
-  const rec = createLinkedAnchor(editor, "archive", { from, to: from + "passage".length });
+  const rec = createLinkedAnchor(editor, "note", { from, to: from + "passage".length });
   if (!rec) throw new Error("expected a linkedAnchor record");
   return rec.anchorId;
 }
