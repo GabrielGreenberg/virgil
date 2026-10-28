@@ -10,6 +10,7 @@ import type {
   CutterSuggestionCard,
 } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
+import type { CategoryCounts } from "@/lib/word-count-core";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useDockedJumpGate } from "../contexts/card-anchor";
 import { useSelectionsContext } from "../contexts/selections";
@@ -33,6 +34,9 @@ export interface CutterHostProps {
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
+  /** The paper's word tallies — EditorPane's ONE owner (`wordCountHook.counts`,
+   *  also what the Word Count panel renders); the cut goal measures against it. */
+  wordCounts: CategoryCounts;
 }
 
 export function CutterHost(p: CutterHostProps) {
@@ -82,6 +86,7 @@ export function CutterHost(p: CutterHostProps) {
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
       editor={editorInstance}
       recentlyAddedId={recentlyAddedId}
+      wordCounts={p.wordCounts}
     />
   );
 }

@@ -134,12 +134,3 @@ export function useDocJson(editor: Editor | null) {
     () => null,
   );
 }
-
-/** Subscribe to the shared word counts for `editor` (null → no pipeline). */
-export function useWordCountsProduct(editor: Editor | null) {
-  return useSyncExternalStore(
-    (fn) => getDocProducts(editor)?.subscribe(fn) ?? NOOP_UNSUB,
-    () => getDocProducts(editor)?.snapshot().wordCounts ?? null,
-    () => null,
-  );
-}

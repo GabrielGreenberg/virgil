@@ -9035,6 +9035,7 @@ function PaneRailBody({
         convertCard={cutterHook.convertCard}
         deleteCard={cutterHook.deleteCard}
         discardPristine={cutterHook.discardPristineCards}
+        wordCounts={wordCountHook.counts}
       />
     );
   }
