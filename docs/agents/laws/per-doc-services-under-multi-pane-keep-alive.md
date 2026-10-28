@@ -1,4 +1,4 @@
-<!-- last-verified: aea05929 2026-09-20 -->
+<!-- last-verified: 6b0fbf8e 2026-10-28 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Per-doc services under multi-pane keep-alive

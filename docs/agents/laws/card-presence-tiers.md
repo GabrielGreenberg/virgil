@@ -1,4 +1,4 @@
-<!-- last-verified: ee25fd10 2026-10-23 -->
+<!-- last-verified: 6b0fbf8e 2026-10-28 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Card presence tiers

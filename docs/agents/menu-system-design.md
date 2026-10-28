@@ -1,4 +1,4 @@
-<!-- last-verified: 2fe534d 2026-06-16 -->
+<!-- last-verified: 6b0fbf8e 2026-10-28 -->
 
 # The `<Menu>` primitive — design doc
 

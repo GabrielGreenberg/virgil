@@ -1,4 +1,4 @@
-<!-- last-verified: 68f6ffe6 2026-09-21 -->
+<!-- last-verified: 6b0fbf8e 2026-10-28 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Escape means cancel
