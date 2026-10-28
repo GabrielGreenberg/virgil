@@ -177,9 +177,14 @@ function nextArchivedScope(root: HTMLElement): string {
 /** A CSS string literal's body: backslash, quote and control characters
  *  escaped, so an anchor id can never close the selector it sits in. */
 function cssString(value: string): string {
-  return value.replace(/[\\"\u0000-\u001f\u007f]/g, (c) =>
-    c === "\\" || c === '"' ? `\\${c}` : `\\${c.charCodeAt(0).toString(16)} `,
-  );
+  let out = "";
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (code === 0x5c || code === 0x22) out += `\\${ch}`; // backslash, double quote
+    else if (code < 0x20 || code === 0x7f) out += `\\${code.toString(16)} `;
+    else out += ch;
+  }
+  return out;
 }
 
 /**

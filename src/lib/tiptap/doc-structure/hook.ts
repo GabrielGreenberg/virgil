@@ -1,28 +1,18 @@
 /**
  * DocStructureObserver — React hooks
  *
- * The two React doors onto the editor's `DocStructureBus` that have
- * callers (task 924 pruned the uncalled ones — `useDocStructure`,
- * `useDocStructureEvent`, `useBlockContentChanged` — under "a registry earns
- * its name by being read"). Per-category structural counters for panel/card
- * memos live in `@/hooks/useStructuralRevisions`; anything else subscribes
- * through `getBus(editor)` in an effect.
+ * The React door onto the editor's `DocStructureBus` that has callers
+ * (task 924 pruned the uncalled ones — `useDocStructure`,
+ * `useDocStructureEvent`, `useBlockContentChanged` — and task 1331 retired
+ * `useDocStructureBus`, a bare `getBus` alias whose last caller went away,
+ * under "a registry earns its name by being read"). Per-category structural
+ * counters for panel/card memos live in `@/hooks/useStructuralRevisions`;
+ * anything else subscribes through `getBus(editor)` in an effect.
  */
 
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { getBus, type DocStructureBus } from "./bus";
-
-/**
- * Returns the bus associated with `editor`, or null if no observer
- * plugin is attached yet. Stable across re-renders.
- */
-export function useDocStructureBus(editor: Editor | null | undefined): DocStructureBus | null {
-  // `getBus` is a synchronous lookup; we want it to be re-read on every
-  // render so a freshly-attached bus is picked up. The result is stable
-  // by reference once the plugin is installed.
-  return getBus(editor);
-}
+import { getBus } from "./bus";
 
 /**
  * Per-exampleBlock content-change revision counter — the example-card

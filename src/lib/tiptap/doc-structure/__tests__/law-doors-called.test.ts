@@ -79,7 +79,7 @@ describe("keystroke-sanctity law names only doors that are called", () => {
     expect(passages[0]).not.toBe("");
     expect(passages[1]).not.toBe("");
     expect(citedDoors(passages.join("\n"))).toEqual(
-      expect.arrayContaining(["getBus", "readDiffFor", "useDocStructureBus"]),
+      expect.arrayContaining(["getBus", "readDiffFor", "useStructuralRevisions"]),
     );
   });
 
