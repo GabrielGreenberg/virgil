@@ -11,8 +11,7 @@ import { Panel } from "@/panels/_shared/Panel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
-import { flattenInlineText, projectInline } from "@/lib/inline-content";
-import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
+import { flattenInlineText } from "@/lib/inline-content";
 import {
   subscribeOutlinePrefs,
   getOutlinePrefsSnapshot,
@@ -23,11 +22,24 @@ import {
 } from "./outline-prefs-store";
 import { useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
 import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
+import { sectionExtentFromHeadings, type BlockAddress, type BlockSpanAddress } from "@/lib/tiptap/block-address";
 import {
-  sectionExtentFromHeadings,
-  type BlockAddress,
-  type BlockSpanAddress,
-} from "@/lib/tiptap/block-address";
+  OUTLINE_ROW_GAP,
+  OUTLINE_TWIST_COL,
+  headingIndent,
+  parTitleIndent,
+  parTitleId,
+  extractHeadings,
+  buildTree,
+  buildPods,
+  computeHiddenPods,
+  podIndent,
+  type HeadingItem,
+  type ParTitleItem,
+  type ExtractResult,
+  type TreeNode,
+  type OutlinePod,
+} from "./outline-model";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { MIME_OUTLINE_POD } from "@/lib/marginalia";
 import { iconHint } from "@/components/Hint";
@@ -37,12 +49,6 @@ import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
-/* ── Indentation model (single source of truth) ─────────────────────────
- * One place defines the outline's left-edge geometry, used by both the view
- * tree and the edit-mode pods (and the focus-band / position measurement that
- * key off the same rows). Goals: minimize the fixed left inset (#4), deepen
- * the per-level step so nesting reads clearly (#5), and give a fixed number
- * column so wrapped heading text hangs like a numbered list (#2). */
 /* ── parTitle ink ───────────────────────────────────────────────────────
  * The four parTitle sites below read `--par-title-color-dense`, NOT the bare
  * `--par-title-color` every other consumer takes. Same user preference, mixed
@@ -51,36 +57,6 @@ import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
  * default measures 4.17:1 on `--pod-panel` there — under AA. The derivation,
  * the measurements and the reason 85% rather than 90% live at the token in
  * globals.css; the contract is outline-partitle-contrast.test.ts. */
-const OUTLINE_BASE_INSET = 2;    // px — fixed left gutter (was 8)
-const OUTLINE_INDENT_STEP = 20;  // px per heading level (was 16)
-const OUTLINE_TWIST_COL = 15;    // px — chevron / spacer column width
-const OUTLINE_ROW_GAP = 4;       // px — gap between twist column and text
-
-/** Left pad (px) for a heading row at the given tree depth. */
-function headingIndent(depth: number): number {
-  return OUTLINE_BASE_INSET + depth * OUTLINE_INDENT_STEP;
-}
-/** Left pad (px) for a parTitle row under a heading at `depth` — one step
- *  deeper than the heading text so it reads as belonging to the section. */
-function parTitleIndent(depth: number): number {
-  return headingIndent(depth) + OUTLINE_TWIST_COL + OUTLINE_ROW_GAP + OUTLINE_INDENT_STEP;
-}
-
-interface HeadingItem {
-  id: string;
-  /** Durable block uuid — the address the structural-edit mutators key on
-   *  (T3 / W3a). Null until the block is hydrated (lazy uuid backfill); a
-   *  rename then no-ops gracefully rather than mis-addressing by index. */
-  uuid: string | null;
-  level: number;
-  text: string;
-  label: string | null;
-  sectionNumber: string | null;
-  index: number; // top-level block index in doc.content
-  // paragraph titles under this heading — each carries its own durable uuid.
-  parTitles: { title: string; index: number; uuid: string | null }[];
-}
-
 /* ── Position indicator helpers ─────────────────────────────────────── */
 
 /** An entry in the section path: heading text + its top-level block index. */
@@ -429,113 +405,6 @@ function getDocTitle(doc: JSONContent | null): string {
   return "";
 }
 
-interface ParTitleItem {
-  title: string;
-  index: number;
-  uuid: string | null;
-}
-
-interface ExtractResult {
-  headings: HeadingItem[];
-  /** Par titles that appear before the first heading (Document start region). */
-  preambleTitles: ParTitleItem[];
-}
-
-export function extractHeadings(doc: JSONContent | null): ExtractResult {
-  if (!doc || !doc.content) return { headings: [], preambleTitles: [] };
-  const headings: HeadingItem[] = [];
-  let pendingTitles: ParTitleItem[] = [];
-  const preambleTitles: ParTitleItem[] = [];
-
-  doc.content.forEach((node, idx) => {
-    if (node.type === "heading" && typeof node.attrs?.level === "number") {
-      // Attach any pending parTitles to the previous heading. Titles
-      // before the first heading go to the preamble list so they can
-      // appear under the "Document start" row.
-      if (pendingTitles.length > 0) {
-        if (headings.length > 0) {
-          headings[headings.length - 1].parTitles.push(...pendingTitles);
-        } else {
-          preambleTitles.push(...pendingTitles);
-        }
-      }
-      pendingTitles = [];
-      // OUT-A2-01: key the heading's stable address on its durable block `uuid`,
-      // NOT its positional `heading-${idx}`. The persisted fold/collapse Set
-      // (and the pods parent-chain) keys on `id`; an index-based id DRIFTS the
-      // moment a block is inserted above a collapsed section — the heading
-      // formerly `heading-3` becomes `heading-4`, so the saved fold key no
-      // longer matches and the section silently un-collapses (and an unrelated
-      // section may collapse). The block uuid is insert-stable, so the fold
-      // survives. Un-hydrated headings (uuid still null — lazy-backfilled on
-      // first interaction) fall back to the positional id so they remain
-      // foldable until they earn a uuid; once hydrated they key durably.
-      const uuid = (node.attrs.uuid as string | null) || null;
-      headings.push({
-        id: uuid ?? `heading-${idx}`,
-        uuid,
-        level: node.attrs.level as number,
-        // Task 707: the EDITABLE projection — the rename box is seeded from
-        // this and `buildHeadingRenameFragment` splices it back through the
-        // same `projectInline`, so the two cannot disagree. A footnote is an
-        // opaque zero-width atom here (its body is not heading text).
-        text: projectInline(node).text || "Untitled",
-        label: (node.attrs.label as string) || null,
-        sectionNumber: (node.attrs.sectionNumber as string) || null,
-        index: idx,
-        parTitles: [],
-      });
-    } else if (TITLED_NODE_TYPES.has(node.type ?? "") && node.attrs?.parTitle) {
-      // Task 404: the SET, not a three-name copy of it. A title on a
-      // texBlock / forestBlock / exampleBlock is written and persisted like
-      // any other, so it gets a row like any other — DISPLAY is deliberately
-      // undifferentiated (one `--par-title-color-dense` ink for every titled
-      // kind), because that is what the set already means; typing the rows by
-      // kind is a STYLE_GUIDE decision worth its own pass.
-      pendingTitles.push({
-        title: node.attrs.parTitle as string,
-        index: idx,
-        uuid: (node.attrs.uuid as string | null) || null,
-      });
-    }
-  });
-  if (pendingTitles.length > 0) {
-    if (headings.length > 0) {
-      headings[headings.length - 1].parTitles.push(...pendingTitles);
-    } else {
-      preambleTitles.push(...pendingTitles);
-    }
-  }
-  return { headings, preambleTitles };
-}
-
-/* ── Tree builder (view mode) ──────────────────────────────────────── */
-
-interface TreeNode {
-  heading: HeadingItem;
-  children: TreeNode[];
-}
-
-function buildTree(headings: HeadingItem[]): TreeNode[] {
-  const roots: TreeNode[] = [];
-  const stack: TreeNode[] = [];
-
-  for (const h of headings) {
-    const node: TreeNode = { heading: h, children: [] };
-    while (stack.length > 0 && stack[stack.length - 1].heading.level >= h.level) {
-      stack.pop();
-    }
-    if (stack.length === 0) {
-      roots.push(node);
-    } else {
-      stack[stack.length - 1].children.push(node);
-    }
-    stack.push(node);
-  }
-
-  return roots;
-}
-
 /**
  * Resolve the UUID-anchored focus `band` to an index-based `FocusState`
  * **against the outline's own `content` snapshot** — the SAME revision that
@@ -619,7 +488,7 @@ function nodeIntersectsFocus(node: TreeNode, focus: FocusState): boolean {
 // word-count-core walker — the SSOT with useWordCount's panel totals, so
 // the same include-config bit always filters the same word set on both
 // surfaces (task 112). Re-exported for the ./index barrel consumers.
-export { buildPerBlockCounts, sumIncludedWords };
+export { buildPerBlockCounts, sumIncludedWords, extractHeadings };
 /** The unlocked focus-band overlay, exported for its measure tests (task 709). */
 export { FocusBand as FocusBandOverlay };
 
@@ -842,7 +711,7 @@ function OutlineNode({
 
       {!isCollapsed && hasTitles && (
         <div>
-          {node.heading.parTitles.map((pt, i) => {
+          {node.heading.parTitles.map((pt) => {
             const ptOutside = focusState?.active
               ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
               : false;
@@ -852,7 +721,7 @@ function OutlineNode({
             const ptDim = ptOutside && !!focusState?.locked;
             return (
               <ParTitleRow
-                key={`pt-${i}`}
+                key={parTitleId(pt)}
                 pt={pt}
                 paddingLeft={parTitleIndent(depth)}
                 dim={ptDim}
@@ -894,21 +763,6 @@ function OutlineNode({
 
 /* ── Edit mode types & helpers ─────────────────────────────────────── */
 
-interface OutlinePod {
-  type: "heading" | "parTitle";
-  level: number;        // 1-3 for headings, 4 for parTitles
-  text: string;
-  blockIndex: number;   // top-level block index in doc.content (reorder/scroll)
-  blockCount: number;   // how many top-level blocks this pod covers
-  id: string;
-  /** Durable block uuid — the address the rename/label mutators key on (T3 /
-   *  W3a). Null when the block hasn't earned a uuid yet; rename then no-ops. */
-  uuid: string | null;
-  parentHeadingId?: string; // parTitles & sub-headings collapse under this id
-  hasCollapsibleChildren?: boolean; // headings only — true when something
-                                    // would be hidden by collapsing
-}
-
 /**
  * The durable address of a pod's own top-level block (task 285). A heading pod
  * owns its whole SECTION — `section: true` tells the resolver to re-derive that
@@ -927,94 +781,6 @@ function podAddress(pod: OutlinePod): BlockSpanAddress {
 function isOwnPodDrag(e: React.DragEvent, draggingId: string | null): boolean {
   if (draggingId == null) return false;
   return Array.from(e.dataTransfer?.types ?? []).includes(MIME_OUTLINE_POD);
-}
-
-function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
-  const pods: OutlinePod[] = [];
-
-  // Walk a stack of ancestor headings so each item knows which heading
-  // would hide it when collapsed. The "owner" of a pod for collapsing
-  // purposes is its nearest strictly-higher-level heading ancestor.
-  const stack: { id: string; level: number }[] = [];
-
-  for (let i = 0; i < headings.length; i++) {
-    const h = headings[i];
-
-    // Pop ancestors at our level or deeper before recording our parent.
-    while (stack.length > 0 && stack[stack.length - 1].level >= h.level) {
-      stack.pop();
-    }
-    const parentHeadingId = stack[stack.length - 1]?.id;
-
-    // blockCount: from this heading to the next heading of same/higher level —
-    // through the SHARED section rule (task 285), whose doc-side adapter the
-    // reorder handler uses. The indicator paints from this snapshot copy and
-    // the drop lands by the live one, so a second implementation here would be
-    // a line that can lie about where the blocks go.
-    const blockCount = sectionExtentFromHeadings(h.index, headings, totalBlocks);
-
-    const hasSubHeading = i < headings.length - 1 && headings[i + 1].level > h.level;
-    const hasCollapsibleChildren = hasSubHeading || h.parTitles.length > 0;
-
-    pods.push({
-      type: "heading",
-      level: h.level,
-      text: h.text,
-      blockIndex: h.index,
-      blockCount,
-      id: h.id,
-      uuid: h.uuid,
-      parentHeadingId,
-      hasCollapsibleChildren,
-    });
-
-    // Push this heading onto the stack so its descendants can find it.
-    stack.push({ id: h.id, level: h.level });
-
-    // Add parTitle pods under this heading
-    for (const pt of h.parTitles) {
-      pods.push({
-        type: "parTitle",
-        level: 4,
-        text: pt.title,
-        blockIndex: pt.index,
-        blockCount: 1,
-        id: pt.uuid ?? `pt-${pt.index}`,
-        uuid: pt.uuid,
-        parentHeadingId: h.id,
-      });
-    }
-  }
-
-  return pods;
-}
-
-/**
- * Decide which pods are hidden because some ancestor heading is collapsed.
- * A pod is hidden if any heading on its parent chain is in `collapsed`.
- */
-function computeHiddenPods(
-  pods: OutlinePod[],
-  collapsed: Set<string>,
-): Set<string> {
-  const hidden = new Set<string>();
-  // Map each heading id to its parent heading id for fast walks.
-  const parentOf = new Map<string, string | undefined>();
-  for (const p of pods) {
-    if (p.type === "heading") parentOf.set(p.id, p.parentHeadingId);
-  }
-  const isAncestorCollapsed = (startParentId: string | undefined): boolean => {
-    let cur = startParentId;
-    while (cur) {
-      if (collapsed.has(cur)) return true;
-      cur = parentOf.get(cur);
-    }
-    return false;
-  };
-  for (const p of pods) {
-    if (isAncestorCollapsed(p.parentHeadingId)) hidden.add(p.id);
-  }
-  return hidden;
 }
 
 /* ── Drag handle icon ──────────────────────────────────────────────── */
@@ -1084,9 +850,10 @@ const EditablePod = memo(function EditablePod({
     setEditing(false);
   };
 
-  // Edit-mode pods indent by their level through the shared model (parTitles
-  // are level 4). Same base-inset + per-level step as the view tree.
-  const indent = headingIndent(pod.level - 1);
+  // Task 1347: indent by TREE DEPTH through the same helpers as the view row,
+  // so entering edit mode cannot shift a row sideways (raw LaTeX level put a
+  // `\part` at a negative margin and pinned every title at a fake level 4).
+  const indent = podIndent(pod);
 
   const isParTitle = pod.type === "parTitle";
   const showChevron = !isParTitle && pod.hasCollapsibleChildren;
@@ -1168,7 +935,7 @@ const EditablePod = memo(function EditablePod({
             className={`flex-1 min-w-0 text-left truncate cursor-text rounded focus-ring ${
               isParTitle
                 ? "text-[11px] text-[var(--par-title-color-dense,#b05756)]"
-                : pod.level <= 1
+                : (pod.level ?? 0) <= 1
                   ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
                     ? "text-sm font-medium text-ink-body"
@@ -1189,7 +956,8 @@ const EditablePod = memo(function EditablePod({
 /* ── Editable outline (edit mode container) ────────────────────────── */
 
 function EditableOutline({
-  headings,
+  outline,
+  tree,
   totalBlocks,
   collapsed,
   onToggleCollapse,
@@ -1197,7 +965,10 @@ function EditableOutline({
   onRenameHeading,
   onRenameParTitle,
 }: {
-  headings: HeadingItem[];
+  /** The panel's ONE extraction (task 1347) — headings AND the preamble titles. */
+  outline: ExtractResult;
+  /** The same tree view mode renders; the pods are its flattening. */
+  tree: TreeNode[];
   totalBlocks: number;
   collapsed: Set<string>;
   onToggleCollapse: (id: string) => void;
@@ -1209,7 +980,7 @@ function EditableOutline({
   onRenameHeading: (uuid: string, newText: string) => void;
   onRenameParTitle: (uuid: string, newTitle: string) => void;
 }) {
-  const pods = useMemo(() => buildPods(headings, totalBlocks), [headings, totalBlocks]);
+  const pods = useMemo(() => buildPods(outline, totalBlocks, tree), [outline, totalBlocks, tree]);
   const hiddenIds = useMemo(() => computeHiddenPods(pods, collapsed), [pods, collapsed]);
   const visiblePods = useMemo(() => pods.filter((p) => !hiddenIds.has(p.id)), [pods, hiddenIds]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -1715,7 +1486,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   // (The bespoke outside-click closer that used to live here went with the
   //  hand-rolled dropdown — `MenuProvider` owns dismissal now. See `headerLeading`.)
 
-  const { headings, preambleTitles } = useMemo(() => extractHeadings(content), [content]);
+  const outline = useMemo(() => extractHeadings(content), [content]);
+  const { headings, preambleTitles } = outline;
   const tree = useMemo(() => buildTree(headings), [headings]);
   const docTitle = useMemo(() => getDocTitle(content), [content]);
 
@@ -1968,6 +1740,13 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
     </div>
   );
 
+  // LOCKED focus that excludes block 0 culls the Document-start row (a mere
+  // selection keeps it — CHIP A). Stated once: the row used to restate this
+  // predicate inline as a 0.3 dim that could never apply to a rendered row.
+  const docStartExcluded =
+    !!focusState?.active && focusState.locked && headings.length > 0 &&
+    (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex);
+
   return (
     <Panel
       kind="outline"
@@ -1979,7 +1758,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       <div ref={scrollRef} className="panel-scroll flex-1 p-1 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
-            headings={headings}
+            outline={outline}
+            tree={tree}
             totalBlocks={totalBlocks}
             collapsed={collapsed}
             onToggleCollapse={toggleNode}
@@ -2014,17 +1794,13 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
 
             {/* Fixed top row — document start / title. Hidden when locked
                 focus excludes block index 0. */}
-            {!(focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex)) && (
+            {!docStartExcluded && (
               <button
                 type="button"
                 data-outline-pos="docstart"
                 className={`flex w-full text-left items-start cursor-pointer rounded focus-ring ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: headingIndent(0), paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP,
-                  // Dim docstart only when LOCKED focus excludes block 0 — a mere
-                  // selection dims nothing (CHIP A).
-                  opacity: focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
-                  transition: "opacity 200ms ease",
                   position: "relative",
                   zIndex: 5,
                 }}
@@ -2055,7 +1831,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
 
             {showTitles && preambleTitles.length > 0 && (
               <div>
-                {preambleTitles.map((pt, i) => {
+                {preambleTitles.map((pt) => {
                   const ptOutside = focusState?.active
                     ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
                     : false;
@@ -2065,7 +1841,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                   const ptDim = ptOutside && !!focusState?.locked;
                   return (
                     <ParTitleRow
-                      key={`preamble-pt-${i}`}
+                      key={parTitleId(pt)}
                       pt={pt}
                       paddingLeft={parTitleIndent(0)}
                       dim={ptDim}
