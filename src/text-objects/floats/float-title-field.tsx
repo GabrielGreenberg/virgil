@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * Shared title-editing affordance for TextObject float bodies.
+ * The popped source pod's title strip (`texBlock` / `forestBlock` floats).
  *
- * Originally lived inline inside `ParagraphFloat` and `TexBlockFloat` — same
- * `par-title-*` CSS classes, same focus/blur/autosize harness, same +T / × /
- * pencil semantics. Extracted here so every float body that wants an editable
- * `parTitle` attr can drop it in without copying the editing logic.
- *
- * Kinds without a title (heading, list, exampleBlock) don't import this.
+ * Its one importer is `source-pod-body.tsx` (the paragraph float dropped it).
+ * Same `par-title-*` CSS classes and +T / × semantics as the in-place
+ * `SourcePodNodeView`; WHICH controls render is the shared
+ * `parTitleAffordance` predicate both surfaces read (task 1345), so a
+ * read-only doc paints no dead `+T` / `×` here either.
  */
 
 import { useEffect, useRef } from "react";
@@ -17,13 +16,15 @@ import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "@/components/field-draft";
 import { iconHint } from "@/components/Hint";
 import { isCommitEnter } from "@/lib/key-intent";
+import { parTitleAffordance } from "@/lib/par-title-affordance";
 
 export interface FloatTitleFieldProps {
   /** Current title text, or null when there's no title. */
   title: string | null;
   /** Whether the field is in input mode (focused, accepting keystrokes). */
   editing: boolean;
-  /** Caller-supplied flag — falsy disables the +T / pencil affordance. */
+  /** Whether the doc accepts a title write. Falsy renders no `+T`, no `×` and
+   *  no `button`-role container — a title still shows, as plain text. */
   canEdit: boolean;
   /** Caller flips `editing` to true. */
   onStartEdit: () => void;
@@ -123,8 +124,19 @@ export function FloatTitleField({
     );
   }
 
-  const handleStart = canEdit ? onStartEdit : () => {};
-  const handleClear = canEdit ? onClear : () => {};
+  const { show, live, canClear } = parTitleAffordance({
+    title,
+    editable: canEdit,
+    collapsed: false,
+  });
+  if (!show) return null;
+  if (!live) {
+    return (
+      <div className="par-title-annotation">
+        <span className="par-title-text">{title}</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -132,28 +144,30 @@ export function FloatTitleField({
       // A CONTAINER with a nested `<button>` (the × below), so it takes the
       // ONE spelling of the `button` role (task 536); the helper's target
       // guard keeps a key on that × from also opening the editor.
-      {...activatableProps(handleStart)}
+      {...activatableProps(onStartEdit)}
     >
       {title ? (
         <>
           <span className="par-title-text">{title}</span>
-          <button
-            data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
-            type="button"
-            className="par-title-delete focus-ring"
-            {...iconHint({ label: "Remove title" })}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleClear();
-            }}
-          >
-            ×
-          </button>
+          {canClear && (
+            <button
+              data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
+              type="button"
+              className="par-title-delete focus-ring"
+              {...iconHint({ label: "Remove title" })}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClear();
+              }}
+            >
+              ×
+            </button>
+          )}
         </>
       ) : (
         <span className="par-title-add">+T</span>

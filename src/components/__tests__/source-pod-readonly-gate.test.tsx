@@ -258,7 +258,9 @@ describe("source pod — float read-only gate", () => {
 
   it("offers no way into the title field read-only", () => {
     const { view } = renderFloat(false);
-    fireEvent.click(view.container.querySelector(".par-title-annotation")!);
+    // Task 1345: not merely a no-op click — an untitled read-only pod paints
+    // no title strip at all (no `+T`), as the in-place pod does.
+    expect(view.container.querySelector(".par-title-annotation")).toBeNull();
     expect(view.container.querySelector(".par-title-input")).toBeNull();
   });
 
