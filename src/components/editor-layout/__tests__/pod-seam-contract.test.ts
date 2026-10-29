@@ -194,3 +194,35 @@ describe("pod seam — the prose says what the code ships", () => {
     expect(gutters).toMatch(/BottomEdgeHandle[\s\S]{0,120}--pod-seam/);
   });
 });
+
+describe("column edge fade — its floor IS the clip edge (task 1356)", () => {
+  // The column clips (`overflow: clip`, which clips at the PADDING edge) and
+  // hosts the sticky ColumnEdgeFade, whose lowest pin is the column's CONTENT
+  // edge. Any block-axis padding on that one box opens a strip between the two:
+  // near the end of the doc the band rode up to its floor and an overflowing
+  // notes card kept painting one line BELOW it. The inset is real (it is the
+  // omni flow gap), so it must live INSIDE the clip box, never on it.
+  const clipStyle = (() => {
+    const at = panelColumn.indexOf("overflow: 'clip'");
+    expect(at, "the gutter column no longer clips — re-derive this guard").toBeGreaterThan(-1);
+    const open = panelColumn.lastIndexOf("style={{", at);
+    const close = panelColumn.indexOf("}}", at);
+    return panelColumn.slice(open, close);
+  })();
+
+  it("the clipping column carries no top/bottom padding", () => {
+    expect(clipStyle).not.toMatch(/\bpadding(Top|Bottom|Block)?\s*:/);
+  });
+
+  it("the flow inset lives on the row just inside the clip box", () => {
+    const fadeTop = panelColumn.indexOf('<ColumnEdgeFade side={side} edge="top" />');
+    expect(fadeTop).toBeGreaterThan(-1);
+    const row = panelColumn.slice(fadeTop, panelColumn.indexOf("}}", fadeTop));
+    expect(row).toMatch(/paddingTop:[^,]*var\(--pod-gap\)/);
+    expect(row).toMatch(/paddingBottom:[^,]*var\(--pod-gap\)/);
+  });
+
+  it("both fades still latch to the scrollport's own edges", () => {
+    expect(panelColumn).toMatch(/isTop \? \{ top: 0 \} : \{ bottom: 0 \}/);
+  });
+});
