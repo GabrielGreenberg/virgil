@@ -4204,6 +4204,18 @@ render through the ONE hook `useBarStatusVisible(id, state)`, which owns the
 single settle timer — a state that clears itself inside its window never
 paints, and no item carries a timer of its own.
 
+**Bar occupants are spaced by their CONTAINER, never by themselves** (task
+1354, *"there should be a small gap between visual elements"*). The status
+items mount inside ONE status segment in `StatusCluster` whose `gap` and
+trailing margin are the `--bar-occupant-gap` token (globals.css, beside
+`--bar-seam-lift`): pills are spaced from each other and from the first tool or
+the « chip after them. No occupant — `BarStatusPill` included — carries its own
+margin; a bordered pill shows its edge, so per-item spacing that happens to
+look right on a transparent `.topbarbtn` reads as "flush" on a pill. The gap is
+not a root `gap` on the cluster (it would double around the zero-width
+collapsed tool group), and an all-quiet segment is `:empty` and hides, margin
+and all. The `.topbarbtn` tool row keeps its padding-as-spacing.
+
 ### Occupancy priority — who yields when the bar is narrow
 
 The bar has more occupants than a narrow window has room for, so it has ONE
