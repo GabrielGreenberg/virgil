@@ -113,9 +113,27 @@ describe("anchored-menu guardrail — doctrine participation", () => {
         }
       }
     }
-    expect(withoutPrimitiveCheck.length).toBeGreaterThan(
+    // In-tree, the census can only SHRINK under the check.
+    expect(withoutPrimitiveCheck.length).toBeGreaterThanOrEqual(
       censusBothSilos().length,
     );
+    // …and the check is load-bearing by construction rather than by whichever
+    // declaration happens to lean on it today. Until task 1361 the only one
+    // that did was `EditorLayout` — exempted wholesale by the Help menu's
+    // `useFloatingMenuPosition` call; with the Help menu moved out, a
+    // tree-count could no longer tell a live check from a deleted one. So a
+    // fixture states it: a declaration that trips every surface signal and
+    // builds on the primitive is NOT a hit.
+    const migrated = `
+      function MigratedMenu() {
+        const r = ref.current.getBoundingClientRect();
+        return <AnchoredMenu ariaLabel="x" trigger={() => null}>
+          <div className="fixed bg-surface rounded-lg shadow-lg" style={{ top: r.bottom }} />
+        </AnchoredMenu>;
+      }
+    `;
+    expect(declaresAnchoredSurface(migrated)).toBe(true);
+    expect(usesMenuPrimitive(migrated)).toBe(true);
   });
 
   it("every src/ MENU that hand-rolls its own placement is one this task NAMED", () => {
@@ -132,11 +150,12 @@ describe("anchored-menu guardrail — doctrine participation", () => {
     // So: ask the BLOCK whether it declares menu semantics, and pin the answer
     // to an explicit set. A new `src/` menu must be stated here — an allowlist
     // entry alone can no longer absorb it silently.
+    // Task 1361 migrated `StatusClusterImpl` (the Help menu → `HelpMenu.tsx`)
+    // and `MyPapersPod` ("+ Add paper") onto `AnchoredMenu`; the two below
+    // remain, each entry stating only its PLACEMENT residual.
     const KNOWN_SRC_MENU_HOLDOUTS = [
       "src/components/FontPicker.tsx::FontPicker",
       "src/components/SlashCommandPopup.tsx::SlashCommandPopup",
-      "src/components/editor-layout/StatusCluster.tsx::StatusClusterImpl",
-      "src/components/library/MyPapersPod.tsx::MyPapersPod",
     ];
     // The classification is the ENTRY'S OWN JUSTIFICATION, not a second guess at
     // it. `NOT AN ANCHORED MENU` is a claim an author had to write and leg 1

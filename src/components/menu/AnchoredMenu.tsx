@@ -179,6 +179,12 @@ export interface AnchoredMenuRenderProps {
   /** The trigger's rect as captured at open — the anchor a callee may want to
    *  pop its own float against (Bibliography's library picker). */
   anchorRect: DOMRect | null;
+  /** The trigger button — the element that keeps DOM focus for the whole
+   *  interaction and hosts `aria-activedescendant` (task 477). A body that
+   *  opens a NESTED sub-menu passes it as that provider's host too, so the
+   *  sub-menu's active row is announced from the same element (task 1361 —
+   *  the Help menu's Commands sub-menu; `claimActiveDescendant` stacks). */
+  triggerEl: HTMLElement | null;
 }
 
 export interface AnchoredMenuProps {
@@ -202,6 +208,10 @@ export interface AnchoredMenuProps {
   /** List stepping axis, forwarded to `MenuProvider`. Only consulted for the
    *  `list` layout (a `grid`/`composite` already maps all four arrows). */
   orientation?: MenuOrientation;
+  /** A vertical list's plain Left/Right, forwarded to `MenuProvider` — the
+   *  hook a body uses to open / close a nested sub-menu from the keyboard
+   *  (task 1361). */
+  onArrowHorizontal?: (dir: "left" | "right", activeId: string | null) => void;
   /** ARIA container-role fork, forwarded to `MenuProvider`. Default "menu". */
   role?: MenuRole;
   /** Container style overrides (width / padding), forwarded to `MenuProvider`.
@@ -279,6 +289,7 @@ export function AnchoredMenu({
   ariaLabel,
   layout = "list",
   orientation,
+  onArrowHorizontal,
   role = "menu",
   containerStyle,
   align = "start",
@@ -338,8 +349,8 @@ export function AnchoredMenu({
   );
 
   const renderProps = useMemo<AnchoredMenuRenderProps>(
-    () => ({ close, anchorRect }),
-    [close, anchorRect],
+    () => ({ close, anchorRect, triggerEl }),
+    [close, anchorRect, triggerEl],
   );
   const body = typeof children === "function" ? children(renderProps) : children;
 
@@ -395,6 +406,7 @@ export function AnchoredMenu({
           id={`anchored-menu-${menuId}`}
           layout={layout}
           orientation={orientation}
+          onArrowHorizontal={onArrowHorizontal}
           role={role}
           anchorRect={anchorRect}
           placements={ANCHORED_MENU_PLACEMENTS[align]}

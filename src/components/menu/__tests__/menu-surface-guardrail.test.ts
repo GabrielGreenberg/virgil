@@ -461,12 +461,14 @@ describe("menu surface — the primitive owns the container chrome", () => {
     // …where the pre-fix chrome is RED and the adopted form is green.
     expect(paintsFromMenuTier(preFix)).toBe(false);
     expect(paintsFromMenuTier(postFix)).toBe(true);
-    // And the live population really holds declared menus the placement
-    // census cannot see — not merely the fixture. (`OverflowPill` itself left
-    // it in task 997, by moving onto `AnchoredMenu`; the library pod's add
-    // menu is a declared `role="menu"` that is still hand-built.)
+    // The live population no longer holds a declared-only menu: `OverflowPill`
+    // left it in task 997 and the library pod's "+ Add paper" in task 1361,
+    // both by moving onto `AnchoredMenu`. What it still holds is the two
+    // placement holdouts — so the union is live, and the declared-menu leg is
+    // pinned by the fixture above rather than by a menu left unmigrated.
     const keys = surfaceCensusPopulation().map((h) => h.key);
-    expect(keys).toContain("src/components/library/MyPapersPod.tsx::MyPapersPod");
+    expect(keys).toContain("src/components/SlashCommandPopup.tsx::SlashCommandPopup");
+    expect(keys).not.toContain("src/components/library/MyPapersPod.tsx::MyPapersPod");
     expect(keys).not.toContain("src/components/Marginalia.tsx::OverflowPill");
   });
 

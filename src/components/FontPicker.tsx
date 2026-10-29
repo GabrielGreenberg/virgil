@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "./field-primitives";
 import { useMenuDismiss } from "./menu/useMenuDismiss";
 import { MenuSectionLabel } from "./menu/MenuChrome";
+import { menuRowToneClass } from "./menu/row-tone";
 import { MAIN_TEXT_FONTS } from "@/lib/font-catalogue";
 import { resolvePreviewFontStack } from "@/lib/panel-typography";
 
@@ -74,13 +75,12 @@ export default function FontPicker({
       </button>
       {open && !pinned && (
         <div
-          // MENU tier via `.menu-surface` (task 459). Its POSITIONING is still
-          // hand-rolled — `anchored-menu-guardrail` names it as a holdout, and
-          // the migration is a combobox job rather than a shell swap — but a
-          // holdout on one axis is not an exemption on the other, and its
-          // surface (`--edge-subtle` + Tailwind's stock `shadow-lg`) was
-          // censused by nothing at all until the surface census inherited this
-          // census's population.
+          // MENU tier via `.menu-surface` (task 459); dismissal via
+          // `useMenuDismiss` (task 1304); row tones via `row-tone.ts` (task
+          // 1361). Its POSITIONING is still hand-rolled and it has no roving
+          // keyboard nav — `anchored-menu-guardrail` names exactly that as its
+          // holdout: the migration is a combobox job (`useMenuCombobox`), not
+          // a shell swap.
           className="absolute z-50 left-0 right-0 mt-1 menu-surface overflow-hidden"
           style={{ maxHeight: 360 }}
         >
@@ -108,7 +108,13 @@ export default function FontPicker({
                       type="button"
                       key={f}
                       onClick={() => { onChange(f); setOpen(false); }}
-                      className={`w-full text-left px-3 py-1.5 flex items-center gap-3 hover:bg-[var(--accent-light)] ${selected ? "bg-[var(--accent-light)]" : ""}`}
+                      // Row tones from the menu's ONE vocabulary (task 1361) —
+                      // the hover is every menu's, and the current font is
+                      // marked by its ✓ and `aria-current`, as a checked row is
+                      // everywhere else; it used to paint `--accent-light`, a
+                      // highlight no other menu used.
+                      aria-current={selected || undefined}
+                      className={`w-full text-left px-3 py-1.5 flex items-center gap-3 ${menuRowToneClass("default", false)}`}
                     >
                       <span
                         className="text-sm text-ink-body shrink-0"

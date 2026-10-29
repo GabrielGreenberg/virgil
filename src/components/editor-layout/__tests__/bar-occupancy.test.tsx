@@ -50,7 +50,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { createRef, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { codeOnly, commentsStripped, tagsContaining, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
@@ -345,13 +345,6 @@ function statusProps(
     bugReportOpen: false,
     setBugReportOpen: noop,
     appVersion: "0.0.0-test",
-    helperBtnRef: createRef<HTMLButtonElement>(),
-    helperMenuOpen: false,
-    setHelperMenuOpen: noop,
-    helperPositionRef: noop,
-    helperPositionStyle: {},
-    commandsPopoutOpen: false,
-    setCommandsPopoutOpen: noop,
     onInsertVirgilCommand: noop,
     currentDocId: DOC.id,
     codeView: false,

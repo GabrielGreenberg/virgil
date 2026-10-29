@@ -12,7 +12,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRef } from "react";
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, render } from "@testing-library/react";
@@ -56,13 +56,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
     bugReportOpen: false,
     setBugReportOpen: noop,
     appVersion: "0.0.0-test",
-    helperBtnRef: createRef<HTMLButtonElement>(),
-    helperMenuOpen: false,
-    setHelperMenuOpen: noop,
-    helperPositionRef: noop,
-    helperPositionStyle: {},
-    commandsPopoutOpen: false,
-    setCommandsPopoutOpen: noop,
     onInsertVirgilCommand: noop,
     currentDocId: "doc1",
     codeView: false,

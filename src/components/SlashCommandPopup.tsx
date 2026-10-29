@@ -31,6 +31,7 @@ import { executeSlashSelectionAt } from "@/lib/tiptap/slash-popup";
 import { slashCommandReason } from "@/lib/tiptap/slash-applicability";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
+import { menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
 import {
   recordScrollPlacement,
   SCROLL_PORTAL_SLASH_POPUP,
@@ -193,12 +194,16 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
               executeSlashSelectionAt(editor.view, i);
               editor.commands.focus();
             }}
-            className={`flex w-full items-baseline gap-2 text-left px-3 font-mono text-xs ${
-              isDisabled
-                ? "text-ink-faint cursor-not-allowed"
-                : `text-ink-body ${selected ? "bg-edge-subtle" : "hover-on-light"}`
-            }`}
-            style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT}px` }}
+            // The row's state paint is the menu's ONE vocabulary (`row-tone.ts`,
+            // task 1361): the selected row wears `--menu-roving-bg` like every
+            // other menu's arrow cursor (it painted `bg-edge-subtle`, a grey no
+            // other menu used), and the greyed / hover tones are the shared ones.
+            className={`flex w-full items-baseline gap-2 text-left px-3 font-mono text-xs ${menuRowToneClass("default", isDisabled)}`}
+            style={{
+              height: ROW_HEIGHT,
+              lineHeight: `${ROW_HEIGHT}px`,
+              ...menuRowRovingStyle(selected, isDisabled),
+            }}
           >
             <span className="shrink-0">{`\\${name}`}</span>
             {why ? (

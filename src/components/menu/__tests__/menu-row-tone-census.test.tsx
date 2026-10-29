@@ -41,7 +41,12 @@ import { MenuToggleRow } from "../MenuToggleRow";
 import { MenuItemsFromRegistry } from "../MenuItemsFromRegistry";
 import { MenuSeparator } from "../MenuChrome";
 import { menuRowToneClass } from "../row-tone";
-import { SRC, stripComments, walkSource } from "./_menu-census";
+import {
+  PERMITTED_HAND_ROLLED_ANCHORED_SURFACES,
+  SRC,
+  stripComments,
+  walkSource,
+} from "./_menu-census";
 import { enclosingDeclaration } from "../../../lib/__tests__/_source-scan";
 
 class ResizeObserverStub {
@@ -196,10 +201,31 @@ function consumerOffences(rel: string, code: string): string[] {
   return out;
 }
 
+/** A file that DECLARES menu ARIA — a container or a row role — renders menu
+ *  rows whether or not it imports the primitive (task 1361). */
+const DECLARES_MENU_ROLE = /\brole=\{?["'](?:menu|listbox|menuitem|menuitemcheckbox|menuitemradio|option)["']/;
+
+/** The census-declared HOLDOUTS (`_menu-census.ts`): menus whose PLACEMENT is
+ *  still their own. Read from the one list, never re-typed here. */
+function holdoutFiles(): string[] {
+  return Object.entries(PERMITTED_HAND_ROLLED_ANCHORED_SURFACES)
+    .filter(([, why]) => why.startsWith("HOLDOUT"))
+    .map(([key]) => path.join(SRC, "..", key.split("::")[0]));
+}
+
+/** The population (task 986, widened by task 1361). It used to be "imports a
+ *  `menu/` module" alone — so a hand-rolled menu that imported NOTHING from the
+ *  primitive (MyPapersPod's "+ Add paper", the `/` popup) was never scanned,
+ *  which is exactly the menu most likely to paint its own row vocabulary. Now:
+ *  imports the primitive, OR declares menu ARIA, OR is a declared holdout. */
 function menuConsumers(): string[] {
-  return walkSource(SRC).filter(
-    (f) => !f.startsWith(MENU_DIR + path.sep) && IMPORTS_MENU.test(readFileSync(f, "utf8")),
-  );
+  const holdouts = new Set(holdoutFiles());
+  return walkSource(SRC).filter((f) => {
+    if (f.startsWith(MENU_DIR + path.sep)) return false;
+    if (holdouts.has(f)) return true;
+    const code = readFileSync(f, "utf8");
+    return IMPORTS_MENU.test(code) || DECLARES_MENU_ROLE.test(stripComments(code));
+  });
 }
 
 describe("menu row tones — consumer census (task 986)", () => {
@@ -221,6 +247,11 @@ describe("menu row tones — consumer census (task 986)", () => {
       "components/RecentPapersList.tsx",
       // CollabStatusPill's row is BarStatusPill's since task 1214.
       "components/status/BarStatusPill.tsx",
+      // Task 1361: the holdouts and the formerly import-less menus.
+      "components/SlashCommandPopup.tsx",
+      "components/FontPicker.tsx",
+      "components/library/MyPapersPod.tsx",
+      "components/editor-layout/HelpMenu.tsx",
     ]) {
       expect(rels, must).toContain(must);
     }
@@ -246,5 +277,31 @@ describe("menu row tones — consumer census (task 986)", () => {
     // else's (a big consumer's non-menu UI) — only the roving fill and the
     // hand-drawn rule are file-wide.
     expect(consumerOffences("x.tsx", `function Other() { return "text-ink-faint opacity-40"; }`)).toEqual([]);
+  });
+});
+
+// ── Leg 4: a HOLDOUT is a placement exemption, never a row exemption ─────────
+// (task 1361). The four menus `_menu-census.ts` declared "HOLDOUT (follow-up)"
+// sat there for a release cycle while their ROWS kept painting a private
+// vocabulary — the `/` popup's selected row in `bg-edge-subtle`, the font
+// picker's in `--accent-light` — because the holdout text described placement
+// and nothing checked the rest. The checkable half of the entry: a holdout's
+// rows take their state paint from `row-tone.ts`, so it IMPORTS it.
+describe("menu row tones — a holdout's rows are on the vocabulary (task 1361)", () => {
+  it("every declared holdout exists and paints its rows from row-tone.ts", () => {
+    const files = holdoutFiles();
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      const code = stripComments(readFileSync(f, "utf8"));
+      expect(code, `${path.relative(SRC, f)} must import row-tone.ts`).toMatch(
+        /from\s+["'][^"']*menu\/row-tone["']/,
+      );
+    }
+  });
+
+  it("the widened population reaches a menu that imports nothing from menu/", () => {
+    expect(DECLARES_MENU_ROLE.test(`<div role="menu">`)).toBe(true);
+    expect(DECLARES_MENU_ROLE.test(`<button role="menuitem">`)).toBe(true);
+    expect(DECLARES_MENU_ROLE.test(`<div role="dialog">`)).toBe(false);
   });
 });

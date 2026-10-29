@@ -38,7 +38,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { createRef } from "react";
+
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { codeOnly, strip } from "@/lib/__tests__/_source-scan";
 
@@ -106,13 +106,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
     bugReportOpen: false,
     setBugReportOpen: noop,
     appVersion: "0.0.0-test",
-    helperBtnRef: createRef<HTMLButtonElement>(),
-    helperMenuOpen: false,
-    setHelperMenuOpen: noop,
-    helperPositionRef: noop,
-    helperPositionStyle: {},
-    commandsPopoutOpen: false,
-    setCommandsPopoutOpen: noop,
     onInsertVirgilCommand: noop,
     currentDocId: "doc1",
     codeView: false,
