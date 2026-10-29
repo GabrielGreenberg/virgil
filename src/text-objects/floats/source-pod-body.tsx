@@ -246,7 +246,7 @@ export function SourcePodFloatBody({
       >
         <div
           className={`par-title-wrapper has-text${
-            title ? " has-title" : " has-add-btn"
+            title ? " has-title" : mainEditable ? " has-add-btn" : ""
           }`}
         >
           <FloatTitleField

@@ -17,6 +17,7 @@ import {
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { useIsFloatPopped } from "@/hooks/usePoppedCards";
 import { isCommitEnter } from "@/lib/key-intent";
+import { parTitleAffordance } from "@/lib/par-title-affordance";
 import {
   sourcePodPreview,
   SOURCE_POD_PREVIEW_CLASSES,
@@ -236,7 +237,8 @@ export default function SourcePodNodeView({
   // The title INPUT is mounted only where its commit could land — so the
   // read-only flip takes the field out of edit mode in the same breath as it
   // takes away the `+T` that opens it.
-  const titleEditing = editingTitle && !collapsed && editable;
+  const titleAffordance = parTitleAffordance({ title, editable, collapsed });
+  const titleEditing = editingTitle && titleAffordance.live;
 
   const setSource = useCallback(
     (val: string) => {
@@ -380,8 +382,9 @@ export default function SourcePodNodeView({
       {/* +T title affordance — hidden when collapsed and there's no title, and
           read-only when the doc is: an untitled pod then shows nothing at all
           (the `+T` writes `parTitle`, which is refused), while a titled one
-          still shows its title as plain text. */}
-      {(title || (!collapsed && editable)) && (
+          still shows its title as plain text. One predicate with the popped
+          float, `parTitleAffordance` (task 1345). */}
+      {titleAffordance.show && (
         <div
           className="par-title-annotation"
           contentEditable={false}
@@ -421,7 +424,7 @@ export default function SourcePodNodeView({
               <span
                 className="par-title-text"
                 onClick={(e) => {
-                  if (collapsed || !editable) return;
+                  if (!titleAffordance.live) return;
                   e.preventDefault();
                   e.stopPropagation();
                   setEditingTitle(true);
@@ -429,7 +432,7 @@ export default function SourcePodNodeView({
               >
                 {title}
               </span>
-              {!collapsed && editable && (
+              {titleAffordance.canClear && (
                 <button
                   data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
                   type="button"
