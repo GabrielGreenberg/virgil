@@ -30,23 +30,6 @@ export interface EditorStateData {
   selection?: { anchor: number; head: number } | null;
 }
 
-export interface Suggestion {
-  id: string;
-  explanation: string;
-  original_text: string;
-  suggested_text: string;
-  revision: string;
-  note: string;
-  status: "pending" | "accepted" | "rejected" | "skipped";
-}
-
-export interface SuggestionsState {
-  suggestions: Suggestion[];
-  currentIndex: number;
-  reviewedAt: string;
-  documentHash: string;
-}
-
 export interface SessionState {
   lastReviewedAt: string | null;
   lastSavedAt: string;

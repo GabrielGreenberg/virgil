@@ -35,7 +35,6 @@ const CARD_HOOKS = [
   "useArchive",
   "useAnnotations",
   "useCitations",
-  "useSuggestions",
   "useOrphanedFootnotes",
 ];
 

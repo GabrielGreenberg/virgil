@@ -11,9 +11,9 @@
 //
 // The fix makes EditorPane the single owner: it renders the highlight from its
 // own local (`effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange`)
-// and bubbles the live range up via `PaneState.searchHighlightRange`;
-// EditorLayout DELETES its dead `useState` and reads the value back from
-// `paneState`. These are source-level guards (the components can't be unit-
+// EditorLayout DELETES its dead `useState`. (It later read the range back off
+// `paneState` to gate the legacy suggestions.json text highlight; task 1360
+// retired that store, so neither the bubble slice nor the read survives.) These are source-level guards (the components can't be unit-
 // mounted) that fail if the orphan is re-introduced.
 //
 // P5 item 4 update: the ERROR range is now ALSO owned locally in EditorPane
@@ -50,16 +50,11 @@ describe("EditorPane owns the search highlight", () => {
     expect(EDITOR_PANE).toContain("highlightRange={effectiveHighlightRange}");
   });
 
-  it("bubbles the live range up through PaneState", () => {
-    // The field must be declared on PaneState AND populated in the payload.
-    expect(EDITOR_PANE).toMatch(
-      /searchHighlightRange:\s*\{\s*from:\s*number;\s*to:\s*number\s*\}\s*\|\s*null;/,
-    );
-    // The onPaneStateChange payload includes it (bare-key shorthand).
-    const payloadStart = EDITOR_PANE.indexOf("onPaneStateChange({");
-    expect(payloadStart).toBeGreaterThan(-1);
-    const payload = EDITOR_PANE.slice(payloadStart, payloadStart + 1200);
-    expect(payload).toContain("searchHighlightRange,");
+  it("does not bubble the range up — its only reader was retired (task 1360)", () => {
+    // The layout read `paneState.searchHighlightRange` solely to gate the
+    // legacy suggestions.json TEXT highlight; that store and the prop are
+    // deleted, so the bubble slice would be a field nothing reads.
+    expect(EDITOR_PANE).not.toMatch(/searchHighlightRange:\s*\{/);
   });
 });
 
@@ -83,9 +78,7 @@ describe("EditorLayout's dead search state is gone", () => {
     );
   });
 
-  it("reads the live search highlight back from paneState", () => {
-    expect(EDITOR_LAYOUT).toContain(
-      "const searchHighlightRange = paneState?.searchHighlightRange ?? null;",
-    );
+  it("reads no search highlight at all (the text-highlight gate is gone, task 1360)", () => {
+    expect(EDITOR_LAYOUT).not.toContain("searchHighlightRange");
   });
 });

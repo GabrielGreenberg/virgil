@@ -501,11 +501,15 @@ node, so the per-block rebuild's cost is unchanged.
 CI: `latex-cmd-prose-only.test.ts` (real main stack; cold build + typed rebuild).
 **Owed:** a preview glance at a listing containing `\foo` — not FSA-masked.
 
-### The quote half: "where is this quoted string?" (task 841)
+### The quote half: "where is this quoted string?" (task 841) — RETIRED (task 1360)
+
+**Retired.** The text-quote highlight's only producer was the legacy
+`suggestions.json` store, deleted in task 1360, so `findProseTextRange` and its
+suite went with it; the editor's transient highlight is position-based only.
+The rule below is kept as the record of what a revived quote locator must do.
 
 The text-based highlight band (a revision / comment quote clicked in its card)
-locates its quote through `findProseTextRange`
-([src/lib/find-prose-text.ts](../../../src/lib/find-prose-text.ts)), which
+located its quote through `findProseTextRange` (`src/lib/find-prose-text.ts`), which
 searches the index's joined text and maps with `spanAtOffset` +
 `proseOffsetToPos`. It replaced `Editor.tsx`'s `findTextRange`, a second offset
 space (`getText()` — "\n\n" separators + atom `renderText` — mapped by a
@@ -514,7 +518,7 @@ words. Rule: atoms contribute nothing (as in the `textBetween(…, " ")` capture
 whitespace in the quote matches any whitespace run including the block
 separator, and a quote containing raw-LaTeX carrier text finds no prose match
 (no band, never a wrong band). The dead `EditorHandle.replaceText` rode the
-same locator and was deleted. CI: `find-prose-text.test.ts`.
+same locator and was deleted.
 
 ### The smartening half: quote canonicalisation is a PROSE transform (task 1204)
 

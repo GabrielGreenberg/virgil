@@ -13,7 +13,7 @@
 > shape is owned by [anchoring.md](anchoring.md) and only referenced here.
 
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
-The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **60** exported
+The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **58** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
 if they ever disagree, the code wins). The full type index — every exported type,
 grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
@@ -477,10 +477,10 @@ is a bare counter, not JSON. The pen / turn-taking subsystem is
 Still in `types.ts` (so they round-trip old sidecars) but **not the live card
 path** — don't write them; flagged as pruning candidates:
 
-- **`suggestions.json`** — `SuggestionsState { suggestions: Suggestion[];
-  currentIndex; reviewedAt; documentHash }`, `Suggestion { id; explanation;
-  original_text; suggested_text; revision; note; status }`. The pre-Revisions
-  inline-review path (`useSuggestions` still reads it).
+- **`suggestions.json`** — RETIRED (task 1360). The pre-Revisions
+  inline-review store; its hook, types and editor text-highlight path are
+  deleted. A `legacy` row in `SIDECAR_VALUE` so an old folder's copy (or a
+  conflicted fork of it) is still recognised; read and written by nothing.
 - **No live consumer at all** (the dead pre-card review pipeline — safe to prune):
   `SessionState`, `ReviewRequest`, `ClaudeSuggestion`.
 
@@ -496,7 +496,7 @@ the type exists, and check 2 now holds it to that.
 
 This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
 field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
-forward-points to. All **60** exported types are named below (schema above, or
+forward-points to. All **58** exported types are named below (schema above, or
 doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
@@ -516,8 +516,7 @@ doc-of-record noted), grouped by family:
 - **Bibliography support** — `BibEntry`, `BibSourceRef`, `BibReviewRequest`, `BibReviewState`,
   `BibSettings`, `BibEntryRequest`, `AnnotationsState`, `AnnotationsStateV2`.
 - **Infrastructure** — `VirgilSidecar`, `ParagraphMeta`, `EditorStateData`.
-- **Legacy / dead residue** — `Suggestion`, `SuggestionsState`, `SessionState`,
-  `ReviewRequest`, `ClaudeSuggestion`.
+- **Legacy / dead residue** — `SessionState`, `ReviewRequest`, `ClaudeSuggestion`.
 
 One of them has its **doc-of-record elsewhere**: `OriginalAnchor` (the Mode-B→A
 re-anchor record) is owned by [anchoring.md](anchoring.md), as is the `Link`

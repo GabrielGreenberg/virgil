@@ -72,7 +72,7 @@ The **front door** (silo since 2026-05-16 `7be3b5f7`, first documented here; sub
 - **Side panels** — configurable stack per side: notes, footnotes, citations, bibliography, reports, examples, todo, archive, revisions (comments + suggestions), cutter, outline, search, wordcount, errors, omni
 - **Cards** — every panel displays items as themed cards; cards can be popped out as floating windows
 - **Links** — unified model connecting editor content to panel cards (three kinds: footnote, citation, anchor). The anchor side parameterizes on `targetKind: TextObjectKind`, so cards can anchor to any TextObject
-- **AI exchange** — sidecar JSON files (`suggestions.json`, `revisions.json`, `ai-requests.json`, `bib-review-requests.json`) in `virgil/` folder drive structured UI affordances
+- **AI exchange** — sidecar JSON files (`revisions.json`, `ai-requests.json`, `bib-review-requests.json`) in `virgil/` folder drive structured UI affordances
 - **Citations & bibliography** — natbib + biblatex command families; formatted via citation-js
 - **Library tab** — sibling pane to each open document. Outer tabs (DocTab + LibraryTab pair) live in the Virgil bar; inside the library pane there's a second layer of tabs (Central catalog + curated libraries). Self-contained code under `library/`
 

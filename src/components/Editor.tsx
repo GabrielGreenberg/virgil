@@ -78,7 +78,6 @@ import { reportDocMount } from "@/lib/mount-preservation";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 import { announceSurfaceEditability } from "@/lib/tiptap/surface-editable";
-import { findProseTextRange } from "@/lib/find-prose-text";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 
 /**
@@ -103,8 +102,9 @@ interface EditorProps {
    *  arg is TipTap's update-event transaction, threaded so the autosave can
    *  recognise an anchor-mint tx and flush immediately (anchor-mint-signal). */
   onUpdate: (editor: Editor, tx?: import("@tiptap/pm/state").Transaction) => void;
-  highlightText: string | null;
-  /** Position-based highlight (from search panel). Takes priority over highlightText. */
+  /** Position-based highlight (search panel / diagnostics). The ONLY highlight
+   *  input: the text-quote `highlightText` path fed only the retired
+   *  suggestions.json store, and is gone with it (task 1360). */
   highlightRange: { from: number; to: number } | null;
   onEditorReady?: (editor: Editor) => void;
   onCitationDrop?: (command: string, citationId?: string) => { id: string; displayText: string } | null;
@@ -449,15 +449,13 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   // The ONE timer scope this editor component arms through (law "a NodeView
   // owns its timers' lifetime", React half) — declared first so its disposal
   // runs before the cleanups below. Unmount cancels anything still queued.
   const lifetime = useViewLifetime();
-  const highlightTextRef = useRef(highlightText);
-  highlightTextRef.current = highlightText;
   const highlightRangeRef = useRef(highlightRange);
   highlightRangeRef.current = highlightRange;
 
@@ -1644,42 +1642,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       } catch { /* pos out of range after edit */ }
     };
 
-    // Position-based highlight (search panel / diagnostics) takes priority.
     const range = highlightRangeRef.current;
-    if (range) {
-      setTransientHighlights(editor.view, [
-        { from: range.from, to: range.to, color: TRANSIENT_HIGHLIGHT_COLOR },
-      ]);
-      try {
-        editor.commands.setTextSelection(range.from);
-      } catch { /* pos out of range after edit */ }
-      scrollRangeIntoView(range.from);
-      return;
-    }
-
-    // Text-based highlight (from revisions/suggestions).
-    const textRange = highlightTextRef.current
-      ? findProseTextRange(editor.state.doc, highlightTextRef.current)
-      : null;
-    if (!textRange) {
+    if (!range) {
       clearTransientHighlights(editor.view);
       return;
     }
-
     setTransientHighlights(editor.view, [
-      { from: textRange.from, to: textRange.to, color: TRANSIENT_HIGHLIGHT_COLOR },
+      { from: range.from, to: range.to, color: TRANSIENT_HIGHLIGHT_COLOR },
     ]);
     try {
-      editor.commands.setTextSelection(textRange.from);
+      editor.commands.setTextSelection(range.from);
     } catch { /* pos out of range after edit */ }
-    scrollRangeIntoView(textRange.from);
+    scrollRangeIntoView(range.from);
   }, [editor]);
 
   useEffect(() => {
-    highlightTextRef.current = highlightText;
     highlightRangeRef.current = highlightRange;
     applyHighlight();
-  }, [highlightText, highlightRange, applyHighlight]);
+  }, [highlightRange, applyHighlight]);
 
   // Verification hook: expose the DocStructureObserver's emit counter on
   // `window.__virgilBusStats` so the keystroke-sanctity success criteria can be

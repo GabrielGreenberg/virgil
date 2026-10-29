@@ -72,7 +72,7 @@ reported — [The daemon half](../agents/laws/cross-window-store-stability.md).
   an example exists only as its `\ex … \xe` block in the `.tex`. It stays a
   `legacy` row in `SIDECAR_VALUE` so an old folder's copy is still recognised.)
   (`reports.json` was renamed from `quotations.json` in the card-system refactor;
-  a few legacy `suggestions.json` / `comments.json` survive. **Errors are not
+  a legacy `comments.json` survives; `suggestions.json` is a retired `legacy` row, task 1360. **Errors are not
   persisted** — they re-derive from the live LaTeX lint.)
 
 Also under `virgil/`: `figures-cache/` (rasterized `<sha>.webp` + `index.json`,
