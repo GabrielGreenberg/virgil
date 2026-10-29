@@ -57,20 +57,15 @@ import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { soleRoot } from "@/lib/tiptap/bound-root";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
+import { FloatBodyFrame, FLOAT_PROSE_EDITOR_CLASS } from "./float-body-frame";
 
 /** The enclosing exampleBlock's render attrs — the numbering context the
  *  float wrapper inherits so it renders the real `(N)` (and the right
@@ -250,8 +245,6 @@ export function ExampleItemBody({
   editorRef,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
   // Read-only gate (#40 / R3 nit): mirror the MAIN editor's editability so a
   // read-only / partner-claimed doc shows a read-only item float instead of
@@ -361,7 +354,7 @@ export function ExampleItemBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -446,19 +439,13 @@ export function ExampleItemBody({
   }, [floatEditor, mainEditable]);
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="exampleItem"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="exampleItem"
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }

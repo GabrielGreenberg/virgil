@@ -60,13 +60,9 @@ import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import type { EditorHandle } from "@/components/Editor";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   FLOAT_WRITE_META,
-  SourceMissingBanner,
+  FloatStatusStrip,
   useFloatMainSync,
 } from "@/lib/float-sync";
 // L3f-2: the marked-range resolver now lives in one shared util consumed by
@@ -82,8 +78,12 @@ import {
 } from "@/lib/linked-range-writeback";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
-import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
 import type { TextObjectFloatBodyProps } from "../types";
+import {
+  FLOAT_PROSE_EDITOR_CLASS,
+  FloatBodyFrame,
+  useRegistryHeaderLabel,
+} from "./float-body-frame";
 
 export function LinkedRangeBody({
   cardKey,
@@ -92,8 +92,6 @@ export function LinkedRangeBody({
   setHeaderLabel,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
   const floatId = `lrange:${anchorId}`;
 
@@ -179,7 +177,7 @@ export function LinkedRangeBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -292,35 +290,20 @@ export function LinkedRangeBody({
   // transient selection grab → "Text selection"; a real annotation's range →
   // null, so the chrome keeps the static "Linked range". Re-runs when the main
   // editor resolves.
-  useEffect(() => {
-    const label = mainEditor
-      ? (TEXT_OBJECT_REGISTRY.linkedRange.computeLabel?.(mainEditor, {
-          kind: "linkedRange",
-          id: anchorId,
-        }) ?? null)
-      : null;
-    setHeaderLabel(label);
-    return () => setHeaderLabel(null);
-  }, [mainEditor, anchorId, setHeaderLabel]);
+  useRegistryHeaderLabel("linkedRange", anchorId, mainEditor, setHeaderLabel);
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="linkedRange"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      {refusal && !sourceMissing ? <RefusalBanner refusal={refusal} /> : null}
-      <div
-        className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        {/* No manual `.par-title-wrapper` here: the factory's paragraph
-            NodeView now wraps each block itself (FCU), exactly like
-            paragraph-body / list-body — a manual wrapper would double-nest. */}
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="linkedRange"
+      sourceMissing={sourceMissing}
+      notice={refusal ? <RefusalNotice refusal={refusal} /> : null}
+    >
+      {/* No manual `.par-title-wrapper` here: the factory's paragraph
+          NodeView now wraps each block itself (FCU), exactly like
+          paragraph-body / list-body — a manual wrapper would double-nest. */}
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }
 
@@ -330,19 +313,15 @@ const EMPTY_FLOAT_DOC: JSONContent = {
 };
 
 /**
- * Stated beside the body, like `SourceMissingBanner`: the float is showing a
- * range it cannot represent, so it is read-only and nothing was written.
+ * Stated beside the body, like `SourceMissingBanner` and through the same
+ * `FloatStatusStrip`: the float is showing a range it cannot represent, so it
+ * is read-only and nothing was written.
  */
-function RefusalBanner({ refusal }: { refusal: LinkedRangeRefusal }) {
+function RefusalNotice({ refusal }: { refusal: LinkedRangeRefusal }) {
   return (
-    <div
-      role="status"
-      className="flex items-center gap-2 px-2 h-6 text-[11px] bg-[var(--surface-warning,#fdf3d1)] border-b border-[var(--edge-warning,#e7d49a)] text-[var(--ink-warning,#7a5a16)]"
-    >
-      <span className="flex-1 truncate">
-        This range holds {describeLinkedRangeRefusal(refusal)} the popout
-        can&apos;t show — editing is off, nothing was changed.
-      </span>
-    </div>
+    <FloatStatusStrip>
+      This range holds {describeLinkedRangeRefusal(refusal)} the popout
+      can&apos;t show — editing is off, nothing was changed.
+    </FloatStatusStrip>
   );
 }

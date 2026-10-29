@@ -281,6 +281,9 @@ describe("whole-block write-back CENSUS (task 1170)", () => {
       .filter(
         ([f, src]) =>
           !src.includes("<WriteRefusedBanner") &&
+          // A float body renders it through its frame (task 1346): the
+          // refusal reaches `FloatBodyFrame`, which mounts the banner.
+          !/<FloatBodyFrame[^>]*\bwriteRefusal=\{/.test(src) &&
           !(f === "ExampleCard.tsx" && src.includes("data-example-write-error")),
       )
       .map(([f]) => f);

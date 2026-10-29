@@ -222,9 +222,9 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
   // `--success` RETIRED (task 2026-10-23-1245): the style editor's validity
   // tick now reads `--positive-strong`, the positive family's "ok" ink rung
   // (#15803d green-700 → #047857 emerald-700, same dark-green role).
-  "--surface-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
-  "--ink-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
-  "--edge-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
+  "--surface-warning": "float-sync FloatStatusStrip (every standing float strip); fallback in the Tailwind arbitrary value",
+  "--ink-warning": "float-sync FloatStatusStrip (every standing float strip); fallback in the Tailwind arbitrary value",
+  "--edge-warning": "float-sync FloatStatusStrip + WriteRefusedBanner edge; fallback in the Tailwind arbitrary value",
 };
 
 describe("decorative phantoms are a pinned census", () => {

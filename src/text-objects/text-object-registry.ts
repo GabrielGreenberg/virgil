@@ -381,10 +381,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // manila). The per-level label (Chapter/Section/Subsection/…) is
     // computed below via `computeLabel` so the overlay's popout-mode
     // header matches the real popout's `setHeaderLabel` at handoff.
-    // Mirror the dynamic label that `heading-body.tsx` pushes via
-    // `setHeaderLabel(headingTypeName(level))` — so the overlay's
-    // popout-mode header reads the same string the real popout will
-    // show on release, with no visible discrepancy at handoff. Walks
+    // The ONE source of the label: `heading-body.tsx` reads this very
+    // function (`useRegistryHeaderLabel`, task 1346), so the overlay's
+    // popout-mode header and the released popout show the same string,
+    // with no visible discrepancy at handoff. Walks
     // the doc to find the heading node by uuid (cheap; called once
     // per gesture at threshold cross). Returns null if the source
     // disappeared concurrently — caller falls back to the static
@@ -529,11 +529,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // same two-mode gesture as paragraph/heading (ghost in pod, popout
     // in manila; release-in-pod moves the list, release-in-manila spawns
     // the popout at the overlay's chrome-inclusive rect).
-    // Mirror the static label `list-body.tsx` pushes via
-    // `setHeaderLabel("Bullet list")` on the bulletList branch, so the
-    // overlay's popout-mode header matches the real popout at handoff.
-    // Constant per kind (unlike heading's level-dependent label) — pins
-    // the overlay header to list-body's string regardless of `meta.label`.
+    // The ONE source of the label: `list-body.tsx` reads its kind's
+    // `computeLabel` (`useRegistryHeaderLabel`, task 1346), so the overlay's
+    // popout-mode header matches the real popout at handoff. Constant per
+    // kind (unlike heading's level-dependent label).
     // orderedList gets its own ("Ordered list") in L3c.
     computeLabel: () => "Bullet list",
     dropAdapter: topLevelDropAdapter,
@@ -555,9 +554,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // float). Decimal counters render in the ghost via L3b.1's
     // `.tiptap ol { list-style-type: decimal }` scope; no re-wrap via
     // L3b.3's border compensation.
-    // Mirror the static label `list-body.tsx` pushes via
-    // `setHeaderLabel("Ordered list")` on the orderedList branch, so the
-    // overlay's popout-mode header matches the real popout at handoff.
+    // Read by `list-body.tsx` too (`useRegistryHeaderLabel`, task 1346), so
+    // the overlay's popout-mode header matches the real popout at handoff.
     computeLabel: () => "Ordered list",
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>

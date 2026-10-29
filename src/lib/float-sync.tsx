@@ -42,7 +42,14 @@
  * it at a stale raw offset (EX-F8-02 class).
  */
 
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
 import { useReportFloatSourceMissing } from "@/floats/float-source-report";
@@ -122,20 +129,46 @@ export function SourceMissingBanner({
 }) {
   useReportFloatSourceMissing();
   return (
+    <FloatStatusStrip
+      action={
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-[11px] underline underline-offset-2 hover:opacity-80"
+        >
+          Close
+        </button>
+      }
+    >
+      {KIND_LABEL[kind]} — float is disconnected.
+    </FloatStatusStrip>
+  );
+}
+
+/**
+ * The ONE amber strip a float body states a STANDING condition through —
+ * the float is showing something it cannot write back (its source is gone:
+ * `SourceMissingBanner`; its range holds what it cannot represent:
+ * linked-range-body's refusal notice). One primitive so a retone reaches
+ * every such strip at once (task 1346 — linked-range's strip used to be a
+ * byte copy of this class string). A one-off REFUSED write is a different
+ * fact with its own voice: `WriteRefusedBanner`.
+ */
+export function FloatStatusStrip({
+  children,
+  action,
+}: {
+  children: ReactNode;
+  /** Trailing control (e.g. the source-missing "Close"). */
+  action?: ReactNode;
+}) {
+  return (
     <div
       role="status"
       className="flex items-center gap-2 px-2 h-6 text-[11px] bg-[var(--surface-warning,#fdf3d1)] border-b border-[var(--edge-warning,#e7d49a)] text-[var(--ink-warning,#7a5a16)]"
     >
-      <span className="flex-1 truncate">
-        {KIND_LABEL[kind]} — float is disconnected.
-      </span>
-      <button
-        type="button"
-        onClick={onClose}
-        className="text-[11px] underline underline-offset-2 hover:opacity-80"
-      >
-        Close
-      </button>
+      <span className="flex-1 truncate">{children}</span>
+      {action}
     </div>
   );
 }
