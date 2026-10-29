@@ -40,19 +40,15 @@ import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { soleRoot } from "@/lib/tiptap/bound-root";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
+import { FloatBodyFrame, FLOAT_PROSE_EDITOR_CLASS } from "./float-body-frame";
 
 export function ParagraphBody({
   cardKey,
@@ -60,7 +56,6 @@ export function ParagraphBody({
   editorRef,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
@@ -135,7 +130,7 @@ export function ParagraphBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -209,19 +204,13 @@ export function ParagraphBody({
   });
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="paragraph"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="paragraph"
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }

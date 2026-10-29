@@ -40,20 +40,15 @@ import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { soleRoot } from "@/lib/tiptap/bound-root";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
+import { FloatBodyFrame, FLOAT_PROSE_EDITOR_CLASS } from "./float-body-frame";
 
 type ListKind = "bulletList" | "orderedList";
 
@@ -214,8 +209,6 @@ export function ListItemBody({
   editorRef,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
   // Stable wrapper uuid, minted EXACTLY once (lazy-init here, NOT inside the
@@ -323,7 +316,7 @@ export function ListItemBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -399,19 +392,13 @@ export function ListItemBody({
   });
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="listItem"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="listItem"
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }

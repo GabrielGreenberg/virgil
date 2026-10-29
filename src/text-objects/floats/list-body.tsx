@@ -31,7 +31,6 @@ import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
 } from "react";
@@ -42,19 +41,18 @@ import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { soleRoot } from "@/lib/tiptap/bound-root";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
+import {
+  FLOAT_PROSE_EDITOR_CLASS,
+  FloatBodyFrame,
+  useRegistryHeaderLabel,
+} from "./float-body-frame";
 
 interface ListSource {
   start: number;
@@ -87,8 +85,6 @@ export function ListBody({
   setHeaderLabel,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
   const initial = useMemo(() => {
@@ -120,13 +116,10 @@ export function ListBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid, mainEditor]);
 
-  // Push the bullet-vs-ordered label up to the chrome.
-  useEffect(() => {
-    setHeaderLabel(
-      initial.typeName === "orderedList" ? "Ordered list" : "Bullet list",
-    );
-    return () => setHeaderLabel(null);
-  }, [initial.typeName, setHeaderLabel]);
+  // The bullet-vs-ordered label — the registry's `computeLabel` for the
+  // list's own kind, the same one the lifted overlay's popout-mode header
+  // reads, so the two can't drift (task 1346).
+  useRegistryHeaderLabel(initial.typeName, uuid, mainEditor, setHeaderLabel);
 
   const floatId = `list:${uuid}`;
 
@@ -184,7 +177,7 @@ export function ListBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -262,19 +255,13 @@ export function ListBody({
   });
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="list"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="list"
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }

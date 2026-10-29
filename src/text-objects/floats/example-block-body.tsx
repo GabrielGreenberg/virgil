@@ -43,19 +43,14 @@ import {
 } from "@/lib/tiptap/expex";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { soleRoot } from "@/lib/tiptap/bound-root";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
+import { FloatBodyFrame, FLOAT_PROSE_EDITOR_CLASS } from "./float-body-frame";
 
 interface ExampleBlockSource {
   start: number;
@@ -78,8 +73,6 @@ export function ExampleBlockBody({
   editorRef,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
   // Read-only gate (#39 nit 2): mirror the MAIN editor's editability so a
   // read-only / partner-claimed doc shows a read-only float instead of
@@ -182,7 +175,7 @@ export function ExampleBlockBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -270,20 +263,14 @@ export function ExampleBlockBody({
   }, [floatEditor, mainEditable]);
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="example"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
-        style={expexWidthStyle(initial.widths)}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="example"
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+      style={expexWidthStyle(initial.widths)}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }

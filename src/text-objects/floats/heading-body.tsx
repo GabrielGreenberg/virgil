@@ -34,7 +34,6 @@ import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
 } from "react";
@@ -43,21 +42,20 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import { getSectionRangeByUuid } from "@/lib/section-range";
-import { headingTypeName } from "@/lib/heading-types";
 import {
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps } from "../types";
+import {
+  FLOAT_PROSE_EDITOR_CLASS,
+  FloatBodyFrame,
+  useRegistryHeaderLabel,
+} from "./float-body-frame";
 
 export function HeadingBody({
   cardKey,
@@ -66,7 +64,6 @@ export function HeadingBody({
   setHeaderLabel,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
@@ -93,13 +90,10 @@ export function HeadingBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid]);
 
-  // Push the dynamic label up to the chrome on mount and whenever the
-  // level changes. Clears on unmount so the chrome falls back to the
-  // static `meta.label`.
-  useEffect(() => {
-    setHeaderLabel(headingTypeName(initial.level));
-    return () => setHeaderLabel(null);
-  }, [initial.level, setHeaderLabel]);
+  // The chrome's level-dependent label ("Section", "Subsection", …) — the
+  // registry's `heading.computeLabel`, the same one the lifted overlay's
+  // popout-mode header reads, so the two can't drift (task 1346).
+  useRegistryHeaderLabel("heading", uuid, mainEditor, setHeaderLabel);
 
   const floatId = `hd:${uuid}`;
 
@@ -153,7 +147,7 @@ export function HeadingBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     onUpdate({ editor }) {
@@ -237,19 +231,13 @@ export function HeadingBody({
   });
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind="section"
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind="section"
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }

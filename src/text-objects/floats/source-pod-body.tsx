@@ -33,24 +33,20 @@ import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
 import { SourcePodCodeMirror } from "@/components/source-pod-code-mirror";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   findSourceNodeByUuid,
   type SourceRange,
 } from "@/lib/float-source-range";
 import {
   FLOAT_WRITE_META,
-  SourceMissingBanner,
   useMainTransactionSync,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 import type { FloatSourceKind } from "@/lib/float-sync";
 import { FloatTitleField } from "./float-title-field";
 import type { SourcePodDerive } from "@/components/source-pod-derive";
+import { FloatBodyFrame } from "./float-body-frame";
 
 /** What one source-pod kind contributes over the shared body. */
 export interface SourcePodFloatConfig {
@@ -79,8 +75,6 @@ export function SourcePodFloatBody({
 }: TextObjectFloatBodyProps & { config: SourcePodFloatConfig }) {
   const { kind, sourceAttr, chipLabel, derive } = config;
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
   // The float twin of the in-place pod's gate (task 728). Same signal, same
   // reason: every write below is a `setNodeMarkup` on the MAIN doc, which
@@ -222,13 +216,11 @@ export function SourcePodFloatBody({
   });
 
   return (
-    <>
-      {sourceMissing && (
-        <SourceMissingBanner
-          kind={kind}
-          onClose={() => popped?.close(cardKey)}
-        />
-      )}
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind={kind}
+      sourceMissing={sourceMissing}
+    >
       {/* Body mirrors paragraph-body.tsx's chrome contract so the float
           honors the lifted-overlay spawn geometry exactly (L3e.2):
           TEXT_FLOAT_BODY_PAD_CLASS == TEXT_FLOAT_BODY_PAD_X/Y (32 / 16,
@@ -242,60 +234,56 @@ export function SourcePodFloatBody({
           the lifted ghost, so the pod sits at the body's top with no vertical
           jump on release. */}
       <div
-        className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
+        className={`par-title-wrapper has-text${
+          title ? " has-title" : mainEditable ? " has-add-btn" : ""
+        }`}
       >
-        <div
-          className={`par-title-wrapper has-text${
-            title ? " has-title" : mainEditable ? " has-add-btn" : ""
-          }`}
-        >
-          <FloatTitleField
-            title={title}
-            editing={editingTitle && mainEditable}
-            canEdit={mainEditable}
-            onStartEdit={() => setEditingTitle(true)}
-            onCommit={commitTitle}
-            onCancel={() => setEditingTitle(false)}
-            onClear={() => commitTitle(null)}
-            placeholder="Block title…"
-          />
-          <div className="par-body-container">
-            {/* Pod framing reused from the in-place SourcePodNodeView
-                (.source-pod → .source-pod-editor) so the released popout
-                wears the same blue border + kind chip as the lifted ghost —
-                no framing jump on release. The float omits the source's
-                chevron / row-sensor / in-place delete (it has its own header
-                close/jump chrome); only the visual frame is replicated.
-                CodeMirror is left at its default content `height:auto` (like
-                the source pod — no `height`/`style` prop) so the pod grows to
-                the full code height and the released float shows EVERY line.
-                `height:100%` clamped the `.cm-scroller` ~10px and clipped the
-                last line (L3e.2). */}
-            <div className="source-pod">
-              {banner && <div className="source-pod-banner">{banner}</div>}
-              <div className="source-pod-editor relative">
-                {/* THE shared pod mount (source-pod-code-mirror.tsx) — the
-                    same component the docked `SourcePodNodeView` renders, so
-                    the released float frames identically by CONSTRUCTION
-                    rather than by two hand-synced copies of one theme, and
-                    inherits the identity-stable configuration that keeps a
-                    keystroke from reconfiguring CodeMirror (task 729). */}
-                <SourcePodCodeMirror
-                  value={code}
-                  onChange={handleChange}
-                  editable={mainEditable}
-                />
-                {/* Kind chip — the SHARED `.source-pod-corner` / `.source-pod-chip`
-                    the in-place pod wears, so the released float frames identically
-                    rather than by two copies of one utility string. */}
-                <div className="source-pod-corner">
-                  <span className="source-pod-chip">{chipLabel}</span>
-                </div>
+        <FloatTitleField
+          title={title}
+          editing={editingTitle && mainEditable}
+          canEdit={mainEditable}
+          onStartEdit={() => setEditingTitle(true)}
+          onCommit={commitTitle}
+          onCancel={() => setEditingTitle(false)}
+          onClear={() => commitTitle(null)}
+          placeholder="Block title…"
+        />
+        <div className="par-body-container">
+          {/* Pod framing reused from the in-place SourcePodNodeView
+              (.source-pod → .source-pod-editor) so the released popout
+              wears the same blue border + kind chip as the lifted ghost —
+              no framing jump on release. The float omits the source's
+              chevron / row-sensor / in-place delete (it has its own header
+              close/jump chrome); only the visual frame is replicated.
+              CodeMirror is left at its default content `height:auto` (like
+              the source pod — no `height`/`style` prop) so the pod grows to
+              the full code height and the released float shows EVERY line.
+              `height:100%` clamped the `.cm-scroller` ~10px and clipped the
+              last line (L3e.2). */}
+          <div className="source-pod">
+            {banner && <div className="source-pod-banner">{banner}</div>}
+            <div className="source-pod-editor relative">
+              {/* THE shared pod mount (source-pod-code-mirror.tsx) — the
+                  same component the docked `SourcePodNodeView` renders, so
+                  the released float frames identically by CONSTRUCTION
+                  rather than by two hand-synced copies of one theme, and
+                  inherits the identity-stable configuration that keeps a
+                  keystroke from reconfiguring CodeMirror (task 729). */}
+              <SourcePodCodeMirror
+                value={code}
+                onChange={handleChange}
+                editable={mainEditable}
+              />
+              {/* Kind chip — the SHARED `.source-pod-corner` / `.source-pod-chip`
+                  the in-place pod wears, so the released float frames identically
+                  rather than by two copies of one utility string. */}
+              <div className="source-pod-corner">
+                <span className="source-pod-chip">{chipLabel}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </>
+    </FloatBodyFrame>
   );
 }

@@ -68,21 +68,16 @@ import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { useEditorChrome } from "@/components/editor-layout/chrome-context";
-import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   type FloatSourceKind,
-  SourceMissingBanner,
   useFloatMainSync,
-  WriteRefusedBanner,
   type SourceRange,
 } from "@/lib/float-sync";
 import { soleRoot } from "@/lib/tiptap/bound-root";
 import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
 import { parseTextObjectPopoutKey } from "../text-object-registry";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
+import { FloatBodyFrame, FLOAT_PROSE_EDITOR_CLASS } from "./float-body-frame";
 
 /**
  * Per-kind knobs that drive the otherwise-identical body. `schemaType` is
@@ -214,8 +209,6 @@ export function SingleBlockBody({
   editorRef,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
-  const popped = usePoppedCards();
-  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
   // Resolve the per-kind config from the popout key (`textobject:<kind>:<id>`),
@@ -307,7 +300,7 @@ export function SingleBlockBody({
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
+          FLOAT_PROSE_EDITOR_CLASS,
       },
     },
     // Read-only kinds (displayMath, decision D) have no write-back — the
@@ -384,19 +377,13 @@ export function SingleBlockBody({
   });
 
   return (
-    <>
-      {sourceMissing ? (
-        <SourceMissingBanner
-          kind={config.sourceKind}
-          onClose={() => popped?.close(cardKey)}
-        />
-      ) : null}
-      <WriteRefusedBanner message={writeRefusal} />
-      <div
-        className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
-      >
-        <EditorContent editor={floatEditor} />
-      </div>
-    </>
+    <FloatBodyFrame
+      cardKey={cardKey}
+      sourceKind={config.sourceKind}
+      sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
+    >
+      <EditorContent editor={floatEditor} />
+    </FloatBodyFrame>
   );
 }
