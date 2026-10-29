@@ -8045,7 +8045,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               {!ready && <LoadingScreen className="absolute inset-0 z-50" />}
             </div>
             {/* Grab-handle portal root — TextObjectGrabHandle portals
-                its absolute-positioned handles into this div. Lives at
+                its absolute-positioned handles into this div, and so does
+                SelectionActionsMenu's resting ⚡ bolt (task 1355). Lives at
                 the column level (sibling of the pod), so it ESCAPES the
                 pod's clip (`overflow: clip` on `.editor-pane-pod`, which
                 clips at the box edge — 0px lateral, so ANY descendant in

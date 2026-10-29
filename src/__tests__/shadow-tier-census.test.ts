@@ -189,7 +189,7 @@ export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; wh
   { file: "src/app/globals.css", needle: ".figure-popover {", what: "figure popover" },
   { file: "src/app/globals.css", needle: ".menu-surface {", what: "every MenuProvider menu" },
   { file: "library/components/Toaster.tsx", needle: "borderLeft: `3px solid ${accent}`,", what: "toast" },
-  { file: "src/components/SelectionActionsMenu.tsx", needle: "zIndex: RESTING_MARGIN_TRIGGER_Z,", what: "floating zap trigger" },
+  { file: "src/components/SelectionActionsMenu.tsx", needle: "zIndex: IN_SCROLL_MARGIN_TRIGGER_Z,", what: "floating zap trigger" },
   { file: "src/components/stack/StackIcon.tsx", needle: "const boxShadow = illuminated", what: "portaled stack pill" },
   { file: "library/styles/library.css", needle: ".page-scroll-lozenge {", what: "Library page-number lozenge" },
 ];

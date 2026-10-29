@@ -16,7 +16,17 @@
  * `podRight` is the visible edge — the bolt no longer pops up over the code
  * pane). A cramped compressed-split gutter falls back to a scrollbar-tuck; both
  * regimes live in the pure SSOT fn. RAF-batched updates on PM `selectionUpdate`
- * / `update` / `focus` / `blur` plus window `scroll` / `resize`.
+ * / `update` / `focus` / `blur` plus window `resize`.
+ *
+ * The resting bolt RIDES ITS LINE (task 1355 — Scroll-anchor stability law,
+ * shape (a)): it portals into the column-level `[data-grab-handle-portal]` host
+ * inside the row scroll container — the same host as its left-side twin
+ * {@link TextObjectGrabHandle} — at `position:absolute`, in portal coords
+ * (`toPortalCoords`). A scroll moves it by LAYOUT, so it has NO scroll
+ * listener: it never hides, never lags, and scrolls out of view (and under the
+ * sticky pod caps) with its line. It used to be a `position:fixed` body portal
+ * that UNMOUNTED for every scroll and re-seated 120 ms after the last event —
+ * the "vanishes and flickers back while scrolling" report.
  *
  * Counterpart triggers:
  *  - {@link TextObjectGrabHandle} (left side) for the drag-to-lift gesture.
@@ -40,8 +50,7 @@ import {
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { useIsVisible, useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
 import { PaneOverlayPortal } from "@/lib/keep-alive/PaneOverlayPortal";
-import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
-import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
+import { IN_SCROLL_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
   recordScrollPlacement,
   SCROLL_PORTAL_SELECTION_BOLT,
@@ -69,6 +78,7 @@ const INVISIBLE_PLACEMENT: Placement = {
   anchorNodePos: null,
   range: null,
   mode: "selection",
+  host: null,
 };
 
 interface Placement {
@@ -84,6 +94,24 @@ interface Placement {
   anchorNodePos: number | null;
   range: { from: number; to: number } | null;
   mode: "selection" | "cursor";
+  /** The in-scroll portal host the coords are relative to — resolved from the
+   *  SAME frame snapshot `toPortalCoords` used, so coords and container can
+   *  never disagree (the grab handle's race-free rule). Null before the column
+   *  resolves; both then degrade together to body + viewport coords. */
+  host: HTMLElement | null;
+}
+
+/** The column's `[data-grab-handle-portal]` child. A walk over the column's
+ *  DIRECT children (a handful), never a `querySelector` — that would descend
+ *  the whole editor subtree, which precedes the host in document order. */
+function portalHostOf(column: HTMLElement | null): HTMLElement | null {
+  if (!column) return null;
+  for (const child of Array.from(column.children)) {
+    if (child instanceof HTMLElement && child.hasAttribute("data-grab-handle-portal")) {
+      return child;
+    }
+  }
+  return null;
 }
 
 /**
@@ -92,9 +120,17 @@ interface Placement {
  * comes from the editor box (not per-line geometry) and the Y is the
  * head line's top.
  *
- * Per-keystroke cost: one `coordsAtPos(head)` + arithmetic on cached
- * editor metrics. The `cache` object holds podRight, editorRight, scrollTop,
- * scrollBottom — values that only change on resize / layout shift.
+ * Coordinates are PORTAL-relative (the `[data-grab-handle-portal]` host, see
+ * the render below) — scroll-invariant, so a scroll needs no recompute. There
+ * is no scroll-band gate and no top/bottom clamp: an off-band line's bolt is
+ * simply clipped by the row scroll container, like the line itself.
+ * `visible` therefore means "there is a head line to sit beside", not "it is
+ * on screen" — the open menu's off-screen close is asked of the LIVE rect
+ * (`trackBolt`), not of this snapshot.
+ *
+ * Per-keystroke cost: one `coordsAtPos(head)` + one column rect read
+ * (`toPortalCoords`, layout already clean after coordsAtPos) + arithmetic on
+ * cached editor metrics — the grab handle's exact budget.
  */
 function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement {
   const sel = editor.state.selection;
@@ -118,22 +154,7 @@ function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement
   const headCoords = coordsAtPosCached(editor, head);
   if (!headCoords) return INVISIBLE_PLACEMENT;
 
-  const scrollTop = cache.scrollTop;
-  const scrollBottom = cache.scrollBottom;
-
-  if (headCoords.bottom < scrollTop || headCoords.top > scrollBottom) {
-    return {
-      visible: false,
-      left: 0,
-      top: 0,
-      anchorNodePos,
-      range: { from, to },
-      mode: sel.empty ? "cursor" : "selection",
-    };
-  }
-
   const vw = window.innerWidth;
-  const vh = window.innerHeight;
   // Bolt x from the right-margin geometry SSOT — POD-anchored, seated in its
   // INBOARD band between the text and the marker grid (markers to its RIGHT).
   // Anchoring to `cache.podRight` (not the old text-edge `editorRight`) makes
@@ -147,32 +168,39 @@ function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement
   if (left + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
     left = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
   }
-  let top = Math.max(headCoords.top, scrollTop, VIEWPORT_MARGIN);
-  if (top + BUTTON_SIZE > vh - VIEWPORT_MARGIN) {
-    top = Math.max(VIEWPORT_MARGIN, vh - BUTTON_SIZE - VIEWPORT_MARGIN);
-  }
+  // Viewport → portal coords. Only the x clamp above is viewport-relative (a
+  // horizontal fact no vertical scroll changes); y is the line's own top.
+  const portal = cache.toPortalCoords(left, headCoords.top);
 
   return {
     visible: true,
-    left,
-    top,
+    left: portal.x,
+    top: portal.y,
     anchorNodePos,
     range: { from, to },
     mode: sel.empty ? "cursor" : "selection",
+    host: portalHostOf(cache.paperEl),
   };
 }
 
-/** The bolt's square at a placement — the rect the open menu anchors to. */
-function boltRect(p: Placement) {
+/** The bolt's square at a placement, in VIEWPORT coords — the rect the open
+ *  menu (a fixed `<Menu>` portal) anchors to. The placement is portal-relative,
+ *  so it is shifted by the portal host's LIVE origin (one rect read). */
+function boltViewportRect(p: Placement, cache: EditorViewportFrame) {
+  const origin = cache.toPortalCoords(0, 0);
+  const left = p.left - origin.x;
+  const top = p.top - origin.y;
   return {
-    left: p.left,
-    top: p.top,
-    right: p.left + BUTTON_SIZE,
-    bottom: p.top + BUTTON_SIZE,
+    left,
+    top,
+    right: left + BUTTON_SIZE,
+    bottom: top + BUTTON_SIZE,
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
   };
 }
+
+type BoltRect = ReturnType<typeof boltViewportRect>;
 
 function placementsEqual(a: Placement, b: Placement): boolean {
   return (
@@ -181,6 +209,7 @@ function placementsEqual(a: Placement, b: Placement): boolean {
     a.top === b.top &&
     a.anchorNodePos === b.anchorNodePos &&
     a.mode === b.mode &&
+    a.host === b.host &&
     (a.range?.from ?? null) === (b.range?.from ?? null) &&
     (a.range?.to ?? null) === (b.range?.to ?? null)
   );
@@ -214,21 +243,25 @@ export function SelectionActionsMenu({
     kind: TextObjectKind;
     range: { from: number; to: number };
     mode: "selection" | "cursor";
+    /** The bolt's viewport rect at the moment the menu OPENED — the menu's
+     *  static fallback anchor (the live one is `trackBolt`). Captured in the
+     *  opening handler, so render never reads layout for it. */
+    triggerRect: BoltRect;
   } | null>(null);
-  // Transient scroll/drag jitter-suppression for the RESTING bolt ONLY — a
-  // channel of its own, kept OUT of `placement`. Historically `suppress()`
-  // wrote `placement.visible = false`, which overloaded that flag: because the
-  // open menu's lifecycle + render also keyed off `placement.visible`, a
-  // bolt-only jitter guard silently unmounted the OPEN menu on the first scroll
-  // tick (task 154). `placement.visible` now reflects ONLY `computePlacement`'s
-  // *logical* on/off-screen state — the sole legitimate reason to close the
-  // menu — while `suppressed` hides the bolt during motion without touching it.
-  // Flips on scroll-start / editor-mousedown → true and on scroll-idle /
-  // the press's end edge (`watchHeldPress`, task 993) → false; edge-only, never on the editor transaction path, so it
-  // adds no per-keystroke work (keystroke sanctity).
+  // Transient drag jitter-suppression for the RESTING bolt ONLY — a channel of
+  // its own, kept OUT of `placement`. Historically `suppress()` wrote
+  // `placement.visible = false`, which overloaded that flag: because the open
+  // menu's lifecycle + render also keyed off `placement.visible`, a bolt-only
+  // jitter guard silently unmounted the OPEN menu (task 154). `suppressed`
+  // hides the bolt during a press-drag or a layout gesture without touching
+  // it. A SCROLL no longer suppresses at all (task 1355 — the bolt rides its
+  // line by layout). Flips on editor-mousedown / gesture start → true and on
+  // the press's end edge (`watchHeldPress`, task 993) / gesture end → false;
+  // edge-only, never on the editor transaction path, so it adds no
+  // per-keystroke work (keystroke sanctity).
   const [suppressed, setSuppressed] = useState(false);
-  // The bolt is a menu TRIGGER that cannot be an `AnchoredMenu` button (a
-  // `position:fixed` pane-overlay portal), so it takes the shared trigger
+  // The bolt is a menu TRIGGER that cannot be an `AnchoredMenu` button (an
+  // in-scroll pane-overlay portal), so it takes the shared trigger
   // contract piecewise (task 992): its element rides `ActionsMenuPanel`'s
   // `excludeRefs` so a re-click is a toggle rather than a close-then-remount,
   // and it announces `aria-haspopup`/`aria-expanded`.
@@ -262,7 +295,7 @@ export function SelectionActionsMenu({
   // smoothly.
   //
   // Suppression: while the user is mid-drag (left mousedown started inside
-  // the editor prose) or actively scrolling, the placement math is gated
+  // the editor prose) or a layout gesture is live, the placement math is gated
   // off entirely. PM `selectionUpdate` etc. still fire, but they hit
   // `isSuppressed()` and return before scheduling RAF — no `coordsAtPos`,
   // no setState. This keeps the button from flickering frame-by-frame
@@ -276,16 +309,15 @@ export function SelectionActionsMenu({
   useEffect(() => {
     let rafId = 0;
     let mouseDownInEditor = false;
-    let scrollIdleTimer: number | null = null;
-    const SCROLL_IDLE_MS = 120;
-    // A continuous layout gesture (pane-divider drag or OS window resize) is a
-    // third suppression source, alongside editor-mousedown and scroll — the
-    // bolt is a text-anchored `position:fixed` portal, so PARKING it would
-    // leave it visibly detached from the prose. It SUPPRESSES instead: hidden
-    // for the gesture, recomputed once on the end edge (task 317).
+    // A continuous layout gesture (pane-divider drag, OS window resize, content
+    // drag) is the second suppression source, alongside editor-mousedown. A
+    // scroll is NOT one: the bolt rides its line by layout (task 1355). A
+    // gesture REFLOWS the column, though — the pod-anchored x and the line's y
+    // both go stale — so the bolt SUPPRESSES: hidden for the gesture,
+    // recomputed once on the end edge (task 317). That also covers a content
+    // drag's auto-scroll, which the old scroll-idle hide used to.
     let gestureActive = isLayoutGestureActive();
-    const isSuppressed = () =>
-      mouseDownInEditor || scrollIdleTimer !== null || gestureActive;
+    const isSuppressed = () => mouseDownInEditor || gestureActive;
     const run = () => {
       const next = editor && !editor.isDestroyed
         ? computePlacement(editor, cacheRef.current)
@@ -316,8 +348,8 @@ export function SelectionActionsMenu({
       setSuppressed(true);
     };
     // Leave suppression once BOTH sources are clear (no editor mousedown, no
-    // pending scroll-idle timer): drop the bolt-hide flag and recompute the
-    // resting placement at the settled position.
+    // live layout gesture): drop the bolt-hide flag and recompute the resting
+    // placement at the settled position.
     const settle = () => {
       if (isSuppressed()) return;
       setSuppressed(false);
@@ -345,17 +377,6 @@ export function SelectionActionsMenu({
         suppress();
       }
     };
-    const onScroll = () => {
-      if (scrollIdleTimer === null) {
-        suppress();
-      } else {
-        window.clearTimeout(scrollIdleTimer);
-      }
-      scrollIdleTimer = window.setTimeout(() => {
-        scrollIdleTimer = null;
-        settle();
-      }, SCROLL_IDLE_MS);
-    };
     if (editor) {
       editor.on("selectionUpdate", update);
       editor.on("update", update);
@@ -367,11 +388,6 @@ export function SelectionActionsMenu({
     // and complete outside, so its end edge (`watchHeldPress`) is window-scope
     // too. Captured phase to beat React's bubbling cleanup.
     window.addEventListener("mousedown", onMouseDown, true);
-    // Scroll: the editor's scroll parent only. Window-scope previously
-    // fired this handler for every panel/list scroll in the app even
-    // though the menu only tracks the editor's vertical scroll.
-    const scrollParent = findEditorScrollFor(editor?.view.dom ?? null);
-    scrollParent?.addEventListener("scroll", onScroll, { passive: true });
     // Resize is a genuinely global event. It stays a raw listener because a
     // ONE-SHOT resize (maximize, zoom, DPR change) must still reposition
     // immediately — during a continuous gesture `update()` hits the
@@ -390,7 +406,6 @@ export function SelectionActionsMenu({
     });
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       if (editor) {
         editor.off("selectionUpdate", update);
         editor.off("update", update);
@@ -400,7 +415,6 @@ export function SelectionActionsMenu({
       offGesture();
       window.removeEventListener("mousedown", onMouseDown, true);
       disarmPress?.();
-      scrollParent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
     };
   }, [editor, cacheRef, visibleRef]);
@@ -411,27 +425,40 @@ export function SelectionActionsMenu({
     updateRef.current();
   }, [cacheVersion]);
 
-  // The OPEN menu's live anchor (task 1200). The placement pass above is
-  // suppressed for the whole scroll so the RESTING bolt doesn't jitter — which
-  // also froze `placement`, and with it the rect the open menu was positioned
-  // from: the menu sat at its old screen spot while its line scrolled away,
-  // then snapped at scroll-idle. So the menu does not ride `placement` for its
-  // position at all: this thunk re-derives the bolt rect from the LIVE view
-  // through the same `computePlacement` (one `coordsAtPosCached` read), and the
-  // menu provider calls it at most once per frame on scroll/resize, gesture-
-  // parked (Scroll-anchor stability law, shape (b)) — no listener added here.
-  // `placement` keeps owning the menu's LIFECYCLE (identity change, settled
-  // off-screen drop). An off-screen read answers the LAST live rect (the bolt
-  // clamped at the scroll band's edge), not null: the provider's null fallback
-  // is the static `triggerRect` — frozen at the scroll's START — so null would
-  // fling the menu back to where it opened until the settled close lands.
-  const lastBoltRectRef = useRef<ReturnType<typeof boltRect> | null>(null);
-  const trackBolt = useCallback<LiveAnchor>(() => {
+  // The bolt's LIVE viewport rect, re-derived from the view (one
+  // `coordsAtPosCached` read + the portal origin) — null when there is no head
+  // line to sit beside.
+  const liveBoltRect = useCallback((): BoltRect | null => {
     if (!editor || editor.isDestroyed) return null;
     const live = computePlacement(editor, cacheRef.current);
-    if (live.visible) lastBoltRectRef.current = boltRect(live);
-    return lastBoltRectRef.current;
+    return live.visible ? boltViewportRect(live, cacheRef.current) : null;
   }, [editor, cacheRef]);
+
+  // The OPEN menu's live anchor (task 1200). The menu is a fixed `<Menu>`
+  // portal, so it cannot ride the scroll by layout the way the resting bolt
+  // now does (task 1355); the menu provider calls this thunk at most once per
+  // frame on scroll/resize, gesture-parked (Scroll-anchor stability law, shape
+  // (b)) — no listener added here. It is ALSO the menu's off-screen close: the
+  // bolt has no scroll listener any more, so `placement` never learns that a
+  // scroll carried the line out of the band — the live read here does, and
+  // closes. An off-band read answers the LAST in-band rect, not null: the
+  // provider's null fallback is the static open-time `triggerRect`, which
+  // would fling the menu back to where it opened for the closing frame.
+  const lastBoltRectRef = useRef<BoltRect | null>(null);
+  const trackBolt = useCallback<LiveAnchor>(() => {
+    const rect = liveBoltRect();
+    const frame = cacheRef.current;
+    if (
+      rect &&
+      rect.bottom >= frame.scrollTop &&
+      rect.top <= frame.scrollBottom
+    ) {
+      lastBoltRectRef.current = rect;
+    } else {
+      setMenuTarget(null);
+    }
+    return lastBoltRectRef.current;
+  }, [liveBoltRect, cacheRef]);
 
   // Shown again → settle the placement a hidden-pane resize skipped (task 598).
   // Hidden → close the open menu (task 753): it anchors to a bolt the hidden
@@ -457,13 +484,12 @@ export function SelectionActionsMenu({
     placement.mode,
   ]);
 
-  // Close the menu on a genuine visibility DROP only — the anchored selection
-  // scrolled fully off-screen (`computePlacement:116` yields visible:false,
-  // range preserved). A RISE (false→true) must NOT close: it's exactly what
-  // Cmd+/ triggers via `scrollIntoView` to bring an off-screen caret into view,
-  // and closing on the rise would kill the menu it just opened (task 154). The
-  // directional guard is why `placement.visible` was split out of the
-  // identity-close effect above.
+  // Close the menu on a genuine visibility DROP only — the head line went away
+  // (`computePlacement` yields visible:false: focus lost in cursor mode, a node
+  // selection, a hidden editor). A RISE (false→true) must NOT close (task 154).
+  // The directional guard is why `placement.visible` was split out of the
+  // identity-close effect above. (Scrolling OUT of the band is no longer a
+  // `placement` fact — task 1355 — and closes through `trackBolt`.)
   const prevVisibleRef = useRef(placement.visible);
   useEffect(() => {
     const droppedOffScreen = prevVisibleRef.current && !placement.visible;
@@ -499,23 +525,23 @@ export function SelectionActionsMenu({
       const resolved = resolveAnchorUuidAndKind(ed.view, sel.head);
       if (!resolved) return;
       e.preventDefault();
-      // Bring the caret into the visible band before opening. When the focused
-      // caret is scrolled off-screen `computePlacement` yields visible:false
-      // with left/top=0, so the shared render gate would swallow Cmd+/ with no
-      // effect — or, un-gated, anchor the panel at the 0,0 viewport corner.
-      // `scrollIntoView` makes the subsequent (scroll-idle) recompute yield a
-      // real on-screen placement, so the menu opens at the caret (task 154).
+      // Bring the caret into the visible band before opening (task 154), then
+      // read the bolt's rect at the caret's NEW screen spot — PM scrolls
+      // synchronously inside the dispatch, so the read below already sees it.
       ed.commands.scrollIntoView();
+      const rect = liveBoltRect();
+      if (!rect) return;
       setMenuTarget({
         uuid: resolved.uuid,
         kind: resolved.kind,
         range: { from: sel.from, to: sel.to },
         mode: sel.empty ? "cursor" : "selection",
+        triggerRect: rect,
       });
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [editor]);
+  }, [editor, liveBoltRect]);
 
   const hint = useHint({ keys: "Mod+/" });
 
@@ -524,12 +550,9 @@ export function SelectionActionsMenu({
   if (!editor) return null;
 
   // The RESTING bolt paints only at a logically-visible placement AND while not
-  // transiently suppressed (scroll/drag jitter). The OPEN menu is DECOUPLED
-  // from `suppressed` — it renders on `menuTarget` + the *logical*
-  // `placement.visible` (below), so a scroll can no longer unmount it (task
-  // 154). `placement.visible` is still required for the menu so it (a) never
-  // anchors at the off-screen 0,0 corner and (b) unmounts the frame it goes
-  // off-screen, in lock-step with the off-screen-drop close effect.
+  // transiently suppressed (press-drag / layout gesture). The OPEN menu is
+  // DECOUPLED from `suppressed` — it renders on `menuTarget` + the *logical*
+  // `placement.visible` (below), so a drag can never unmount it (task 154).
   const showBolt = placement.visible && !suppressed;
 
   // A TOGGLE, like its keyboard twin Cmd+/ above: pressing the bolt while its
@@ -551,6 +574,7 @@ export function SelectionActionsMenu({
       kind: resolved.kind,
       range: placement.range,
       mode: placement.mode,
+      triggerRect: boltViewportRect(placement, cacheRef.current),
     });
   };
 
@@ -558,22 +582,27 @@ export function SelectionActionsMenu({
   // the two states feel like one component: the menu expands out of the
   // button, anchored at the same `left/top`.
   //
-  // z-index: the RESTING bolt sits at `RESTING_MARGIN_TRIGGER_Z`
-  // (= FLOAT_Z_BASE − 1, see src/floats/float-policy.ts tier map) — above
-  // editor content + the docked-panel band so it's clickable when nothing
-  // overlaps, but strictly BELOW the float layer (1200) so a popout / popped
-  // card / lifted-text overlay dropped over this paragraph OCCLUDES the bolt
-  // (BUG #50). This is the RESTING tier ONLY: clicking it opens the
-  // `ActionsMenuPanel` below, which rides the `<Menu>` primitive's CHROME_Z
-  // (2000, = OPEN_CHROME_MENU_Z) and therefore stays on top of EVERYTHING,
-  // floats included. Never demote the open menu — only the resting trigger.
+  // Where it paints (task 1355): the column-level `[data-grab-handle-portal]`
+  // host inside the row scroll container — NOT the pod, whose `overflow: clip`
+  // would cut the cramped split-view scrollbar-tuck placement. The host is
+  // `pointer-events:none`, so the bolt re-enables them on itself. The host
+  // rides `placement` (see `Placement.host`), so coords and container come
+  // from one frame snapshot.
+  //
+  // z-index: `IN_SCROLL_MARGIN_TRIGGER_Z` (see src/floats/float-policy.ts tier
+  // map) — the grab handle's in-scroll tier: over editor content, UNDER the
+  // sticky pod caps (z 30/31) so a line scrolling behind a cap takes its bolt
+  // with it, and below the docked-panel band and the float layer, so a popout
+  // / popped card / lifted-text overlay dropped over this paragraph OCCLUDES
+  // the bolt (BUG #50). Resting tier ONLY: the `ActionsMenuPanel` it opens
+  // rides the `<Menu>` primitive's CHROME_Z (2000, = OPEN_CHROME_MENU_Z) and
+  // stays on top of EVERYTHING, floats included.
   //
   // Both the bolt and the open menu go through the pane-overlay door (task
-  // 753): a body portal escapes the hidden KeepAliveSlot's `display:none`, so
-  // a hidden pane must not render them at all.
+  // 753), so a hidden pane renders neither.
   const buttonPortal = showBolt
     ? (
-    <PaneOverlayPortal>
+    <PaneOverlayPortal container={placement.host}>
     <button
       ref={boltRef}
       type="button"
@@ -606,12 +635,13 @@ export function SelectionActionsMenu({
       // `icon-button-a11y-guardrail.test.ts`, whose allowlist is EMPTY.
       className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)]"
       style={{
-        position: "fixed",
+        position: "absolute",
         left: placement.left,
         top: placement.top,
         width: BUTTON_SIZE,
         height: BUTTON_SIZE,
-        zIndex: RESTING_MARGIN_TRIGGER_Z,
+        zIndex: IN_SCROLL_MARGIN_TRIGGER_Z,
+        pointerEvents: "auto",
         border: "var(--pod-border)",
         boxShadow: "var(--menu-shadow)",
         borderRadius: "var(--pod-radius)",
@@ -626,9 +656,7 @@ export function SelectionActionsMenu({
     : null;
 
   // Menu renders on `menuTarget` + logical visibility only — never the transient
-  // `suppressed` — so scroll/drag can't unmount an open menu (task 154). The
-  // `placement.visible` conjunction narrows `menuTarget` to non-null AND keeps
-  // the panel off the 0,0 corner when the anchor is off-screen.
+  // `suppressed` — so a drag can't unmount an open menu (task 154).
   if (!menuTarget || !placement.visible || !isVisible) return buttonPortal;
 
   return (
@@ -640,7 +668,7 @@ export function SelectionActionsMenu({
         nodeKind={menuTarget.kind}
         range={menuTarget.range}
         mode={menuTarget.mode}
-        triggerRect={boltRect(placement)}
+        triggerRect={menuTarget.triggerRect}
         trackAnchor={trackBolt}
         triggerEl={boltEl}
         onClose={() => setMenuTarget(null)}

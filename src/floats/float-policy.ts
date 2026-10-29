@@ -93,11 +93,16 @@ export { FLOATING_PANEL_Z_BASE };
  *
  *   text / content              ~1–31  (editor prose, sticky pod caps, Virgil
  *                                       bar — local z's inside the editor)
+ *     in-scroll margin triggers    20  (IN_SCROLL_MARGIN_TRIGGER_Z — the ⚡
+ *                                       bolt + grab handle at rest, riding
+ *                                       their line inside the row scroll
+ *                                       container: under the pod caps 30/31)
  *   below-panel chrome           999   (DOCK_OUTLINE_Z, STACK_CHROME_Z — task 793)
  *   panel band                  1000   (FLOATING_PANEL_Z_BASE — docked panels)
  *   card-lift source outline    1100   (LIFT_OUTLINE_Z — below the float it spawns)
- *   RESTING margin triggers     1199   (RESTING_MARGIN_TRIGGER_Z — the margin
- *                                       bolt / drag handle at rest: ABOVE
+ *   RESTING margin triggers     1199   (RESTING_MARGIN_TRIGGER_Z — a FIXED
+ *                                       body-portaled margin trigger at rest,
+ *                                       today the pending-change pill: ABOVE
  *                                       content + panels so it's clickable, but
  *                                       just BELOW the float layer so a popout
  *                                       dropped over its paragraph OCCLUDES it)
@@ -144,6 +149,21 @@ export { FLOATING_PANEL_Z_BASE };
  * only — clicking the bolt opens a menu that rides {@link OPEN_CHROME_MENU_Z}.
  */
 export const RESTING_MARGIN_TRIGGER_Z = FLOAT_Z_BASE - 1;
+
+/**
+ * Paint z-index for a margin trigger at rest that lives INSIDE the row scroll
+ * container and rides its line by layout (task 1355 — the ⚡ bolt; the grab
+ * handle's `.text-object-grab-handle { z-index: 20 }` in globals.css is the
+ * same tier). Over editor-interior positioned content (NodeView chrome z 1),
+ * strictly UNDER the sticky pod caps (z 30/31) so a line scrolling behind a cap
+ * takes its trigger with it. No stacking context separates the column from the
+ * body-level tiers, so it is also below the docked-panel band and the float
+ * layer BY CONSTRUCTION: a float dropped over the paragraph occludes it
+ * (BUG #50), and so does a floating panel — like the prose it sits beside. A
+ * body-portaled `position:fixed` trigger (the pending-change pill) cannot ride
+ * the scroll and keeps {@link RESTING_MARGIN_TRIGGER_Z}.
+ */
+export const IN_SCROLL_MARGIN_TRIGGER_Z = 20;
 
 /**
  * Paint z-index for a transient OPEN chrome menu (the `<Menu>` primitive's
