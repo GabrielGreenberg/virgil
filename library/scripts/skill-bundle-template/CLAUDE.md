@@ -91,6 +91,22 @@ To poll continuously: `/loop /editor:review`.
 
 ---
 
+## Before writing LaTeX into a `.tex` by hand
+
+Virgil does not compile to show the paper — it renders the LaTeX it
+recognizes, and anything else appears to the user as a **grey raw-code span**
+(the bytes survive, but the formatting is lost). A form that compiles fine is
+not necessarily one Virgil renders.
+
+So **before you type any LaTeX into this paper's `.tex` yourself** — outside a
+skill run, at the user's request (formatting, colour, citations, footnotes,
+environments, …) — read
+[`.claude/commands/editor/_latex-allowlist.md`](../../../editor/skills/_latex-allowlist.md)
+and use only the forms it lists. That file is the one statement of what
+renders; don't guess from LaTeX habit, and don't restate it elsewhere.
+
+---
+
 ## Available commands
 
 ### Editor skills (operate on this paper)
