@@ -35,7 +35,10 @@ export function deriveForestPod(source: string): SourcePodDerived {
   if (parse.ok) {
     return { preview: <ForestTreeView tree={parse.tree} />, banner: null };
   }
-  return { preview: null, banner: <ForestRefusalBadge refusal={parse.refusal} /> };
+  return {
+    preview: null,
+    banner: <ForestRefusalBadge refusal={parse.refusal} kindLabel={FOREST_POD_CONFIG.kindLabel} />,
+  };
 }
 
 /**

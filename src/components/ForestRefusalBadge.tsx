@@ -25,7 +25,16 @@
 import type { ForestRefusal } from "@/lib/forest/grammar";
 import { chromeOnly } from "@/lib/view-only-chrome";
 
-export function ForestRefusalBadge({ refusal }: { refusal: ForestRefusal }) {
+export function ForestRefusalBadge({
+  refusal,
+  kindLabel,
+}: {
+  refusal: ForestRefusal;
+  /** The pod's own `SourcePodConfig.kindLabel` — the badge names the kind the
+   *  toggle and chevron name, never a private spelling of it. */
+  kindLabel: string;
+}) {
+  const kind = kindLabel.charAt(0).toUpperCase() + kindLabel.slice(1);
   return (
     // A statement about Virgil's renderer, never about the paper — so it is
     // chrome-only and the ONE print rule drops it (task 535; it used to be
@@ -49,7 +58,7 @@ export function ForestRefusalBadge({ refusal }: { refusal: ForestRefusal }) {
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
       <span className="forest-refusal-badge-text">
-        Tree preview unavailable — {refusal.message}
+        {kind} preview unavailable — {refusal.message}
       </span>
       <span className="forest-refusal-badge-where">line {refusal.line}</span>
     </div>

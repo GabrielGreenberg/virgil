@@ -424,6 +424,7 @@
   --blockquote-text: #6b6560;
   --code-bg: #f0eeeb;
   --code-block-bg: #f5f3f0;
+  --code-block-bg-hover: #ece8e3; /* one step deeper: a code block's hover */
   /* Rendered-math ink. KaTeX's own stylesheet sets `color` on NOTHING, and
      draws its two non-glyph marks from `currentColor` by two different
      mechanisms — `border-color: currentColor` on `.katex *` (the fraction bar
@@ -840,6 +841,7 @@
   --blockquote-text: #6b6560;
   --code-bg: #f0eeeb;
   --code-block-bg: #f5f3f0;
+  --code-block-bg-hover: #ece8e3; /* one step deeper: a code block's hover */
   --math-color: #6b4fa0;
   --accent: #7c5e3c;
   --background: #ede3de;
@@ -1910,7 +1912,7 @@ textarea {
   transition: background 0.15s;
 }
 .source-pod-preview:hover {
-  background: rgba(124, 94, 60, 0.07);
+  background: var(--code-block-bg-hover);
 }
 .source-pod-preview-line {
   overflow: hidden;
@@ -2044,7 +2046,7 @@ textarea {
 }
 .source-pod-card-preview-title {
   margin-bottom: 0.25rem;
-  font-size: 11px;
+  font-size: 10px; /* in-card META tier (STYLE_GUIDE "In-card type scale") */
   font-weight: 500;
   color: var(--ink-muted);
 }
@@ -2055,7 +2057,7 @@ textarea {
   border-radius: var(--pod-radius);
   background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
   color: var(--ink-strong, #2a2724);
-  font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace; /* .card-mono */
   font-size: 12px;
   line-height: 1.375;
   white-space: pre-wrap;

@@ -104,8 +104,12 @@ function PodCorner({
             e.stopPropagation();
             onToggle();
           }}
+          // ONE stable name for the mode + `aria-pressed` for its state; only
+          // the tooltip flips (STYLE_GUIDE "Naming a toggle").
+          aria-pressed={showingSource}
           {...iconHint({
-            label: showingSource ? `Show ${kindLabel}` : `Edit ${kindLabel} source`,
+            label: `Edit ${kindLabel} source`,
+            hint: showingSource ? `Show ${kindLabel}` : `Edit ${kindLabel} source`,
           })}
         >
           {showingSource ? (
@@ -565,7 +569,7 @@ export default function SourcePodNodeView({
               <div key={i} className="source-pod-preview-line">{line}</div>
             ))
           ) : (
-            <div className="source-pod-preview-line source-pod-preview-empty">(empty)</div>
+            <div className="source-pod-preview-line source-pod-preview-empty">{config.emptyLabel}</div>
           )}
           <div className="source-pod-preview-more">…</div>
         </div>
