@@ -11,7 +11,7 @@
 //   - an editable-body kind (note) user-initiated → expand + select + focus
 //   - the same kind with `autoFocus: false` → NO expand / select / focus
 //   - a bodiless kind (highlight) → never focuses (the citation/highlight
-//     carve-out in `cardKindHasEditableBody`)
+//     carve-out in `CARD_REGISTRY.createFocus`)
 //
 // (useCardCreation transitively imports `@/lib/storage`, whose
 // `require("@/lib/storage-fsa")` vitest can't alias — stub it, the known gotcha.)
@@ -23,7 +23,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-// Spy on `focusNewCard`; keep the real `cardKindHasEditableBody` predicate the
+// Spy on `focusNewCard`; keep the real `focusesBodyOnCreate` predicate the
 // central gate reads.
 vi.mock("@/lib/focus-new-card", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/focus-new-card")>();
@@ -130,6 +130,22 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
 
     const ref = { kind: "highlight" as const, id: "hl-1" };
     expect(cardStore.isExpanded(ref)).toBe(false);
+    expect(focusMock).not.toHaveBeenCalled();
+  });
+  // Task 1358 — the gate is `CARD_REGISTRY[kind].createFocus`, not a hand list.
+  it("todo (createFocus: body) focuses; citation (createFocus: popover) does not", () => {
+    const { result } = renderHook(() => useCardCreation(makeDeps()));
+
+    act(() => {
+      result.current.createTodo({});
+    });
+    expect(focusMock).toHaveBeenCalledWith(cardPopKey("todo", "todo-1"), expect.anything());
+
+    focusMock.mockClear();
+    act(() => {
+      result.current.createCitation({});
+    });
+    expect(cardStore.isExpanded({ kind: "citation", id: "cit-1" })).toBe(false);
     expect(focusMock).not.toHaveBeenCalled();
   });
 });

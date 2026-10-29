@@ -82,6 +82,7 @@ import { omniPinStore, pinOwnerOf } from "./editor-layout/omni-pin-store";
 import { iconHint } from "@/components/Hint";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { bindPress, pressProps } from "@/lib/press-props";
+import { cardPrimaryFieldProps } from "@/lib/card-primary-field";
 
 /**
  * True when a keyboard event originated from an interactive control nested
@@ -1350,12 +1351,16 @@ export function CardTitleInput({
   placeholder = "Title",
   style,
   theme,
+  primaryField,
 }: {
   defaultValue?: string;
   onChange?: (title: string) => void;
   placeholder?: string;
   style?: React.CSSProperties;
   theme?: CardTheme;
+  /** This title IS the card's primary field — the one a fresh create drops
+   *  the caret into (task 1358; todo's text lives here). */
+  primaryField?: boolean;
 }) {
   const merged = theme
     ? { ...cardTitleStyle(theme), ...style }
@@ -1408,6 +1413,7 @@ export function CardTitleInput({
       <input
         ref={setInputRef}
         type="text"
+        {...(primaryField ? cardPrimaryFieldProps : null)}
         defaultValue={defaultValue ?? ""}
         onFocus={() => claim()}
         onBlur={(e) => {
@@ -2064,6 +2070,10 @@ export function EditableCard({
             theme={theme}
           />
         )}
+        {/* The rich body is this card's PRIMARY field (task 1358) — the stamp
+            names it for `focusNewCard`; `contents` keeps the wrapper out of
+            layout. */}
+        <div className="contents" {...cardPrimaryFieldProps}>
         <RichTextField
           instanceKey={id}
           value={value}
@@ -2081,6 +2091,7 @@ export function EditableCard({
           panelKey={panelKey}
           editable={cardEditable}
         />
+        </div>
       </div>
       )}
 

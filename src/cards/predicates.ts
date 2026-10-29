@@ -31,6 +31,13 @@ export const CARD_KINDS = Object.keys(CARD_REGISTRY) as CardKind[];
 
 export const isCardKind = (s: string): s is CardKind => s in CARD_REGISTRY;
 
+/** Should a USER-INITIATED create of this kind expand the new card and drop
+ *  the caret into its primary field? The registry's `createFocus` facet (task
+ *  1358) — read by the `finishCreate` chokepoint. `"popover"` (citation) and
+ *  `null` kinds answer false. */
+export const focusesBodyOnCreate = (k: CardKind): boolean =>
+  CARD_REGISTRY[k].createFocus === "body";
+
 /** Replaces `ANCHORED_CARD_KINDS` / `EntityKind` / `MarginaliaMarker.entityKind`
  *  and the polymorphic-panel anchor branches. */
 export const isAnchoredCardKind = (k: CardKind): boolean => CARD_REGISTRY[k].anchored;

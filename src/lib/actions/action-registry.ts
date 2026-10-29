@@ -1736,8 +1736,8 @@ function citationRun(ctx: ActionContext): void {
     mode: "omni",
   });
   // Soft-route + focus the new card's library-picker. CITATION CARVE-OUT
-  // (CHIP B): citation is deliberately NOT an editable-body kind in
-  // `cardKindHasEditableBody`, so `finishCreate` does NOT auto-focus it — its
+  // (CHIP B): citation declares `createFocus: "popover"` in CARD_REGISTRY
+  // (task 1358), so `finishCreate` does NOT auto-focus it — its
   // create flow owns its own focus (the library "Add from library…" picker
   // input). So we keep this explicit `focusCard` here (mirrors the retired
   // citations-host listener's `focusNewCard(cardPopKey("citation", id))`).

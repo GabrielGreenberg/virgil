@@ -128,3 +128,10 @@ export const SUGGESTION_SEARCH_FIELDS: ReadonlyArray<{
   { field: "explanation", role: "body" },
   { field: "instructions", role: "body" },
 ];
+
+/** The human grid's PRIMARY field — the first one an author can type into,
+ *  which a fresh create drops the caret into (task 1358). DERIVED from the two
+ *  tables above, so reordering the grid or making a field read-only moves it. */
+export const FIRST_EDITABLE_FIELD: SuggestionField | undefined = FIELD_ORDER.find(
+  (f) => !READONLY_HUMAN_FIELDS.has(f),
+);

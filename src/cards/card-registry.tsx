@@ -602,6 +602,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // holds (`morphDropsHeld`), so an empty note morphs without one (task 755).
     morph: { to: "highlight", lossy: true, drops: ["body", "title"] },
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -633,6 +634,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (REP-F6-03) and produced a confirm that lied ("drops the body and title").
     morph: { to: "note", lossy: false, drops: [] },
     bodyClass: "sans",
+    createFocus: null,
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -664,6 +666,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "in-text",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -693,6 +696,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // main-document vocabulary, and the Archive action's delete is gated by
     // `canMountInCardBody` so a future vocabulary gap refuses instead of
     // destroying. Every other kind holds authored card prose → "card".
+    createFocus: "body",
     bodySchema: "excerpt",
     stackable: true,
     poppable: true,
@@ -729,6 +733,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "margin",
     morph: null,
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -751,6 +756,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "sans",
+    createFocus: null,
     bodySchema: "card",
     stackable: true, // StackCardKind: "bibliography"
     poppable: true,
@@ -776,6 +782,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "in-text",
     morph: null,
     bodyClass: "sans",
+    createFocus: "popover",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -817,6 +824,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // non-lossy/silent (declared on `revision-suggestion.morph`).
     morph: { to: "revision-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -846,6 +854,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (198). The REVERSE stays silent (`cutter-suggestion.morph`).
     morph: { to: "cutter-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -901,6 +910,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // pending card. Its superseded AI draft rides the body (the converter).
     morph: { to: "cutter-comment", lossy: true, drops: ["byline"] },
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -937,6 +947,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // pending card. Its superseded AI draft rides the body (the converter).
     morph: { to: "revision-comment", lossy: true, drops: ["byline"] },
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: true,
     poppable: true,
@@ -967,6 +978,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // no home on the FROM (report) side, so it doesn't drop here.
     morph: { to: "report-request", lossy: true, drops: ["title", "byline"] },
     bodyClass: "sans", // R11: Report is apparatus → 12px Inter (fixes the variant=footnote serif declared-vs-rendered mismatch)
+    createFocus: "body",
     bodySchema: "card",
     stackable: false, // not in StackCardKind
     poppable: true,
@@ -1000,6 +1012,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // carries across.
     morph: { to: "report", lossy: true, drops: ["aiRequest"] },
     bodyClass: "sans",
+    createFocus: "body",
     bodySchema: "card",
     stackable: false,
     poppable: true,
@@ -1044,6 +1057,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)
+    createFocus: null,
     bodySchema: "card",
     // NOT stackable, and honestly so since task 259. It declared `true` to
     // mirror a `StackCardKind` membership that no link of the chain honored: the
@@ -1079,6 +1093,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "sans",
+    createFocus: null,
     bodySchema: "card",
     stackable: false,
     poppable: false, // RATIFIED not poppable (§3.5) — the sole non-poppable kind

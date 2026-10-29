@@ -42,6 +42,7 @@ import type { PanelBodyKey } from "@/lib/panel-typography";
 // Re-exported here so every existing call site keeps working.
 export {
   FIELD_ORDER,
+  FIRST_EDITABLE_FIELD,
   READONLY_HUMAN_FIELDS,
   hasSuggestionReplacement,
   suggestionReplacement,
@@ -52,6 +53,7 @@ import { iconHint } from "@/components/Hint";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { cardPrimaryFieldProps } from "@/lib/card-primary-field";
 
 /** The two cards share a
  *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
@@ -375,6 +377,7 @@ export function FieldBlock({
   readOnly,
   kindHint,
   panelKey,
+  primary,
 }: {
   field: SuggestionField;
   value: string;
@@ -388,6 +391,9 @@ export function FieldBlock({
    *  and `usePanelBodyStyle` already takes it (task 714, where the panel key is
    *  DERIVED from the family's registry row rather than passed as a literal). */
   panelKey: PanelBodyKey | undefined;
+  /** This field is the card's PRIMARY field — the first editable one, which a
+   *  fresh create drops the caret into (task 1358). */
+  primary?: boolean;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
@@ -428,6 +434,7 @@ export function FieldBlock({
       {!folded && !asPassage && (
         <textarea
           ref={taRef}
+          {...(primary && !readOnly ? cardPrimaryFieldProps : null)}
           value={value}
           readOnly={readOnly}
           onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
