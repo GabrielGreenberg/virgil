@@ -23,6 +23,7 @@ import {
   PendingActionRow,
   AppliedRecordBody,
   FIELD_ORDER,
+  FIRST_EDITABLE_FIELD,
   FieldBlock,
   PendingAiRecordBody,
   READONLY_HUMAN_FIELDS,
@@ -294,6 +295,7 @@ export function SuggestionCard({
               content={field === "original_text" ? card.selectedContent : undefined}
               onChange={(v) => onUpdateField(card.id, field, v)}
               readOnly={READONLY_HUMAN_FIELDS.has(field)}
+              primary={field === FIRST_EDITABLE_FIELD}
               kindHint={field === "original_text" ? anchorKind : null}
               panelKey={bodyKey}
             />

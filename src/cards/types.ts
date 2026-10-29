@@ -246,6 +246,20 @@ export interface CardMeta {
    *  wire token is `"todos"` (and notes hosts two kinds), so a derivation
    *  would silently corrupt the contract. */
   aiRequest?: { kind: AiRequestKind; linkPanel: AiRequestLink["panel"] };
+  /** What a USER-INITIATED create of this kind does with the caret (task
+   *  1358) — the ONE place that says which kinds focus on create:
+   *   - `"body"` — `finishCreate` expands + selects the new card and calls
+   *     `focusNewCard`, which drops the caret into the field the card STAMPS
+   *     as its primary (`data-card-primary-field`, `cardPrimaryFieldProps` in
+   *     `src/lib/card-primary-field.ts`) — the card names the field, the
+   *     focuser never guesses it from DOM shape.
+   *   - `"popover"` — the kind's create popover / library picker owns focus
+   *     (citation, CHIP 4a-ii); the panel card is not expanded or focused.
+   *   - `null` — no user-typed body to type into (highlight: a color + range)
+   *     or no user create gesture (example / bib / error).
+   *  Pinned by `create-focus-census.test.tsx`: every `"body"` kind's card
+   *  renders exactly one stamped primary field. */
+  createFocus: "body" | "popover" | null;
   /** Declared lifecycle coverage (validated against the per-doc provider). */
   lifecycle: CardLifecycleCapability;
   /** The card's USER-CONTENT model — the single declarative descriptor both

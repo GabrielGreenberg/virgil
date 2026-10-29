@@ -173,6 +173,9 @@ export function TodoRow({
           onChange={(t) => onUpdate(item.id, t)}
           placeholder={cardTypeLabel("todo")}
           theme={theme}
+          // The todo's text lives in its title — the primary field a fresh
+          // create focuses (task 1358), not the notes textarea below.
+          primaryField
           // TITLE dialect — design-system-fixed (CardTitleInput owns the
           // par-title styling). The per-panel body-font picker
           // (`todoBodyStyle`) applies to the notes textarea below only.

@@ -63,6 +63,7 @@ import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { cardPrimaryFieldProps } from "@/lib/card-primary-field";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1892,6 +1893,9 @@ function EmptyRowSearchInput({
       }}
       value={displayValue}
       placeholder="Add from library…"
+      // The citation card's primary field (task 1358): `\cite` / the
+      // drag-handle create lands the caret here via `focusNewCard`.
+      {...cardPrimaryFieldProps}
       onFocus={(e) => {
         if (!pickerOpenHere) {
           onOpenPickerForInput(e.currentTarget, "");

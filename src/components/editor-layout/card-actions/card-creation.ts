@@ -20,10 +20,10 @@ import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
-import { panelForCardKind } from "@/cards/predicates";
+import { panelForCardKind, focusesBodyOnCreate } from "@/cards/predicates";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
-import { focusNewCard, cardKindHasEditableBody } from "@/lib/focus-new-card";
+import { focusNewCard } from "@/lib/focus-new-card";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { EditorHandle } from "../../Editor";
@@ -444,13 +444,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // scope (task 1283) — both `setSelected` and the CHIP-B `select` below.
       store.withoutPlacement(() => setSelected(id));
       pin(pinToken, id);
-      // Drop the caret into the new card's body (CHIP B). User-initiated
-      // (`autoFocus` defaults true); editable-body kinds only — `focusNewCard`
-      // is self-gating (returns a null target for bodiless kinds), but we also
-      // gate the EXPAND so a bodiless/citation card isn't needlessly opened.
-      // The citation carve-out lives in `cardKindHasEditableBody` (its create
-      // popover owns its own focus).
-      if (opts.autoFocus !== false && cardKindHasEditableBody(kind)) {
+      // Drop the caret into the new card's primary field (CHIP B).
+      // User-initiated (`autoFocus` defaults true), and only for kinds whose
+      // registry row says `createFocus: "body"` (task 1358) — so a bodiless
+      // card isn't needlessly expanded, and a citation's create popover keeps
+      // its own focus.
+      if (opts.autoFocus !== false && focusesBodyOnCreate(kind)) {
         // Expand so the RichTextField body actually mounts (a compressed card
         // has no contenteditable for `focusNewCard` to find) + select in the
         // shared store so the card paints as the active one. Both are

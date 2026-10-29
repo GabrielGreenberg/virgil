@@ -31,7 +31,7 @@ vi.mock("@/lib/storage", async () =>
 
 // `focus-new-card` walks the real DOM for a card field that never mounts in
 // this headless harness; neuter `focusNewCard` so the post-dispatch focus tail
-// is a no-op, but keep the real `cardKindHasEditableBody` predicate the central
+// is a no-op, but keep the real `focusesBodyOnCreate` predicate the central
 // `finishCreate` gate now reads (CHIP B).
 vi.mock("@/lib/focus-new-card", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/focus-new-card")>();
