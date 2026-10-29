@@ -442,13 +442,16 @@ function readCode(path: string): string {
 describe("census — both surfaces enter the SHARED dispatch", () => {
   it("the grid cell dispatches through runGridAction, never a private builder", () => {
     const src = readCode(PANEL);
-    // The cell exists…
-    expect(src).toMatch(/id="forest"/);
+    // The cell exists — a row of the grid TABLE (task 1352)…
+    expect(src).toMatch(/\{ id: "forest", glyph:/);
     // …and routes through the shared view-only ctx builder, which is the ONE
     // place `canEdit` is threaded. The `\tex` cell beside it still calls
     // `insertTexBlock(editor)` and builds its own ActionContext with no
     // `canEdit` — the known task-228 member-5 trap. A new cell must not copy it.
-    expect(src).toContain('runGridAction("forest")');
+    // Since task 1352 every glyph cell is rendered by ONE table call site, whose
+    // run is `runGridAction(id)` with the cell's own id (pinned per site by
+    // `grid-cell-applicability-census`).
+    expect(src).toContain("run={() => runGridAction(id)}");
     // Nothing may mint the starter bytes here: the SSOT is `freshForestSource`
     // on the grammar leaf, reached through the registry row.
     expect(src).not.toContain("begin{forest}");

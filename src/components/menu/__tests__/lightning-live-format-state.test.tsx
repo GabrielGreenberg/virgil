@@ -31,8 +31,11 @@ import { commentsStripped } from "@/lib/__tests__/_source-scan";
 import {
   ActionsMenuPanel,
   LIGHTNING_ACTIVE_MARKS,
+  LIGHTNING_GRID,
   LIGHTNING_GRID_CELL_IDS,
 } from "../../ActionsMenuPanel";
+import { toggledMember, VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
+import { menuCellToneStyle } from "../row-tone";
 import { DragHandleMenuProvider } from "../../editor-layout/card-actions/drag-handle-menu-context";
 
 class ResizeObserverStub {
@@ -107,7 +110,9 @@ const cell = (name: string) =>
   document.querySelector(
     `[aria-label="Selection actions"] button[aria-label="${name}"]`,
   ) as HTMLButtonElement;
-const lit = (hint: string) => cell(hint).getAttribute("data-format-active") === "true";
+// Task 1352: the on-state is ANNOUNCED (`aria-checked`), not a private data
+// attribute no AT and no CSS read.
+const lit = (hint: string) => cell(hint).getAttribute("aria-checked") === "true";
 const frame = () =>
   act(async () => {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
@@ -160,22 +165,68 @@ describe("task 738 — the open lightning grid follows the live editor", () => {
   });
 });
 
-describe("task 738 — the live signature covers every painted read", () => {
+describe("task 1352 — a toggle cell announces its state", () => {
+  it("with the caret in bold text: Bold is a checked menuitemcheckbox, Italic unchecked, Example a plain menuitem", () => {
+    editor = mount();
+    editor.chain().setTextSelection(BETA).toggleBold().run();
+    openPanel(editor);
+    expect(cell("Bold").getAttribute("role")).toBe("menuitemcheckbox");
+    expect(cell("Bold").getAttribute("aria-checked")).toBe("true");
+    expect(cell("Italic").getAttribute("role")).toBe("menuitemcheckbox");
+    expect(cell("Italic").getAttribute("aria-checked")).toBe("false");
+    const example = cell(VIRGIL_ACTION_REGISTRY.example.label);
+    expect(example.getAttribute("role")).toBe("menuitem");
+    expect(example.hasAttribute("aria-checked")).toBe(false);
+  });
+
+  it("the applied cell paints the toggle-on palette, not the hover token (SPECIFIED value — jsdom resolves no vars)", () => {
+    const on = menuCellToneStyle({ roving: false, applied: true });
+    expect(on.background).toBe("var(--control-selected-tint)");
+    expect(on.color).toBe("var(--control-selected-ink)");
+    // Roving still wins the fill; disabled still wins the ink (task 986's order).
+    expect(menuCellToneStyle({ roving: true, applied: true }).background).toBe("var(--menu-roving-bg)");
+    expect(menuCellToneStyle({ roving: false, applied: true, disabled: true }).color).toBe("var(--ink-faint)");
+  });
+});
+
+describe("task 1352 — the grid's painted reads are DERIVED from its table", () => {
   const SRC = commentsStripped(
     readFileSync(join(resolve(__dirname, "../../../.."), "src/components/ActionsMenuPanel.tsx"), "utf8"),
   );
-  const literals = (fn: string) =>
-    [...SRC.matchAll(new RegExp(`\\b${fn}\\("([A-Za-z-]+)"\\)`, "g"))].map((m) => m[1]!);
 
-  it("every isActive(\"…\") the render makes is in LIGHTNING_ACTIVE_MARKS", () => {
-    const seen = literals("isActive");
-    expect(seen.length).toBeGreaterThanOrEqual(7);
-    expect([...new Set(seen)].sort()).toEqual([...LIGHTNING_ACTIVE_MARKS].sort());
+  it("every toggle cell's active name is its row's `makes`; non-toggles have none", () => {
+    for (const id of LIGHTNING_GRID_CELL_IDS) {
+      const row = VIRGIL_ACTION_REGISTRY[id];
+      const member = toggledMember(row);
+      if (row.toggle) {
+        expect(row.makes, `${id} is a toggle and must say what it toggles`).toBeDefined();
+        const made = "mark" in row.makes! ? row.makes!.mark : row.makes!.node;
+        expect(member).toBe(made);
+      } else {
+        expect(member, `${id} is not a toggle`).toBeNull();
+      }
+    }
+    expect(LIGHTNING_ACTIVE_MARKS.length).toBeGreaterThanOrEqual(8);
+    expect([...LIGHTNING_ACTIVE_MARKS].sort()).toEqual(
+      LIGHTNING_GRID_CELL_IDS.flatMap((id) => {
+        const m = toggledMember(VIRGIL_ACTION_REGISTRY[id]);
+        return m === null ? [] : [m];
+      }).sort(),
+    );
   });
 
-  it("every gridCellDisabled(\"…\") the render makes is in LIGHTNING_GRID_CELL_IDS", () => {
-    const seen = literals("gridCellDisabled");
-    expect(seen.length).toBeGreaterThanOrEqual(15);
-    expect([...new Set(seen)].sort()).toEqual([...LIGHTNING_GRID_CELL_IDS].sort());
+  it("the grid cell ids are the table's, minus the row-less ¶ cell", () => {
+    expect(LIGHTNING_GRID_CELL_IDS).toEqual(
+      LIGHTNING_GRID.map((c) => c.id).filter((id) => id !== "block-type"),
+    );
+  });
+
+  it("census: no hand-spelled isActive(\"…\") survives in the panel", () => {
+    expect([...SRC.matchAll(/\bisActive\("([A-Za-z-]+)"/g)].map((m) => m[1])).toEqual([]);
+  });
+
+  it("census: no literal row/col coordinates — they are derived from the table index", () => {
+    expect(SRC).not.toMatch(/\brow=\{\d+\}/);
+    expect(SRC).not.toMatch(/\bcol=\{\d+\}/);
   });
 });

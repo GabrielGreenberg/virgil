@@ -13,7 +13,7 @@
  * caret while the user is typing.
  */
 
-import { useEffect, useRef, useState, useCallback, memo } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback, memo, type CSSProperties, type ReactNode } from "react";
 import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
 import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
@@ -37,7 +37,15 @@ import { useCitationDisplayContextOrNull } from "@/components/editor-layout/cont
 import { iconHint } from "@/components/Hint";
 import { pressProps } from "@/lib/press-props";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
-import { wrapperSafeInState } from "@/lib/tiptap/wrapper-gate";
+import {
+  runAction as runRegistryAction,
+  toggledMember,
+  verdictOf,
+  VIRGIL_ACTION_REGISTRY,
+  type ActionId,
+} from "@/lib/actions/action-registry";
+import { lightningContext } from "@/lib/actions/lightning-context";
+import { actionHint } from "@/components/action-hint";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 
 interface RichTextFieldProps {
@@ -101,31 +109,94 @@ const RICH_TEXT_MAX_WAIT_MS = 1000;
 // Format toolbar (commands operate on the wrapped Tiptap editor)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** One bit per toolbar verdict, packed by the `FormatToolbar` selector. */
-const BIT = {
-  bulletOk: 1 << 0,
-  orderedOk: 1 << 1,
-  bold: 1 << 2,
-  italic: 1 << 3,
-  underline: 1 << 4,
-  smallCaps: 1 << 5,
-  bulletList: 1 << 6,
-  orderedList: 1 << 7,
-} as const;
-/** No editor yet: both wrappers allowed, nothing active (the pre-1257 `3`). */
-const WRAPPER_OK = BIT.bulletOk | BIT.orderedOk;
-const TOGGLES = [
-  { name: "bold", bit: BIT.bold },
-  { name: "italic", bit: BIT.italic },
-  { name: "underline", bit: BIT.underline },
-  { name: "smallCaps", bit: BIT.smallCaps },
-  { name: "bulletList", bit: BIT.bulletList },
-  { name: "orderedList", bit: BIT.orderedList },
-] as const;
+/**
+ * The toolbar's buttons, in display order (task 1352). Every button but one
+ * RUNS a registry row — the card-body twin of the ⚡ grid's cell for that row —
+ * so its name and chord (`label` / `keybinding`), whether it is greyed (the
+ * row's own `applies()`, with its reason) and whether it is ON (the row's
+ * `toggle` + `makes`, via `toggledMember`) are the row's, and a press crosses
+ * the registry's run door (task 1299). Before, the toolbar hand-spelled each
+ * name, each TipTap command and each mark it tested, and asked no row whether
+ * it applied: in a card body's `codeBlock` (task 427) B / I / Sc stayed lit
+ * over a click that did nothing, while the grid's twin cell greyed and said
+ * why. `underline` has no registry row (a card-body-only mark) and stays the
+ * one local button.
+ */
+type ToolbarButton =
+  | { id: ActionId; glyph: ReactNode; className?: string; style?: CSSProperties; divider?: true }
+  | { id: "underline"; glyph: ReactNode; className?: string };
+
+const TOOLBAR_BUTTONS: readonly ToolbarButton[] = [
+  { id: "bold", glyph: "B", className: "font-bold" },
+  { id: "italic", glyph: "I", className: "italic" },
+  { id: "underline", glyph: "U", className: "underline" },
+  { id: "small-caps", glyph: "Sc", style: { fontVariantCaps: "small-caps" } },
+  {
+    id: "bullet-list",
+    divider: true,
+    glyph: (
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="2" cy="4" r="1.5" />
+        <rect x="5" y="3" width="10" height="2" rx="0.5" />
+        <circle cx="2" cy="8" r="1.5" />
+        <rect x="5" y="7" width="10" height="2" rx="0.5" />
+        <circle cx="2" cy="12" r="1.5" />
+        <rect x="5" y="11" width="10" height="2" rx="0.5" />
+      </svg>
+    ),
+  },
+  {
+    id: "ordered-list",
+    glyph: (
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+        <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text>
+        <rect x="5" y="3" width="10" height="2" rx="0.5" />
+        <text x="0" y="9.5" fontSize="5" fontWeight="600">2</text>
+        <rect x="5" y="7" width="10" height="2" rx="0.5" />
+        <text x="0" y="13.5" fontSize="5" fontWeight="600">3</text>
+        <rect x="5" y="11" width="10" height="2" rx="0.5" />
+      </svg>
+    ),
+  },
+];
+
+/** One button's live verdict: ON, and — when greyed — why ("" = no reason). */
+interface ToolbarState {
+  on: boolean;
+  disabled: boolean;
+  why: string;
+}
+
+/** Every button's verdict at the editor's live selection, packed into ONE
+ *  primitive so React bails the re-render on every keystroke that leaves it
+ *  unchanged. O(depth + selection) per transaction — `isActive` per toggle,
+ *  each row's `applies()` (a `blockRange` / `findWrapping` per wrapper, a
+ *  textblock walk over the SELECTION per mark), and a reason only for a row
+ *  that is greyed; none walks the doc. */
+function toolbarSignature(ed: NonNullable<ReturnType<typeof useEditor>>): string {
+  const ctx = lightningContext(ed);
+  return TOOLBAR_BUTTONS.map((b) => {
+    if (b.id === "underline") return ed.isActive("underline") ? "1" : "0";
+    const spec = VIRGIL_ACTION_REGISTRY[b.id];
+    const member = toggledMember(spec);
+    const on = member !== null && ed.isActive(member) ? "1" : "0";
+    const verdict = verdictOf(spec, ctx);
+    return verdict.state === "disabled" ? `${on}d${verdict.reason ?? ""}` : on;
+  }).join("\u0001");
+}
+
+function decodeToolbar(sig: string): ToolbarState[] {
+  return sig.split("\u0001").map((part) => ({
+    on: part.startsWith("1"),
+    disabled: part.charAt(1) === "d",
+    why: part.slice(2),
+  }));
+}
+
 /** The toggle "on" look, spelled ONCE for the whole toolbar: the tint path of
  *  the `--control-selected*` family (STYLE_GUIDE "Buttons" → the "on"
  *  palette), driven by `aria-pressed` — the same pale chip in the light and
- *  the dark (selected-card) context. */
+ *  the dark (selected-card) context, and the ⚡ grid's applied cell. */
 const TOGGLE_ON_CLASS =
   "aria-pressed:bg-[var(--control-selected-tint)] aria-pressed:text-[var(--control-selected-ink)]";
 
@@ -136,34 +207,24 @@ function FormatToolbar({
   editor: ReturnType<typeof useEditor> | null;
   selected: boolean;
 }) {
-  // Task 427: the two list buttons are the card-body twin of the lightning
-  // grid's wrapper cells, so they read the SAME wrapper door (identity +
-  // container) for their `disabled` AND guard the click — a card body mounts the
-  // block atoms and `codeBlock`, so a non-listable block is reachable here.
-  // Task 1257: the same selector also reports which marks/lists are ACTIVE at
-  // the selection, so every toggle paints and announces its state
-  // (`aria-pressed`) the way `ActionsMenuPanel` does. The selector is
-  // O(depth + selection) per transaction (one `blockRange` + one
-  // `findWrapping` per list, `isActive` per toggle — none walks the doc) and
-  // packs the booleans into ONE primitive so React bails the re-render on
-  // every keystroke that leaves the verdict unchanged.
-  const bits = useEditorState({
+  // Task 1257: every toggle paints and announces its state (`aria-pressed` —
+  // a toolbar BUTTON, not a menu item, so pressed rather than checked). Task
+  // 1352: the state, the grey and the reason are each row's own, re-asked per
+  // transaction by the selector above.
+  const sig = useEditorState({
     editor,
-    selector: ({ editor: ed }) => {
-      if (!ed) return WRAPPER_OK;
-      let b = 0;
-      if (wrapperSafeInState(ed.state, "bulletList")) b |= BIT.bulletOk;
-      if (wrapperSafeInState(ed.state, "orderedList")) b |= BIT.orderedOk;
-      for (const t of TOGGLES) if (ed.isActive(t.name)) b |= t.bit;
-      return b;
-    },
+    selector: ({ editor: ed }) => (ed ? toolbarSignature(ed) : ""),
   });
   if (!editor) return null;
-  const has = (bit: number) => ((bits ?? WRAPPER_OK) & bit) !== 0;
-  const runWrapper = (name: "bulletList" | "orderedList") => {
-    if (!wrapperSafeInState(editor.state, name)) return;
-    const chain = editor.chain().focus();
-    (name === "bulletList" ? chain.toggleBulletList() : chain.toggleOrderedList()).run();
+  const states = sig ? decodeToolbar(sig) : [];
+  const press = (b: ToolbarButton) => {
+    if (b.id === "underline") {
+      editor.chain().focus().toggleUnderline().run();
+      return;
+    }
+    // The registry's run door: the commit re-asks the gate the paint read, so
+    // a press that races a caret move into a refusing block writes nothing.
+    runRegistryAction(VIRGIL_ACTION_REGISTRY[b.id], lightningContext(editor));
   };
   // Every toggle acts on MOUSEDOWN so the press lands before it blurs the
   // field (the editor keeps its selection); `pressProps` adds the keyboard /
@@ -184,71 +245,30 @@ function FormatToolbar({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <button
-        type="button"
-        aria-pressed={has(BIT.bold)}
-        {...pressProps(() => editor.chain().focus().toggleBold().run())}
-        className={`${btnClass} font-bold`}
-        data-hint="Bold"
-      >B</button>
-      <button
-        type="button"
-        aria-pressed={has(BIT.italic)}
-        {...pressProps(() => editor.chain().focus().toggleItalic().run())}
-        className={`${btnClass} italic`}
-        data-hint="Italic"
-      >I</button>
-      <button
-        type="button"
-        aria-pressed={has(BIT.underline)}
-        {...pressProps(() => editor.chain().focus().toggleUnderline().run())}
-        className={`${btnClass} underline`}
-        data-hint="Underline"
-      >U</button>
-      <button
-        type="button"
-        aria-pressed={has(BIT.smallCaps)}
-        {...pressProps(() => editor.chain().focus().toggleSmallCaps().run())}
-        className={btnClass}
-        style={{ fontVariantCaps: "small-caps" }}
-        data-hint="Small caps"
-      >Sc</button>
-      <div className={dividerClass} />
-      <button
-        type="button"
-        data-iconbtn-exempt="formatting toolbar: own aria-pressed active state + dark-context variant (STYLE_GUIDE)"
-        aria-pressed={has(BIT.bulletList)}
-        {...pressProps(() => runWrapper("bulletList"))}
-        className={btnClass}
-        disabled={!has(BIT.bulletOk)}
-        {...iconHint({ label: "Bullet list" })}
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="2" cy="4" r="1.5" />
-          <rect x="5" y="3" width="10" height="2" rx="0.5" />
-          <circle cx="2" cy="8" r="1.5" />
-          <rect x="5" y="7" width="10" height="2" rx="0.5" />
-          <circle cx="2" cy="12" r="1.5" />
-          <rect x="5" y="11" width="10" height="2" rx="0.5" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        aria-pressed={has(BIT.orderedList)}
-        {...pressProps(() => runWrapper("orderedList"))}
-        className={btnClass}
-        disabled={!has(BIT.orderedOk)}
-        {...iconHint({ label: "Numbered list" })}
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text>
-          <rect x="5" y="3" width="10" height="2" rx="0.5" />
-          <text x="0" y="9.5" fontSize="5" fontWeight="600">2</text>
-          <rect x="5" y="7" width="10" height="2" rx="0.5" />
-          <text x="0" y="13.5" fontSize="5" fontWeight="600">3</text>
-          <rect x="5" y="11" width="10" height="2" rx="0.5" />
-        </svg>
-      </button>
+      {TOOLBAR_BUTTONS.map((b, i) => {
+        const st = states[i] ?? { on: false, disabled: false, why: "" };
+        const hint =
+          b.id === "underline"
+            ? iconHint({ label: "Underline" })
+            : actionHint(VIRGIL_ACTION_REGISTRY[b.id], st.disabled && st.why ? st.why : null);
+        return (
+          <Fragment key={b.id}>
+            {"divider" in b && b.divider && <div className={dividerClass} />}
+            <button
+              type="button"
+              data-iconbtn-exempt="formatting toolbar: own aria-pressed active state + dark-context variant (STYLE_GUIDE)"
+              aria-pressed={st.on}
+              {...pressProps(() => press(b))}
+              className={b.className ? `${btnClass} ${b.className}` : btnClass}
+              style={"style" in b ? b.style : undefined}
+              disabled={st.disabled}
+              {...hint}
+            >
+              {b.glyph}
+            </button>
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

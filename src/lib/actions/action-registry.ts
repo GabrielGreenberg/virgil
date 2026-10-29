@@ -945,6 +945,16 @@ export interface ActionSpec {
    */
   makes?: SchemaMember;
   /**
+   * This row TOGGLES what it `makes` (task 1352): its "on" state is
+   * `editor.isActive(<that member>)` — bold-is-on, in-a-bullet-list. Set only
+   * by `formatToggleRow`, so a surface that paints a toggle's state (the ⚡
+   * grid's `aria-checked`, the card-body toolbar's `aria-pressed`) reads the
+   * name off the row through `toggledMember` instead of re-spelling it. An
+   * INSERT row also declares `makes` (the example row makes `exampleBlock`) but
+   * is not a toggle — a caret inside an example does not mean "Example is on".
+   */
+  toggle?: true;
+  /**
    * Resolve the doc range the action operates on, when it differs from the
    * ref's natural range. Optional — defaults to the dispatcher's
    * `resolveRefRange` behavior (heading → heading-line for annotations / whole
@@ -1195,6 +1205,15 @@ function gateApplies(
 
 /** A schema member a row makes: a node type or a mark type, by name. */
 export type SchemaMember = { node: string } | { mark: string };
+
+/** The schema member a TOGGLE row turns on and off (task 1352) — the name its
+ *  "on" state is `editor.isActive(…)` of — or `null` for a row that is not a
+ *  toggle (an insert, a card action, the colour picker). Read off the row's
+ *  own `toggle` + `makes`, so no surface re-spells which mark a cell tests. */
+export function toggledMember(spec: Pick<ActionSpec, "toggle" | "makes">): string | null {
+  if (!spec.toggle || !spec.makes) return null;
+  return "mark" in spec.makes ? spec.makes.mark : spec.makes.node;
+}
 
 /**
  * SCHEMA MEMBERSHIP (task 1182) — the first question of every row that makes a
@@ -3595,6 +3614,7 @@ function formatToggleRow(
     keybinding,
     ...(inputRulePattern ? { inputRulePattern } : {}),
     makes: opts.wrapper !== undefined ? { node: opts.wrapper } : { mark: opts.mark },
+    toggle: true,
     applies:
       opts.wrapper !== undefined
         ? wrapperApplies(opts.wrapper)
