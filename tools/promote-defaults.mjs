@@ -32,7 +32,13 @@ import { fileURLToPath } from "node:url";
 // The ONE pref→CSS table (task 902) — the first-paint seed below is rendered
 // from the same rows the runtime paints, and the transform bake uses the same
 // math the runtime applies. Both are import-free leaves under src/lib.
-import { PREF_CSS_ROWS, renderPrefCssSeed } from "../src/lib/pref-css-table.mjs";
+import {
+  PREF_CSS_BLOCK_END,
+  PREF_CSS_ROWS,
+  renderPrefCssBlockBody,
+  renderPrefCssSeed,
+  splitPrefCssBlock,
+} from "../src/lib/pref-css-table.mjs";
 import { applyTransforms } from "../src/lib/color-transform-math.mjs";
 
 const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -326,27 +332,15 @@ function main() {
 }
 
 function rewriteCssBlock(seed) {
-  const END = "/* PROMOTE-DEFAULTS-END */";
   const cur = fs.readFileSync(GLOBALS_CSS, "utf-8");
-  const startMatch = /^([ \t]*)\/\* PROMOTE-DEFAULTS-START[\s\S]*?\*\//m.exec(cur);
-  if (!startMatch) {
-    throw new Error("globals.css missing PROMOTE-DEFAULTS-START marker");
+  const parts = splitPrefCssBlock(cur);
+  if (!parts) {
+    throw new Error("globals.css missing a PROMOTE-DEFAULTS-START / -END marker pair");
   }
-  const indent = startMatch[1];
-  const startBlockEnd = startMatch.index + startMatch[0].length;
-  const endIdx = cur.indexOf(END, startBlockEnd);
-  if (endIdx === -1) {
-    throw new Error("globals.css missing PROMOTE-DEFAULTS-END marker");
-  }
-  // Cut from the end of the START comment through the END marker
-  // (excluding the marker itself) so we can rebuild the body. The
+  // Rebuild the body between the START comment and the END marker. The
   // indent captured from START is reused for END so re-runs don't drift.
-  const before = cur.slice(0, startBlockEnd);
-  const after = cur.slice(endIdx + END.length);
-
-  const lines = seed.map(([cssVar, value]) => `${indent}${cssVar}: ${value};`);
-  const block = "\n" + lines.join("\n") + "\n" + indent + END;
-  const next = before + block + after;
+  const next =
+    parts.before + renderPrefCssBlockBody(seed, parts.indent) + PREF_CSS_BLOCK_END + parts.after;
   if (next === cur) return false;
   if (!DRY_RUN) fs.writeFileSync(GLOBALS_CSS, next, "utf-8");
   return true;
