@@ -29,7 +29,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PREF_CSS_ROWS, renderPrefCssSeed } from "../src/lib/pref-css-table.mjs";
+import {
+  PREF_CSS_BLOCK_HAND_EDIT_HINT,
+  PREF_CSS_ROWS,
+  renderPrefCssBlockBody,
+  renderPrefCssSeed,
+  splitPrefCssBlock,
+} from "../src/lib/pref-css-table.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -80,18 +86,19 @@ function readJson(file) {
   }
 
   const globals = fs.readFileSync(GLOBALS_CSS, "utf-8");
-  const block = /PROMOTE-DEFAULTS-START[\s\S]*?\*\/([\s\S]*?)\/\* PROMOTE-DEFAULTS-END \*\//.exec(globals);
+  const block = splitPrefCssBlock(globals);
   if (!block) {
     fail("globals.css has no PROMOTE-DEFAULTS block");
   } else {
-    const seeded = block[1]
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const expected = renderPrefCssSeed(editorDefaults).map(
-      ([cssVar, value]) => `${cssVar}: ${value};`,
-    );
-    if (seeded.join("\n") !== expected.join("\n")) {
+    const seed = renderPrefCssSeed(editorDefaults);
+    // Byte-for-byte: the promoter's own render, so a hand-added line inside the
+    // block (a trailing comment and all) is drift too.
+    if (block.body !== renderPrefCssBlockBody(seed, block.indent)) {
+      const seeded = block.body
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const expected = seed.map(([cssVar, value]) => `${cssVar}: ${value};`);
       const have = new Set(seeded);
       const want = new Set(expected);
       const missing = expected.filter((l) => !have.has(l));
@@ -100,8 +107,9 @@ function readJson(file) {
         "globals.css PROMOTE-DEFAULTS block is not the pref-css-table rendered at the defaults" +
           (missing.length ? ` — missing/different: ${missing.join(" ")}` : "") +
           (extra.length ? ` — unexpected: ${extra.join(" ")}` : "") +
-          (!missing.length && !extra.length ? " — same lines, wrong order" : "") +
-          ". Regenerate with `npm run promote-defaults` (or rewriteCssBlock).",
+          (!missing.length && !extra.length ? " — same lines, wrong order or spacing" : "") +
+          ". " +
+          PREF_CSS_BLOCK_HAND_EDIT_HINT,
       );
     }
   }

@@ -14,6 +14,12 @@ import {
   prefCssBootstrapScript,
   recordPrefCssPaint,
 } from "@/lib/pref-css-bootstrap";
+import {
+  PREF_CSS_BLOCK_HAND_EDIT_HINT,
+  renderPrefCssBlockBody,
+  renderPrefCssSeed,
+  splitPrefCssBlock,
+} from "@/lib/pref-css-table.mjs";
 
 /**
  * Task 902 — first paint shows what the runtime will.
@@ -57,6 +63,22 @@ describe("one pref→CSS table", () => {
   it("the seed carries nothing the runtime does not paint", () => {
     const painted = new Set(PREF_TO_CSS.map((r) => r.cssVar));
     expect([...seedBlock().keys()].filter((v) => !painted.has(v))).toEqual([]);
+  });
+
+  // Task 1351: the two checks above parse the block line by line, and their
+  // regex skips a line with a trailing comment — so task 1344's hand-added
+  // `--code-block-bg-hover: …; /* … */` inside the block went unseen. This one
+  // compares the block byte-for-byte with the promoter's own render, from the
+  // same JSON sidecar the promoter reads.
+  it("the managed block is byte-for-byte what the promoter writes", () => {
+    const css = readFileSync(path.join(ROOT, "src/app/globals.css"), "utf-8");
+    const block = splitPrefCssBlock(css);
+    expect(block, "globals.css has a PROMOTE-DEFAULTS block").toBeTruthy();
+    const editorDefaults = JSON.parse(
+      readFileSync(path.join(ROOT, "src/hooks/usePreferences.defaults.json"), "utf-8"),
+    );
+    const want = renderPrefCssBlockBody(renderPrefCssSeed(editorDefaults), block!.indent);
+    expect(block!.body, PREF_CSS_BLOCK_HAND_EDIT_HINT).toBe(want);
   });
 
   it("the promoter no longer reads a second hand map", () => {
