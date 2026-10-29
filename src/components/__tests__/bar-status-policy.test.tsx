@@ -307,8 +307,9 @@ describe("bar status policy · the surfaces", () => {
 
   it("the skills-updated note is NOT a bar pill — it lives on the Help menu's Refresh skills row", () => {
     expect(read("src/components/SkillSyncControls.tsx")).not.toMatch(/Skills updated to v|SkillSyncNotice/);
-    const cluster = read(CLUSTER);
-    expect(cluster).toMatch(/Updated to v\{skillSyncNotice\.version\}/);
-    expect(cluster).toMatch(/restart your Claude\s+Code cowork session/);
+    // The Help menu left StatusCluster for its own file in task 1361.
+    const help = read("src/components/editor-layout/HelpMenu.tsx");
+    expect(help).toMatch(/Updated to v\{skillSyncNotice\.version\}/);
+    expect(help).toMatch(/restart your Claude\s+Code\s+cowork session/);
   });
 });

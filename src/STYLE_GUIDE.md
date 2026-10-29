@@ -2934,6 +2934,19 @@ for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
   border, shadow and radius, each from the `--menu-*` tier in `globals.css`
   (see **Menu surface** below).
 
+**Sub-menus** (task 1361; reference: `HelpMenu.tsx`'s Commands). A sub-menu is
+a NESTED `MenuProvider` mounted by its row inside the parent menu, anchored to
+that row and placed `right-of` → `left-of` (so it escapes sideways at a window
+edge), never an `absolute left-full` child. The R6 provider stack does the rest:
+only the innermost open menu owns the keyboard, Escape pops ONE level, and the
+child's container joins the parent's click-outside exclusions on its own. The
+row is a registered item that spreads `menuTriggerAria("menu", open)`, keeps the
+parent open on activation (`keepMenuOpen`), and opens the child on hover, click,
+Enter/Space and ArrowRight (the parent's `onArrowHorizontal`); the child closes
+on ArrowLeft (its own `onArrowHorizontal`) and lands its cursor on the first row
+when opened from the keyboard. Its activedescendant host is the parent's trigger
+(`AnchoredMenu`'s render props hand it over as `triggerEl`).
+
 **Menu surface.** The four chrome axes are the PRIMITIVE's, not the caller's
 (task 295). A consumer passes `containerClassName` / `containerStyle` for
 **width, padding and docked-anchor placement only**; a background, border,

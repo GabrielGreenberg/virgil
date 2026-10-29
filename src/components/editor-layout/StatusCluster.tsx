@@ -7,18 +7,15 @@ import {
   useRef,
   type Dispatch,
   type ReactNode,
-  type RefObject,
   type SetStateAction,
 } from "react";
-import { createPortal } from "react-dom";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
-import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { SoftwareUpdateBanner } from "@/components/SoftwareUpdateBanner";
 import CoworkPenBadge from "@/components/CoworkPenBadge";
 import { MirrorRecoveryBadge } from "@/components/MirrorRecoveryBadge";
 import { SaveStateBadge } from "@/components/SaveStateBadge";
-import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import SkillSyncControls from "../SkillSyncControls";
+import { HelpMenu } from "./HelpMenu";
 import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
@@ -105,15 +102,8 @@ export type StatusClusterProps = {
   bugReportOpen: boolean;
   setBugReportOpen: Dispatch<SetStateAction<boolean>>;
 
-  // Help dropdown (body-portaled).
+  // Help menu (`HelpMenu` — its open state, anchor and sub-menu are its own).
   appVersion: string;
-  helperBtnRef: RefObject<HTMLButtonElement | null>;
-  helperMenuOpen: boolean;
-  setHelperMenuOpen: Dispatch<SetStateAction<boolean>>;
-  helperPositionRef: (el: HTMLElement | null) => void;
-  helperPositionStyle: React.CSSProperties;
-  commandsPopoutOpen: boolean;
-  setCommandsPopoutOpen: Dispatch<SetStateAction<boolean>>;
   onInsertVirgilCommand: (name: string) => void;
 
   // Print / AI-window / Style / Code / Compile / PDF buttons.
@@ -159,13 +149,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
     bugReportOpen,
     setBugReportOpen,
     appVersion,
-    helperBtnRef,
-    helperMenuOpen,
-    setHelperMenuOpen,
-    helperPositionRef,
-    helperPositionStyle,
-    commandsPopoutOpen,
-    setCommandsPopoutOpen,
     onInsertVirgilCommand,
     currentDocId,
     codeView,
@@ -444,122 +427,23 @@ function StatusClusterImpl(props: StatusClusterProps) {
           <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
         </svg>
       </button>
-      <div className="relative">
-        <button
-          ref={helperBtnRef}
-          onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
-          className="topbarbtn"
-          {...iconHint({ label: "Help" })}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.5 9a2.75 2.75 0 0 1 5.25 1.1c0 1.6-2.25 2.4-2.75 3.4" />
-            <path d="M12 17h.01" />
-          </svg>
-        </button>
-        {/* `!topbarRightCollapsed` (task 395): this dropdown PORTALS to
-            <body>, so it is the one child of the collapsible group that
-            `visibility: hidden` cannot reach. Gating it here reproduces
-            exactly what unmounting the group used to do — otherwise an auto
-            collapse (an OS window narrowing while the menu is open) would
-            leave the menu floating with no trigger under it. */}
-        {helperMenuOpen && !topbarRightCollapsed && typeof document !== "undefined" && createPortal(
-          <div
-            ref={helperPositionRef}
-            // MENU tier (task 459). The Help menu and its Commands sub-menu
-            // below are two floating command surfaces in one declaration, and
-            // both hand-authored `--edge-subtle` + `shadow-md`; the surface is
-            // `.menu-surface`'s now, whatever either one is anchored to.
-            className="menu-surface text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
-            style={{ ...helperPositionStyle, zIndex: OPEN_CHROME_MENU_Z }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseLeave={() => setCommandsPopoutOpen(false)}
-          >
-            <div className="px-3 py-2">
-              <div className="font-medium text-ink-body mb-0.5">Version</div>
-              <div>Virgil v{appVersion}</div>
-            </div>
-            <div className="border-t border-edge-subtle" />
-            <div
-              className="relative flex items-center justify-between px-3 py-2 cursor-default hover-on-light"
-              onMouseEnter={() => setCommandsPopoutOpen(true)}
-            >
-              <span className="font-medium text-ink-body">Commands</span>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-              {commandsPopoutOpen && (
-                <div
-                  className="absolute left-full top-0 ml-1 menu-surface text-xs text-ink-body py-1 min-w-[160px]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {VIRGIL_COMMAND_NAMES.map((name) => (
-                    <button
-                      key={name}
-                      onClick={() => onInsertVirgilCommand(name)}
-                      className="block w-full text-left px-3 py-1 font-mono text-ink-body hover-on-light"
-                    >
-                      {`\\${name}`}
-                    </button>
-                  ))}
-                  <div className="border-t border-edge-subtle mt-1 pt-1.5 pb-1 px-3 text-[10px] text-ink-muted flex items-center gap-1">
-                    <span>Type text +</span>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="9 10 4 15 9 20" />
-                      <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                    </svg>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="border-t border-edge-subtle" />
-            {/* Refresh skills — the manual re-sync (formerly a persistent
-                top-bar icon). An edge action: auto-sync runs on doc-open, so
-                this is only for force-refresh or re-granting FSA permission
-                after a revoked grant. A menu click is still a user gesture, so
-                the permission re-grant path is preserved. Only meaningful with
-                a paper open. Sync failures still surface loudly via the
-                SkillSyncControls pill above, independent of this item.
-                Task 1131: a SUCCESSFUL sync is informational, so it is not on
-                the bar — its version and the restart hint live on this row. */}
-            {hasDoc && (
-              <button
-                onClick={() => {
-                  // The new sync supersedes the last one's note.
-                  onDismissSkillSyncNotice();
-                  onResyncSkills();
-                  setHelperMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
-                data-hint="Re-sync the skill bundle to this paper"
-                data-skill-sync-notice={skillSyncNotice ? skillSyncNotice.version : undefined}
-              >
-                <span className="flex flex-col items-start gap-0.5">
-                  <span>Refresh skills</span>
-                  {skillSyncNotice && (
-                    <span className="text-[10px] text-ink-subtle leading-snug">
-                      Updated to v{skillSyncNotice.version} — restart your Claude
-                      Code cowork session to pick up the new commands.
-                    </span>
-                  )}
-                </span>
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
-                  <path d="M2 5.2V12a1.2 1.2 0 0 0 1.2 1.2h9.6A1.2 1.2 0 0 0 14 12V6.2A1.2 1.2 0 0 0 12.8 5H7.4L6 3.2H3.2A1.2 1.2 0 0 0 2 4.4Z" />
-                  <path d="M8 7.2v3.4M6.4 9.2 8 10.8l1.6-1.6" />
-                </svg>
-              </button>
-            )}
-            <button
-              onClick={() => { onHelperToggle(); setHelperMenuOpen(false); }}
-              className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
-            >
-              <span>Helper mode</span>
-              <span className="text-[var(--accent)]">{helperOn ? "✓" : ""}</span>
-            </button>
-          </div>,
-          document.body,
-        )}
-      </div>
+      {/* `key` (task 395 → 1361): the menu PORTALS to <body>, so it is the
+          one child of the collapsible group that `visibility: hidden` cannot
+          reach — an auto collapse (an OS window narrowing while the menu is
+          open) would leave it floating with no trigger under it. Re-keying on
+          the collapse remounts the trigger, which closes the menu, while the
+          button itself stays in the group's measured box. */}
+      <HelpMenu
+        key={topbarRightCollapsed ? "collapsed" : "shown"}
+        appVersion={appVersion}
+        hasDoc={hasDoc}
+        skillSyncNotice={skillSyncNotice}
+        onResyncSkills={onResyncSkills}
+        onDismissSkillSyncNotice={onDismissSkillSyncNotice}
+        helperOn={helperOn}
+        onHelperToggle={onHelperToggle}
+        onInsertVirgilCommand={onInsertVirgilCommand}
+      />
       {/* The bar timer's ICON (task 354) — an ordinary tool, so it takes the
           ordinary tool rules: it lives inside the collapsible group and inside
           the zen gate, rather than minting an exception for itself. A timer is

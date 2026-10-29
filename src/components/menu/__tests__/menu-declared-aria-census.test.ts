@@ -32,9 +32,11 @@ import { describe, expect, it } from "vitest";
 import {
   LIBRARY,
   SRC,
+  ROLE_MENU,
   roleMenuDeclarations,
   splitDeclarations,
   stripComments,
+  usesMenuPrimitive,
 } from "./_menu-census";
 
 /** A row that names itself an item, in JSX or in a `useMenuItem`-style
@@ -81,15 +83,32 @@ describe("declared-menu ARIA census (task 997)", () => {
   const population = roleMenuDeclarations();
 
   it("finds the population (vacuity floor)", () => {
-    const keys = population.map((h) => h.key);
-    for (const k of [
-      "src/components/library/MyPapersPod.tsx::MyPapersPod",
-      // The Library silo's two (`RowMenu`, `PaperAiRequestsMenu`) left this
-      // population in task 1011 — they mount `AnchoredMenu` now — so the pod's
-      // "+ Add paper" menu is the one hand-declared menu left to answer.
-    ]) {
-      expect(keys, k).toContain(k);
-    }
+    // The in-tree population is DRAINED: the Library silo's two (`RowMenu`,
+    // `PaperAiRequestsMenu`) left it in task 1011, and the last one — the
+    // library pod's "+ Add paper" menu — in task 1361, all by moving onto
+    // `AnchoredMenu`. An empty population makes legs A and B vacuous over the
+    // tree, so the floor is now the DETECTOR: a hand-declared menu (the
+    // pre-1361 pod, reduced) is found, and the same menu on the primitive is
+    // not. A future hand-declared `role="menu"` lands in the population and
+    // must answer A and B.
+    // Column 0: `splitDeclarations` slices TOP-LEVEL declarations.
+    const handDeclared = [
+      "function AddMenu() {",
+      '  return <div role="menu" style={{ position: "absolute", top: "100%" }}>',
+      '    <button role="menuitem" onClick={pick}>Open folder…</button>',
+      "  </div>;",
+      "}",
+      "",
+    ].join("\n");
+    const onPrimitive = handDeclared.replace('<div role="menu"', "<AnchoredMenu ariaLabel=\"x\" role=\"menu\"");
+    // The census's own predicate (`roleMenuDeclarations`), asked of a fixture.
+    const found = (src: string) =>
+      splitDeclarations(src).filter(
+        ({ block }) => ROLE_MENU.test(block) && !usesMenuPrimitive(block),
+      ).length;
+    expect(found(handDeclared)).toBe(1);
+    expect(found(onPrimitive)).toBe(0);
+    for (const { key } of population) expect(key).toMatch(/^(?:src|library)\//);
   });
 
   it("A: every declared role=\"menu\" gives its rows a menuitem role", () => {

@@ -57,6 +57,8 @@ export const LIBRARY = path.resolve(HERE, "../../../../library"); // the Library
 export const PERMITTED_HAND_ROLLED_ANCHORED_SURFACES: Record<string, string> = {
   "src/components/EditorPane.tsx::EditorPane":
     "NOT AN ANCHORED MENU — the editor shell. Its three signals come from unrelated places in one very large component (positioned chrome, a shadow token, and rect reads for drop/geometry work), which is the cost of a declaration-scoped census over a 7k-line component. Every menu EditorPane hosts is a child component with its own entry or its own primitive call.",
+  "src/components/EditorLayout.tsx::EditorLayout":
+    "NOT AN ANCHORED MENU — the app shell, the EditorPane case one level up: its signals come from unrelated places in one very large component. It entered this list in task 1361, which moved the Help menu OUT of it (onto `AnchoredMenu` in `HelpMenu.tsx`) — until then its one `useFloatingMenuPosition` call matched `PRIMITIVE_API` and exempted the whole declaration, so the shell had been passing as \"a menu built on the primitive\".",
   "src/components/FloatingPanel.tsx::FloatingPanelInner":
     "NOT AN ANCHORED MENU — a draggable/resizable float shell (the tool-window taxonomy: `SystemDialog variant=\"draggable\"` / FLOAT_Z tiers), whose position is the user's own drag state persisted per float, not a placement solved against a trigger. It measures rects to CLAMP a dragged window inside the viewport. Nothing about the menu primitive fits it; it would have to grow a drag engine to accept one.",
   "src/components/Marginalia.tsx::MarkerButton":
@@ -68,24 +70,19 @@ export const PERMITTED_HAND_ROLLED_ANCHORED_SURFACES: Record<string, string> = {
   "library/components/LeftListRow.tsx::LeftListRow":
     "NOT AN ANCHORED MENU — a catalog list row. Surfaced only when the detectors learned to read a multi-line className (task 181): its rect read builds the DRAG GHOST, and the positioned surface is that ghost's count badge, written as an inline `style=\"position:absolute;…\"` string (its own box-shadow was dropped by task 817 — the ghost's one lift now covers it). It opens no popup.",
 
-  // ── The three surfaced by the CSS_ANCHORED signal (task 181) and NOT
-  //    migrated in it. Each is a real follow-up with a stated reason it is a
-  //    different job from "swap the shell", not an exemption. They are listed
-  //    rather than fixed because the alternative — leaving the signal narrow
-  //    enough that they don't appear — is how the previous three stayed
-  //    invisible for a release cycle.
+  // ── HOLDOUTS: real follow-ups, not exemptions. The CSS_ANCHORED signal
+  //    (task 181) surfaced three and the CARET dialect (task 459) a fourth;
+  //    task 1361 migrated two (MyPapersPod's "+ Add paper" and the Help menu
+  //    + its Commands sub-menu, now `AnchoredMenu` + a nested `MenuProvider`)
+  //    and folded the other two's ROWS onto `row-tone.ts`. Each entry below
+  //    states ONLY what remains, with the reason it is a different job from
+  //    "swap the shell". They are listed rather than hidden because leaving
+  //    the signal narrow enough that they don't appear is how the first three
+  //    stayed invisible for a release cycle.
   "src/components/FontPicker.tsx::FontPicker":
-    "HOLDOUT (follow-up). The font dropdown in the Fonts dialog (5 instances): `absolute z-50 left-0 right-0 mt-1` with a hand-rolled mousedown closer, no Escape, no flip, clipped by the dialog's own `overflow-y-auto` body — so the bottom-most pickers open into the clip. Not a menu swap: it is a COMBOBOX (filter input + grouped options + focus into the input), so it wants `layout=\"combobox\"` / `keyboardSource=\"input\"` / `useMenuCombobox` — the `LabelRefPopover` pattern — which `AnchoredMenu` does not model today (it owns the trigger and the open state; a combobox's input owns both). Migrating it ALSO changes Escape semantics across all five instances: today Escape with the list open dismisses the whole dialog.",
-  "src/components/library/MyPapersPod.tsx::MyPapersPod":
-    "HOLDOUT (follow-up). The pod's \"+ Add paper\" menu: the inline-style dialect (`position:\"absolute\", top:\"100%\", marginTop:2, zIndex:50`), `role=\"menu\"`, and it DOES have Escape — the most complete of the CSS-anchored hand-rolls — but no flip, no clamp, no re-anchor, and `zIndex:50` sits under the float layer. A straight `AnchoredMenu` migration; deferred only to keep task 181 to the panel silo it names.",
-  // ── Surfaced by the CARET dialect (task 459). Its SURFACE is fixed in the
-  //    same task — it paints from `.menu-surface` now — but its PLACEMENT is
-  //    still its own, so it is named here rather than silently absorbed.
+    "HOLDOUT (follow-up), PLACEMENT + KEYBOARD only. The font dropdown in the Fonts dialog (5 instances) still places itself with `absolute z-50 left-0 right-0 mt-1` — no flip, and clipped by the dialog's own `overflow-y-auto` body, so the bottom-most pickers open into the clip — and its options have no roving keyboard nav. Its other axes are done: dismissal is `useMenuDismiss` with Escape (task 1304), the surface is `.menu-surface` (task 459), the rows paint from `row-tone.ts` (task 1361). What remains is not a shell swap: it is a COMBOBOX (filter input + grouped options + focus into the input), so it wants `layout=\"combobox\"` / `keyboardSource=\"input\"` / `useMenuCombobox` — the `LabelRefPopover` pattern — which `AnchoredMenu` does not model today (it owns the trigger and the open state; a combobox's input owns both).",
   "src/components/SlashCommandPopup.tsx::SlashCommandPopup":
-    "HOLDOUT (follow-up). The `/` command popup, anchored to a CARET rect (`view.coordsAtPos(slashPos)`) rather than to a trigger — which is why neither of the pre-459 ANCHORED dialects could see it, and why it shipped a seventh chrome vocabulary (bare `rounded` = 4px against every other menu's 8px). It hand-rolls its own viewport clamp and vertical flip, and `useFloatingMenuPosition` is the right destination: it already models a point anchor. Not a drop-in, because this popup's placement is entangled with three laws its current effect discharges by hand — the scroll-anchor probe (`recordScrollPlacement`), the RAF coalescing with an equality bail, and the layout-gesture SUPPRESSION that hides it for a pane/window drag — so the migration has to prove the hook preserves all three rather than swap a shell.",
-
-  "src/components/editor-layout/StatusCluster.tsx::StatusClusterImpl":
-    "HOLDOUT (follow-up), and the one whose SHAPE differs. The Commands sub-menu of the Help menu: `left-full` with no horizontal escape, opened on HOVER rather than click, and its anchor rect is measured in a DIFFERENT FILE (`EditorLayout.tsx`) and prop-threaded in — which is why the rect-based ANCHORED signal never saw it and why `AnchoredMenu` (which owns its own trigger and rect) is not a drop-in. Its PARENT, the Help menu, is itself half-migrated: on `useFloatingMenuPosition` (hence census-exempt) but with a hand-rolled window-click closer, no Escape, no roving nav and no menu ARIA. Fix the parent and the child together.",
+    "HOLDOUT (follow-up), PLACEMENT only. The `/` command popup, anchored to a CARET rect (`view.coordsAtPos(slashPos)`) rather than to a trigger. Its surface is `.menu-surface` (task 459) and its rows paint from `row-tone.ts` (task 1361); what remains is placement: it hand-rolls its own viewport clamp and vertical flip, and `useFloatingMenuPosition` is the right destination (it already models a point anchor). Not a drop-in, because this popup's placement is entangled with three laws its current effect discharges by hand — the scroll-anchor probe (`recordScrollPlacement`), the RAF coalescing with an equality bail, and the layout-gesture SUPPRESSION that hides it for a pane/window drag — so the migration has to prove the hook preserves all three rather than swap a shell.",
 };
 
 /** Referencing any of these IS building on the primitive. This regex is

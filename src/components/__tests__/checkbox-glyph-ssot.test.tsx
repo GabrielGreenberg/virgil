@@ -357,9 +357,10 @@ describe("nobody re-authors the glyph (the leg with teeth)", () => {
    * chip or a menu's MenuToggleRow cannot trip it. A boolean-keyed tick is a
    * checkbox: take `Checkbox`, or be a declared holdout below. */
   it("no boolean-keyed tick glyph stands in for a checkbox", () => {
-    // Task 997 (menu-primitive migration) owns this one: the Help menu's
-    // "Helper mode" row moves to a menu toggle row there, not to Checkbox.
-    const HOLDOUTS = ["src/components/editor-layout/StatusCluster.tsx"];
+    // EMPTY since task 1361: the Help menu's "Helper mode" row — the last
+    // holdout — is a `MenuToggleRow` (in `HelpMenu.tsx`) now, not a hand-drawn
+    // tick. A new entry needs a stated owner, or it shelters the next one.
+    const HOLDOUTS: string[] = [];
     const TICK = /\?\s*"(?:\\u2713|\u2713)"\s*:\s*""/;
     const offenders = files.filter((rel) =>
       TICK.test(readFileSync(path.join(ROOT, rel), "utf8")),

@@ -22,14 +22,14 @@
  * column via `LibraryView`'s `belowNavigator` slot.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import NavPod from "@library/components/NavPod";
 import RowMenu from "@library/components/RowMenu";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
-import { FONT_MONO } from "@/lib/font-stacks";
-import { isCancelEscape } from "@/lib/key-intent";
-import { menuTriggerAria } from "@/components/menu/menu-trigger";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { MenuActionRow } from "@/components/menu/MenuActionRow";
+import { MenuSectionLabel, MenuSeparator } from "@/components/menu/MenuChrome";
 
 interface Props {
   /** Every known Virgil doc — used to resolve `myPaperIds` to display
@@ -58,6 +58,22 @@ interface Props {
 
 const ACCENT = "var(--accent)";
 
+/** The "+ Add paper" trigger: a full-width pod row (its hover tint is the
+ *  `triggerClassName`, not a JS mouseenter). */
+const ADD_TRIGGER_STYLE: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  width: "100%",
+  padding: "6px 12px 6px 14px",
+  border: "none",
+  color: "var(--muted)",
+  fontSize: 12,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  textAlign: "left",
+};
+
 export default function MyPapersPod({
   docs,
   myPaperIds,
@@ -69,27 +85,6 @@ export default function MyPapersPod({
   onCreateNew,
   devStorage,
 }: Props) {
-  const [popupOpen, setPopupOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!popupOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setPopupOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (isCancelEscape(e)) setPopupOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [popupOpen]);
-
   const docById = useMemo(
     () => new Map(docs.map((d) => [d.id, d])),
     [docs],
@@ -126,7 +121,6 @@ export default function MyPapersPod({
       // a tab. No FSA re-grant needed since we're not touching the
       // file system here.
       addMyPaper(id);
-      setPopupOpen(false);
     },
     [addMyPaper],
   );
@@ -175,125 +169,53 @@ export default function MyPapersPod({
           );
         })
       )}
-      <div ref={wrapRef} style={{ position: "relative" }}>
-        <button
-          type="button"
-          onClick={() => setPopupOpen((v) => !v)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            width: "100%",
-            padding: "6px 12px 6px 14px",
-            background: "transparent",
-            border: "none",
-            color: "var(--muted)",
-            fontSize: 12,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            textAlign: "left",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "rgba(0, 0, 0, 0.04)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "transparent";
-          }}
-          {...menuTriggerAria("menu", popupOpen)}
-        >
-          <span style={{ width: 14, textAlign: "center" }}>+</span>
-          <span>Add paper</span>
-        </button>
-        {popupOpen && (
-          <div
-            role="menu"
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 6,
-              right: 6,
-              marginTop: 2,
-              background: "var(--menu-bg)",
-              // A FLOATING MENU, not a library page edge — so it wears the
-              // app-wide menu border like every other dropdown
-              // (TabPlusMenu / HeadingTypeMenu / DragHandleMenu …). Task 048's
-              // --library-edge re-toning governs page-EDGE chrome (tab strokes,
-              // the body frame, the NavPod frame): surfaces that must read as
-              // one continuous manila page. This popup sits ABOVE the surface
-              // and has no page edge to harmonize with.
-              // The old value was `var(--pod-border, 1px solid
-              // var(--library-edge))` — a fallback that could never fire,
-              // since --pod-border is defined in globals.css :root, so the
-              // stated library-edge intent was dead code and this menu has
-              // always rendered in --border-light (task 324: a comment that
-              // asserts a render that cannot happen).
-              // …and it reaches those values through the MENU tier rather than
-              // by naming the pod's (task 459). The four `--menu-*` tokens
-              // ALIAS the pod's deliberately, so this is byte-identical today
-              // — the point is that a future "menus sit deeper than the pod"
-              // decision is one line in `:root` and cannot be silently opted
-              // out of here. STYLE_GUIDE "Menus": a menu reaches the radius
-              // through `--menu-radius`, never by naming `--pod-radius`.
-              border: "var(--menu-border)",
-              boxShadow: "var(--menu-shadow)",
-              borderRadius: "var(--menu-radius)",
-              padding: "6px 0",
-              zIndex: 50,
-            }}
-          >
-            {recents.length > 0 && (
-              <>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "var(--muted)",
-                    padding: "2px 12px 4px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    fontFamily: FONT_MONO,
-                  }}
-                >
-                  Recent
-                </div>
-                {recents.map((d) => (
-                  <PopupRow
-                    key={d.id}
-                    label={docDisplayLabel(d)}
-                    onClick={() => handleRecentClick(d.id)}
-                  />
-                ))}
-                <div
-                  aria-hidden
-                  style={{
-                    height: 1,
-                    // Divider tone from the library edge token (task 048).
-                    background: "var(--library-edge)",
-                    margin: "6px 8px",
-                  }}
-                />
-              </>
-            )}
-            {!devStorage && (
-              <PopupRow
-                label="Open folder…"
-                onClick={() => {
-                  onOpenFolder();
-                  setPopupOpen(false);
-                }}
-              />
-            )}
-            <PopupRow
-              label="Create new document…"
-              onClick={() => {
-                onCreateNew();
-                setPopupOpen(false);
-              }}
-            />
-          </div>
+      {/* The "+ Add paper" menu — on the ONE anchored-menu door since task
+          1361 (it was the last census-declared holdout in the Library silo):
+          measured flip + clamp, re-anchoring, the menu z-tier above the float
+          layer, click-outside + Escape (cancel) + roving keyboard nav, and the
+          row vocabulary of every other menu. Every row is a pick, so the menu
+          closes on activation. */}
+      <AnchoredMenu
+        ariaLabel="Add paper"
+        wrapperClassName="relative"
+        triggerClassName="hover:bg-black/[0.04]"
+        triggerStyle={ADD_TRIGGER_STYLE}
+        containerStyle={{ minWidth: 200, maxWidth: 320 }}
+        closeOnInsideClick
+        trigger={() => (
+          <>
+            <span style={{ width: 14, textAlign: "center" }}>+</span>
+            <span>Add paper</span>
+          </>
         )}
-      </div>
+      >
+        {recents.length > 0 && (
+          <>
+            <MenuSectionLabel>Recent</MenuSectionLabel>
+            {recents.map((d) => (
+              <MenuActionRow
+                key={d.id}
+                id={`add-paper-recent-${d.id}`}
+                label={docDisplayLabel(d)}
+                onSelect={() => handleRecentClick(d.id)}
+              />
+            ))}
+            <MenuSeparator />
+          </>
+        )}
+        {!devStorage && (
+          <MenuActionRow
+            id="add-paper-open-folder"
+            label="Open folder…"
+            onSelect={onOpenFolder}
+          />
+        )}
+        <MenuActionRow
+          id="add-paper-create-new"
+          label="Create new document…"
+          onSelect={onCreateNew}
+        />
+      </AnchoredMenu>
     </NavPod>
   );
 }
@@ -365,46 +287,6 @@ function PaperRow({
         minWidth={140}
       />
     </div>
-  );
-}
-
-function PopupRow({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      style={{
-        display: "block",
-        width: "100%",
-        textAlign: "left",
-        background: "transparent",
-        border: "none",
-        padding: "6px 12px",
-        fontSize: 13,
-        color: "var(--foreground)",
-        cursor: "pointer",
-        fontFamily: "inherit",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "var(--accent-light, rgba(124, 94, 60, 0.12))";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-      }}
-    >
-      {label}
-    </button>
   );
 }
 

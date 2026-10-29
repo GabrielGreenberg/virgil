@@ -11,7 +11,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRef } from "react";
+
 import { act, cleanup, fireEvent, render, renderHook } from "@testing-library/react";
 
 vi.mock("@/lib/storage", () => ({
@@ -53,13 +53,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
     bugReportOpen: false,
     setBugReportOpen: noop,
     appVersion: "0.0.0-test",
-    helperBtnRef: createRef<HTMLButtonElement>(),
-    helperMenuOpen: false,
-    setHelperMenuOpen: noop,
-    helperPositionRef: noop,
-    helperPositionStyle: {},
-    commandsPopoutOpen: false,
-    setCommandsPopoutOpen: noop,
     onInsertVirgilCommand: noop,
     currentDocId: "doc1",
     codeView: false,

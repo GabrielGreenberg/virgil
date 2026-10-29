@@ -30,10 +30,7 @@ import {
   isLayoutGestureActive,
   parkDuringLayoutGesture,
 } from "@/lib/pane-resize";
-import {
-  LAYOUT_SITE_HELPER_ANCHOR,
-  LAYOUT_SITE_SECTION_PATH,
-} from "@/lib/layout-gesture-probe";
+import { LAYOUT_SITE_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import {
   activeDividerLevels as activeDividerLevelsOf,
@@ -51,7 +48,6 @@ import {
   docProductsEnabled,
 } from "@/lib/doc-products/use-doc-products";
 import { useMyPapers } from "@/hooks/useMyPapers";
-import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import {
   DocKeepAliveSlot,
@@ -909,28 +905,8 @@ export default function EditorLayout() {
     } catch {}
   }, []);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
-  const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
-  const [helperMenuOpen, setHelperMenuOpen] = useState(false);
-  // Anchor rect for the body-portaled Help dropdown. The dropdown is
-  // portaled to document.body (not rendered inline) so it escapes the
-  // virgil-bar's `sticky z-30` stacking context — otherwise floating
-  // panels / popped cards (z-1200+) paint over it (backlog #9). Captured
-  // from the Help button on open; refreshed on resize/scroll while open.
-  const helperBtnRef = useRef<HTMLButtonElement>(null);
-  const [helperAnchorRect, setHelperAnchorRect] = useState<DOMRect | null>(null);
-  const {
-    ref: helperPositionRef,
-    style: helperPositionStyle,
-  } = useFloatingMenuPosition({
-    anchorRect: helperAnchorRect,
-    placements: [
-      { side: "below", align: "end" },
-      { side: "above", align: "end" },
-    ],
-    gap: 4,
-  });
   // Open state for ManageStylesModal — lifted from the old
   // DocStyleDropdown so the Virgil bar's Style mode button can mirror
   // its aria-pressed state.
@@ -944,59 +920,10 @@ export default function EditorLayout() {
     /* margin-edit UI not yet ported to EditorPane */
   }, []);
 
-  useEffect(() => {
-    if (!helperMenuOpen) {
-      setHelperAnchorRect(null);
-      return;
-    }
-    setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
-    const close = () => { setHelperMenuOpen(false); setCommandsPopoutOpen(false); };
-    const refreshAnchor = () => {
-      const next = helperBtnRef.current?.getBoundingClientRect() ?? null;
-      // Equality bail (task 317). `getBoundingClientRect` returns a FRESH
-      // DOMRect every call, so setting it unconditionally re-rendered this
-      // component — the app ROOT — on every scroll and resize event for as
-      // long as the Help menu stayed open, whether or not the button moved.
-      setHelperAnchorRect((prev) =>
-        prev === next ||
-        (prev !== null &&
-          next !== null &&
-          prev.top === next.top &&
-          prev.left === next.left &&
-          prev.width === next.width &&
-          prev.height === next.height)
-          ? prev
-          : next,
-      );
-    };
-    // Parked, not suppressed: the Help button lives in the Virgil bar — LEFT-
-    // anchored top chrome, which a window drag displaces by ~0.001·delta (the
-    // editor column carries `flex: 1000 1 0` between the rails) — so a stale
-    // anchor for the length of a gesture cannot visibly detach the popover,
-    // and the settle re-seats it exactly once.
-    const anchorPark = parkDuringLayoutGesture(
-      refreshAnchor,
-      LAYOUT_SITE_HELPER_ANCHOR,
-    );
-    const onAnchorEvent = () => anchorPark.fire();
-    const id = window.setTimeout(() => window.addEventListener("click", close), 0);
-    window.addEventListener("resize", onAnchorEvent);
-    window.addEventListener("scroll", onAnchorEvent, true);
-    return () => {
-      window.clearTimeout(id);
-      window.removeEventListener("click", close);
-      window.removeEventListener("resize", onAnchorEvent);
-      window.removeEventListener("scroll", onAnchorEvent, true);
-      anchorPark.dispose();
-    };
-  }, [helperMenuOpen]);
-
   const insertVirgilCommand = useCallback((name: string) => {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
     editor.chain().focus().insertContent(`\\${name}`).run();
-    setHelperMenuOpen(false);
-    setCommandsPopoutOpen(false);
   }, []);
   const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, hydrated: editorPrefsHydrated, updatePref, updateTransform, resetAll: resetPrefs, applySettings: restorePrefSettings, savePreset, loadPreset, deletePreset, restorePreset } = usePreferences();
   const helperMode = useHelperMode();
@@ -2934,13 +2861,6 @@ export default function EditorLayout() {
       bugReportOpen,
       setBugReportOpen,
       appVersion: APP_VERSION,
-      helperBtnRef,
-      helperMenuOpen,
-      setHelperMenuOpen,
-      helperPositionRef,
-      helperPositionStyle,
-      commandsPopoutOpen,
-      setCommandsPopoutOpen,
       onInsertVirgilCommand: insertVirgilCommand,
       currentDocId,
       codeView,
@@ -2977,11 +2897,6 @@ export default function EditorLayout() {
       preferencesOpen,
       bugReportEnabled,
       bugReportOpen,
-      helperBtnRef,
-      helperMenuOpen,
-      helperPositionRef,
-      helperPositionStyle,
-      commandsPopoutOpen,
       insertVirgilCommand,
       currentDocId,
       codeView,

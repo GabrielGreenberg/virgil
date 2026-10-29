@@ -51,7 +51,6 @@ export const LAYOUT_SITE_STACK_ICON = "stack-icon";
 export const LAYOUT_SITE_FIGURE_CHROME = "figure-chrome";
 export const LAYOUT_SITE_CARD_HEADER = "panel-card-header";
 export const LAYOUT_SITE_IN_TEXT_CARDS = "in-text-card-heights";
-export const LAYOUT_SITE_HELPER_ANCHOR = "helper-menu-anchor";
 export const LAYOUT_SITE_GRAB_HANDLE = "grab-handle";
 export const LAYOUT_SITE_FLOATING_MENU = "floating-menu";
 export const LAYOUT_SITE_SCROLL_PERSIST = "editor-scroll-persist";
