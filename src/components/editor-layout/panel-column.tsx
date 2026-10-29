@@ -495,20 +495,34 @@ export function PanelColumn({
         // (omni-view cards, docked-panel cards) can cap an expanded body
         // at the visible dock height.
         ['--dock-slot-frame-h' as string]: frameH,
+        // NO block-axis padding on THIS box (task 1356). It is the clipping
+        // box, and `overflow: clip` clips at the PADDING edge while a sticky
+        // child's floor is the CONTENT edge — so any top/bottom padding here
+        // opens a strip between the edge fade's lowest/highest pin and the
+        // clip edge, and an overflowing card paints straight through it
+        // below the band. The flow inset lives on the inner row instead
+        // (the row just inside it), so the fade, the sticky floor and the clip
+        // edge are one edge.
+        paddingLeft: collapsed ? 0 : 4,
+        paddingRight: collapsed ? 0 : 4,
+      }}
+    >
+      <ColumnEdgeFade side={side} edge="top" />
+      <div
+        className="flex flex-1 min-h-0 w-full"
         // Layer A (the omni desktop, normal flow) gets a top gap only when a
         // band is docked, so its first card clears the pod above it. With no
         // band the cascade starts at the column's own top — the frame above
         // it takes no flow space, so nothing would fill an inset here. This
         // is about Layer A's FLOW, not the frame's pin: the frame is sticky
         // and measures `frameTop` from the scrollport, not from this box.
-        paddingTop: collapsed ? 0 : (hasStack ? 'var(--pod-gap)' : 0),
-        paddingBottom: collapsed ? 0 : 'var(--pod-gap)',
-        paddingLeft: collapsed ? 0 : 4,
-        paddingRight: collapsed ? 0 : 4,
-      }}
-    >
-      <ColumnEdgeFade side={side} edge="top" />
-      <div className="flex flex-1 min-h-0 w-full">
+        // The bottom gap keeps the last card off the row's end. Both live
+        // HERE, inside the clip box, never on the column (see its style).
+        style={{
+          paddingTop: collapsed ? 0 : (hasStack ? 'var(--pod-gap)' : 0),
+          paddingBottom: collapsed ? 0 : 'var(--pod-gap)',
+        }}
+      >
       {collapsed ? (
         <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-3"}`} />
       ) : (
@@ -546,7 +560,7 @@ export function PanelColumn({
                 height: frameH,
                 // visible (not hidden) so docked pods' ambient shadow
                 // (--card-shadow-ambient) isn't clipped at the frame edge — the
-                // column's overflow:clip + its padding is the outer bound. Pods
+                // column's overflow:clip is the outer bound. Pods
                 // cap their own content via internal scroll, so the frame needn't
                 // clip; clipping here would flatten every docked pod.
                 overflow: 'visible',
