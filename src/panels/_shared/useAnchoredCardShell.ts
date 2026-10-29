@@ -60,6 +60,9 @@ export interface AnchoredCardShellProps {
   onHoverChange: (hovering: boolean) => void;
   onToggleExpanded: () => void;
   onHeaderActivate: () => void;
+  /** Select-only on content interaction (task 1357) — PanelCard's root
+   *  capture phase fires it for a pointer-down / focus inside a field. */
+  onSelectOnly: () => void;
   onClick: (e?: MouseEvent) => void;
   canJump: boolean;
   onJump?: (e: MouseEvent) => void;
@@ -125,6 +128,7 @@ export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCa
       onHoverChange,
       onToggleExpanded: ac.onToggleExpanded,
       onHeaderActivate: ac.onHeaderActivate,
+      onSelectOnly: () => ac.onSelectOnly({ onSelect }),
       onClick,
       canJump: !!onJump,
       onJump: onJump ? (e: MouseEvent) => onJump(cardElementOf(e)) : undefined,

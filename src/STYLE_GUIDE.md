@@ -1668,8 +1668,18 @@ the a11y drops `aria-expanded` and labels the header "Select card"
 `cursor-default` on the header; the grab hint lives on the dots glyph
 (`CardDragHandle`, `cursor-grab`). A completed lift swallows its
 trailing click (suppress-click ref) so it can't also toggle. Tab focus
-on the header is inert (`data-card-header` bails the focus-capture
-auto-activation) — Enter/Space are the sole keyboard activation.
+on the header itself is inert — Enter/Space are the sole keyboard activation.
+
+**Content interaction selects (task 1357).** A pointer-down or focus inside
+one of a card's content FIELDS (body editor, title input, textarea, select)
+selects the card — the halo a header click gives — and nothing else: no
+expand toggle, no jump, no editor scroll (`placement: "none"`), a no-op when
+already selected. Stated ONCE: `PanelCard`'s root capture phase fires
+`onSelectOnly` (from `useAnchoredCardShell`'s bundle) when
+`isCardContentField` matches, so a field's `stopPropagation` can't swallow it
+and no card component keeps its own copy (census:
+`card-content-selects-census.test.tsx`). Non-field targets (body padding, a
+collapsed summary, a read-only body) stay on the body-click contract.
 
 **The grip paints iff the lift can land (task 277).** The dots glyph is
 the *only* visual promise the drag-lift makes, so it is not universal

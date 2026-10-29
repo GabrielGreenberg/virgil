@@ -71,6 +71,16 @@ export interface UseAnchoredCardResult {
    */
   onBodyActivate: (effects?: BodyActivateEffects) => void;
   /**
+   * Task 1357 — the CONTENT-interaction composition: a pointer-down or focus
+   * inside one of the card's fields (body editor, title input, textarea …)
+   * SELECTS the card — the same halo a header click gives — and does nothing
+   * else: no expand toggle, no jump, no editor scroll (`placement: "none"`,
+   * applied to any selection the host's `onSelect` makes too). Reads the LIVE
+   * store, so an already-selected card is a no-op (no emit, no host call).
+   * PanelCard fires it from its root capture phase (`onSelectOnly`).
+   */
+  onSelectOnly: (effects?: Pick<BodyActivateEffects, "onSelect">) => void;
+  /**
    * The axis-pure expand override: toggles ONLY `expandedSet` membership —
    * never selection. Threaded to `PanelCard` as `onToggleExpanded`. Stable
    * across renders.
@@ -117,6 +127,18 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     [store, ref.kind, ref.id], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // Select-only (task 1357): the halo moves, nothing scrolls, nothing toggles.
+  const onSelectOnly = useCallback(
+    (effects?: Pick<BodyActivateEffects, "onSelect">) => {
+      if (store.isSelected(ref)) return;
+      store.withoutPlacement(() => {
+        store.select(ref, { placement: "none" });
+        effects?.onSelect?.();
+      });
+    },
+    [store, ref.kind, ref.id], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Axis-pure: toggles ONLY the body, never the halo.
   const onToggleExpanded = useCallback(() => {
     store.toggleExpanded(ref);
@@ -128,5 +150,5 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     store.toggleExpanded(ref);
   }, [store, ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { selected, expanded, hovered, onActivate, onBodyActivate, onToggleExpanded, onHeaderActivate, ref };
+  return { selected, expanded, hovered, onActivate, onBodyActivate, onSelectOnly, onToggleExpanded, onHeaderActivate, ref };
 }

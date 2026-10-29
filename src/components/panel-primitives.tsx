@@ -1590,6 +1590,10 @@ export interface EditableCardProps {
    *  straight to `PanelCard.onHeaderActivate`. Pass
    *  `useAnchoredCard().onHeaderActivate` (or a host-local equivalent). */
   onHeaderActivate?: () => void;
+  /** Select-only on content interaction, forwarded straight to
+   *  `PanelCard.onSelectOnly` (task 1357). Pass
+   *  `useAnchoredCardShell().shell.onSelectOnly`. */
+  onSelectOnly?: () => void;
   /** Card kind for the unified header kind-label. Required for the new
    *  card chrome — every card declares its kind so the header renders a
    *  consistent label. Cards with multi-kind panels can also pass
@@ -1655,7 +1659,7 @@ export function EditableCard({
   hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
   onTogglePopout, isPoppedOut, cardKey,
   compressed, compressedSummary, compressedContent, onToggleExpanded, onHeaderActivate,
-  kind, kindLabelOverride, kindOptions, onKindChange,
+  onSelectOnly, kind, kindLabelOverride, kindOptions, onKindChange,
   canJump, onJump, chromeless, forceReadOnly, extraCardClass, title, unanchored,
   archiveRelation, deleteConfirm,
 }: EditableCardProps) {
@@ -1730,14 +1734,6 @@ export function EditableCard({
     [tiersOn, compressed, useBorrowedCompressed, compressedContent, schemaScope],
   );
   const borrowedTier = useCardTier("static", cardRef, borrowedStaticSafe);
-  // Set during a mouse press on the card so onFocusCapture can tell
-  // pointer-driven focus (which the upcoming click will toggle) from
-  // keyboard / programmatic focus (which should auto-select). Without
-  // this, mousedown focuses the card → onFocusCapture toggles selection
-  // on, then click toggles it back off — flickering the card on header
-  // clicks where the DOM doesn't re-target between mousedown and click.
-  const isPointerInteractingRef = useRef(false);
-
   // Collab focus claim: when the partner has this card focused, dim it
   // and surface a "Sam · 12s" pill in the header. When we focus, write
   // our own claim; on blur, release. The claim scope is REGISTRY-DERIVED
@@ -1937,20 +1933,9 @@ export function EditableCard({
       canJump={canJump}
       onJump={onJump}
       chromeless={chromeless}
-      onMouseDown={() => {
-        isPointerInteractingRef.current = true;
-        requestAnimationFrame(() => {
-          isPointerInteractingRef.current = false;
-        });
-      }}
-      onFocusCapture={(e) => {
-        if (isPointerInteractingRef.current) return;
-        // The unified header is its own keyboard target (click/Enter/Space =
-        // toggle+select, never jump) — Tab landing on it must not auto-fire
-        // the body composition (which jumps the editor to the anchor).
-        if ((e.target as HTMLElement).closest?.("[data-card-header]")) return;
-        if (!selected && onClick) onClick();
-      }}
+      // Focus / pointer-down inside a field selects (only) — PanelCard's
+      // content-interaction rule (task 1357), no per-kind copy here.
+      onSelectOnly={onSelectOnly}
       // No `focus:outline-none` here any more: the strip AND the restore are
       // PanelCard's, which is what renders the element (task 554). Spelling
       // the strip alone was spelling half an indicator — and the half that
@@ -2627,6 +2612,25 @@ export function CardRestoreButton({
   );
 }
 
+/** The fields whose pointer-down / focus counts as "interacting with the
+ *  card's content" (task 1357): text-entry inputs, textareas, selects and an
+ *  EDITABLE contenteditable root — matched by the root's own attribute, so a
+ *  press on an atom island inside an editable body still counts, while a
+ *  read-only TipTap body (`contenteditable="false"` at its root) stays on the
+ *  card's click path. Button-like inputs (checkbox, radio, button) are
+ *  controls, not content. Only fields of THIS card count — a nested card's
+ *  field selects the nested card. */
+const CARD_CONTENT_FIELD =
+  'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]), ' +
+  'textarea, select, [contenteditable="true"], [contenteditable=""], [contenteditable="plaintext-only"]';
+export function isCardContentField(target: EventTarget | null, card: Element): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.closest !== "function") return false;
+  const field = el.closest(CARD_CONTENT_FIELD);
+  if (!field || !card.contains(field)) return false;
+  return field.closest("[data-card]") === card;
+}
+
 /**
  * Universal card wrapper. One source of truth for:
  *   - outer card div (`group relative`, themed border + selection state)
@@ -2716,6 +2720,17 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  "Select card" — assistive tech must not be promised a collapse that
    *  never happens. */
   headerDisclosure?: boolean;
+  /** Task 1357 — "interacting with a card's content selects it", stated ONCE
+   *  here rather than per card component. Fired from the root's CAPTURE phase
+   *  (so a field's own `stopPropagation` cannot swallow it) on a pointer-down
+   *  or focus whose target is one of THIS card's content fields
+   *  ({@link isCardContentField}). The host supplies a SELECT-ONLY
+   *  composition (`useAnchoredCardShell` → `useAnchoredCard.onSelectOnly`):
+   *  no expand toggle, no jump, no scroll, and a no-op when already selected.
+   *  PanelCard stays store-agnostic and never calls `focus()`. Non-field
+   *  targets (the header, body padding, a collapsed summary) keep their own
+   *  click paths untouched. */
+  onSelectOnly?: () => void;
 
   /* ── Unified header chrome ───────────────────────────────────────
    * When `kind` is provided, PanelCard renders its own unified header
@@ -2832,6 +2847,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onToggleExpanded,
     onHeaderActivate,
     headerDisclosure = true,
+    onSelectOnly,
+    onFocusCapture: callerFocusCapture,
+    onPointerDownCapture: callerPointerDownCapture,
     onMouseDown: callerMouseDown,
     onMouseEnter: callerMouseEnter,
     onMouseLeave: callerMouseLeave,
@@ -3227,6 +3245,14 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         e.stopPropagation();
         if (trailingClick.consume()) return;
         onClick(e);
+      } : undefined}
+      onPointerDownCapture={callerPointerDownCapture || onSelectOnly ? (e) => {
+        callerPointerDownCapture?.(e);
+        if (onSelectOnly && isCardContentField(e.target, e.currentTarget)) onSelectOnly();
+      } : undefined}
+      onFocusCapture={callerFocusCapture || onSelectOnly ? (e) => {
+        callerFocusCapture?.(e);
+        if (onSelectOnly && isCardContentField(e.target, e.currentTarget)) onSelectOnly();
       } : undefined}
       onMouseDown={(e) => {
         // A fresh press re-arms the click path (the suppress flag only ever
