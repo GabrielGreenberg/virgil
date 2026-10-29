@@ -62,7 +62,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\textsc{}` | smallCaps mark (`{\scshape …}` stays raw) |
 | `\texttt{}` | code mark |
 | `\textsubscript{}` / `\textsuperscript{}` | subscript / superscript marks, rendered `<sub>`/`<sup>` (kernel commands, no package; task 1239 — math-mode `$_2$` stays math) |
-| `\textcolor[HTML]{RRGGBB}{}` | textColor mark (**only** the `[HTML]{6-hex}` form) |
+| `\textcolor[HTML]{RRGGBB}{}` | textColor mark (**only** the `[HTML]{6-hex}` form; a named colour `\textcolor{red}{}` stays a raw-LaTeX `latexCommand` span) |
 | `\footnote{}` / `\thanks{}` | `footnote` atom (consumes a pending `\vfid`) |
 | the natbib + biblatex cite family | `citation` atom (consumes a pending `\vcid`) |
 | `\ref{}` / `\getref{}` / `\getfullref{}` | `labelRef` node |
