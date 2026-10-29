@@ -28,6 +28,8 @@
  * private kebab and an 11px private row).
  */
 
+import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
+import { useZenMode } from "@/hooks/useZenMode";
 import { memo } from "react";
 import { type PenStatus } from "@/lib/collab";
 import { formatElapsed } from "@/lib/relative-time";
@@ -100,6 +102,11 @@ function CollabStatusPill({
   // Called unconditionally (rules of hooks); the icon variant mounts no kebab,
   // and a controller with no kebab can never open (task 1016).
   const menu = useBarStatusMenu();
+  // The badge is a protected-tier bar status item (task 1353): it shows only
+  // while the policy says so, through the ONE visibility hook. Called for both
+  // variants (rules of hooks); only the badge reads the verdict.
+  const zen = useZenMode().on;
+  const badgeVisible = useBarStatusVisible("collab", { enabled: !!collab.enabled, zen });
 
   // ── Icon variant ──────────────────────────────────────────────────
   if (variant === "icon") {
@@ -121,7 +128,7 @@ function CollabStatusPill({
   }
 
   // ── Badge variant ─────────────────────────────────────────────────
-  if (!collab.enabled) return null;
+  if (!badgeVisible || !collab.enabled) return null;
 
   const { pen, iHavePen, identity } = collab;
 

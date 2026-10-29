@@ -147,6 +147,61 @@ describe("bar status policy · the census", () => {
   });
 });
 
+/**
+ * Task 1353 — a MODE indicator hand-placed in the collapsible tool group
+ * vanishes with the tools (the Focus-view chip did). A control that is
+ * `aria-pressed="true"` unconditionally is, by construction, a "this mode is
+ * on" indicator, so it may not live in the collapsible subtree at all: it is a
+ * policy entry. A pressed-STATE toggle there must be named below with the
+ * reason its "on" is evident without the bar (or is the opener of a surface
+ * that is itself visible while open).
+ */
+const COLLAPSIBLE_TOGGLES: Record<string, string> = {
+  zenModeOn: "Zen — the stripped-chrome layout is itself the indicator.",
+  codeView: "Code view — the code pane on screen is the indicator.",
+  pdfView: "PDF view — the PDF pane on screen is the indicator (its stale dot is low-value; stays a tool).",
+  bugReportOpen: "Opens the bug-report window, which is visible while open.",
+  preferencesOpen: "Opens Preferences, which is visible while open.",
+  printOpen: "Opens the print dialog, which is visible while open.",
+  aiWindowOpen: "Opens the AI window, which is visible while open.",
+  manageStylesOpen: "Opens the Document style modal, which is visible while open.",
+};
+
+function collapsibleSlice(): string {
+  const src = read(CLUSTER);
+  const start = src.indexOf('data-bar-tier="collapsible"');
+  const end = src.indexOf("ref={collapseChipRef}", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return src.slice(start, end).replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\/.*$/gm, "");
+}
+
+describe("bar status policy · mode indicators are policy entries (task 1353)", () => {
+  it("no always-pressed mode chip is rendered inside the collapsible tool group", () => {
+    expect(collapsibleSlice()).not.toMatch(/aria-pressed="true"/);
+  });
+
+  it("every pressed-state toggle in the collapsible group is allowlisted with a reason", () => {
+    const exprs = [...collapsibleSlice().matchAll(/aria-pressed=\{([^}]+)\}/g)].map((m) => m[1]!.trim());
+    expect(exprs.length).toBeGreaterThan(0);
+    for (const e of exprs) {
+      expect(COLLAPSIBLE_TOGGLES[e], `aria-pressed={${e}} in the collapsible group: a mode the user turned on belongs in BAR_STATUS_POLICY; a layout-evident toggle needs an allowlist reason`).toBeTruthy();
+    }
+    // And the allowlist carries no stale rows.
+    for (const k of Object.keys(COLLAPSIBLE_TOGGLES)) expect(exprs, k).toContain(k);
+  });
+
+  it("the mode chips' components are not mounted inside the collapsible group", () => {
+    const slice = collapsibleSlice();
+    for (const tag of ["FocusViewChip", "HelperModeChip", "CompileStatusChip"]) {
+      expect(slice).not.toContain(`<${tag}`);
+    }
+    expect(slice).not.toMatch(/variant="badge"/);
+    // The compile spinner has ONE owner — the protected tier's chip.
+    expect(slice).not.toContain("animate-spin");
+  });
+});
+
 describe("bar status policy · the default answers", () => {
   const cases: [BarStatusItemId, object, boolean][] = [
     ["software-update", { update: "none" }, false],
@@ -170,6 +225,18 @@ describe("bar status policy · the default answers", () => {
     ["external-change", { standing: false, atRisk: false }, false],
     ["pomodoro", { open: true }, true],
     ["pomodoro", { open: false }, false],
+    // Task 1353 — modes the user turned on survive collapse; zen hides them.
+    ["focus-view", { active: true, zen: false }, true],
+    ["focus-view", { active: true, zen: true }, false],
+    ["focus-view", { active: false, zen: false }, false],
+    ["helper-mode", { on: true, zen: false }, true],
+    ["helper-mode", { on: true, zen: true }, false],
+    ["helper-mode", { on: false, zen: false }, false],
+    ["collab", { enabled: true, zen: false }, true],
+    ["collab", { enabled: true, zen: true }, false],
+    ["collab", { enabled: false, zen: false }, false],
+    ["compile", { compiling: true }, true],
+    ["compile", { compiling: false }, false],
   ];
   it.each(cases)("%s %o → %s", (id, state, want) => {
     expect(barStatusVisible(id, state as never)).toBe(want);
@@ -191,6 +258,10 @@ describe("bar status policy · the default answers", () => {
     ["software-update", { update: "waiting" }, "now"],
     ["skill-sync", { failed: true }, "now"],
     ["pomodoro", { open: true }, "now"],
+    ["focus-view", { active: true, zen: false }, "now"],
+    ["helper-mode", { on: true, zen: false }, "now"],
+    ["collab", { enabled: true, zen: false }, "now"],
+    ["compile", { compiling: true }, "now"],
   ];
   it.each(verdicts)("verdict %s %o → %s", (id, state, want) => {
     expect(barStatusVerdict(id, state as never)).toBe(want);
