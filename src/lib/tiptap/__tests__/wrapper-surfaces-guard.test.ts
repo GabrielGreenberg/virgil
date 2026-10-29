@@ -490,7 +490,10 @@ describe("CENSUS: every production wrapper-toggle call is guarded (task 427)", (
         if (!DOOR.test(regionAt(regs, i).text)) offenders.push(`${rel(file)}:${i + 1}`);
       });
     }
-    expect(hits).toBeGreaterThanOrEqual(4); // the canary: the needle sees the live sites
+    // The canary: the needle sees the live sites — the three registry rows.
+    // (Four until task 1352: the card toolbar's private `runWrapper` now runs
+    // the rows through the run door, so it spells no toggle of its own.)
+    expect(hits).toBeGreaterThanOrEqual(3);
     expect(offenders).toEqual([]);
   });
 

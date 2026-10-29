@@ -343,8 +343,11 @@ describe("the door and the affordance read the SSOT (task 396)", () => {
     // stays here is the inline-atom pair specifically, so this suite still fails
     // on its own if these two rows are un-wired.
     const src = read("src/components/ActionsMenuPanel.tsx");
-    expect(src).toMatch(/id="inline-math"[\s\S]{0,200}?disabled=\{gridCellDisabled\("inline-math"\)\}/);
-    expect(src).toMatch(/id="ref"[\s\S]{0,200}?disabled=\{gridCellDisabled\("ref"\)\}/);
+    // Task 1352: both are rows of the grid TABLE, rendered by the ONE call site
+    // whose `disabled` asks `gridCellDisabled(id)` with the cell's own id.
+    expect(src).toMatch(/\{ id: "inline-math", glyph:/);
+    expect(src).toMatch(/\{ id: "ref", glyph:/);
+    expect(src).toContain("disabled={gridCellDisabled(id)}");
     // …and NOT via a shared probe: the two rows pass different schema node
     // names, so one probe would assert the schema answers identically.
     expect(src).toMatch(/const gridCellDisabled = \(id: ActionId\)/);

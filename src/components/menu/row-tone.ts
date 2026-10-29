@@ -81,9 +81,13 @@ export interface MenuCellState {
  * cell is the same grey as a greyed row — `--ink-faint` + `not-allowed`, no
  * dimming opacity (which used to make the cell `0.4` over `--ink-muted`, a
  * second grey beside the row's `text-ink-faint`). The cell's third state,
- * "format applied", is a muted surface that LOSES to the roving fill by rule,
- * so the arrow cursor stays unambiguous even on an applied format; disabled
- * wins over both for the ink.
+ * "format applied" (a toggle that is ON), paints the app's ONE toggle-"on"
+ * palette — the tint path of the `--control-selected*` family (STYLE_GUIDE
+ * "Buttons"), the same chip the card-body format toolbar paints (task 1352;
+ * it used to be `--surface-muted-strong`, the icon-button HOVER token, so
+ * bold-is-on read as hovered). It LOSES to the roving fill by rule, so the
+ * arrow cursor stays unambiguous even on an applied format; disabled wins over
+ * both for the ink.
  */
 export function menuCellToneStyle({
   roving,
@@ -95,9 +99,9 @@ export function menuCellToneStyle({
     background: roving && !disabled
       ? "var(--menu-roving-bg)"
       : applied
-        ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
+        ? "var(--control-selected-tint)"
         : "transparent",
-    color: disabled ? "var(--ink-faint)" : applied ? "var(--ink-strong)" : ink,
+    color: disabled ? "var(--ink-faint)" : applied ? "var(--control-selected-ink)" : ink,
     cursor: disabled ? "not-allowed" : "pointer",
   };
 }

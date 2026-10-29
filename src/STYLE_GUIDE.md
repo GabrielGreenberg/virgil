@@ -3180,7 +3180,10 @@ Enter/click commit refuses on.
   FORMATTING GRID uses the cell variant `menuCellToneStyle` (roving > applied >
   rest; disabled = the row's `--ink-faint` + `not-allowed`, no dimming opacity),
   so a greyed icon cell and a greyed card row in the same open menu are one
-  grey. The grid→list break is a plain `<MenuSeparator>`. The census's
+  grey. "Applied" (a toggle cell that is ON) is the `--control-selected-tint`
+  / `-ink` chip — the toggle-"on" palette of "Buttons", never the hover token
+  (task 1352) — and a toggle cell ANNOUNCES it: `menuitemcheckbox` +
+  `aria-checked`, read off its registry row's `toggle` + `makes`. The grid→list break is a plain `<MenuSeparator>`. The census's
   population is derived (every file importing a `menu/` module).
 - **Roving navigation skips the greyed rows**, so the selection can only ever
   sit on something Enter can run — and the arrows are INERT rather than looping

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The expanded action menu — formatting grid + 11-row action list (the
+ * The expanded action menu — formatting grid + card-action list (the
  * "lightning" panel behind the margin bolt + Cmd-/). Mounted by its trigger,
  * the margin button in {@link SelectionActionsMenu}. When this component is
  * mounted, the menu is open; the caller unmounts it to close.
@@ -48,6 +48,7 @@ import {
   applyTextColor,
   cardActionRows,
   extractInlineFromSlice,
+  toggledMember,
   VIRGIL_ACTION_REGISTRY,
   verdictOf,
   type ActionContext,
@@ -75,8 +76,7 @@ import {
 import { useMenuItem } from "./menu/useMenuItem";
 import { MenuSeparator } from "./menu/MenuChrome";
 import { menuCellToneStyle, menuRowRovingStyle } from "./menu/row-tone";
-import { iconHint } from "@/components/Hint";
-import { keysFromKeybinding } from "@/components/Kbd";
+import { actionHint } from "@/components/action-hint";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -126,26 +126,160 @@ const GRID_COLS = 4;
 // CHIP 3: the lightning-bolt action list renders the CARD rows straight off
 // the registry (the SSOT) — replacing the deleted `MENU_ENTRIES` array. The
 // lightning surface exposes the full card vocabulary on every open (the bolt
-// is paragraph/selection-scoped, not per-kind); the only run-time grey-out is
-// Highlight in cursor mode, applied at render below. The row list is constant,
-// so it's computed once at module load (an 11-row registry view).
+// is paragraph/selection-scoped, not per-kind). Every row is greyed at render
+// by its OWN `applies()` (tasks 061 / 968 — `cardRowVerdict` below), not by a
+// per-row special case. The row list is constant, so it's computed once at
+// module load (a registry view; its length is the registry's, never stated
+// here).
 const LIGHTNING_CARD_ROWS = cardActionRows("lightning");
 
-// Task 738: what the grid PAINTS from the live editor — every `isActive(…)`
-// and every `gridCellDisabled(…)` the render below makes, by literal name. The
-// live signature re-asks exactly these after each transaction while the panel
-// is open, so the painted state follows the document instead of freezing at
-// the panel's last render. `live-format-state.test.tsx` pins these lists to the
-// call sites (a new cell that is missing here would freeze again).
-export const LIGHTNING_ACTIVE_MARKS = [
-  "bold", "italic", "strike", "code", "bulletList", "orderedList", "blockquote",
-  "smallCaps",
-] as const;
-export const LIGHTNING_GRID_CELL_IDS = [
-  "bold", "italic", "strike", "code", "bullet-list", "ordered-list", "blockquote",
-  "example", "inline-math", "display-math", "text-color", "tex", "figure",
-  "graphics", "ref", "forest", "small-caps", "horizontal-rule",
-] as const satisfies readonly ActionId[];
+/**
+ * THE lightning grid (task 1352) — one row per cell, in display order. A cell
+ * names its registry row and its glyph, and NOTHING the row already declares:
+ * its name and chord (`label` / `keybinding`, task 985), whether it is greyed
+ * (its own `applies()`, task 397) and whether it is ON (`toggledMember` — the
+ * row's `toggle` + `makes`) are all read off the row. Coordinates are DERIVED
+ * from the index (`gridCoords`), so a new cell is one line here, never a
+ * renumbering. Two cells are bespoke nested-menu triggers and carry no glyph:
+ * `block-type` (¶, no action row of its own) and `text-color` (the popover).
+ */
+interface LightningGridCell {
+  id: ActionId | "block-type";
+  glyph?: React.ReactNode;
+}
+
+export const LIGHTNING_GRID: readonly LightningGridCell[] = [
+  { id: "bold", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4 2.5h4.5c1.93 0 3 1.07 3 2.5 0 1.05-.55 1.8-1.4 2.15C11.25 7.5 12 8.4 12 9.5c0 1.6-1.2 2.75-3.25 2.75H4V2.5zm2 1.5v2.75h2.25c.97 0 1.5-.5 1.5-1.38 0-.87-.53-1.37-1.5-1.37H6zm0 4.25V10.75h2.5c1.05 0 1.6-.53 1.6-1.5 0-.93-.6-1.5-1.6-1.5H6z" />
+    </svg>
+  ) },
+  { id: "italic", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M6.5 2.5h5M4.5 13.5h5M9.5 2.5L6.5 13.5" />
+    </svg>
+  ) },
+  { id: "strike", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <line x1="2.5" y1="8" x2="13.5" y2="8" />
+      <path d="M11 4.5c-.5-1.2-1.7-2-3-2-1.8 0-3 1-3 2.4 0 1 .6 1.7 1.6 2.1M5 11.5c.5 1.2 1.7 2 3 2 1.8 0 3-1 3-2.4 0-.6-.2-1.1-.6-1.5" />
+    </svg>
+  ) },
+  { id: "code", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="5,4 1.5,8 5,12" />
+      <polyline points="11,4 14.5,8 11,12" />
+    </svg>
+  ) },
+  // ¶ — a nested-menu trigger with no action row of its own (BlockTypeGridCell).
+  { id: "block-type" },
+  { id: "bullet-list", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+      <circle cx="3.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <line x1="6.5" y1="4" x2="13" y2="4" />
+      <line x1="6.5" y1="8" x2="13" y2="8" />
+      <line x1="6.5" y1="12" x2="13" y2="12" />
+    </svg>
+  ) },
+  { id: "ordered-list", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
+      <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">1</text>
+      <text x="2" y="9.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">2</text>
+      <text x="2" y="13.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">3</text>
+      <line x1="6.5" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="6.5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="6.5" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  ) },
+  { id: "blockquote", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
+      <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4zm7 0C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)" />
+    </svg>
+  ) },
+  { id: "example", glyph: <IconExample size={16} /> },
+  { id: "inline-math", glyph: (
+    <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
+      $x$
+    </span>
+  ) },
+  { id: "display-math", glyph: (
+    <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
+      $$
+    </span>
+  ) },
+  // A nested-menu trigger (opens the SelectionColorPopover) — ColorGridCell.
+  { id: "text-color" },
+  { id: "tex", glyph: (
+    <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+      \tex
+    </span>
+  ) },
+  { id: "figure", glyph: (
+    <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
+      fig.
+    </span>
+  ) },
+  { id: "graphics", glyph: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+      <circle cx="11" cy="6" r="1.25" fill="currentColor" stroke="none" />
+      <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
+    </svg>
+  ) },
+  // `\ref` — the registry's `refRun` → `ctx.openAtomCreate("ref")`, the SAME
+  // create popover the slash `\ref` opens.
+  { id: "ref", glyph: (
+    <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+      \ref
+    </span>
+  ) },
+  // The `forest` syntax-tree block (task 385): a two-child tree, the shape the
+  // starter template inserts.
+  { id: "forest", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
+      <path d="M8 3.5 L4 8.5 M8 3.5 L12 8.5" />
+      <circle cx="8" cy="2.75" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  ) },
+  // Small caps (task 808) — `\textsc{…}`, a mark toggle like row 0's.
+  { id: "small-caps", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 12.5 L4.5 3.5 L7.5 12.5 M2.6 9.5 H6.4" />
+      <path d="M9 12.5 L11.25 6.5 L13.5 12.5 M9.8 10.4 H12.7" />
+    </svg>
+  ) },
+  // Horizontal rule (task 1176) — `\hrulefill` through the registry's guarded
+  // `horizontalRuleRun`, never TipTap's unguarded `setHorizontalRule()`.
+  { id: "horizontal-rule", glyph: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M2 8 H14" />
+    </svg>
+  ) },
+];
+
+/** A cell's arrow-nav coordinates, from its place in `LIGHTNING_GRID`. */
+function gridCoords(index: number): { row: number; col: number } {
+  return { row: Math.floor(index / GRID_COLS), col: index % GRID_COLS };
+}
+
+// Task 738: what the grid PAINTS from the live editor — every on-state and
+// every grey the render asks. The live signature re-asks exactly these after
+// each transaction while the panel is open, so the painted state follows the
+// document instead of freezing at the panel's last render. Both lists are
+// DERIVED from `LIGHTNING_GRID` (task 1352), so a new cell is in them by
+// construction — before, they were hand mirrors that a census pinned to the
+// call sites.
+export const LIGHTNING_GRID_CELL_IDS: readonly ActionId[] = LIGHTNING_GRID.flatMap(
+  (cell) => (cell.id === "block-type" ? [] : [cell.id]),
+);
+export const LIGHTNING_ACTIVE_MARKS: readonly string[] = LIGHTNING_GRID_CELL_IDS.flatMap((id) => {
+  const on = toggledMember(VIRGIL_ACTION_REGISTRY[id]);
+  return on === null ? [] : [on];
+});
 
 export interface ActionsMenuPanelProps {
   editor: Editor;
@@ -445,9 +579,6 @@ export function ActionsMenuPanel({
   const applyColor = (color: string) => commitColor(color);
   const clearColor = () => commitColor(null);
 
-  const isActive = (name: string, attrs?: Record<string, unknown>) =>
-    editor.isActive(name, attrs);
-
   // ───────────────────────────────────────────────────────────────────────
   // THE grid's one applicability door (task 397). Every cell asks ITS OWN row.
   //
@@ -483,8 +614,8 @@ export function ActionsMenuPanel({
     !canEdit || VIRGIL_ACTION_REGISTRY[id]!.applies(gridCellCtx()) === "disabled";
   // Task 968: WHY a cell is grey — the same row, the same ctx, through
   // `verdictOf`. Read by each cell off `GridCellReasonContext` with its OWN id,
-  // so the 17 call sites above keep their one census-pinned `disabled=` door
-  // and no cell can explain itself with another cell's reason. Asked only for a
+  // so the grid's one `disabled=` door stays per cell and no cell can explain
+  // itself with another cell's reason. Asked only for a
   // cell that IS disabled (render-time, gesture rate).
   const gridCellReason = (id: ActionId): string | null =>
     verdictOf(VIRGIL_ACTION_REGISTRY[id]!, gridCellCtx()).reason;
@@ -511,7 +642,7 @@ export function ActionsMenuPanel({
     }
   }
 
-  // The 11 card-action rows, decorated with their per-open disabled state, fed
+  // The card-action rows, decorated with their per-open disabled state, fed
   // to `<MenuItemsFromRegistry>` (the same mapper the grab menu uses). CHIP 7b:
   // the card-row grey-out runs through the row's OWN `applies()` (the DA-5
   // taxonomy + the uniform collab gate). The ref mirrors the action's actual
@@ -579,7 +710,7 @@ export function ActionsMenuPanel({
   useLiveEditorSignature(editor, () =>
     [
       canEdit ? "e" : "r",
-      LIGHTNING_ACTIVE_MARKS.map((n) => (isActive(n) ? 1 : 0)).join(""),
+      LIGHTNING_ACTIVE_MARKS.map((n) => (editor.isActive(n) ? 1 : 0)).join(""),
       // Task 968: a greyed cell / row contributes its REASON, so a caret move
       // that keeps a row grey but changes why (out of a title, into code)
       // re-renders the hint too.
@@ -625,276 +756,64 @@ export function ActionsMenuPanel({
           padding: `${MENU_PAD_Y}px 0`,
         }}
       >
-        {/* ── Formatting icon grid (4 cols × 5 rows) ─────────────── */}
+        {/* ── Formatting icon grid — LIGHTNING_GRID, GRID_COLS wide ── */}
         <GridCellReasonContext.Provider value={gridCellReason}>
         <MenuGrid
           cols={GRID_COLS}
           style={{ gap: 2, padding: "0 4px" }}
         >
-          {/* Row 0 */}
-          <FmtBtn
-            id="bold"
-            row={0}
-            col={0}
-            active={isActive("bold")}
-            disabled={gridCellDisabled("bold")}
-            run={() => runGridAction("bold")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4 2.5h4.5c1.93 0 3 1.07 3 2.5 0 1.05-.55 1.8-1.4 2.15C11.25 7.5 12 8.4 12 9.5c0 1.6-1.2 2.75-3.25 2.75H4V2.5zm2 1.5v2.75h2.25c.97 0 1.5-.5 1.5-1.38 0-.87-.53-1.37-1.5-1.37H6zm0 4.25V10.75h2.5c1.05 0 1.6-.53 1.6-1.5 0-.93-.6-1.5-1.6-1.5H6z" />
-            </svg>
-          </FmtBtn>
-          <FmtBtn
-            id="italic"
-            row={0}
-            col={1}
-            active={isActive("italic")}
-            disabled={gridCellDisabled("italic")}
-            run={() => runGridAction("italic")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M6.5 2.5h5M4.5 13.5h5M9.5 2.5L6.5 13.5" />
-            </svg>
-          </FmtBtn>
-          <FmtBtn
-            id="strike"
-            row={0}
-            col={2}
-            active={isActive("strike")}
-            disabled={gridCellDisabled("strike")}
-            run={() => runGridAction("strike")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <line x1="2.5" y1="8" x2="13.5" y2="8" />
-              <path d="M11 4.5c-.5-1.2-1.7-2-3-2-1.8 0-3 1-3 2.4 0 1 .6 1.7 1.6 2.1M5 11.5c.5 1.2 1.7 2 3 2 1.8 0 3-1 3-2.4 0-.6-.2-1.1-.6-1.5" />
-            </svg>
-          </FmtBtn>
-          <FmtBtn
-            id="code"
-            row={0}
-            col={3}
-            active={isActive("code")}
-            disabled={gridCellDisabled("code")}
-            run={() => runGridAction("code")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="5,4 1.5,8 5,12" />
-              <polyline points="11,4 14.5,8 11,12" />
-            </svg>
-          </FmtBtn>
-
-          {/* Row 1 — the BlockTypeDropdown is a nested-menu trigger (kept bespoke
-              for Phase C). It registers as a grid cell so arrows can land on it;
-              Enter/Space + click open its dropdown via the cell wrapper. */}
-          <BlockTypeGridCell
-            row={1}
-            col={0}
-            editor={editor}
-            documentClass={documentClass}
-            disabled={blockTypeCell.disabled}
-            reason={blockTypeCell.reason}
-          />
-          <FmtBtn
-            id="bullet-list"
-            row={1}
-            col={1}
-            active={isActive("bulletList")}
-            disabled={gridCellDisabled("bullet-list")}
-            run={() => runGridAction("bullet-list")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-              <circle cx="3.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
-              <circle cx="3.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
-              <circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
-              <line x1="6.5" y1="4" x2="13" y2="4" />
-              <line x1="6.5" y1="8" x2="13" y2="8" />
-              <line x1="6.5" y1="12" x2="13" y2="12" />
-            </svg>
-          </FmtBtn>
-          <FmtBtn
-            id="ordered-list"
-            row={1}
-            col={2}
-            active={isActive("orderedList")}
-            disabled={gridCellDisabled("ordered-list")}
-            run={() => runGridAction("ordered-list")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-              <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">1</text>
-              <text x="2" y="9.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">2</text>
-              <text x="2" y="13.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">3</text>
-              <line x1="6.5" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              <line x1="6.5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              <line x1="6.5" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-          </FmtBtn>
-          <FmtBtn
-            id="blockquote"
-            row={1}
-            col={3}
-            active={isActive("blockquote")}
-            disabled={gridCellDisabled("blockquote")}
-            run={() => runGridAction("blockquote")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-              <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4zm7 0C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)" />
-            </svg>
-          </FmtBtn>
-
-          {/* Row 2 */}
-          <FmtBtn
-            id="example"
-            row={2}
-            col={0}
-            disabled={gridCellDisabled("example")}
-            run={() => runGridAction("example")}
-          >
-            <IconExample size={16} />
-          </FmtBtn>
-          <FmtBtn
-            id="inline-math"
-            row={2}
-            col={1}
-            disabled={gridCellDisabled("inline-math")}
-            run={() => runGridAction("inline-math")}
-          >
-            <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
-              $x$
-            </span>
-          </FmtBtn>
-          <FmtBtn
-            id="display-math"
-            row={2}
-            col={2}
-            disabled={gridCellDisabled("display-math")}
-            run={() => runGridAction("display-math")}
-          >
-            <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
-              $$
-            </span>
-          </FmtBtn>
-          {/* text-color — a nested-menu trigger (opens the SelectionColorPopover).
-              Kept bespoke; registers as a grid cell so arrows reach it. */}
-          <ColorGridCell
-            row={2}
-            col={3}
-            disabled={gridCellDisabled("text-color")}
-            lastAppliedColor={lastAppliedColor}
-            cellRef={colorCellRef}
-            run={(rect) => runGridAction("text-color", { anchorRect: rect })}
-          />
-
-          {/* Row 3 */}
-          <FmtBtn
-            id="tex"
-            row={3}
-            col={0}
-            disabled={gridCellDisabled("tex")}
-            run={() => runGridAction("tex")}
-          >
-            <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
-              \tex
-            </span>
-          </FmtBtn>
-          <FmtBtn
-            id="figure"
-            row={3}
-            col={1}
-            disabled={gridCellDisabled("figure")}
-            run={() => runGridAction("figure")}
-          >
-            <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
-              fig.
-            </span>
-          </FmtBtn>
-          <FmtBtn
-            id="graphics"
-            row={3}
-            col={2}
-            disabled={gridCellDisabled("graphics")}
-            run={() => runGridAction("graphics")}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-              <circle cx="11" cy="6" r="1.25" fill="currentColor" stroke="none" />
-              <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
-            </svg>
-          </FmtBtn>
-          {/* The 'Cross-ref' cell — the lightning surface for `\ref`. Routes
-              through `runGridAction("ref")` → the registry's `refRun` →
-              `ctx.openAtomCreate("ref")`, opening the shared create popover at
-              the caret (the SAME `run()` the slash `\ref` reaches). */}
-          <FmtBtn
-            id="ref"
-            row={3}
-            col={3}
-            disabled={gridCellDisabled("ref")}
-            run={() => runGridAction("ref")}
-          >
-            <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
-              \ref
-            </span>
-          </FmtBtn>
-
-          {/* Row 4 — the `forest` syntax-tree block (task 385). Routed through
-              the SHARED `runGridAction` dispatch, like EVERY cell in this grid
-              since task 638: the `\tex` and `ex` cells were the last two with
-              private ctx-builders, and `\tex`'s omitted `canEdit` entirely — an
-              ABSENT field reads as "not read-only" (the no-over-gating rule), so
-              `texRun`'s gate silently no-opped (the task-228 member-5 trap). One
-              ctx-builder is what makes that unrepresentable rather than merely
-              fixed; `grid-cell-applicability-census` pins it. The tree glyph is
-              a two-child syntax tree — the same shape the starter template
-              inserts. */}
-          <FmtBtn
-            id="forest"
-            row={4}
-            col={0}
-            disabled={gridCellDisabled("forest")}
-            run={() => runGridAction("forest")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
-              <path d="M8 3.5 L4 8.5 M8 3.5 L12 8.5" />
-              <circle cx="8" cy="2.75" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="4" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="12" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
-            </svg>
-          </FmtBtn>
-          {/* Small caps (task 808) — `\textsc{…}`, a mark toggle like the
-              row-0 cells; placed after `forest` so no existing cell moves. */}
-          <FmtBtn
-            id="small-caps"
-            row={4}
-            col={1}
-            active={isActive("smallCaps")}
-            disabled={gridCellDisabled("small-caps")}
-            run={() => runGridAction("small-caps")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1.5 12.5 L4.5 3.5 L7.5 12.5 M2.6 9.5 H6.4" />
-              <path d="M9 12.5 L11.25 6.5 L13.5 12.5 M9.8 10.4 H12.7" />
-            </svg>
-          </FmtBtn>
-          {/* Horizontal rule (task 1176) — `\hrulefill` on its own line. The
-              registry's `horizontalRuleRun` (collab gate + container guard),
-              never TipTap's unguarded `setHorizontalRule()`. */}
-          <FmtBtn
-            id="horizontal-rule"
-            row={4}
-            col={2}
-            disabled={gridCellDisabled("horizontal-rule")}
-            run={() => runGridAction("horizontal-rule")}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M2 8 H14" />
-            </svg>
-          </FmtBtn>
+          {LIGHTNING_GRID.map((cell, i) => {
+            const { row, col } = gridCoords(i);
+            if (cell.id === "block-type") {
+              return (
+                <BlockTypeGridCell
+                  key={cell.id}
+                  row={row}
+                  col={col}
+                  editor={editor}
+                  documentClass={documentClass}
+                  disabled={blockTypeCell.disabled}
+                  reason={blockTypeCell.reason}
+                />
+              );
+            }
+            if (cell.id === "text-color") {
+              return (
+                <ColorGridCell
+                  key={cell.id}
+                  row={row}
+                  col={col}
+                  disabled={gridCellDisabled("text-color")}
+                  lastAppliedColor={lastAppliedColor}
+                  cellRef={colorCellRef}
+                  run={(rect) => runGridAction("text-color", { anchorRect: rect })}
+                />
+              );
+            }
+            // A TOGGLE row paints its on-state off its own `makes` (task 1352);
+            // every other row is a plain command with no checked state.
+            const id: ActionId = cell.id;
+            const on = toggledMember(VIRGIL_ACTION_REGISTRY[id]);
+            return (
+              <FmtBtn
+                key={id}
+                id={id}
+                row={row}
+                col={col}
+                checked={on === null ? undefined : editor.isActive(on)}
+                disabled={gridCellDisabled(id)}
+                run={() => runGridAction(id)}
+              >
+                {cell.glyph}
+              </FmtBtn>
+            );
+          })}
         </MenuGrid>
         </GridCellReasonContext.Provider>
 
         <MenuSeparator />
 
-        {/* ── Card action list (11 rows) ─────────────────────────── */}
+        {/* ── Card action list (the registry's lightning rows) ──── */}
         <MenuList className="lightning-card-list">
           <MenuItemsFromRegistry rows={cardRows} />
         </MenuList>
@@ -966,8 +885,10 @@ function gridCellClassName(disabled?: boolean, extra?: string): string {
  * One bespoke format-grid cell, registered into the lightning menu's grid
  * region. Spreads `useMenuItem` getters onto the existing `<button>` so the
  * cell GAINS arrow nav + the roving `data-active` highlight without a markup
- * rewrite. `run` = the cell's existing action; `active` = the format-is-applied
- * state (bold-is-on), painted distinctly from the roving-active highlight.
+ * rewrite. `run` = the cell's existing action; `checked` = a toggle row's
+ * on-state (bold-is-on) — announced as `aria-checked` on a `menuitemcheckbox`
+ * and painted with the `--control-selected*` tint, distinct from the roving
+ * highlight (task 1352).
  *
  * The `data-hint` + `aria-label` carry the row's label (the registry-render test
  * reads grid cells via `data-hint`).
@@ -978,7 +899,7 @@ function FmtBtn({
   col,
   children,
   run,
-  active,
+  checked,
   disabled,
 }: {
   /** The registry row this cell runs — its NAME is the row's `label` and its
@@ -989,16 +910,22 @@ function FmtBtn({
   col: number;
   children: React.ReactNode;
   run: () => void;
-  active?: boolean;
+  /** A TOGGLE cell's on-state (bold-is-on), read off its row (task 1352);
+   *  `undefined` for a plain command cell, which has no checked state. */
+  checked?: boolean;
   /** CHIP 7b: collab read-only greys the cell + inerts the click. */
   disabled?: boolean;
 }) {
+  const toggle = checked !== undefined;
   const { active: roving, getItemProps } = useMenuItem({
     id,
     region: "grid",
     coords: { row, col },
     disabled,
     run,
+    // A toggle ANNOUNCES its state (task 1352): `menuitemcheckbox` +
+    // `aria-checked`, the vocabulary `MenuToggleRow` speaks in the list menus.
+    ...(toggle ? { role: "menuitemcheckbox" as const } : {}),
   });
   const itemProps = getItemProps();
   const reason = useContext(GridCellReasonContext);
@@ -1008,15 +935,15 @@ function FmtBtn({
     <button
       {...itemProps}
       type="button"
-      {...gridCellHint(spec.label, why, spec.keybinding)}
+      {...actionHint(spec, why)}
       disabled={disabled}
-      data-format-active={active ? "true" : undefined}
+      aria-checked={toggle ? checked : undefined}
       className={gridCellClassName(disabled)}
       style={{
         ...gridCellShellStyle(),
         // Roving WINS over format-applied (the arrow cursor stays unambiguous
         // on an applied format); disabled greys the ink — one rule, the menu's.
-        ...menuCellToneStyle({ roving, disabled, applied: active }),
+        ...menuCellToneStyle({ roving, disabled, applied: checked }),
       }}
     >
       {children}
@@ -1031,25 +958,6 @@ function FmtBtn({
  * mis-explained.
  */
 const GridCellReasonContext = createContext<(id: ActionId) => string | null>(() => null);
-
-/**
- * A grid cell's hint: its name, and — when greyed with a known reason — the
- * reason after it ("Bold — Your co-author has the pen"), also announced as the
- * cell's accessible DESCRIPTION. The NAME stays `name` (`iconHint`'s
- * `aria-label`), so a reason never replaces what the cell is called. The chord
- * (a registry `keybinding`) rides as `data-hint-keys`, rendered by `<Kbd>` —
- * platform-aware, and never part of the accessible name (task 985).
- */
-function gridCellHint(name: string, why: string | null, keybinding?: string) {
-  return {
-    ...iconHint({
-      label: name,
-      hint: why ? `${name} — ${why}` : undefined,
-      keys: keybinding ? keysFromKeybinding(keybinding) : undefined,
-    }),
-    "aria-description": why ?? undefined,
-  };
-}
 
 /**
  * The text-color grid cell — a nested-menu trigger (opens the
@@ -1098,7 +1006,7 @@ function ColorGridCell({
         itemProps.ref(el);
       }}
       type="button"
-      {...gridCellHint(VIRGIL_ACTION_REGISTRY["text-color"].label, why)}
+      {...actionHint(VIRGIL_ACTION_REGISTRY["text-color"], why)}
       disabled={disabled}
       onClick={
         disabled

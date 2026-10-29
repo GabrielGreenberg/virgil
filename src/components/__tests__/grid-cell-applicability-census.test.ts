@@ -41,6 +41,29 @@ const SRC = commentsStripped(readFileSync(join(REPO, PANEL), "utf8"));
 const OWN_ID = (id: string) =>
   new RegExp(`disabled=\\{gridCellDisabled\\("${id}"\\)\\}`);
 
+/** The same door for a cell whose id is an EXPRESSION — `"bold"` (a literal
+ *  call site) or `id` (the one `LIGHTNING_GRID.map` call site, task 1352). */
+const OWN_EXPR = (expr: string) =>
+  new RegExp(`disabled=\\{gridCellDisabled\\(${expr.replace(/[$"]/g, "\\$&")}\\)\\}`);
+const OWN_RUN = (expr: string) =>
+  new RegExp(`run=\\{\\(\\) => runGridAction\\(${expr.replace(/[$"]/g, "\\$&")}\\)\\}`);
+
+/** A cell's id prop as the expression its door must repeat: `"bold"` for a
+ *  literal, the bare identifier for `id={id}`. Null = unreadable (a HOLE). */
+function idExpr(tag: string): string | null {
+  const m = /\bid=(?:"([a-z-]+)"|\{([A-Za-z_$][\w$]*)\})/.exec(tag);
+  if (!m) return null;
+  return m[1] !== undefined ? `"${m[1]}"` : m[2]!;
+}
+
+/** An identifier id must be bound from the grid TABLE's own row — `const id:
+ *  ActionId = cell.id;` inside `LIGHTNING_GRID.map((cell` — so the one call
+ *  site cannot be fed an id from anywhere else. */
+const boundFromTable = (ident: string) =>
+  new RegExp(
+    `LIGHTNING_GRID\\.map\\(\\((\\w+)[\\s\\S]*?const ${ident}(?::\\s*ActionId)?\\s*=\\s*\\1\\.id;`,
+  ).test(SRC);
+
 /** Any `disabled=` prop, whatever it reads. */
 const ANY_DISABLED = /disabled=\{([^}]*(?:\{[^}]*\})?[^}]*)\}/;
 
@@ -62,14 +85,19 @@ describe("task 397 — every grid cell asks its own row", () => {
   const fmtBtns: JsxElementHit[] = elementsNamed(SRC, "FmtBtn").filter(
     // The component DECLARATION is `function FmtBtn(` — only call sites are
     // JSX elements, and only those carry an `id=` prop.
-    (h) => /\bid="/.test(h.tag),
+    (h) => /\bid=["{]/.test(h.tag),
   );
 
   it("population self-check — the needle still finds the grid", () => {
-    // Fifteen `FmtBtn` cells shipped at 397. A floor rather than an equality so
-    // a NEW cell doesn't fail this leg instead of its own; if this ever drops,
-    // the needle is stale and every leg below is passing vacuously.
-    expect(fmtBtns.length).toBeGreaterThanOrEqual(15);
+    // Task 1352: the grid is a TABLE (`LIGHTNING_GRID`) rendered by ONE
+    // `FmtBtn` call site, so "every cell asks its own row" is a property of
+    // that site. Fifteen glyph cells shipped at 397 — a floor on the TABLE's
+    // glyph rows rather than an equality, so a NEW cell doesn't fail this leg
+    // instead of its own; if either drops, the needle is stale and every leg
+    // below passes vacuously.
+    expect(fmtBtns.length).toBeGreaterThanOrEqual(1);
+    const table = /LIGHTNING_GRID[^=]*=\s*\[([\s\S]*?)\n\];/.exec(SRC)?.[1] ?? "";
+    expect((table.match(/\{ id: "[a-z-]+", glyph:/g) ?? []).length).toBeGreaterThanOrEqual(15);
     // …and both bespoke cells are still rendered.
     for (const name of Object.keys(BESPOKE_CELLS)) {
       expect(elementsNamed(SRC, name).length, `${name} is no longer rendered`).toBeGreaterThan(0);
@@ -79,21 +107,24 @@ describe("task 397 — every grid cell asks its own row", () => {
   it("every FmtBtn cell's `disabled` reads gridCellDisabled with its OWN id", () => {
     const offenders: string[] = [];
     for (const hit of fmtBtns) {
-      const idm = /\bid="([a-z-]+)"/.exec(hit.tag);
+      const id = idExpr(hit.tag);
       // An unreadable id is a HOLE, not a pass — the census must never fail
       // toward silence about a cell it could not parse.
-      if (!idm) {
-        offenders.push(`a FmtBtn with no literal id= prop: ${hit.tag.slice(0, 80)}`);
+      if (!id) {
+        offenders.push(`a FmtBtn with no readable id= prop: ${hit.tag.slice(0, 80)}`);
         continue;
       }
-      const id = idm[1]!;
+      if (!id.startsWith('"') && !boundFromTable(id)) {
+        offenders.push(`${id}: an id= identifier not bound from LIGHTNING_GRID's own row`);
+        continue;
+      }
       if (!ANY_DISABLED.test(hit.tag)) {
         offenders.push(`${id}: no disabled= prop at all`);
         continue;
       }
-      if (!OWN_ID(id).test(hit.tag)) {
+      if (!OWN_EXPR(id).test(hit.tag)) {
         const read = ANY_DISABLED.exec(hit.tag)![1]!.trim();
-        offenders.push(`${id}: disabled reads \`${read}\`, not gridCellDisabled("${id}")`);
+        offenders.push(`${id}: disabled reads \`${read}\`, not gridCellDisabled(${id})`);
       }
     }
     expect(
@@ -175,12 +206,12 @@ describe("task 397 — every grid cell asks its own row", () => {
   it("every FmtBtn cell's `run` dispatches through runGridAction with its OWN id", () => {
     const offenders: string[] = [];
     for (const hit of fmtBtns) {
-      const id = /\bid="([a-z-]+)"/.exec(hit.tag)?.[1];
+      const id = idExpr(hit.tag);
       if (!id) {
-        offenders.push(`a FmtBtn with no literal id: ${hit.tag.slice(0, 80)}`);
+        offenders.push(`a FmtBtn with no readable id: ${hit.tag.slice(0, 80)}`);
         continue;
       }
-      if (!new RegExp(`run=\\{\\(\\) => runGridAction\\("${id}"\\)\\}`).test(hit.tag)) {
+      if (!OWN_RUN(id).test(hit.tag)) {
         offenders.push(`${id}: ${(/run=\{[^\n]*/.exec(hit.tag) ?? ["(no run= prop)"])[0]}`);
       }
     }
@@ -225,6 +256,18 @@ describe("task 397 — every grid cell asks its own row", () => {
     const good = `<FmtBtn id="figure" row={3} col={1} disabled={gridCellDisabled("figure")} run={() => z()}>\n</FmtBtn>`;
     const goodHit = elementsNamed(good, "FmtBtn")[0]!;
     expect(OWN_ID("figure").test(goodHit.tag)).toBe(true);
+  });
+
+  it("canary — the table call site is held to the same door (synthetic)", () => {
+    const bad = `<FmtBtn key={id} id={id} row={row} col={col} disabled={gridCellDisabled("bold")} run={() => runGridAction(id)}>\n</FmtBtn>`;
+    const badHit = elementsNamed(bad, "FmtBtn")[0]!;
+    expect(idExpr(badHit.tag)).toBe("id");
+    expect(OWN_EXPR("id").test(badHit.tag)).toBe(false);
+    const good = `<FmtBtn key={id} id={id} row={row} col={col} disabled={gridCellDisabled(id)} run={() => runGridAction(id)}>\n</FmtBtn>`;
+    const goodHit = elementsNamed(good, "FmtBtn")[0]!;
+    expect(OWN_EXPR("id").test(goodHit.tag)).toBe(true);
+    expect(OWN_RUN("id").test(goodHit.tag)).toBe(true);
+    expect(boundFromTable("someOtherId"), "an identifier the table never binds must not pass").toBe(false);
   });
 
   it("the arrow-function trap — tagEnd must not truncate at a `run={() => …}`", () => {
