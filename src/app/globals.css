@@ -76,6 +76,12 @@
      its optical centre at seam−15 — the tab titles' anchor (tasks 094/289).
      aligns: a 24px row's centre to seam−15, not the 4px grid. */
   --bar-seam-lift: 3px;
+  /* Virgil-bar occupant gap (task 1354): the space between neighbouring bar
+     occupants — status pills from each other, and the status segment from the
+     tools / « chip after it. Owned by the CONTAINER (StatusCluster's status
+     segment `gap` + trailing margin); no occupant carries its own margin.
+     6px = Tailwind v4 `1.5` (--spacing 0.25rem × 1.5). */
+  --bar-occupant-gap: 6px;
   --tab-bg: #dcdbd7;
   --main-tab-bg: var(--background);
   --library-bg: #eae7e2;

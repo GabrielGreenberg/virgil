@@ -297,9 +297,24 @@ function StatusClusterImpl(props: StatusClusterProps) {
       // (task 289).
       className="shrink-0 flex items-center self-end mb-[var(--bar-seam-lift)] px-2"
     >
-      {BAR_STATUS_ORDER.map((id) => (
-        <Fragment key={id}>{statusItems[id]}</Fragment>
-      ))}
+      {/* The STATUS SEGMENT (task 1354): neighbour spacing is the CONTAINER's,
+          stated once by `--bar-occupant-gap` — no occupant carries a margin.
+          `gap` spaces the pills from each other; the trailing margin spaces
+          the last one from what follows (the first tool, or the « chip when
+          the tools are collapsed). It sits on the segment, not as a root
+          `gap`, because the collapsed tool group is a zero-width flex item a
+          root gap would double around. Every hidden item returns null, so an
+          all-quiet segment is `:empty` and `empty:hidden` takes its margin
+          with it. Not an occupancy box: useBarOccupancy measures only the tab
+          strip, the tab row and the tools wrapper. */}
+      <div
+        data-bar-segment="status"
+        className="flex items-center gap-[var(--bar-occupant-gap)] mr-[var(--bar-occupant-gap)] empty:hidden"
+      >
+        {BAR_STATUS_ORDER.map((id) => (
+          <Fragment key={id}>{statusItems[id]}</Fragment>
+        ))}
+      </div>
       {/* ── TIER 3: the collapsible tool group (task 395) ──────────────────
           Everything above this point is TIER 1 (PROTECTED) and everything in
           here is the bar's lowest-priority occupant: under compression it
@@ -368,8 +383,12 @@ function StatusClusterImpl(props: StatusClusterProps) {
       {!zenModeOn && (focusActive || helperOn || collabEnabled) && (
         <span
           aria-hidden
-          className="self-center h-5 w-px mx-2"
-          style={{ background: "var(--edge-strong)" }}
+          className="self-center h-5 w-px mr-2"
+          // Its left side already has the status segment's trailing
+          // `--bar-occupant-gap` (a chip is on, so the segment is non-empty);
+          // top it up to the same 8px as the right rather than adding a
+          // second, independent margin.
+          style={{ background: "var(--edge-strong)", marginLeft: "calc(0.5rem - var(--bar-occupant-gap))" }}
         />
       )}
       {/* Zen mode toggle — render-gates editor chrome so the document area
