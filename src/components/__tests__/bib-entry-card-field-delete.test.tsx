@@ -103,4 +103,18 @@ describe("BibEntryCard inline editor — field delete (BIB-F5-04)", () => {
     expect(patch.type).toBe("article");
     expect(patch.key).toBe("foo2020");
   });
+
+  it("Save sends the editor's OPEN-TIME seed as `base`, so the door rebases the edit (task 1359)", () => {
+    const { onSaveBibEntry } = renderCard();
+    openEditor();
+    fireEvent.click(screen.getByText("Save"));
+    const [target, patch] = onSaveBibEntry.mock.calls[0];
+    expect(patch.base).toEqual({
+      key: target.key,
+      type: target.type,
+      fields: target.fields,
+    });
+    // The seed is a COPY — editing the map cannot reach back into it.
+    expect(patch.base?.fields).not.toBe(target.fields);
+  });
 });

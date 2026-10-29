@@ -2274,6 +2274,21 @@ call-order leg in
 which fails both ways over when the filename resolution is moved back outside
 the enqueue.
 
+**Half 6 — an editor's Save is a DELTA against its seed (task 1359).** The
+file-level read-modify-write was serialized, but the ENTRY-level payload was a
+snapshot: "Edit entry" seeds its fields/type/key once, and a set-all Save of
+that map reverted every change another writer (an `answer-bib-review` fill, the
+code view, a peer window) made while it was open — an added field was DELETED,
+a corrected `@type` went back, a rename was renamed back, verdict `written`. A
+composer that edits from a seed now passes it as `BibEntrySave.base`, and the
+door rebases inside the mutation
+([bib-edit-rebase.ts](../../../src/lib/bib-edit-rebase.ts) `rebaseBibEdit`):
+untouched ⇒ the live value, changed ⇒ the user's (a removal still deletes,
+BIB-A3-02), both changed apart ⇒ `BibSaveResult` `conflict`, nothing written,
+the view re-read, the editor kept open with a reason naming the parts. A save
+WITHOUT `base` stays absolute set-all — that is "Replace with library"'s intent.
+Proof: [bib-save-rebase.test.tsx](../../../src/lib/__tests__/bib-save-rebase.test.tsx).
+
 ## The identity half: a uid is minted against the uids in scope, or not minted at all (task 693)
 
 > **A durable id drawn from a small space is not "probably unique" — it is

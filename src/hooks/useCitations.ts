@@ -38,6 +38,7 @@ import {
   resolveBibEntry,
 } from "@/lib/bib-address";
 import { validateBibEntryHeadChange } from "@/lib/bib-entry-head";
+import { rebaseBibEdit, type BibEditState } from "@/lib/bib-edit-rebase";
 import { asBibFamily, DEFAULT_BIB_FAMILY, type BibFamily } from "@/lib/bib-family";
 
 /**
@@ -58,6 +59,16 @@ export interface BibEntrySave {
   /** The new citekey. Omitted, or equal to the current one ⇒ no rename, and
    *  no rename fan-out. */
   key?: string;
+  /**
+   * What the editor OPENED on (task 1359). Present ⇒ `fields`/`type`/`key`
+   * are an editor's whole state edited FROM this seed, and the save is a
+   * DELTA: it is rebased onto the live entry inside the serialized write
+   * (`rebaseBibEdit`), so a field, `@type` or citekey another writer changed
+   * while the editor was open is kept, not reverted or deleted — and a part
+   * BOTH sides changed is refused as `conflict`. Absent ⇒ the parts are
+   * absolute (set-all), the intent of "Replace with library".
+   */
+  base?: BibEditState;
 }
 
 /**
@@ -610,10 +621,26 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       // rewrites no `\cite{}`.
       const resolved = resolveBibEntry(bibEntriesRef.current, address);
       const entry = resolved ?? target;
+      // An editor's DELTA (task 1359): what this save actually changes is the
+      // editor's state rebased onto the entry. Rebased here against the VIEW
+      // for the head check and the rename fan-out, and again — the run that
+      // lands — against the file inside the mutation below.
+      const base = patch.base;
+      const mine = (e: BibEditState): BibEditState => ({
+        key: patch.key !== undefined ? patch.key.trim() : e.key,
+        type: patch.type !== undefined ? patch.type.trim() : e.type,
+        fields: patch.fields ?? e.fields,
+      });
+      const intended = (e: BibEntry) =>
+        base ? rebaseBibEdit(base, mine(base), e) : { ok: true as const, ...mine(e) };
+      const viewHead = intended(entry);
+      if (!viewHead.ok) {
+        return Promise.resolve({ kind: "conflict", reason: viewHead.reason });
+      }
       // `undefined` means "this part of the head is not part of this save" —
       // NOT "clear it". An EMPTY string is a value, and a refused one.
-      const newKey = patch.key !== undefined ? patch.key.trim() : entry.key;
-      const newType = patch.type !== undefined ? patch.type.trim() : entry.type;
+      const newKey = viewHead.key;
+      const newType = viewHead.type;
       // THE validation door (task 690), read here as well as at the card, so
       // no caller can route around the UI and write a block the parser cannot
       // read back — an empty `@type` emitted `@{key,…}`, and the next write
@@ -634,22 +661,41 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       // citekey, and `prev.map` rewrote both; task 690).
       // The verdict is RETURNED (task 1158): a composer holding the user's
       // typed fields closes only on a save that landed (`didBibSaveLand`).
-      return runBibMutation((prev) =>
-        mapAddressedBibEntry(prev, address, (e) => {
+      // A conflict found by the run that LANDS (the file moved under a view
+      // that had not caught up yet). Reset per run, so the disk run — always
+      // the last — is the one that answers.
+      let conflict: string | null = null;
+      return runBibMutation((prev) => {
+        conflict = null;
+        const next = mapAddressedBibEntry(prev, address, (e) => {
+          // A delta save rebases onto THIS run's entry; an absolute save is
+          // set-all when fields are part of it: the supplied map is the
+          // COMPLETE intended field set, so a field the user cleared is
+          // DELETED, not silently retained (BIB-A3-02 / BIB-F5-04). Omitted
+          // ⇒ the entry's fields are not this save's business.
+          const merged = intended(e);
+          if (!merged.ok) {
+            conflict = merged.reason;
+            return e;
+          }
           const updated: BibEntry = {
             ...e,
-            key: newKey,
-            type: newType,
-            // Set-all when fields are part of the save: the supplied map is
-            // the COMPLETE intended field set, so a field the user cleared is
-            // DELETED, not silently retained (BIB-A3-02 / BIB-F5-04). Omitted
-            // ⇒ the entry's fields are not this save's business.
-            ...(patch.fields ? { fields: { ...patch.fields } } : {}),
+            key: base ? merged.key : newKey,
+            type: base ? merged.type : newType,
+            ...(base || patch.fields ? { fields: { ...merged.fields } } : {}),
           };
           updated.raw = rebuildRaw(e, updated);
           return updated;
-        }),
-      ).then((result) => {
+        });
+        // Nothing to change on a conflict — and nothing written.
+        return conflict ? null : next;
+      }).then((result): BibSaveResult => {
+        if (conflict) {
+          // The view may have taken the edit optimistically (it had not yet
+          // seen the other writer's change); only the file is truth now.
+          if (docRef.current === docId && docId) refreshBib(docId);
+          return { kind: "conflict", reason: conflict };
+        }
         if (oldKey === newKey) return result; // a pure retype/field save moves no identity
         // A rename fans out ONLY over a write that LANDED (task 1142). Every
         // other verdict — `not-found` (the address named no entry in the
@@ -674,7 +720,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         return result;
       });
     },
-    [runBibMutation, rewriteCitationRefs, identityCascade],
+    [runBibMutation, rewriteCitationRefs, identityCascade, docId, refreshBib],
   );
 
   /**
