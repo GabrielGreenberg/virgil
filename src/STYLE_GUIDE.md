@@ -302,21 +302,27 @@ Every status occupant of the Virgil bar renders through ONE primitive,
 [`BarStatusPill`](components/status/BarStatusPill.tsx) (task 769; task 1214
 extended it past the data-integrity badges). That is every row of
 `BAR_STATUS_ORDER` in [bar-status-policy.ts](lib/bar-status-policy.ts) — the
-list is the table's, not this paragraph's — plus the collaborator pen pill,
-which sits in the modes section. An occupant states its **tone**, **glyph**,
+list is the table's, not this paragraph's. Since task 1353 that includes the
+**modes the user turned on** (Focus view, Helper mode, the collaborator pen
+pill) and a running compile: a mode chip is its mode's off-switch, so it lives
+in the protected tier and survives the tools' collapse — never hand-placed in
+the collapsible group (census: `bar-status-policy.test.tsx`, "mode indicators
+are policy entries"). An occupant states its **tone**, **glyph**,
 **label**, **actions**, **menu** and (for a readout with controls) **widget**;
 the pill decides everything else:
 
 - **Colour** — `paletteForTone` (the alarm family's register, above). An
   occupant never spells a token; a state the tone table does not model names
-  its TONE. The pill adds two registers of its own, neither an interruption:
+  its TONE. The pill adds three registers of its own, none an interruption:
   `quiet` — **grey, not an interruption** (surface ground, light hairline,
   subtle ink). Actionability is orthogonal to the register: the paused disk
   watcher is a quiet statement, the update chip a quiet CONTROL
   (`onActivate`), the running timer a quiet WIDGET. And `presence` — the
   collaborator pen readout (surface ground, subtle hairline, body ink); the
   partner's colour arrives as `identityEdge`, identity data on the hairline,
-  never a token.
+  never a token. And `mode` (task 1353) — a mode the user turned on: the
+  selected-toggle tint + ink every pressed bar control wears, rendered as a
+  pressed (`aria-pressed`) `onActivate` control whose click turns the mode off.
 - **Announcement** — `announcementForTone`: `alert` + `assertive` for
   `danger`, `status` + `polite` otherwise. The same table the in-document
   interruption band reads, so a state is announced the same way in both places.

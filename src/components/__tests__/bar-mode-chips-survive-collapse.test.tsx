@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRef } from "react";
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook } from "@testing-library/react";
 
 vi.mock("@/lib/storage", () => ({
   isDevStorage: true,
@@ -92,8 +92,9 @@ describe("mode chips survive the bar's collapse (task 1353)", () => {
     const el = chip("focus-view");
     expect(el).toBeTruthy();
     expect(inCollapsible(el)).toBe(false);
-    expect(el!.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByText("Focus view"));
+    const btn = el!.querySelector("button")!;
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(btn);
     expect(onFocusDeactivate).toHaveBeenCalledTimes(1);
   });
 
