@@ -223,6 +223,7 @@ export function OrphanedFootnoteCard({
       // monotonic onSelect mirrors it into the panel slot). Orphans have no
       // in-text marker, so no jump.
       onClick={() => ac.onBodyActivate({ onSelect })}
+      onSelectOnly={() => ac.onSelectOnly({ onSelect })}
       onDelete={onDelete}
       value={orphan.content}
       variant={bodyVariantForCardKind("footnote")}
@@ -348,6 +349,7 @@ export function UnanchoredFootnoteCard({
       // No in-text marker for an atomless ref, so body click is select+expand
       // only (no jump) — same composition as an orphan card.
       onClick={() => ac.onBodyActivate({ onSelect })}
+      onSelectOnly={() => ac.onSelectOnly({ onSelect })}
       onDelete={onDelete}
       value={content}
       variant={bodyVariantForCardKind("footnote")}

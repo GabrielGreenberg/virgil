@@ -164,7 +164,6 @@ export function TodoRow({
       onTrashClick={tryDelete}
       cardId={item.id}
       extraCardClass=""
-      onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
       kind="todo"
       headerTrailing={<TodoDoneToggle item={item} onToggle={onToggle} />}
     >
