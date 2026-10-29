@@ -24,6 +24,7 @@ import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
+import { CompileStatusChip, FocusViewChip, HelperModeChip } from "@/components/BarModeChips";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
 import { BAR_STATUS_ORDER, type BarStatusItemId } from "@/lib/bar-status-policy";
@@ -256,6 +257,25 @@ function StatusClusterImpl(props: StatusClusterProps) {
     // PROP-LESS: it reads the session store directly, so a tick cannot
     // re-render this memoized cluster. Its ICON is an ordinary tool below.
     pomodoro: <PomodoroTimer />,
+    // A running compile's ONE progress indicator (task 1353) — the Compile
+    // tool below only disables, so a collapsed bar still shows the work.
+    compile: <CompileStatusChip compiling={vbar.isCompiling} />,
+    // MODES THE USER TURNED ON (task 1353). Each chip is its mode's off-switch
+    // (Focus from the Outline / card actions, Helper from the "?" menu,
+    // Collab from its icon tool), so it lives here and survives the tools'
+    // collapse; zen hides them by the policy's own rule, read from the zen
+    // store inside each chip. Before 1353 they sat inside the collapsible
+    // group and the Focus-view chip vanished with it.
+    "focus-view": <FocusViewChip active={focusActive} onExit={onFocusDeactivate} />,
+    "helper-mode": <HelperModeChip on={helperOn} onExit={onHelperToggle} />,
+    collab: (
+      <CollabStatusPill
+        onEnableRequest={onEnableCollab}
+        onEditIdentity={onEditIdentity}
+        onDisable={onDisableCollab}
+        variant="badge"
+      />
+    ),
   };
 
   const collabIconBtn = (
@@ -264,14 +284,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
       onEditIdentity={onEditIdentity}
       onDisable={onDisableCollab}
       variant="icon"
-    />
-  );
-  const collabBadge = (
-    <CollabStatusPill
-      onEnableRequest={onEnableCollab}
-      onEditIdentity={onEditIdentity}
-      onDisable={onDisableCollab}
-      variant="badge"
     />
   );
 
@@ -348,45 +360,11 @@ function StatusClusterImpl(props: StatusClusterProps) {
           prop likewise re-opened it on expand. */}
       <div key={topbarRightCollapsed ? "collapsed" : "expanded"} className="flex items-center">
       {(<>
-      {/* ── Status-indicator group (left of divider) ───────────────
-          Passive indicators for system-wide modes that are activated
-          elsewhere (Focus from card actions, Helper from the "?" menu,
-          Collab from the icon button on the right). Each entry doubles as
-          the off-toggle for its mode. Stays empty when nothing's active.
-          Suppressed in zen mode. */}
-      {!zenModeOn && (
-        <div className="flex items-center">
-          {focusActive && (
-            <button
-              onClick={onFocusDeactivate}
-              className="topbarbtn"
-              aria-pressed="true"
-              data-hint="Focus view"
-            >
-              Focus view
-            </button>
-          )}
-          {helperOn && (
-            <button
-              onClick={onHelperToggle}
-              className="topbarbtn"
-              aria-pressed="true"
-              data-hint="Exit helper mode"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="6" />
-                <path d="M5.8 6.2a2.2 2.2 0 0 1 4.08.8c0 1.2-1.68 1.6-1.68 1.6" />
-                <circle cx="8" cy="11.5" r="0.3" fill="currentColor" stroke="none" />
-              </svg>
-              Helper mode
-            </button>
-          )}
-          {collabEnabled && collabBadge}
-        </div>
-      )}
-      {/* Divider — only shown when there's at least one status marker on the
-          left, so the line reads as a real boundary between markers and
-          standard buttons. Suppressed in zen mode regardless. */}
+      {/* Divider — the boundary between the mode chips (TIER 1, just left of
+          this group since task 1353) and the standard tools. It lives IN the
+          group, so it shows only while the tools are expanded; and only when a
+          mode chip is on, which is the same predicate as the chips' policy
+          entries (`!zen && mode`). Suppressed in zen mode regardless. */}
       {!zenModeOn && (focusActive || helperOn || collabEnabled) && (
         <span
           aria-hidden
@@ -641,22 +619,18 @@ function StatusClusterImpl(props: StatusClusterProps) {
         Code
       </button>
       {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder. Disabled
-          while a compile is in flight; spinner replaces the play-triangle. */}
+          while a compile is in flight; the in-flight spinner is the protected
+          tier's `compile` status item (task 1353), so it shows once, and shows
+          while the tools are collapsed. */}
       <button
         onClick={vbar.compilePdf}
         disabled={!currentDocId || vbar.isCompiling}
         className="topbarbtn"
         data-hint="Compile"
       >
-        {vbar.isCompiling ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
-        )}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <polygon points="6 4 20 12 6 20 6 4" />
+        </svg>
         Compile
       </button>
       {/* PDF view toggle. Read local `pdfView` directly for the toggle's own

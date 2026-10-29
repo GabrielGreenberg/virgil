@@ -20,7 +20,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
 import {
@@ -49,6 +49,8 @@ describe("BarStatusPill · the contract", () => {
     quiet: { role: "status", live: "polite" },
     // A ticking readout ("idle 12s") — not a live region (task 1214).
     presence: { role: null, live: "off" },
+    // A mode the user turned on (task 1353) — announces like `quiet`.
+    mode: { role: "status", live: "polite" },
   };
 
   it.each(Object.entries(EXPECTED))("tone %s announces as %o", (tone, want) => {
@@ -72,11 +74,26 @@ describe("BarStatusPill · the contract", () => {
     expect((span as HTMLElement).style.maxWidth).toBe(`${BAR_STATUS_PILL_MAX_WIDTH}px`);
   });
 
-  it("the leaf's four tones read the leaf's tables — the pill adds only `quiet` and `presence`", () => {
+  it("the leaf's four tones read the leaf's tables — the pill adds only `quiet`, `presence` and `mode`", () => {
     for (const tone of Object.keys(TONE_PALETTE) as (keyof typeof TONE_PALETTE)[]) {
       expect(barStatusPalette(tone)).toBe(TONE_PALETTE[tone]);
       expect(barStatusAnnouncement(tone)).toBe(TONE_ANNOUNCEMENT[tone]);
     }
+  });
+
+  it("a `mode` pill is a PRESSED toggle — the mode's own off-switch (task 1353)", () => {
+    const onActivate = vi.fn();
+    const { container } = render(
+      <BarStatusPill tone="mode" label="Focus view" ariaLabel="Focus view" onActivate={onActivate} />,
+    );
+    const btn = container.querySelector("button[data-bar-status-label]")!;
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    (btn as HTMLButtonElement).click();
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    // Any other register's activatable pill is a plain button.
+    cleanup();
+    const quiet = render(<BarStatusPill tone="quiet" label="x" ariaLabel="x" onActivate={() => {}} />);
+    expect(quiet.container.querySelector("button")!.hasAttribute("aria-pressed")).toBe(false);
   });
 
   it("actions are SIBLINGS of the labelled span, typed buttons in the one bar style", () => {

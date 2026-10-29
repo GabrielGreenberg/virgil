@@ -44,6 +44,10 @@
  *   12s") that re-renders on every heartbeat, and a polite region would read
  *   each tick aloud. The partner's identity colour arrives as
  *   `identityEdge` — data, not a design token.
+ * - **`mode`** — a mode the user turned on (Focus view, Helper mode; task
+ *   1353). The selected-toggle tint, and the pill is the mode's off-switch
+ *   (`onActivate`, rendered `aria-pressed`), so it reads as the pressed tool
+ *   it was before it moved to the protected tier.
  *
  * **The widget slot** (task 1214). A resident that is a small READOUT WITH
  * CONTROLS (the Pomodoro: play/pause, a clock, a progress track, dismiss)
@@ -79,9 +83,9 @@ import { menuRowReasonProps, menuRowRovingStyle, menuRowToneClass } from "@/comp
 import { iconHint } from "@/components/Hint";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
-/** The pill's registers: the leaf's four, plus the pill's own `quiet` and
- *  `presence` (neither is an interruption). */
-export type BarStatusTone = InterruptionTone | "quiet" | "presence";
+/** The pill's registers: the leaf's four, plus the pill's own `quiet`,
+ *  `presence` and `mode` (none is an interruption). */
+export type BarStatusTone = InterruptionTone | "quiet" | "presence" | "mode";
 
 /** The one width cap for a bar pill's labelled span. The label truncates
  *  inside it; the full sentence lives on `data-hint` and in the menu. */
@@ -119,6 +123,17 @@ const PRESENCE_PALETTE: TonePalette = Object.freeze({
 
 /** A pill's role/aria-live pairing. `role` is absent for a register that is
  *  not a live region. */
+/** `mode` (task 1353): a mode the USER turned on (Focus view, Helper mode) —
+ *  the selected-toggle tint every pressed bar control wears
+ *  (`.topbarbtn[aria-pressed="true"]`), so the chip reads as it did when it
+ *  was a pressed tool. The edge is the selected INK, because the pill inks its
+ *  glyph with the edge (a tint-coloured edge would erase the Helper glyph). */
+const MODE_PALETTE: TonePalette = Object.freeze({
+  bg: "var(--control-selected-tint)",
+  edge: "var(--control-selected-ink)",
+  ink: "var(--control-selected-ink)",
+});
+
 export interface BarStatusAnnouncement {
   role?: "status" | "alert";
   "aria-live": "polite" | "assertive" | "off";
@@ -135,13 +150,15 @@ const PRESENCE_ANNOUNCEMENT: BarStatusAnnouncement = Object.freeze({
 });
 
 export function barStatusPalette(tone: BarStatusTone): TonePalette {
+  if (tone === "mode") return MODE_PALETTE;
   if (tone === "quiet") return QUIET_PALETTE;
   if (tone === "presence") return PRESENCE_PALETTE;
   return paletteForTone(tone);
 }
 
 export function barStatusAnnouncement(tone: BarStatusTone): BarStatusAnnouncement {
-  if (tone === "quiet") return QUIET_ANNOUNCEMENT;
+  // A mode chip announces like a quiet statement ("Focus view" appeared).
+  if (tone === "quiet" || tone === "mode") return QUIET_ANNOUNCEMENT;
   if (tone === "presence") return PRESENCE_ANNOUNCEMENT;
   return announcementForTone(tone);
 }
@@ -458,6 +475,9 @@ export function BarStatusPill({
           className={`${BAR_STATUS_PILL_CLASS} cursor-pointer`}
           style={labelStyle}
           aria-live={announcement["aria-live"]}
+          // A `mode` pill is the mode's own switch, and the mode is ON while
+          // it shows — a pressed toggle whose click turns it off.
+          aria-pressed={tone === "mode" ? true : undefined}
           aria-label={ariaLabel}
           data-hint={hint}
           data-bar-status-label

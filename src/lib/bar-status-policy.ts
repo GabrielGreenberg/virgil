@@ -63,6 +63,21 @@ export interface BarStatusStates {
   "skill-sync": { failed: boolean };
   /** The writing timer — the user opened it, so it stays. */
   pomodoro: { open: boolean };
+  /**
+   * MODES THE USER TURNED ON (task 1353). Each chip doubles as the mode's
+   * off-switch, so it must survive the bar's collapse. `zen` is read here,
+   * explicitly, because zen strips these chips by design (zen is the mode
+   * that hides chrome) — the policy states that, rather than a layout gate
+   * around the mount.
+   */
+  "focus-view": { active: boolean; zen: boolean };
+  /** Helper mode (instant hints everywhere) (same zen rule as `focus-view`). */
+  "helper-mode": { on: boolean; zen: boolean };
+  /** Collaborator mode's pen-state badge (same zen rule as `focus-view`). */
+  collab: { enabled: boolean; zen: boolean };
+  /** A compile is running — its ONE in-flight indicator (the Compile tool
+   *  button only disables), so a collapsed bar still shows progress. */
+  compile: { compiling: boolean };
 }
 
 export type BarStatusItemId = keyof BarStatusStates;
@@ -150,6 +165,26 @@ export const BAR_STATUS_POLICY: {
     settleMs: 0,
     why: "The user opened the timer.",
   },
+  "focus-view": {
+    mustSee: (s) => s.active && !s.zen,
+    settleMs: 0,
+    why: "The user turned Focus view on; the chip is its off-switch, so collapsing the tools must not hide it (zen hides it by design).",
+  },
+  "helper-mode": {
+    mustSee: (s) => s.on && !s.zen,
+    settleMs: 0,
+    why: "The user turned Helper mode on; the chip is its off-switch (zen hides it by design).",
+  },
+  collab: {
+    mustSee: (s) => s.enabled && !s.zen,
+    settleMs: 0,
+    why: "Collaborator mode is on: who holds the pen decides whether typing lands (zen hides it by design).",
+  },
+  compile: {
+    mustSee: (s) => s.compiling,
+    settleMs: 0,
+    why: "A compile can run for minutes; with the tools collapsed nothing else says it is still working.",
+  },
 });
 
 /**
@@ -167,6 +202,12 @@ export const BAR_STATUS_ORDER: readonly BarStatusItemId[] = Object.freeze([
   "save-state",
   "skill-sync",
   "pomodoro",
+  "compile",
+  // The user's modes sit last, against the tool group's divider — where they
+  // sat before task 1353 moved them out of the collapsible tier.
+  "focus-view",
+  "helper-mode",
+  "collab",
 ]);
 
 /** Is this state MUST-SEE (before the settle rule)? Pure. */
