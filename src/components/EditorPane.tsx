@@ -28,7 +28,7 @@
  *   - Owns ALL per-doc hooks (`useDocument`, `useNotes`, `useFootnotes`,
  *     `useCitations`, `useArchive`, `useTodos`,
  *     `useCutter`, `useRevisions`, `useAiRequests`,
- *     `useSuggestions`, `useAnnotations`, `useCollab`,
+ *     `useAnnotations`, `useCollab`,
  *     `useDocumentStyle`, `useLatexCompile`, `useWordCount`,
  *     `usePristineCardManager`, `useRecentlyAddedTracker`).
  *   - Owns 7 per-doc providers: `EditorRefProvider`,
@@ -201,7 +201,6 @@ import { useArchive } from "@/hooks/useArchive";
 import { cutterCommentContext, useCutter } from "@/hooks/useCutter";
 import { reportRequestContext, useReports } from "@/hooks/useReports";
 import { revisionCommentContext, useRevisions } from "@/hooks/useRevisions";
-import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { footnoteRequestText, useFootnotes, type FootnoteCapture } from "@/hooks/useFootnotes";
@@ -454,7 +453,6 @@ import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
 import type {
   AiRequest,
-  Suggestion,
   FootnoteRef,
   RevisionSuggestionCard,
   CutterSuggestionCard,
@@ -806,8 +804,6 @@ export interface PaneState {
   // instead of re-mounting its own singleton copy on docIdForHooks. We bubble
   // the SLICE EditorLayout actually consumes (not the whole hook) for the hooks
   // whose return object isn't memoized, to keep the bubble effect's deps stable.
-  // useSuggestions: EditorLayout reads only the current pending suggestion.
-  currentSuggestion: Suggestion | null;
   /** The pane's ONE Mode-B card bag (task 666) — read by the shell for the
    *  collab selection's anchor resolution. The per-kind card arrays that used
    *  to bubble beside it (revisions / notes / cutter / todos / archive) fed
@@ -818,13 +814,6 @@ export interface PaneState {
   addRequest: ReturnType<typeof useAiRequests>["addRequest"];
   updateRequestText: ReturnType<typeof useAiRequests>["updateRequestText"];
   withdrawRequest: ReturnType<typeof useAiRequests>["withdrawRequest"];
-  // The search-panel highlight range. EditorPane is the canonical owner —
-  // SearchHost mounts INSIDE EditorPane and writes this local, and EditorPane's
-  // own <Editor> renders the highlight overlay. It bubbles up so EditorLayout
-  // (and any future cross-pane consumer) can read the live range from the one
-  // owner instead of a dead duplicate. The producer→editor path no longer
-  // crosses the component boundary in the wrong direction (SR-F3-01/F8-01).
-  searchHighlightRange: { from: number; to: number } | null;
   // Diagnostics (P5 item 4): EditorPane is now the single per-doc owner of the
   // lint+compile error surface. The shell reads these for its code-view Errors
   // sidebar + error badge, routes marker/click-away selection through
@@ -900,9 +889,6 @@ export interface EditorPaneProps {
    *  TipTap's update-event transaction (used by the autosave to flush on an
    *  anchor-mint tx — see @/lib/anchor-mint-signal). */
   onUpdate?: (editor: Editor, tx?: import("@tiptap/pm/state").Transaction) => void;
-
-  /** Search-bar / link-jump highlight forwarded straight through. */
-  highlightText?: string | null;
 
   /**
    * Fires once the live TipTap `Editor` instance is ready. The Library
@@ -1023,7 +1009,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     editable = true,
     chrome = FULL_CHROME,
     onUpdate,
-    highlightText = null,
     onEditorReady,
     onPaneStateChange,
     onDocumentClassMismatch,
@@ -2231,7 +2216,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     (id: string) => deleteFootnoteUnbridged(id, footnotesHook.deleteFootnote),
     [deleteFootnoteUnbridged, footnotesHook.deleteFootnote],
   );
-  const suggestionsHook = useSuggestions(docId);
   // Task 1213 — the pane's visibility gates the pen heartbeat: a keep-alive
   // pane parked display:none lets a pen it holds go stale honestly.
   const collab = useCollab(docId, { visible: useIsVisible() });
@@ -6117,8 +6101,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }),
       collab,
       citationsHook,
-      searchHighlightRange,
-      currentSuggestion: suggestionsHook.currentSuggestion,
       modeBCards,
       deleteArchiveSnippet: archiveHook.deleteSnippet,
       addRequest: aiRequestsHook.addRequest,
@@ -6145,7 +6127,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     allCardSidecarsLoaded,
     anyCardSidecarLoadError,
     editor,
-    searchHighlightRange,
     aiRequestsHook.requests,
     bibReviewHook.requests,
     bibSettingsHook.entryRequests,
@@ -6163,7 +6144,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     onToggleCodeView,
     collab,
     citationsHook,
-    suggestionsHook.currentSuggestion,
     modeBCards,
     archiveHook.deleteSnippet,
     aiRequestsHook.addRequest,
@@ -7951,7 +7931,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       // / pagehide) are unaffected — they don't route through here.
                       if (isVisibleRef.current) docHook.onUpdate(editor, tx);
                     }}
-                    highlightText={errorHighlightRange ? null : highlightText}
                     highlightRange={effectiveHighlightRange}
                     editable={editable}
                     onEditorReady={handleEditorReady}

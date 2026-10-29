@@ -111,7 +111,7 @@ interface SidecarValueEntry {
    *  bundle, `editor-state.json` has `useEditorUIState`, `collab.json` has
    *  `useCollab`) are false. A `legacy` row is always false. */
   mount: boolean;
-  /** RETIRED (task 726). Virgil no longer reads or writes this file: the hook
+  /** RETIRED (task 726; also task 1360's `suggestions.json`). Virgil no longer reads or writes this file: the hook
    *  that owned it is deleted and no production module spells its name. The
    *  row survives for ONE reason — the conflict scanner's base vocabulary is
    *  the whole table, so a `examples (conflicted copy …).json` sibling a
@@ -184,7 +184,12 @@ export const SIDECAR_VALUE: Readonly<Record<string, SidecarValueEntry>> =
     "orphaned-footnotes.json": { tier: "content", store: "disk", mount: true },
     "reports.json": { tier: "content", store: "disk", mount: true },
     "revisions.json": { tier: "content", store: "disk", mount: true },
-    "suggestions.json": { tier: "content", store: "disk", mount: true },
+    // RETIRED (task 1360) — the pre-card review store ("merge Suggestions into
+    // Revisions", 2073376a). No panel rendered it and no skill wrote it, but its
+    // still-mounted hook fed a pending entry's quote to the editor as a text
+    // highlight that moved the caret on open and that nothing could dismiss.
+    // `useSuggestions` is deleted; a pending entry in an old folder is inert.
+    "suggestions.json": { tier: "content", store: "disk", mount: false, legacy: true },
     "todos.json": { tier: "content", store: "disk", mount: true },
     // Paragraph titles, collapsed state, AND a per-block first-80-character
     // content FINGERPRINT — so its bytes move with the user's prose, and a fork

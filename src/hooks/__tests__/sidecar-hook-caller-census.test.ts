@@ -163,12 +163,13 @@ describe("R2 · a mount:true sidecar row is owned by a real module", () => {
     // `mount: true`. If this ever finds a speller, the retirement is over and
     // the row must say so.
     expect(spellersOf("examples.json")).toEqual([]);
+    expect(spellersOf("suggestions.json")).toEqual([]); // task 1360
   });
 });
 
 describe("R3 · a legacy row is a DECLARED retirement", () => {
-  it("names the retirement task 726 drained", () => {
-    expect([...LEGACY_SIDECAR_FILENAMES]).toEqual(["examples.json"]);
+  it("names the retirements tasks 726 and 1360 drained", () => {
+    expect([...LEGACY_SIDECAR_FILENAMES]).toEqual(["examples.json", "suggestions.json"]);
   });
 
   it("a legacy row is never mount:true (a directory read for a file nothing owns)", () => {

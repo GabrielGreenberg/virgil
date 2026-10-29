@@ -36,13 +36,13 @@
     "cutter.json": "panel cards, paragraph-anchored",
     "dictionary.json": "spelling words",
     "document-settings.json": "per-paper settings",
-    "examples.json": "example cards, paragraph-anchored",
+    "examples.json": "RETIRED (task 726): read and written by nothing; holds no live citekey",
     "footnotes.json": "footnote cards keyed by footnote id; a \\cite inside a footnote body lives in the .tex, which the rename rewrites",
     "notes.json": "note/highlight cards, paragraph-anchored",
     "orphaned-footnotes.json": "footnote bodies keyed by footnote id. RESIDUAL (task 615): a body's TipTap JSON may hold a citation node whose command names a citekey; neither the app cascade nor this rename re-keys it yet",
     "reports.json": "report cards, paragraph-anchored",
     "revisions.json": "revision cards, paragraph-anchored",
-    "suggestions.json": "suggestion cards, paragraph-anchored",
+    "suggestions.json": "RETIRED (task 1360): pre-card review store, read and written by nothing; holds no live citekey",
     "todos.json": "todo cards, paragraph-anchored",
     "virgil.json": "paragraph titles/fingerprints"
   }

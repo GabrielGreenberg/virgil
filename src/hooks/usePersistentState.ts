@@ -557,8 +557,8 @@ export function usePersistentState<S>(
         // honestly: the sidecar hooks with their OWN bespoke `persist` —
         // useFootnotes, useAiRequests, useBibReview, useStack,
         // useEditorUIState — do NOT go through this door and are unaffected.
-        // Among this hook's consumers only `useSuggestions.clearSuggestions`
-        // still calls it directly.) An immediate write is by definition the
+        // Its last direct caller, `useSuggestions.clearSuggestions`, was
+        // deleted with that store in task 1360.) An immediate write is by definition the
         // newest intent, so it SUPERSEDES anything scheduled — cancel the timer
         // and drop the stale payload, once, for every caller.
         //

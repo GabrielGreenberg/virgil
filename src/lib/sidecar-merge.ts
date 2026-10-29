@@ -151,7 +151,6 @@ export const SIDECAR_COLLECTIONS: Readonly<
   "orphaned-footnotes.json": [{ key: "orphans", idFields: ["footnoteId"] }],
   "reports.json": [{ key: "cards", idFields: ["id"] }],
   "revisions.json": [{ key: "cards", idFields: ["id"] }],
-  "suggestions.json": [{ key: "suggestions", idFields: ["id"] }],
   "todos.json": [{ key: "items", idFields: ["id"] }],
   // Paragraph UUIDs + per-block titles. Written by `writeDocBundle` (one write
   // per bundle write), not by a sidecar hook, so no collection is claimed here.

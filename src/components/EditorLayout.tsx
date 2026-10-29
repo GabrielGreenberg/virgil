@@ -114,8 +114,7 @@ import {
   deriveCategorySides,
   omniCategoriesForSide,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, isPanelDocked } from "@/hooks/useViewPrefs";
-import { visibleHighlightKinds } from "@/links/_shared/useLinkHighlight";
+import { useViewPrefs, PanelId } from "@/hooks/useViewPrefs";
 import { Button } from "./Button";
 import { cardFloatZ } from "@/floats/float-policy";
 import {
@@ -454,10 +453,6 @@ export default function EditorLayout() {
   // the live pane via `paneState` (the single authoritative compile source).
   const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
     useDocumentClassMismatchDialog();
-  // Pane-owns-all (Phase C): useSuggestions is mounted ONLY in EditorPane now;
-  // the layout reads the current pending suggestion off the active pane's bubble
-  // (the other fields were dead in the layout). Mirrors citationsHook/collab.
-  const currentSuggestion = paneState?.currentSuggestion ?? null;
   // Pane-owns-all (Phase C, completing the R21 consolidation): the sidecar hooks
   // (suggestions/revisions/notes/cutter/todos/aiRequests/archive) are mounted
   // ONLY in EditorPane now. This shell no longer mounts its own parity copies on
@@ -1161,14 +1156,10 @@ export default function EditorLayout() {
   // (EditorPane.tsx → CitationsHost), so this duplicate is dead and removed.
   //
   // The search-highlight + search-panel state used to live here too, as a DEAD
-  // duplicate: SearchHost mounts inside EditorPane, so EditorLayout's local
-  // `searchHighlightRange`/`searchState` were never written (the producer is on
-  // the other side of the boundary). EditorPane now OWNS them; the live
-  // highlight range bubbles up via `paneState.searchHighlightRange`
-  // (SR-F3-01/F8-01). EditorLayout reads it back below to gate `highlightText`
-  // (the search vs. comment-highlight preference); the error-highlight range now
-  // lives entirely in EditorPane (`useDiagnostics`).
-  const searchHighlightRange = paneState?.searchHighlightRange ?? null;
+  // duplicate: SearchHost mounts inside EditorPane, so EditorPane OWNS them and
+  // merges the search and error ranges at its own <Editor> (SR-F3-01/F8-01).
+  // The layout's last read of the range — gating the legacy suggestions.json
+  // TEXT highlight — was retired with that store (task 1360).
 
   // The SearchHost cross-panel jump (`openItemInPanel`) used to live here as a
   // SECOND copy, but SearchHost mounts inside EditorPane and uses EditorPane's
@@ -3008,16 +2999,6 @@ export default function EditorLayout() {
     return <LoadingScreen className="h-screen" />;
   }
 
-  // Search range highlight takes priority — skip text-based highlight when active
-  const highlightText = searchHighlightRange
-    ? null
-    : !visibleHighlightKinds(prefs).has("comment")
-      ? null
-      : isPanelDocked(prefs, "revisions") &&
-          currentSuggestion &&
-          currentSuggestion.status === "pending"
-        ? currentSuggestion.original_text
-        : null;
   // Error badge count — read from the per-doc owner (EditorPane) via paneState.
   const errorCount = paneState?.latexErrors.length ?? 0;
   // Render helpers (renderPanelWithChrome / renderPanelInner / renderPanelColumn)
@@ -3161,7 +3142,6 @@ export default function EditorLayout() {
                           onAiWindowClose={
                             isActive ? handleAiWindowClose : undefined
                           }
-                          highlightText={isActive ? highlightText : undefined}
                           onDocumentClassMismatch={promptDocClassMismatch}
                         />
                       </EditorChromeProvider>
