@@ -34,6 +34,7 @@ import {
   type EditorChromeConfig,
 } from "@/components/editor-layout/chrome-config";
 import { didBibSaveLand, bibSaveRefusalReason } from "@/lib/project-bib";
+import type { BibEditState } from "@/lib/bib-edit-rebase";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -269,6 +270,10 @@ export default function BibEntryCard({
   const [editBibFields, setEditBibFields] = useState<Record<string, string>>({});
   const [editBibType, setEditBibType] = useState("");
   const [editBibKey, setEditBibKey] = useState("");
+  // What the editor OPENED on (task 1359). Save sends its edits as a delta
+  // against this, rebased onto the live entry, so a change another writer
+  // made while the editor was open is kept rather than reverted.
+  const [editBibSeed, setEditBibSeed] = useState<BibEditState | null>(null);
   const [showBibWarning, setShowBibWarning] = useState(false);
   // A Save in flight, and why the last one did not land (task 1158). The
   // editor stays open — typed fields intact — until the door says LANDED.
@@ -327,6 +332,7 @@ export default function BibEntryCard({
     setEditBibFields({ ...entry.fields });
     setEditBibType(entry.type);
     setEditBibKey(entry.key);
+    setEditBibSeed({ key: entry.key, type: entry.type, fields: { ...entry.fields } });
     setShowBibWarning(true);
     setSaveBibError(null);
   };
@@ -351,8 +357,12 @@ export default function BibEntryCard({
     // in silence.
     //
     // The editor's `editBibFields` is the COMPLETE intended field set (seeded
-    // from `entry.fields`, edited in place), so a Save is set-all — a field the
-    // user cleared must be deleted, not silently retained (BIB-A3-02).
+    // from `entry.fields`, edited in place), so a field the user cleared must
+    // be deleted, not silently retained (BIB-A3-02). But it is that set AS OF
+    // THE SEED (task 1359): Save hands the seed along as `base`, and the door
+    // rebases the edit onto the live entry — a field, `@type` or citekey an
+    // agent, the code view or a peer window changed meanwhile is KEPT, and a
+    // part both sides changed is refused as a `conflict` (editor stays open).
     //
     // CLOSE ON LANDED, never on the click (task 1158). The editor's state is
     // the ONLY copy of what the user typed: the optimistic view rolls back on
@@ -366,6 +376,7 @@ export default function BibEntryCard({
         fields: editBibFields,
         type: editBibType.trim(),
         key: editBibKey.trim(),
+        ...(editBibSeed ? { base: editBibSeed } : {}),
       })
       .then((result) => {
         setSavingBib(false);
@@ -382,11 +393,10 @@ export default function BibEntryCard({
     setShowBibWarning(false);
     setSaveBibError(null);
   };
-  /** Drop a field from the in-progress edit map. Because Save routes through
-   *  the set-all `replaceBibEntry` (D3), a field removed here is DELETED on
-   *  Save — not silently retained as `field = {}` (BIB-F5-04, "I cleared the
-   *  field but it came back"). Deletion is only honored by the set-all path;
-   *  the merge `updateBibEntry` fallback can only patch, never remove. */
+  /** Drop a field from the in-progress edit map. A field the SEED held and
+   *  the editor no longer does is a removal in Save's delta (task 1359), so it
+   *  is DELETED on Save — not silently retained as `field = {}` (BIB-F5-04,
+   *  "I cleared the field but it came back"). */
   const removeEditBibField = (field: string) => {
     setEditBibFields((prev) => {
       const next = { ...prev };

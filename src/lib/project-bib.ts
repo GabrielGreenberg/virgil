@@ -182,11 +182,17 @@ export function didBibWriteLand(
  * the optimistic view back AND destroyed the draft that was the only copy of
  * what the user had typed.
  */
-export type BibSaveResult = BibWriteResult | { kind: "invalid"; reason: string };
+export type BibSaveResult =
+  | BibWriteResult
+  | { kind: "invalid"; reason: string }
+  /** The editor's delta could not be rebased onto the live entry: a part the
+   *  user changed was ALSO changed, to something else, by another writer
+   *  while the editor was open (task 1359, `rebaseBibEdit`). Nothing landed. */
+  | { kind: "conflict"; reason: string };
 
 /** Did a user-gesture save land? The ONE question a composer closes on. */
 export function didBibSaveLand(r: BibSaveResult): boolean {
-  return r.kind !== "invalid" && didBibWriteLand(r);
+  return r.kind !== "invalid" && r.kind !== "conflict" && didBibWriteLand(r);
 }
 
 /**
@@ -203,6 +209,7 @@ export function bibSaveRefusalReason(r: BibSaveResult): string | null {
     case "declined":
       return null;
     case "invalid":
+    case "conflict":
       return r.reason;
     case "read-only":
       return "This bibliography is read-only here — a library paper's references are managed by the library. Nothing was changed.";
