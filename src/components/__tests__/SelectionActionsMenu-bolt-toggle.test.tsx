@@ -19,6 +19,8 @@ const h = vi.hoisted(() => {
     editorRight: 780,
     scrollTop: 0,
     scrollBottom: 600,
+    paperEl: null,
+    toPortalCoords: (x: number, y: number) => ({ x, y }),
   };
   return {
     coords: { left: 200, top: 100, bottom: 120 } as {

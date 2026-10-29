@@ -50,8 +50,6 @@ const LIBRARY = path.resolve(HERE, "../../../library"); // the Library silo
 // site here requires a one-line justification — same discipline as the
 // keystroke-sanctity allowlist in AGENTS.md.
 const PERMITTED_SCROLL_REPOSITIONERS: Record<string, string> = {
-  "components/SelectionActionsMenu.tsx":
-    "RAF-coalesced + `placementsEqual` bail; suppresses during scroll momentum (scroll-idle).",
   "components/PendingChangePill.tsx":
     "RAF-coalesced + `placementsEqual` bail; shares one scheduler with the trigger effect.",
   "components/SlashCommandPopup.tsx":

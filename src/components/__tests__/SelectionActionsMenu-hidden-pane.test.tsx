@@ -18,6 +18,8 @@ const h = vi.hoisted(() => {
     editorRight: 780,
     scrollTop: 0,
     scrollBottom: 600,
+    paperEl: null,
+    toPortalCoords: (x: number, y: number) => ({ x, y }),
   };
   return {
     coords: { left: 200, top: 100, bottom: 120 } as {
@@ -71,7 +73,7 @@ vi.mock("../editor-layout/panel-icons", () => ({
 vi.mock("@/components/editor-layout/layout-scroll", () => ({
   findEditorScrollFor: () => h.scrollParent,
 }));
-vi.mock("@/floats/float-policy", () => ({ RESTING_MARGIN_TRIGGER_Z: 1199 }));
+vi.mock("@/floats/float-policy", () => ({ IN_SCROLL_MARGIN_TRIGGER_Z: 20 }));
 vi.mock("@/lib/scroll-reposition-probe", () => ({
   recordScrollPlacement: () => {},
   SCROLL_PORTAL_SELECTION_BOLT: "selection-bolt",

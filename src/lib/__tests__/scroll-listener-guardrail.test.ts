@@ -86,8 +86,6 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
     "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS. `onScroll = () => hide()`: the suppress half in its purest form, and it must not park.",
   "src/components/PendingChangePill.tsx":
     "SUPPRESS — a text-anchored fixed portal; `update()` returns early while a gesture is live and the render gate hides the pill, settling on the end edge.",
-  "src/components/SelectionActionsMenu.tsx":
-    "SUPPRESS, by its own OLDER channel — the margin bolt's scroll path registers `onScroll` (not the `update` its RESIZE path registers, which is what the pending pill uses for both): `onScroll` calls `suppress()` and resets a 120 ms scroll-idle timer, so the bolt hides for any scroll and re-seats on idle. That predates the layout-gesture bus and covers a content drag's auto-scroll by construction; the file's bus participation is on its resize path.",
   "src/components/SlashCommandPopup.tsx":
     "SUPPRESS — a caret-anchored fixed portal; `scheduleUpdate` bails on `isLayoutGestureActive()`.",
   "src/components/editor-layout/editor-scrollbar.tsx":

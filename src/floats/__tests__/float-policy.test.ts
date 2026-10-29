@@ -35,6 +35,7 @@ import {
   OPEN_CHROME_MENU_Z,
   POPOUT_MAX_VH,
   RESTING_MARGIN_TRIGGER_Z,
+  IN_SCROLL_MARGIN_TRIGGER_Z,
   STACK_CHROME_Z,
   capPopoutHeight,
   cardFloatZ,
@@ -145,6 +146,24 @@ describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
     expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_BASE + 5);
   });
 
+  // Task 1355 — the ⚡ bolt left the fixed tier: it now rides its line inside
+  // the row scroll container (Scroll-anchor law, shape (a)), at the grab
+  // handle's in-scroll tier. Under the sticky pod caps (30/31) so it scrolls
+  // behind them with its line, and therefore below panels + floats (BUG #50
+  // holds by construction).
+  it("seats the in-scroll margin trigger under the pod caps and below floats", () => {
+    expect(IN_SCROLL_MARGIN_TRIGGER_Z).toBeGreaterThan(1); // over NodeView chrome
+    expect(IN_SCROLL_MARGIN_TRIGGER_Z).toBeLessThan(30); // under the top pod cap
+    expect(IN_SCROLL_MARGIN_TRIGGER_Z).toBeLessThan(FLOAT_Z_BASE);
+    // The grab handle's CSS tier is the same number — one tier, two triggers.
+    const css = readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../app/globals.css"),
+      "utf8",
+    );
+    const rule = css.match(/\.text-object-grab-handle\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(rule).toMatch(new RegExp(`z-index:\\s*${IN_SCROLL_MARGIN_TRIGGER_Z}\\b`));
+  });
+
   it("keeps the resting trigger above the docked-panel band (still clickable)", () => {
     // When nothing overlaps, the bolt must out-stack docked panels so it stays
     // visible + clickable.
@@ -207,12 +226,12 @@ describe("BUG #50 consumer wiring", () => {
   const HERE = path.dirname(fileURLToPath(import.meta.url));
   const SRC = path.resolve(HERE, "../.."); // src/
 
-  it("SelectionActionsMenu's resting bolt reads RESTING_MARGIN_TRIGGER_Z, not 2000", () => {
+  it("SelectionActionsMenu's resting bolt reads IN_SCROLL_MARGIN_TRIGGER_Z, not 2000", () => {
     const src = readFileSync(
       path.join(SRC, "components/SelectionActionsMenu.tsx"),
       "utf8",
     );
-    expect(src).toContain("RESTING_MARGIN_TRIGGER_Z");
+    expect(src).toContain("zIndex: IN_SCROLL_MARGIN_TRIGGER_Z");
     expect(src).toContain('from "@/floats/float-policy"');
     // The resting bolt must NOT carry the old above-floats literal.
     expect(src).not.toContain("zIndex: 2000");

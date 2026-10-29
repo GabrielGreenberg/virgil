@@ -2835,7 +2835,8 @@ that matches the surface, don't reinvent the shell:
 | draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
 | context menu / anchored dropdown (`ItemMenu`, help menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
 | caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
-| resting margin trigger (bolt, pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
+| resting margin trigger, in-scroll (⚡ bolt, grab handle) | — | no | `IN_SCROLL_MARGIN_TRIGGER_Z` |
+| resting margin trigger, fixed (pending-change pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
 
 - **`variant="draggable"`** — scrimless window dragged by its header. SystemDialog
   owns the drag (one `useDragPosition`); wire a custom header strip as the grab
@@ -3050,7 +3051,7 @@ call `close` themselves (`ItemMenu`). Non-interactive chrome is `<MenuSeparator>
 / `<MenuSectionLabel>` — the divider and the small uppercase caption, previously
 copied as class literals into ten and seven places respectively.
 
-**A trigger that cannot BE that button** (the ⚡ bolt — a fixed pane-overlay
+**A trigger that cannot BE that button** (the ⚡ bolt — an in-scroll pane-overlay
 portal; the grab handle; the heading lozenge's type chip — NodeView DOM; a
 hand-rolled toolbar trigger) takes the same contract piecewise from
 `menu/menu-trigger.ts`, which `AnchoredMenu` itself consumes: `useMenuTrigger`
@@ -3212,10 +3213,11 @@ number. Full ladder, low → high:
 | tier | z | constant |
 | --- | --- | --- |
 | content / editor prose | 0–99 | (local) |
+| in-scroll margin trigger (⚡ bolt, grab handle — under the pod caps 30/31) | 20 | `IN_SCROLL_MARGIN_TRIGGER_Z` |
 | below-panel chrome (dock-target outline; Stack icon + strip) | 999 | `DOCK_OUTLINE_Z`, `STACK_CHROME_Z` (= `FLOATING_PANEL_Z_BASE - 1`) |
 | docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
 | card-lift source outline | 1100 | `LIFT_OUTLINE_Z` (= `FLOAT_Z_BASE - 100`) |
-| resting margin trigger | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
+| resting margin trigger, fixed (pending-change pill) | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
 | float layer (popped cards, lift overlay) — BOUNDED band | 1200–1204 | `FLOAT_Z_BASE` … `FLOAT_Z_MAX` (via `cardFloatZ`) |
 | draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` (= `FLOAT_Z_MAX + 1`) |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |

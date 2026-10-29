@@ -146,7 +146,7 @@ describe("pane-owned body portals go through PaneOverlayPortal (task 753)", () =
   it("the bolt and the pending-change pill ride the door", () => {
     for (const rel of ["components/SelectionActionsMenu.tsx", "components/PendingChangePill.tsx"]) {
       const src = readFileSync(path.join(SRC, rel), "utf8");
-      expect(src, rel).toMatch(/<PaneOverlayPortal>/);
+      expect(src, rel).toMatch(/<PaneOverlayPortal\b/);
       expect(src, rel).not.toMatch(PORTAL);
     }
   });

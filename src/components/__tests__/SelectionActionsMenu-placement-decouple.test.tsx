@@ -10,10 +10,10 @@
 //
 // These tests drive the REAL component with mocked heavy deps and pin the three
 // contract points from the task's `## Verify`:
-//   (1) menuTarget survives a full scroll suppress→idle cycle (menu not
-//       unmounted) — the sev-med regression;
-//   (2) a genuine off-screen recompute (visible:false, range preserved) still
-//       closes the menu;
+//   (1) menuTarget survives a scroll (menu not unmounted) — the sev-med
+//       regression; since task 1355 the resting bolt survives it too;
+//   (2) a scroll that carries the line out of the band still closes the menu
+//       (through the live anchor read — the bolt has no scroll listener);
 //   (3) Cmd+/ with an off-screen caret calls scrollIntoView and, once the caret
 //       is brought on-screen, opens the panel at a real (non-0,0) position.
 
@@ -28,6 +28,8 @@ const h = vi.hoisted(() => {
     editorRight: 780,
     scrollTop: 0,
     scrollBottom: 600,
+    paperEl: null,
+    toPortalCoords: (x: number, y: number) => ({ x, y }),
   };
   return {
     coords: { left: 200, top: 100, bottom: 120 } as {
@@ -88,7 +90,7 @@ vi.mock("../editor-layout/panel-icons", () => ({
 vi.mock("@/components/editor-layout/layout-scroll", () => ({
   findEditorScrollFor: () => h.scrollParent,
 }));
-vi.mock("@/floats/float-policy", () => ({ RESTING_MARGIN_TRIGGER_Z: 1199 }));
+vi.mock("@/floats/float-policy", () => ({ IN_SCROLL_MARGIN_TRIGGER_Z: 20 }));
 vi.mock("@/lib/scroll-reposition-probe", () => ({
   recordScrollPlacement: () => {},
   SCROLL_PORTAL_SELECTION_BOLT: "selection-bolt",
@@ -166,67 +168,108 @@ function openViaBolt(container: HTMLElement) {
 }
 
 describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () => {
-  it("keeps the OPEN menu mounted across a scroll suppress→idle cycle", () => {
+  // Task 1355 — the resting bolt RIDES ITS LINE: it no longer listens to the
+  // scroll at all (it portals into the in-scroll host and moves by layout), so
+  // a scroll can neither hide the bolt nor close the open menu while the line
+  // stays in the band.
+  it("keeps the resting bolt AND the open menu mounted across a scroll", () => {
     const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
+    const bolt = () =>
+      baseElement.querySelector('button[aria-label="Open actions menu"]');
 
     openViaBolt(baseElement as HTMLElement);
     expect(
       baseElement.querySelector('[data-testid="actions-menu-panel"]'),
     ).toBeTruthy();
 
-    // First scroll tick → suppress() (hides the bolt, must NOT close the menu).
     act(() => {
       fireEvent.scroll(h.scrollParent!);
+      fireEvent.scroll(h.scrollParent!);
     });
+    expect(bolt(), "the bolt stays painted mid-scroll").toBeTruthy();
     expect(
       baseElement.querySelector('[data-testid="actions-menu-panel"]'),
-      "menu must survive the scroll-suppress tick",
+      "menu must survive the scroll",
     ).toBeTruthy();
-    // The resting bolt is hidden during suppression.
-    expect(
-      baseElement.querySelector('button[aria-label="Open actions menu"]'),
-    ).toBeNull();
-
-    // Idle timer (120ms) + the RAF recompute fire; caret still on-screen.
     act(() => {
       vi.advanceTimersByTime(300);
     });
+    expect(bolt(), "…and after it").toBeTruthy();
     expect(
       baseElement.querySelector('[data-testid="actions-menu-panel"]'),
-      "menu must survive the full suppress→idle cycle",
-    ).toBeTruthy();
-    // Bolt returns after settle.
-    expect(
-      baseElement.querySelector('button[aria-label="Open actions menu"]'),
     ).toBeTruthy();
   });
 
-  it("closes the menu when the anchored selection scrolls fully off-screen", () => {
+  it("paints the bolt in portal coords at position:absolute, pointer-events on", () => {
+    // The portal host's origin sits 40px down / 10px right of the viewport.
+    const prev = h.cache as unknown as Record<string, unknown>;
+    const saved = prev.toPortalCoords;
+    prev.toPortalCoords = (x: number, y: number) => ({ x: x - 10, y: y - 40 });
+    try {
+      const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
+      const bolt = baseElement.querySelector(
+        'button[aria-label="Open actions menu"]',
+      ) as HTMLButtonElement;
+      expect(bolt.style.position).toBe("absolute");
+      expect(bolt.style.pointerEvents).toBe("auto");
+      expect(bolt.style.left).toBe("750px"); // 760 − 10
+      expect(bolt.style.top).toBe("60px"); // line top 100 − 40, NO band clamp
+      // The open menu anchors in VIEWPORT coords (portal origin added back).
+      act(() => {
+        fireEvent.click(bolt);
+      });
+      const panel = baseElement.querySelector(
+        '[data-testid="actions-menu-panel"]',
+      ) as HTMLElement;
+      expect(panel.dataset.left).toBe("760");
+      expect(panel.dataset.top).toBe("100");
+      expect(h.track!()).toMatchObject({ left: 760, top: 100 });
+    } finally {
+      prev.toPortalCoords = saved;
+    }
+  });
+
+  it("portals the bolt into the in-scroll [data-grab-handle-portal] host", () => {
+    const column = document.createElement("div");
+    const host = document.createElement("div");
+    host.setAttribute("data-grab-handle-portal", "");
+    column.appendChild(host);
+    document.body.appendChild(column);
+    const prev = h.cache as unknown as Record<string, unknown>;
+    prev.paperEl = column;
+    try {
+      render(<SelectionActionsMenu editor={makeEditor()} />);
+      const bolt = document.querySelector('button[aria-label="Open actions menu"]');
+      expect(bolt?.parentElement).toBe(host);
+    } finally {
+      prev.paperEl = null;
+    }
+  });
+
+  it("closes the menu when a scroll carries the anchored line out of the band", () => {
     const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
-
     openViaBolt(baseElement as HTMLElement);
-    expect(
-      baseElement.querySelector('[data-testid="actions-menu-panel"]'),
-    ).toBeTruthy();
+    const panel = () =>
+      baseElement.querySelector('[data-testid="actions-menu-panel"]');
+    expect(panel()).toBeTruthy();
+    // The provider's open-time measure reads the live anchor once, in band.
+    expect(h.track!()).toMatchObject({ top: 100 });
 
-    // Selection goes off-screen (bottom < scrollTop) → recompute yields
-    // visible:false with range preserved → genuine close.
+    // The line scrolls above the band; the menu provider's next live re-read
+    // (≤1/frame on scroll) is what notices — the bolt has no scroll listener.
     h.coords = { left: 200, top: -80, bottom: -60 };
+    let rect: unknown;
     act(() => {
-      fireEvent.scroll(h.scrollParent!);
-      vi.advanceTimersByTime(300);
+      rect = h.track!();
     });
-    expect(
-      baseElement.querySelector('[data-testid="actions-menu-panel"]'),
-      "a genuine off-screen drop still closes the menu",
-    ).toBeNull();
+    // The closing read answers the LAST in-band rect, never null (null would
+    // fling the menu back to its open-time rect for the closing frame).
+    expect(rect).toMatchObject({ top: 100 });
+    expect(panel(), "an off-band line closes the menu").toBeNull();
   });
 
-  // Task 1200 — the OPEN menu's position is LIVE during the scroll. The
-  // placement pass is suppressed for the whole gesture (the resting bolt's
-  // jitter guard), so the static `triggerRect` is frozen at the scroll's start;
-  // the panel must therefore get a `trackAnchor` thunk that re-reads the head
-  // line from the live view — the provider calls it ≤1/frame on scroll.
+  // Task 1200 — the OPEN menu (a fixed `<Menu>` portal) gets a `trackAnchor`
+  // thunk that re-reads the head line from the live view mid-scroll.
   it("hands the open menu a LIVE anchor that follows the line mid-scroll", () => {
     const { baseElement } = render(<SelectionActionsMenu editor={makeEditor()} />);
     openViaBolt(baseElement as HTMLElement);
@@ -235,29 +278,15 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
     expect(h.track, "the panel receives a trackAnchor thunk").toBeTypeOf("function");
     expect(h.track!()?.top).toBe(100);
 
-    // Scroll starts (suppression on) and the line moves down the viewport.
-    act(() => {
-      fireEvent.scroll(h.scrollParent!);
-    });
     h.coords = { left: 200, top: 300, bottom: 320 };
     act(() => {
-      vi.advanceTimersByTime(16); // one frame — well inside the 120 ms idle
+      fireEvent.scroll(h.scrollParent!);
+      vi.advanceTimersByTime(16);
     });
-    // The static rect is frozen (that was the bug's whole mechanism)…
+    // The static open-time rect stays where it was opened…
     expect(panel().dataset.top).toBe("100");
     // …but the live anchor answers the line's CURRENT position.
     expect(h.track!()).toMatchObject({ top: 300, left: 760 });
-
-    // Line scrolls off-screen mid-gesture: the thunk holds the LAST live rect
-    // (null would fall back to the frozen open-time rect and fling the menu back).
-    h.coords = { left: 200, top: -80, bottom: -60 };
-    expect(h.track!()).toMatchObject({ top: 300 });
-
-    // Scroll-idle: the settled off-screen drop still closes the menu.
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    expect(panel()).toBeNull();
   });
 
   // Task 299 — the resting ⚡ bolt's hover-on-light affordance must be LIVE.
@@ -287,40 +316,32 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
 
   it("Cmd+/ with an off-screen caret calls scrollIntoView and opens on-screen", () => {
     const editor = makeEditor();
-    // Caret starts off-screen: no bolt, no menu.
+    // Caret starts off-screen. The bolt is still MOUNTED (task 1355): it sits
+    // beside its line in portal coords and the row scroll container clips it.
     h.coords = { left: 200, top: -80, bottom: -60 };
+    // PM scrolls synchronously inside the scrollIntoView dispatch.
+    h.scrollIntoView.mockImplementation(() => {
+      h.coords = { left: 200, top: 100, bottom: 120 };
+    });
     const { baseElement } = render(<SelectionActionsMenu editor={editor} />);
     act(() => {
       vi.advanceTimersByTime(50);
     });
     expect(
-      baseElement.querySelector('button[aria-label="Open actions menu"]'),
+      baseElement.querySelector('[data-testid="actions-menu-panel"]'),
     ).toBeNull();
 
-    // Cmd+/ — must NOT be swallowed: scrollIntoView is called and menuTarget set.
     act(() => {
       fireEvent.keyDown(document.body, { key: "/", metaKey: true });
     });
     expect(h.scrollIntoView).toHaveBeenCalledTimes(1);
-    // Panel not yet rendered (placement still off-screen until scroll settles).
-    expect(
-      baseElement.querySelector('[data-testid="actions-menu-panel"]'),
-    ).toBeNull();
-
-    // scrollIntoView brings the caret on-screen; the resulting scroll settles
-    // and the recompute yields a real placement — the RISE must NOT close the
-    // menu it just opened, and the panel anchors off the 0,0 corner.
-    h.coords = { left: 200, top: 100, bottom: 120 };
-    act(() => {
-      fireEvent.scroll(h.scrollParent!);
-      vi.advanceTimersByTime(300);
-    });
     const panel = baseElement.querySelector(
       '[data-testid="actions-menu-panel"]',
     );
-    expect(panel, "Cmd+/ opens the menu after the caret scrolls in").toBeTruthy();
-    expect(panel?.getAttribute("data-left")).not.toBe("0");
-    expect(panel?.getAttribute("data-top")).not.toBe("0");
+    expect(panel, "Cmd+/ opens the menu at the scrolled-in caret").toBeTruthy();
+    expect(panel?.getAttribute("data-left")).toBe("760");
+    expect(panel?.getAttribute("data-top")).toBe("100");
+    h.scrollIntoView.mockReset();
   });
 });
 
