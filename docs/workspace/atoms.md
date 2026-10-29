@@ -122,8 +122,10 @@ not Atoms, but a skill editing inline content meets them:
   left ambiguous in the prose buffer. `inclusive: false` (task 360), so text
   typed past the closing brace is prose again. This is how arbitrary LaTeX
   round-trips; see [latex.md → opaque fallbacks](latex.md#the-two-opaque-fallbacks).
-- **`textColor`** — `\textcolor[HTML]{RRGGBB}{}` (only the `[HTML]{6-hex}` form;
-  named colors round-trip as plain text).
+- **`textColor`** — `\textcolor[HTML]{RRGGBB}{}` (only the `[HTML]{6-hex}` form).
+  A named colour (`\textcolor{red}{}`) is NOT the mark: its bytes survive, but
+  as a grey raw-LaTeX `latexCommand` span. The colour vocabulary is stated once,
+  in [_latex-allowlist.md](../../editor/skills/_latex-allowlist.md).
 - **There is no `label` mark.** A `\label{}` is **absorbed into a `label` attr**
   on the node that declares it — `heading`, `figureBlock`, `exampleBlock`,
   `exampleItem` (`LABEL_DECLARING_NODE_TYPES`, schema-pinned in
