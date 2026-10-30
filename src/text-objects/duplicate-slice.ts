@@ -46,7 +46,13 @@ import type { CardKind } from "@/panels/_shared/types";
 import { generateEntityId, generateShortId } from "@/lib/uuid";
 import { linkCardKey, parseLinkCardKey } from "@/links/link-dom-contract";
 import { mapJsonDeep, remintNestedAtomIds } from "@/lib/inline-content";
-import { collectLabelKeysIn } from "@/lib/labels";
+import {
+  collectLabelKeysIn,
+  isLabelDeclaringText,
+  isLabelDeclaringTextNode,
+  labelsLiveBeneath,
+  mapLiveLabels,
+} from "@/lib/labels";
 import { LABEL_DECLARING_NODE_TYPES } from "@/lib/node-attr-sets";
 import { cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
@@ -147,7 +153,7 @@ export function duplicateSlice(
   opts?: DuplicateSliceOptions,
 ): Slice {
   const table = createRemintTable(lifecycle, diag, opts?.takenLabels ?? collectSliceLabels(slice));
-  const content = transformFragment(slice.content, table);
+  const content = transformFragment(slice.content, table, null, true);
   return new Slice(content, slice.openStart, slice.openEnd);
 }
 
@@ -188,8 +194,6 @@ interface RemintTable {
   /** A source `\label` key → the copy's fresh key. */
   label(sourceKey: string): string;
 }
-
-const LABEL_CMD_RE = /\\label\{([^}]+)\}/g;
 
 function createRemintTable(
   lifecycle: CardLifecycleApi,
@@ -271,19 +275,37 @@ function collectSliceLabels(slice: Slice): Set<string> {
   return collectLabelKeysIn(slice.content);
 }
 
-/** Rewrite every `\label{key}` in raw source to the table's fresh key. */
+/** Rewrite every LIVE `\label{key}` in raw source to the table's fresh key —
+ *  through `mapLiveLabels`, so a `\label` inside a `%` comment or a verbatim
+ *  region of the source keeps its bytes (task 1374). */
 function remintRawLabels(text: string, table: RemintTable): string {
-  if (!text.includes("\\label{")) return text;
-  return text.replace(LABEL_CMD_RE, (_all, key: string) => `\\label{${table.label(key)}}`);
+  return mapLiveLabels(text, (key) => table.label(key));
 }
 
-function transformFragment(fragment: Fragment, table: RemintTable): Fragment {
+/**
+ * `parent` is the fragment's owner (`null` for the slice's top level), and
+ * `labelsLive` is false beneath a node whose subtree declares no raw labels
+ * (`labelsLiveBeneath` — a figure). Both feed the SAME inert-region rule
+ * `collectLabelKeysIn` reads, so the walk re-mints exactly the declarations
+ * the taken-set counted (task 1374).
+ */
+function transformFragment(
+  fragment: Fragment,
+  table: RemintTable,
+  parent: PMNode | null,
+  labelsLive: boolean,
+): Fragment {
   const out: PMNode[] = [];
-  fragment.forEach((child) => out.push(transformNode(child, table)));
+  fragment.forEach((child) => out.push(transformNode(child, table, parent, labelsLive)));
   return Fragment.fromArray(out);
 }
 
-function transformNode(node: PMNode, table: RemintTable): PMNode {
+function transformNode(
+  node: PMNode,
+  table: RemintTable,
+  parent: PMNode | null,
+  labelsLive: boolean,
+): PMNode {
   const { diag } = table;
   // Marks: remint linkedAnchor through the table (or strip on an
   // unresolvable card); pass other marks through unchanged.
@@ -300,11 +322,15 @@ function transformNode(node: PMNode, table: RemintTable): PMNode {
   // Text nodes have no attrs or content; their identity is (text,
   // marks). `node.type.create()` REJECTS text-node construction with
   // "NodeType.create can't construct text nodes" — so route through
-  // `schema.text` / `node.mark()`. A raw `\label{}` in the text is a
-  // declaration and is reminted like any other.
+  // `schema.text` / `node.mark()`. A raw `\label{}` in LIVE text is a
+  // declaration and is reminted like any other; inert text (a `codeBlock`
+  // listing, a `%` comment) keeps its bytes.
   if (node.isText) {
     const text = node.text ?? "";
-    const newText = remintRawLabels(text, table);
+    const newText =
+      labelsLive && isLabelDeclaringTextNode(node, parent)
+        ? remintRawLabels(text, table)
+        : text;
     if (newText !== text) return node.type.schema.text(newText, newMarks);
     return newMarks === node.marks ? node : node.mark(newMarks);
   }
@@ -312,7 +338,7 @@ function transformNode(node: PMNode, table: RemintTable): PMNode {
   // Recurse for non-text nodes so the rebuilt node carries rewritten
   // children. (Text nodes have empty content, no need to recurse.)
   const newContent = node.content.size
-    ? transformFragment(node.content, table)
+    ? transformFragment(node.content, table, node, labelsLive && labelsLiveBeneath(node))
     : node.content;
 
   // Attrs: remint inline-atom id (if applicable) + TextObject uuid.
@@ -358,18 +384,20 @@ function transformNode(node: PMNode, table: RemintTable): PMNode {
       },
     );
     newAttrs.content = mapJsonDeep(reminted, (j) => {
-      if (j.type !== "text" || !j.text) return j;
+      if (!labelsLive || j.type !== "text" || !j.text) return j;
+      if (!isLabelDeclaringText(j.marks, null)) return j;
       const text = remintRawLabels(j.text, table);
       return text === j.text ? j : { ...j, text };
     });
   }
 
-  // Label declarations — the same set `collectLabelKeysIn` reads.
-  if (LABEL_DECLARING_NODE_TYPES.has(node.type.name)) {
+  // Label declarations — the same set `collectLabelKeysIn` reads (and, like
+  // it, none beneath a node `labelsLiveBeneath` closes).
+  if (labelsLive && LABEL_DECLARING_NODE_TYPES.has(node.type.name)) {
     const label = newAttrs.label;
     if (typeof label === "string" && label) newAttrs.label = table.label(label);
   }
-  if (node.type.name === "displayMath" && typeof newAttrs.latex === "string") {
+  if (labelsLive && node.type.name === "displayMath" && typeof newAttrs.latex === "string") {
     newAttrs.latex = remintRawLabels(newAttrs.latex, table);
   }
 
