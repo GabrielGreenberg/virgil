@@ -72,6 +72,17 @@ export { isEscaped, findUnescaped };
 export const VERBATIM_ENVS_NARROW = ["verbatim", "verbatim*"] as const;
 
 /**
+ * The environments a DETECTOR treats as inert: the NARROW verbatim family
+ * plus the `comment` package's `comment` env (task 1370). `comment` is not a
+ * verbatim env for the byte-compat reason NARROW is narrow — its body is a
+ * block the AUTHOR switched off, the commonest way after `%` to park an old
+ * draft paragraph, and an `\autocite` parked there must not inject biblatex
+ * into a natbib paper. `lstlisting`/`minted` stay live to detectors for the
+ * P3 fork F1 reason ({@link projectDetectableLatex}).
+ */
+export const DETECTOR_INERT_ENVS = [...VERBATIM_ENVS_NARROW, "comment"] as const;
+
+/**
  * The FULL verbatim family — environments whose body **does not execute as
  * LaTeX**. Membership grants three things, and the criterion is exactly what
  * those three need:
@@ -994,6 +1005,15 @@ export interface ProjectLiveLatexOptions {
    * false.
    */
   unterminatedIsLive?: boolean;
+  /**
+   * When true, a TOP-LEVEL conditional-false block — `\iffalse … \fi` or
+   * `\if0 … \fi` — is inert too, up to its `\else` if it has one (the `\else`
+   * branch is live). Applied AFTER the comment/verbatim pass, so a `%`'d
+   * `\fi` closes nothing, exactly as in TeX. See
+   * {@link blankFalseConditionals} for the matching rules and their
+   * fail-OPEN cases. Default false (task 1370).
+   */
+  inertConditionals?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,6 +1408,187 @@ export function projectLiveLatex(
   src: string,
   opts?: ProjectLiveLatexOptions,
 ): string {
+  const projected = projectCommentsAndVerbatim(src, opts);
+  if (!opts?.inertConditionals) return projected;
+  return blankFalseConditionals(
+    projected,
+    opts.preserveOffsets ? blankSame : () => "",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Conditional-false blocks (`\iffalse … \fi`, `\if0 … \fi`) — task 1370
+// ---------------------------------------------------------------------------
+
+/** TeX's primitive conditionals (+ e-TeX / pdfTeX), each closed by `\fi`. A
+ *  false block's skip counts exactly these, plus `\if@…` names and whatever
+ *  the source declares with `\newif` — NOT every control word spelled `\if…`:
+ *  `\iff` is a relation and etoolbox's `\ifdef`/`\ifstrequal`/… are macros
+ *  that take no `\fi`, so counting them would close a block late. */
+const PRIMITIVE_CONDITIONALS: ReadonlySet<string> = new Set([
+  "if", "ifcat", "ifnum", "ifdim", "ifodd", "ifvmode", "ifhmode", "ifmmode",
+  "ifinner", "ifvoid", "ifhbox", "ifvbox", "ifx", "ifeof", "iftrue",
+  "iffalse", "ifcase", "ifdefined", "ifcsname", "iffontchar", "ifincsname",
+  "ifpdfprimitive", "ifpdfabsnum", "ifpdfabsdim",
+]);
+
+/** Control words after which a following `\if…` is NAMED, not executed —
+ *  `\newif\iffoo`, `\let\x\iffalse`, `\def\iffoo`, `\expandafter\iffalse`'s
+ *  cousins. Such a token neither opens a block nor counts toward nesting. */
+const NAMING_PREFIXES: ReadonlySet<string> = new Set([
+  "let", "futurelet", "newif", "def", "gdef", "edef", "xdef", "global",
+  "noexpand", "string", "meaning", "csname", "newcommand", "renewcommand",
+  "providecommand", "DeclareRobustCommand",
+]);
+
+interface CwToken {
+  name: string;
+  start: number;
+  end: number;
+  depth: number;
+}
+
+/**
+ * Blank every TOP-LEVEL conditional-false block of an already
+ * comment/verbatim-projected source. The rules, each a fail-OPEN choice
+ * (an unrecognised block stays LIVE — the pre-1370 behaviour — because
+ * blanking too much under-declares silently, where a miss is just the old
+ * answer):
+ *
+ *  - An opener is `\iffalse`, or `\if` followed by `0` (`\if0`, `\if 0`), at
+ *    brace depth 0 — so `\def\x{\iffalse}` is a definition, not a block — and
+ *    not in a naming position ({@link NAMING_PREFIXES}).
+ *  - Its close is the `\fi` that MATCHES it, counting nested conditionals
+ *    ({@link PRIMITIVE_CONDITIONALS}, `\if@…`, `\newif`-declared names) at
+ *    the same brace depth. A conditional left open when its group's `}`
+ *    closes is discarded, so an unbalanced `{\iffalse}` cannot steal a `\fi`.
+ *  - No matching `\fi` (unterminated, or a `{` left open inside the block) ⇒
+ *    TRANSPARENT. Unlike an unterminated verbatim, which swallows to EOF: a
+ *    stray `\iffalse` in a macro is ordinary, and blanking the rest of the
+ *    file would erase every live requirement below it.
+ *  - `\else` at the block's own level ends the inert part; the else branch
+ *    is live, and only its `\fi` token is blanked.
+ *
+ * One tokenizing pass plus one stack, so O(n).
+ */
+export function blankFalseConditionals(
+  src: string,
+  blank: (sp: string) => string,
+): string {
+  if (!src.includes("\\if")) return src;
+  const declared = new Set<string>();
+  for (const m of src.matchAll(/\\newif\s*\\(if[a-zA-Z@]+)/g)) {
+    declared.add(m[1]);
+  }
+  const isConditional = (name: string): boolean =>
+    PRIMITIVE_CONDITIONALS.has(name) ||
+    name.startsWith("if@") ||
+    declared.has(name);
+
+  // Tokenize control words with their brace depth. Control symbols (`\{`,
+  // `\}`, `\\`, …) are stepped over whole so they never move the depth.
+  const toks: CwToken[] = [];
+  let depth = 0;
+  type Entry = { tok: number; region: boolean; elseEnd: number };
+  const stack: Entry[] = [];
+  const spans: Array<[number, number]> = [];
+  const nameAt = (k: number): string | undefined => toks[k]?.name;
+  for (let i = 0; i < src.length; ) {
+    const ch = src[i];
+    if (ch === "{") {
+      depth++;
+      i++;
+      continue;
+    }
+    if (ch === "}") {
+      depth = Math.max(0, depth - 1);
+      while (stack.length && toks[stack[stack.length - 1].tok].depth > depth) {
+        stack.pop();
+      }
+      i++;
+      continue;
+    }
+    if (ch !== "\\") {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < src.length && /[a-zA-Z@]/.test(src[j])) j++;
+    if (j === i + 1) {
+      i += 2;
+      continue;
+    }
+    const tok: CwToken = { name: src.slice(i + 1, j), start: i, end: j, depth };
+    const k = toks.push(tok) - 1;
+    i = j;
+    if (tok.name === "fi") {
+      const top = stack[stack.length - 1];
+      if (top && toks[top.tok].depth === depth) {
+        stack.pop();
+        if (top.region) {
+          const open = toks[top.tok];
+          if (top.elseEnd === -1) {
+            spans.push([open.start, tok.end]);
+          } else {
+            spans.push([open.start, top.elseEnd], [tok.start, tok.end]);
+          }
+        }
+      }
+      continue;
+    }
+    if (tok.name === "else") {
+      const top = stack[stack.length - 1];
+      if (top && toks[top.tok].depth === depth && top.elseEnd === -1) {
+        top.elseEnd = tok.end;
+      }
+      continue;
+    }
+    if (!isConditional(tok.name)) continue;
+    // Naming position: `\newif\iffoo`, `\let\x\iffalse`, `\let\x=\iffalse`.
+    const prev = nameAt(k - 1);
+    const prevTok = toks[k - 1];
+    const adjacent =
+      prevTok !== undefined && /^[\s=]*$/.test(src.slice(prevTok.end, tok.start));
+    if (adjacent && prev !== undefined && NAMING_PREFIXES.has(prev)) continue;
+    const prev2 = nameAt(k - 2);
+    if (adjacent && (prev2 === "let" || prev2 === "futurelet")) continue;
+    const region =
+      depth === 0 &&
+      (tok.name === "iffalse" ||
+        (tok.name === "if" && /^\s*0(?!0)/.test(src.slice(j, j + 8))));
+    stack.push({ tok: k, region, elseEnd: -1 });
+  }
+  if (spans.length === 0) return src;
+
+  // Outermost spans only: a block nested inside an inert span is already
+  // covered. A block inside a live `\else` branch lies outside every span.
+  spans.sort((a, b) => a[0] - b[0]);
+  let out = "";
+  let last = 0;
+  for (const [s, e] of spans) {
+    if (s < last) continue;
+    out += src.slice(last, s) + blankKeepingNewlines(src.slice(s, e), blank);
+    last = e;
+  }
+  return out + src.slice(last);
+}
+
+/** A multi-line inert span keeps its newlines, matching the line-based
+ *  verbatim pass (line geometry survives in both projection modes). */
+function blankKeepingNewlines(
+  span: string,
+  blank: (sp: string) => string,
+): string {
+  return span
+    .split("\n")
+    .map((line) => blank(line))
+    .join("\n");
+}
+
+function projectCommentsAndVerbatim(
+  src: string,
+  opts?: ProjectLiveLatexOptions,
+): string {
   const envs = opts?.envs ?? VERBATIM_ENVS_NARROW;
   const inlineVerb = opts?.inlineVerb ?? false;
   // The ONE difference between the dropping and the offset-preserving form:
@@ -1521,9 +1722,24 @@ export function projectLiveLatex(
  * direction — a missing `\usepackage` is a loud compile error, where the
  * over-declaration it replaced silently broke a compiling paper — but it is a
  * behaviour, not an accident.
+ *
+ * Since task 1370 the door also knows TeX's two other ordinary ways of
+ * switching a BLOCK off: the `comment` env ({@link DETECTOR_INERT_ENVS}) and a
+ * top-level `\iffalse`/`\if0 … \fi` ({@link blankFalseConditionals}). Before
+ * it, an `\autocite` in a parked `\iffalse` draft made biblatex "required" in
+ * a natbib paper (a package clash on save), and an `\iffalse`'d
+ * `\usepackage{biblatex}` outranked a live natbib for `detectBibFamily`. This
+ * DELIBERATELY changes injection for such docs, in the safe direction. A
+ * conditional the door cannot match fails OPEN (stays live) — the old answer.
+ * Residual: the structural/boundary door ({@link projectStructuralLatex})
+ * does not take the conditional pass, so an `\iffalse`'d `\begin{document}`
+ * still reads as the boundary there.
  */
 export function projectDetectableLatex(src: string): string {
-  return projectLiveLatex(src, { envs: VERBATIM_ENVS_NARROW });
+  return projectLiveLatex(src, {
+    envs: DETECTOR_INERT_ENVS,
+    inertConditionals: true,
+  });
 }
 
 /** The `\begin{document}` token — the preamble/body boundary, spelled once for

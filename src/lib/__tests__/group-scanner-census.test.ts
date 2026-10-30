@@ -32,11 +32,16 @@ interface Allowed {
 
 const ALLOWED: Record<string, Allowed> = {
   "src/lib/latex-lexer.ts": {
-    depth: 4,
+    // 4 → 5 (task 1370): `blankFalseConditionals` tags each control word with
+    // its brace DEPTH (a top-level `\iffalse` test + same-depth `\fi`
+    // matching) over an already comment-projected source — a depth test, not
+    // a group-close search.
+    depth: 5,
     bracket: 0,
     reason:
-      "THE door itself (findGroupClose + its blind fallback) and the inline-verbatim " +
-      "payload/option readers, whose payload is literal by definition",
+      "THE door itself (findGroupClose + its blind fallback), the inline-verbatim " +
+      "payload/option readers, whose payload is literal by definition, and the " +
+      "conditional-false pass's depth tagging (task 1370)",
   },
   "src/lib/bib-source.ts": {
     // 5 → 3 (task 1156): the block / citekey-head / braced-value walks fold into
