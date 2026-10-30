@@ -3193,7 +3193,11 @@ Enter/click commit refuses on.
   `menuRowReasonProps` (row hint + `aria-description`). A row's advertised
   chord (`MenuActionRow shortcut=`) is the constant its binding MATCHES
   (`matchesPortableChord`), never a hand-spelled copy. CI:
-  `menu-disabled-reason.test.tsx`.
+  `menu-disabled-reason.test.tsx`. The same holds for EVERY advertised chord
+  (task 1376) — a `useHint({ keys })` / `iconHint({ keys })` / `<Kbd keys>` /
+  `shortcut=` naming a ⌘/Ctrl chord passes a CONSTANT that a binding matches
+  (`matchesPortableChord`, or `chordPress` for a window-level binding, which
+  also swallows a held chord's auto-repeat). CI: `portable-chord-census.test.ts`.
 - **A row's key verbs are announced by the primitive** (task 1362). The keys a
   row answers to — its `letter` + `letterAliases` (only in a `letterShortcuts`
   menu), `Delete Backspace` for a `remove` verb, a `MenuActionRow shortcut=`

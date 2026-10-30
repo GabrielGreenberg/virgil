@@ -65,6 +65,7 @@ import { iconHint } from "@/components/Hint";
 import type { StatusTone } from "./StatusDot";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { isCommitEnter } from "@/lib/key-intent";
+import { FIELD_COMMIT_SHORTCUT, matchesPortableChord } from "@/lib/portable-chord";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -919,7 +920,7 @@ export default function AIWindow({
   ]);
 
   const onComposerKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
-    if (isCommitEnter(e) && (e.metaKey || e.ctrlKey)) {
+    if (isCommitEnter(e) && matchesPortableChord(e, FIELD_COMMIT_SHORTCUT)) {
       e.preventDefault();
       submitComposer();
     }
@@ -1131,7 +1132,7 @@ export default function AIWindow({
                               (composerNeedsBibKey && !composerBibKey.trim()) ||
                               (!composerNeedsBibKey && !composerText.trim())
                             }
-                            {...iconHint({ label: "Submit", keys: "Mod+Enter" })}
+                            {...iconHint({ label: "Submit", keys: FIELD_COMMIT_SHORTCUT })}
                           >
                             Submit
                           </Button>

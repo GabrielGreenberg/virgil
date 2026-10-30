@@ -43,6 +43,7 @@ import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
 import { useMenuTrigger } from "./menu/menu-trigger";
 import { useHint } from "./Hint";
+import { chordPress } from "@/lib/portable-chord";
 import {
   coordsAtPosCached,
   type EditorViewportFrame,
@@ -63,6 +64,10 @@ import {
   isLayoutGestureActive,
   onLayoutGestureChange,
 } from "@/lib/pane-resize";
+
+/** The actions-menu chord, stated once (task 1376): the bolt's hint renders it
+ *  and the window `keydown` binding matches it through `chordPress`. */
+const ACTIONS_MENU_SHORTCUT = "Mod+/";
 
 const VIEWPORT_MARGIN = 8;
 // Action-button (collapsed state) dimensions — sized to match one menu row's
@@ -504,13 +509,21 @@ export function SelectionActionsMenu({
     menuOpenRef.current = menuTarget !== null;
   }, [menuTarget]);
 
-  // Cmd+/ opens the menu at the live cursor/selection — the keyboard twin of
-  // clicking the margin ⚡. O(1) bail; window-level (not an editor.on
-  // subscriber), so it costs nothing per keystroke.
+  // ACTIONS_MENU_SHORTCUT (⌘/ or Ctrl+/) opens the menu at the live
+  // cursor/selection — the keyboard twin of clicking the margin ⚡. It matches
+  // the SAME constant the bolt's hint renders (task 1376: the hint said Ctrl+/
+  // off Mac while the handler rejected Ctrl), and a held chord's auto-repeat is
+  // swallowed rather than re-toggling the menu per repeat. O(1) bail;
+  // window-level (not an editor.on subscriber), so it costs nothing per
+  // keystroke.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
+      const press = chordPress(e, ACTIONS_MENU_SHORTCUT);
+      if (!press) return;
+      if (press === "held") {
+        e.preventDefault();
         return;
+      }
       const ed = editor;
       if (!ed || ed.isDestroyed) return;
       // Already open → toggle it closed (cursor stays; editor kept focus).
@@ -543,7 +556,7 @@ export function SelectionActionsMenu({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [editor, liveBoltRect]);
 
-  const hint = useHint({ keys: "Mod+/" });
+  const hint = useHint({ keys: ACTIONS_MENU_SHORTCUT });
 
   if (typeof document === "undefined") return null;
 

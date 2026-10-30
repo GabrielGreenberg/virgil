@@ -1,3 +1,5 @@
+import { isDeliberateKeyPress, isImeComposing } from "@/lib/key-intent";
+
 /**
  * Does a keyboard event press a PORTABLE chord — the `+` spelling `<Kbd>` and
  * `data-hint-keys` render (`"Mod+Shift+N"`)?
@@ -27,4 +29,37 @@ export function matchesPortableChord(
   if (mods.has("shift") !== e.shiftKey) return false;
   if (mods.has("alt") !== e.altKey) return false;
   return e.key.toLowerCase() === key.toLowerCase();
+}
+
+/**
+ * The field-commit chord — ⌘/Ctrl+Enter commits a multi-line field whose plain
+ * Enter is a newline (the AI window's composer, the figure-environment popover).
+ * One constant so each field's `<Kbd>` / `iconHint` and its `onKeyDown` read the
+ * same string (task 1376). Pair it with `isCommitEnter`, which keeps the IME's
+ * candidate-commit Enter out.
+ */
+export const FIELD_COMMIT_SHORTCUT = "Mod+Enter";
+
+/**
+ * How a keydown relates to an advertised WINDOW-LEVEL chord (task 1376):
+ *
+ *   - `null`    — not this chord (or an IME owns the key): pass it through.
+ *   - `"press"` — a fresh, deliberate press: ACT.
+ *   - `"held"`  — the auto-repeat tail of a held chord: the caller swallows it
+ *                 (`preventDefault`) and changes nothing, so a held ⌘/ cannot
+ *                 flicker a toggle and a held ⌘S cannot fire a save per repeat
+ *                 (the `useCloseFloatChord` shape, task 1095).
+ *
+ * The match is `matchesPortableChord` — the same string the hint renders — and
+ * the deliberateness is `key-intent`'s, so neither is re-spelled per binding.
+ */
+export function chordPress(
+  e: Pick<
+    KeyboardEvent,
+    "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "repeat" | "isComposing" | "keyCode"
+  >,
+  keys: string,
+): "press" | "held" | null {
+  if (!matchesPortableChord(e, keys) || isImeComposing(e)) return null;
+  return isDeliberateKeyPress(e) ? "press" : "held";
 }
