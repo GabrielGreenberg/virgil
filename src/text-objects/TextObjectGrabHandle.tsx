@@ -883,8 +883,12 @@ export function TextObjectGrabHandle({ editor }: Props) {
           safeTo,
           { transient: true },
         );
-        // null also means REFUSED: the selection partly overlaps an existing
-        // annotation, which a new mark would overwrite (task 1001) — no lift.
+        // null also means REFUSED: the selection touches an existing
+        // annotation whose range it does not exactly equal — a partial
+        // overlap a new mark would overwrite (task 1001), or a strict
+        // sub-range whose id would lift/move the WHOLE annotation (task
+        // 1373) — no lift. The refusal is silent (task 1001 residual (a),
+        // a product call: no notice channel reaches the grab handle yet).
         if (!hydrated) {
           cleanup();
           return;
