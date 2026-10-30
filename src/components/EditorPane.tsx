@@ -152,6 +152,7 @@ import {
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { resolveLabelDisplay } from "@/lib/ref-display";
+import { toRefCommand } from "@/lib/ref-commands";
 import {
   MARGINALIA_HOST_ATTR,
   MARGINALIA_MIN_MARGIN_LEFT,
@@ -2731,10 +2732,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     (label: string, refCommand: string): string | null => {
       const mainDoc = innerRef.current?.getEditor()?.state.doc;
       if (!mainDoc) return null;
-      const cmd = (refCommand === "getref" || refCommand === "getfullref"
-        ? refCommand
-        : "ref") as "ref" | "getref" | "getfullref";
-      return resolveLabelDisplay(mainDoc, label, cmd).display;
+      return resolveLabelDisplay(mainDoc, label, toRefCommand(refCommand)).display;
     },
     [],
   );

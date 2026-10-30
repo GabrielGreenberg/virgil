@@ -1,4 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
+import { REF_COMMANDS, isRefCommand, type RefCommand } from "@/lib/ref-commands";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
   collectExampleBodyLabels,
@@ -52,7 +53,8 @@ import {
  * only after every exact key has missed.
  */
 
-export type RefCommand = "ref" | "getref" | "getfullref";
+// The command vocabulary is the ONE table in `ref-commands.ts` (task 1372).
+export type { RefCommand } from "@/lib/ref-commands";
 
 /** `equation` / `table` — numbered from raw source (`@/lib/latex-counters`,
  *  task 742); `label` — a raw `\label` no unit numbers, which takes LaTeX's
@@ -351,9 +353,12 @@ export function resolveRefTarget<N>(
   return null;
 }
 
-/** `\ref` → the bare number; `\getref` / `\getfullref` → parenthesized. */
+/** `\ref` → the bare number; `\getref` / `\getfullref` → parenthesized —
+ *  each command's `display` row in `REF_COMMANDS`. An unlisted name keeps the
+ *  pre-table behaviour (parenthesized). */
 export function formatRefDisplay(number: string, refCommand: RefCommand | string): string {
-  return refCommand === "ref" ? number : `(${number})`;
+  const spec = isRefCommand(refCommand) ? REF_COMMANDS[refCommand] : null;
+  return spec?.display === "bare" ? number : `(${number})`;
 }
 
 export interface RefDisplay {

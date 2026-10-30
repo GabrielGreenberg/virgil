@@ -25,6 +25,8 @@ import {
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
+import { matchRefCommandAt, refCommandLatex } from "@/lib/ref-commands";
+import { UnserializableNodeError } from "@/lib/latex-serializer";
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import {
   composeInlineRun,
@@ -428,11 +430,11 @@ function serializeInlineNode(node: JSONContent, next?: JSONContent): string {
   // footnote case → richJsonToLatex). Mirror the main serializer's
   // `serializeLabelRef` so the body round-trips to `\footnote{… \ref{x} …}`.
   if (node.type === "labelRef") {
-    const label = (node.attrs?.label as string) || "";
-    const cmd = (node.attrs?.refCommand as string) || "ref";
-    if (cmd === "getref") return `\\getref{${label}}`;
-    if (cmd === "getfullref") return `\\getfullref{${label}}`;
-    return `\\ref{${label}}`;
+    // Through the ONE table (task 1372) — an unlisted name is kept verbatim,
+    // never degraded to `\ref`; a non-name refuses like the main serializer.
+    const ref = refCommandLatex(node.attrs?.refCommand, (node.attrs?.label as string) || "");
+    if (!ref) throw new UnserializableNodeError(node.type);
+    return ref.latex;
   }
   // `\today` (task 1335) — the twin of the main serializer's arm, with the
   // same neighbour rule (`emitDynamicCommand`).
@@ -927,18 +929,13 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       // unknown-\command branch and renders as grey monospace inside the
       // footnote. `displayText`/`targetKind` are resolved later by the doc-level
       // ref-display pass — mirror the main parser's labelRef attrs.
-      const refCmdMatch = rest.match(/^\\(getfullref|getref|ref)\{/);
+      const refCmdMatch = matchRefCommandAt(rest);
       if (refCmdMatch) {
-        const open = i + refCmdMatch[0].length - 1; // index of the `{`
+        const open = i + refCmdMatch.openLength - 1; // index of the `{`
         const closed = findClose(text, open);
         if (closed !== -1) {
           flush();
-          const refCommand =
-            refCmdMatch[1] === "getfullref"
-              ? "getfullref"
-              : refCmdMatch[1] === "getref"
-                ? "getref"
-                : "ref";
+          const refCommand = refCmdMatch.command;
           nodes.push({
             type: "labelRef",
             attrs: {
