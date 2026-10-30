@@ -69,7 +69,7 @@ function popupHeight(el: HTMLElement): number {
   return Number.isFinite(cap) ? Math.min(natural, cap) : natural;
 }
 
-let restore: Array<() => void> = [];
+const restore: Array<() => void> = [];
 function stubGetter<T extends object>(proto: T, key: string, get: (this: HTMLElement) => number) {
   const prev = Object.getOwnPropertyDescriptor(proto, key);
   Object.defineProperty(proto, key, { configurable: true, get });

@@ -69,6 +69,7 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
   // placement effect below re-runs on the end edge (the flag is a dep), which
   // is the settle.
   const gestureActive = useLayoutGestureActive();
+  const slashPos = state.open ? state.slashPos : -1;
   useEffect(() => {
     if (!editor) return;
     if (!state.open) {
@@ -78,7 +79,7 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
     const view = editor.view;
     const update = () => {
       try {
-        const c = view.coordsAtPos(state.slashPos);
+        const c = view.coordsAtPos(slashPos);
         // Scroll-anchor stability probe (task 042): one record per coalesced frame.
         recordScrollPlacement(SCROLL_PORTAL_SLASH_POPUP, c.top);
         // Equality bail (task 317): `coordsAtPos` returns fresh numbers in a
@@ -121,12 +122,11 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
         rafRef.current = 0;
       }
     };
-  }, [state.open, state.open ? state.slashPos : -1, editor, gestureActive]);
+  }, [state.open, slashPos, editor, gestureActive]);
 
   // The live caret anchor the placement hook re-reads on scroll / resize
   // (RAF-coalesced, gesture-parked — the hook's one scheduler). A throw
   // (the slash position left the doc) falls back to the last `coords`.
-  const slashPos = state.open ? state.slashPos : -1;
   const trackAnchor = useCallback((): CaretRect | null => {
     if (!editor || slashPos < 0) return null;
     try {
