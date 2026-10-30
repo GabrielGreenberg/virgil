@@ -151,11 +151,11 @@ describe("anchored-menu guardrail — doctrine participation", () => {
     // to an explicit set. A new `src/` menu must be stated here — an allowlist
     // entry alone can no longer absorb it silently.
     // Task 1361 migrated `StatusClusterImpl` (the Help menu → `HelpMenu.tsx`)
-    // and `MyPapersPod` ("+ Add paper") onto `AnchoredMenu`; the two below
-    // remain, each entry stating only its PLACEMENT residual.
+    // and `MyPapersPod` ("+ Add paper") onto `AnchoredMenu`; task 1364 moved
+    // `SlashCommandPopup`'s caret placement onto `useFloatingMenuPosition`. The
+    // one below remains, its entry stating only its PLACEMENT residual.
     const KNOWN_SRC_MENU_HOLDOUTS = [
       "src/components/FontPicker.tsx::FontPicker",
-      "src/components/SlashCommandPopup.tsx::SlashCommandPopup",
     ];
     // The classification is the ENTRY'S OWN JUSTIFICATION, not a second guess at
     // it. `NOT AN ANCHORED MENU` is a claim an author had to write and leg 1
