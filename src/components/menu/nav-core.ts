@@ -311,3 +311,45 @@ export function buildLetterMap(nodes: MenuNode[]): Map<string, string> {
   }
   return map;
 }
+
+/** One registered key as an `aria-keyshortcuts` token, or null when no key on
+ *  a keyboard produces it. A single letter/digit announces uppercased (the
+ *  letter map is case-insensitive); a named key (`Backspace`, `Delete`) keeps
+ *  its spelling. A DISPLAY glyph registered as a letter — the ⚡ panel's
+ *  delete row paints "⌫" — is not a key, so it is never announced. */
+function keyShortcutToken(key: string): string | null {
+  if (/^[\p{L}\p{N}]$/u.test(key)) return key.toUpperCase();
+  if (/^[A-Z][A-Za-z]+$/.test(key)) return key;
+  return null;
+}
+
+/** The row's `aria-keyshortcuts` value (task 1362), DERIVED from exactly what
+ *  the keyboard controller honours for it, so the announcement can never
+ *  promise a key that does nothing:
+ *  - its `letter` + `letterAliases` — only when the menu runs the bare-letter
+ *    fast-path (`letterShortcuts`), and only on an enabled row
+ *    (`buildLetterMap` excludes greyed rows);
+ *  - `Delete Backspace` when the row declares a remove verb (task 1280) —
+ *    again only enabled, non-widget rows (`registry.removeActive`).
+ *  Undefined when the row has no key verb at all. */
+export function menuKeyShortcuts(
+  node: Pick<MenuNode, "letter" | "letterAliases" | "disabled" | "region">,
+  hasRemove: boolean,
+  letterShortcuts: boolean,
+): string | undefined {
+  if (node.disabled) return undefined;
+  const tokens: string[] = [];
+  const add = (key: string) => {
+    const t = keyShortcutToken(key);
+    if (t && !tokens.includes(t)) tokens.push(t);
+  };
+  if (letterShortcuts) {
+    if (node.letter) add(node.letter);
+    for (const alias of node.letterAliases ?? []) add(alias);
+  }
+  if (hasRemove && node.region !== "widget") {
+    add("Delete");
+    add("Backspace");
+  }
+  return tokens.length > 0 ? tokens.join(" ") : undefined;
+}

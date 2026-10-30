@@ -157,6 +157,10 @@ export interface MenuItemProps {
   role: "menuitem" | "menuitemcheckbox" | "menuitemradio" | "option";
   id: string;
   "aria-disabled": true | undefined;
+  /** The row's key verbs, announced (task 1362) — derived by
+   *  `menuKeyShortcuts` from the same registration the keyboard controller
+   *  honours. Undefined for a row with none. */
+  "aria-keyshortcuts": string | undefined;
   tabIndex: -1;
   "data-active": "" | undefined;
   onClick: (e: { preventDefault?: () => void }) => void;

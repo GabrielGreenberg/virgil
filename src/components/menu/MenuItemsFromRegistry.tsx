@@ -88,7 +88,11 @@ function RegistryItem({ row }: RegistryItemProps) {
           {row.icon}
         </span>
         <span className="flex-1">{row.label}</span>
+        {/* The visible hint is for sighted users; AT hears the same verb from
+            the row's derived `aria-keyshortcuts` (task 1362), so the letter
+            stays out of the accessible name ("Archive", not "Archive A"). */}
         <span
+          aria-hidden="true"
           className="tabular-nums"
           style={{ fontSize: 11, color: "var(--ink-subtle)" }}
         >

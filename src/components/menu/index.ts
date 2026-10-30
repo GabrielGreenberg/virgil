@@ -49,6 +49,7 @@ export type { MenuItemRegistration } from "./registry";
 export {
   computeNextActive,
   buildLetterMap,
+  menuKeyShortcuts,
   initialActiveId,
   freshNavMemory,
 } from "./nav-core";

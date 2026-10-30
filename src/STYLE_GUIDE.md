@@ -3180,6 +3180,15 @@ Enter/click commit refuses on.
   chord (`MenuActionRow shortcut=`) is the constant its binding MATCHES
   (`matchesPortableChord`), never a hand-spelled copy. CI:
   `menu-disabled-reason.test.tsx`.
+- **A row's key verbs are announced by the primitive** (task 1362). The keys a
+  row answers to — its `letter` + `letterAliases` (only in a `letterShortcuts`
+  menu), `Delete Backspace` for a `remove` verb, a `MenuActionRow shortcut=`
+  chord — reach AT as the row's `aria-keyshortcuts`, DERIVED in `useMenuItem`
+  (`menuKeyShortcuts`, `ariaKeyShortcut`) from the same registration the
+  controller honours; a greyed row announces none. No menu spells the
+  attribute itself. The VISIBLE hint (the registry list's letter, `<Kbd
+  decorative>`) is `aria-hidden`, so it stays out of the row's name ("Archive",
+  not "Archive A"). CI: `menu-key-shortcuts-announced.test.tsx`.
 - **One grey, one red — stated once** (task 967). Every `<Menu>` row
   (`MenuActionRow`, `MenuToggleRow`, the grab/lightning `MenuItemsFromRegistry`
   list) takes its disabled ink, destructive tone (`text-danger` +

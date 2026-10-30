@@ -96,6 +96,9 @@ export function MenuActionRow({
     region: "list",
     disabled,
     run: onSelect,
+    // Announced through the row's `aria-keyshortcuts` (task 1362), so the
+    // painted chip below is decorative.
+    shortcut,
   });
   const itemProps = getItemProps();
   // State tones are the menu's ONE vocabulary (`row-tone.ts`, task 967).
@@ -129,7 +132,7 @@ export function MenuActionRow({
           label to take the slack, so only then is it wrapped. */}
       {leading}
       {shortcut ? <span className="flex-1">{label}</span> : label}
-      {shortcut && <Kbd keys={shortcut} />}
+      {shortcut && <Kbd keys={shortcut} decorative />}
     </button>
   );
 }
