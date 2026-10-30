@@ -197,7 +197,7 @@ const PRODUCTION_FILES = [join(ROOT, "src"), join(ROOT, "library")].flatMap(
 
 describe("census — nobody re-derives the family question", () => {
   it("only bib-family.ts calls the raw-byte primitives", () => {
-    // `detectPreambleBibFamily` / `detectCommandBibFamily` take bytes that have
+    // `detectPreambleBibFamily` / `bodyPinnedFamily` take bytes that have
     // ALREADY been projected; `detectBibFamily` (and `reconcileBibFamily`) are
     // the doors that project. A call from anywhere else is a second detector
     // with its own idea of what counts as live — which is exactly what

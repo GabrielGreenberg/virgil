@@ -23,9 +23,7 @@
  */
 
 import {
-  BIBLATEX_ONLY_CITE_COMMANDS,
   KERNEL_NEUTRAL_CITE_COMMANDS,
-  NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
 import {
@@ -42,6 +40,9 @@ import {
   type ExampleDialect,
 } from "@/lib/example-dialect";
 import {
+  DEFAULT_BIB_FAMILY,
+  bodyPinnedFamily,
+  citeBucketRe,
   reconcileBibFamily,
   type BibFamily,
   type BibFamilyConflict,
@@ -270,37 +271,18 @@ const ALWAYS_REQUIRED_IDS: string[] = [
 // hand-copied here).
 const BODY_DETECTORS = PACKAGE_DETECTORS;
 
-/** Alternation over the family's commands + capitalized sentence-start
- *  variants, longest-first (same convention as cite-commands.ts). */
-function familyRe(names: Iterable<string>): RegExp {
-  const all: string[] = [];
-  for (const n of names) {
-    all.push(n);
-    all.push(n[0].toUpperCase() + n.slice(1));
-  }
-  all.sort((a, b) => b.length - a.length);
-  return new RegExp(`\\\\(?:${all.join("|")})(?![a-zA-Z])`);
-}
-
-// Cite-command buckets from the shared registry (cite-commands.ts):
-// natbib-only pins natbib; biblatex-only pins biblatex; SHARED commands
-// (\cite/\nocite/\citeauthor/\citeyear — defined by both packages) pin
-// neither on their own. Of the shared set, bare \cite/\nocite are
-// additionally LaTeX-kernel commands — a body using ONLY those needs no
-// bib package at all — while \citeauthor/\citeyear DO need one of the two.
-const NATBIB_ONLY_RE = familyRe(NATBIB_ONLY_CITE_COMMANDS);
-const BIBLATEX_ONLY_RE = familyRe(BIBLATEX_ONLY_CITE_COMMANDS);
-const SHARED_NON_KERNEL_RE = familyRe(
+// Cite-family resolution is `bodyPinnedFamily` (bib-family.ts) — the ONE
+// rule, shared with the family reader `detectBibFamily` (task 1371). What
+// stays here is the requirements-only question the family rule does not ask:
+// SHARED commands (\cite/\nocite/\citeauthor/\citeyear — defined by both
+// packages) pin neither family, and of them bare \cite/\nocite are
+// additionally LaTeX-kernel commands — a body using ONLY those needs no bib
+// package at all — while \citeauthor/\citeyear DO need one of the two.
+const SHARED_NON_KERNEL_RE = citeBucketRe(
   [...SHARED_CITE_COMMANDS].filter(
     (c) => !KERNEL_NEUTRAL_CITE_COMMANDS.has(c),
   ),
 );
-
-// biblatex's bibliography-printing commands are not cites, but a body that
-// prints a biblatex bibliography needs biblatex as surely as `\autocite` does
-// — and once a family is injected only on the body's NEED (task 1019), a
-// `\cite`-only body printing with `\printbibliography` must still count.
-const BIBLATEX_BODY_RE = /\\print(?:bibliography|bibheading)(?![a-zA-Z])/;
 
 /**
  * Project the serialized body down to its DETECTABLE LaTeX: drop
@@ -330,14 +312,14 @@ function projectDetectableBody(bodyLatex: string): string {
  * inert-stripped projection (see `projectDetectableBody`) so commented-out
  * or verbatim-quoted commands never inject packages.
  *
- * Cite-family resolution (three buckets, see cite-commands.ts):
- *  - any natbib-ONLY command present → natbib (even if biblatex-only
- *    commands also appear — the packages are mutually exclusive and natbib
- *    is Virgil's baseline family);
- *  - else any biblatex-ONLY command present → biblatex;
+ * Cite-family resolution:
+ *  - the family the body PINS is `bodyPinnedFamily` (bib-family.ts) — the
+ *    one rule the family reader `detectBibFamily` also asks (natbib-only →
+ *    natbib; biblatex-only cites or `\printbibliography` → biblatex; both →
+ *    the baseline tie);
  *  - else only SHARED commands: \citeauthor/\citeyear need SOME bib package
- *    → natbib (baseline default); bare \cite/\nocite are kernel commands →
- *    no requirement.
+ *    → `DEFAULT_BIB_FAMILY` (flagged `bibFamilyDefaulted`); bare
+ *    \cite/\nocite are kernel commands → no requirement.
  */
 export function detectBodyRequirements(bodyLatex: string): BodyRequirements {
   const scannable = projectDetectableBody(bodyLatex);
@@ -345,15 +327,10 @@ export function detectBodyRequirements(bodyLatex: string): BodyRequirements {
   for (const d of BODY_DETECTORS) {
     if (d.re.test(scannable)) required.add(d.id);
   }
-  if (NATBIB_ONLY_RE.test(scannable)) required.add("natbib");
-  else if (
-    BIBLATEX_ONLY_RE.test(scannable) ||
-    BIBLATEX_BODY_RE.test(scannable)
-  ) {
-    required.add("biblatex");
-  }
+  const pinned = bodyPinnedFamily(scannable);
+  if (pinned) required.add(pinned);
   else if (SHARED_NON_KERNEL_RE.test(scannable)) {
-    required.add("natbib");
+    required.add(DEFAULT_BIB_FAMILY);
     required.bibFamilyDefaulted = true;
   }
   return required;

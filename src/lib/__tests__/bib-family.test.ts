@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   asBibFamily,
   classifyCiteFamily,
-  detectCommandBibFamily,
+  bodyPinnedFamily,
   detectPreambleBibFamily,
   isSharedNonKernelCite,
   reconcileBibFamily,
@@ -76,17 +76,17 @@ describe("detectPreambleBibFamily — RequirePackage + wrappers", () => {
   });
 });
 
-describe("detectCommandBibFamily", () => {
+describe("bodyPinnedFamily", () => {
   it("natbib-only usage wins (baseline precedence)", () => {
-    expect(detectCommandBibFamily("\\citep{a} and \\autocite{b}")).toBe(
+    expect(bodyPinnedFamily("\\citep{a} and \\autocite{b}")).toBe(
       "natbib",
     );
   });
   it("biblatex-only when no natbib-only present", () => {
-    expect(detectCommandBibFamily("\\autocite{b}")).toBe("biblatex");
+    expect(bodyPinnedFamily("\\autocite{b}")).toBe("biblatex");
   });
   it("null when only shared/kernel cites appear", () => {
-    expect(detectCommandBibFamily("\\cite{a} \\citeauthor{b}")).toBeNull();
+    expect(bodyPinnedFamily("\\cite{a} \\citeauthor{b}")).toBeNull();
   });
 });
 
