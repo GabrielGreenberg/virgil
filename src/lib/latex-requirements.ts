@@ -314,10 +314,11 @@ const BIBLATEX_BODY_RE = /\\print(?:bibliography|bibheading)(?![a-zA-Z])/;
  *
  * Delegates to the lexer's `projectDetectableLatex` — the ONE named door for
  * "which bytes may a detector believe?", shared with the bib-family detector
- * (task 344). Byte-identical to the former inline implementation (NARROW
- * verbatim family, inline-verb off) — the drift gate and the
- * requirements-injection ORDER depend on that; the family choice and its
- * residuals are stated at the door.
+ * (task 344). The NARROW verbatim family + inline-verb off is kept from the
+ * former inline implementation (the drift gate and the requirements-injection
+ * ORDER depend on it); since task 1370 the door ALSO treats the `comment` env
+ * and top-level `\iffalse`/`\if0 … \fi` blocks as inert. The family choice and
+ * its residuals are stated at the door.
  */
 function projectDetectableBody(bodyLatex: string): string {
   return projectDetectableLatex(bodyLatex);
