@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import type { Editor } from "@tiptap/react";
 
-const removeTransientAnchor = vi.fn();
+const removeTransientAnchor = vi.fn((_editor: unknown, _id: string) => true);
 vi.mock("@/links/links", () => ({
   removeTransientAnchor: (editor: unknown, id: string) =>
     removeTransientAnchor(editor, id),
@@ -33,7 +33,10 @@ function mount(initial: readonly string[]) {
   );
 }
 
-beforeEach(() => removeTransientAnchor.mockClear());
+beforeEach(() => {
+  removeTransientAnchor.mockReset();
+  removeTransientAnchor.mockImplementation(() => true);
+});
 
 describe("useTransientAnchorCleanup (task 788)", () => {
   it("removes the transient anchor when a minted linkedRange float closes", () => {
@@ -67,5 +70,26 @@ describe("useTransientAnchorCleanup (task 788)", () => {
     expect(removeTransientAnchor).not.toHaveBeenCalled();
     rerender({ keys: [] });
     expect(removeTransientAnchor).toHaveBeenCalledWith(editor, "r1");
+  });
+
+  // Task 1375: an id is forgotten only once its strip LANDS — a refused strip
+  // (read-only) stays pending and is retried on the next fire.
+  it("a refused strip stays pending and is retried", () => {
+    const r1 = textObjectPopoutKey({ kind: "linkedRange", id: "r1" });
+    const other = textObjectPopoutKey({ kind: "linkedRange", id: "r2" });
+    const { rerender } = mount([r1, other]);
+    removeTransientAnchor.mockImplementationOnce(() => false);
+    rerender({ keys: [other] });
+    expect(removeTransientAnchor.mock.calls.map((c) => c[1])).toEqual(["r1"]);
+    rerender({ keys: [] });
+    expect(removeTransientAnchor.mock.calls.map((c) => c[1]).sort()).toEqual([
+      "r1",
+      "r1",
+      "r2",
+    ]);
+    // Both landed now: nothing left to retry.
+    rerender({ keys: [] });
+    rerender({ keys: [other] });
+    expect(removeTransientAnchor).toHaveBeenCalledTimes(3);
   });
 });

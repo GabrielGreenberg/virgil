@@ -668,12 +668,13 @@ function dispatchLinkedAnchorMark(
   editor: Editor,
   range: { from: number; to: number },
   attrs: Record<string, unknown> | null,
-  opts: { history: boolean },
+  opts: { history: boolean; ignoreReadOnly?: boolean },
 ): boolean {
   const tr = editor.state.tr;
   const admitted = writeLinkedAnchorMark(tr, range, attrs);
   if (!admitted) return false;
   if (!opts.history) tr.setMeta("addToHistory", false);
+  if (opts.ignoreReadOnly) tr.setMeta("ignoreReadOnly", true);
   if (tr.docChanged) editor.view.dispatch(tr);
   return true;
 }
@@ -685,10 +686,17 @@ function dispatchLinkedAnchorMark(
  * undo stack, so neither is the strip (task 933: undo used to bring the mark
  * back with no card, and the reaper would not re-run to catch it).
  */
-function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
+function removeLinkedAnchorMark(
+  editor: Editor,
+  anchorId: string,
+  opts?: { ignoreReadOnly?: boolean },
+): void {
   const range = resolveTextRangeByAnchorId(editor, anchorId);
   if (!range) return;
-  dispatchLinkedAnchorMark(editor, range, null, { history: false });
+  dispatchLinkedAnchorMark(editor, range, null, {
+    history: false,
+    ignoreReadOnly: opts?.ignoreReadOnly,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -945,10 +953,17 @@ export function removeLinkedAnchor(editor: Editor, anchorId: string): void {
  * grab that REUSED a real annotation's range (full-coverage reuse in
  * `hydrateSelectionToTextObject`) never deletes that note / highlight / cut /
  * revision on close. Reuses `removeLinkedAnchorMark`.
+ *
+ * Returns whether no transient handle for `anchorId` remains — true when it was
+ * stripped, was never there, or is a real annotation's (not ours to strip);
+ * false only when the strip was REFUSED, so the caller keeps it pending.
  */
-export function removeTransientAnchor(editor: Editor, anchorId: string): void {
+export function removeTransientAnchor(
+  editor: Editor,
+  anchorId: string,
+): boolean {
   const range = resolveTextRangeByAnchorId(editor, anchorId);
-  if (!range) return;
+  if (!range) return true;
   let isTransient = false;
   editor.state.doc.nodesBetween(range.from, range.to, (node) => {
     if (!node.isText) return true;
@@ -959,7 +974,13 @@ export function removeTransientAnchor(editor: Editor, anchorId: string): void {
     }
     return true;
   });
-  if (isTransient) removeLinkedAnchorMark(editor, anchorId);
+  if (!isTransient) return true;
+  // A lifecycle correction, not a user edit — admitted past the read-only
+  // enforcer, the twin of the hydrate that stamped it (task 1375). Then
+  // MEASURE: a strip some other filter refused must stay pending, never be
+  // forgotten into a cardless `\vlid…\vlidend` in the .tex.
+  removeLinkedAnchorMark(editor, anchorId, { ignoreReadOnly: true });
+  return !resolveTextRangeByAnchorId(editor, anchorId);
 }
 
 /**

@@ -57,11 +57,17 @@ export function useTransientAnchorCleanup(
       if (ref && isRangeKind(ref.kind)) current.add(ref.id);
     }
     const prev = prevIdsRef.current;
-    prevIdsRef.current = current;
-    if (!editor || editor.isDestroyed) return;
+    // An id is forgotten only once its strip LANDS (task 1375): a refused
+    // strip stays in the tracked set, so the next fire retries it rather than
+    // leaking a cardless `\vlid…\vlidend` into the .tex. (Without an editor,
+    // every closed id stays pending for the editor that arrives.)
+    const pending = new Set(current);
     for (const id of prev) {
       if (current.has(id)) continue;
-      removeTransientAnchor(editor, id);
+      if (!editor || editor.isDestroyed || !removeTransientAnchor(editor, id)) {
+        pending.add(id);
+      }
     }
+    prevIdsRef.current = pending;
   }, [editor, poppedOutCards]);
 }

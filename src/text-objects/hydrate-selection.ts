@@ -69,8 +69,10 @@ import type { TextObjectRef } from "./types";
  * it to transient, and its cleanup never deletes the note).
  *
  * Returns null if the range is empty, the schema doesn't have the
- * `linkedAnchor` mark (defensive — shouldn't happen in practice), or the
- * range touches an existing anchor it does not exactly equal (see above).
+ * `linkedAnchor` mark (defensive — shouldn't happen in practice), the range
+ * touches an existing anchor it does not exactly equal (see above), the view
+ * is not editable (the pen axis), or the mark did not LAND — a transaction
+ * filter refused it (task 1375: never an id for an absent mark).
  */
 export function hydrateSelectionToTextObject(
   view: EditorView,
@@ -79,6 +81,10 @@ export function hydrateSelectionToTextObject(
   opts?: { transient?: boolean },
 ): TextObjectRef | null {
   if (from >= to) return null;
+  // The PEN axis (`view.editable` — a collab pen held elsewhere, a read-only
+  // float): no write of any kind, transient or not (task 1375). The same
+  // predicate the grab handle's `schedule()` gates placements on.
+  if (!view.editable) return null;
   const markType = view.state.schema.marks.linkedAnchor;
   if (!markType) return null;
 
@@ -111,8 +117,20 @@ export function hydrateSelectionToTextObject(
   const mark = markType.create(
     opts?.transient ? { anchorId, kind: "transient" } : { anchorId },
   );
-  view.dispatch(view.state.tr.addMark(from, to, mark));
+  const tr = view.state.tr.addMark(from, to, mark);
+  // A transient handle is a lifecycle write, not a user edit: it is admitted
+  // past the SURFACE axis (the `readOnlyEnforcer` over `editableRef` — the
+  // Library Reader, whose bundle never persists, task 556) exactly as its
+  // strip is (`removeTransientAnchor`), so a reader can still lift text OUT.
+  // The PEN axis was refused above; a real (non-transient) anchor stays
+  // subject to every filter.
+  if (opts?.transient) tr.setMeta("ignoreReadOnly", true);
+  view.dispatch(tr);
 
+  // A write is real only once it is ADMITTED (task 1375): `dispatch` returns
+  // nothing and a filtered transaction is dropped silently, so MEASURE — an id
+  // for a mark that never landed would spawn a `missing` float.
+  if (!resolveLinkedAnchorRange(view.state, anchorId)) return null;
   return { kind: "linkedRange", id: anchorId };
 }
 
