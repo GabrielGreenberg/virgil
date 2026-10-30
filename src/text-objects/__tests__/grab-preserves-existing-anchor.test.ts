@@ -94,15 +94,88 @@ describe("selection grab over an existing anchor (task 1001)", () => {
     editor.destroy();
   });
 
-  it("a selection strictly inside the note reuses its id", () => {
+  // Task 1373: reuse is an EXTENT question. Every downstream reader resolves
+  // the returned id to the note's FULL span, so reusing it for a sub-range
+  // lifted (and, since task 1023, moved) the whole annotated passage.
+  it("a selection strictly inside the note is refused and the doc is unchanged", () => {
     const editor = mount();
+    const before = editor.state.doc;
     const ref = hydrateSelectionToTextObject(
       editor.view,
       at(QUICK + 1),
       at(BROWN_END - 1),
       { transient: true },
     );
+    expect(ref).toBeNull();
+    expect(editor.state.doc).toBe(before);
+    expect(noteRange(editor)).toEqual({ from: at(QUICK), to: at(BROWN_END) });
+    editor.destroy();
+  });
+
+  it("a sub-range sharing the note's START boundary is refused", () => {
+    const editor = mount();
+    const ref = hydrateSelectionToTextObject(
+      editor.view,
+      at(QUICK),
+      at(QUICK + 5),
+      { transient: true },
+    );
+    expect(ref).toBeNull();
+    expect(noteRange(editor)).toEqual({ from: at(QUICK), to: at(BROWN_END) });
+    editor.destroy();
+  });
+
+  it("a sub-range sharing the note's END boundary is refused", () => {
+    const editor = mount();
+    const ref = hydrateSelectionToTextObject(
+      editor.view,
+      at(QUICK + 6),
+      at(BROWN_END),
+      { transient: true },
+    );
+    expect(ref).toBeNull();
+    expect(noteRange(editor)).toEqual({ from: at(QUICK), to: at(BROWN_END) });
+    editor.destroy();
+  });
+
+  it("a note filling its paragraph is reused when the selection edges sit on the block boundary", () => {
+    const editor = new Editor({
+      extensions: buildEditorExtensions(mainCtx()),
+      content: {
+        type: "doc",
+        content: [
+          { type: "paragraph", attrs: { uuid: "p0" }, content: [{ type: "text", text: "Before" }] },
+          {
+            type: "paragraph",
+            attrs: { uuid: "p1" },
+            content: [
+              {
+                type: "text",
+                text: "whole",
+                marks: [
+                  {
+                    type: "linkedAnchor",
+                    attrs: { anchorId: NOTE, kind: "note", linkCard: "note:n1" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const range = noteRange(editor)!;
+    // From the end of "Before" (across the p0/p1 boundary) to the note's end.
+    const ref = hydrateSelectionToTextObject(
+      editor.view,
+      range.from - 2,
+      range.to,
+      { transient: true },
+    );
+    // The two extra positions are block boundaries, not text: the
+    // selection's TEXT extent is the note's range, so its id is reused.
     expect(ref).toEqual({ kind: "linkedRange", id: NOTE });
+    expect(noteRange(editor)).toEqual(range);
     editor.destroy();
   });
 

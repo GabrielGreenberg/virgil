@@ -23,8 +23,10 @@
  * See TEXT-OBJECT-REFACTOR.md §9.
  */
 
-import type { MarkType, Node as PMNode } from "@tiptap/pm/model";
+import type { MarkType } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectRef } from "./types";
 
@@ -34,17 +36,22 @@ import type { TextObjectRef } from "./types";
  * (ProseMirror's mark spec already declares `spanning: true` per
  * linked-anchor.ts:14).
  *
- * Reuses an existing `linkedAnchor` anchorId if one fully covers the
- * range — avoids minting duplicate ids when the user re-pops an
- * already-hydrated selection. Other cards anchored to that range
- * continue to point at the same id.
+ * Reuses an existing `linkedAnchor` anchorId only when the selection IS
+ * that anchor's range — avoids minting duplicate ids when the user re-pops
+ * an already-hydrated selection. Other cards anchored to that range
+ * continue to point at the same id. Reuse is an EXTENT question, never a
+ * PRESENCE one (task 1373): every downstream reader (ghost source rect, the
+ * text-range-move drop) resolves the returned id to the anchor's FULL span,
+ * so reusing a note's id for a few words strictly inside it lifted — and
+ * since task 1023 MOVED — the whole annotated passage.
  *
  * NEVER overwrites an existing anchor (task 1001). `linkedAnchor` excludes
  * its own type (one anchor per character), so `addMark` over text that
  * already carries an anchor would REPLACE that note's / highlight's mark
  * with the new one — and a transient handle is stripped on popout close,
  * taking the overwritten slice of the annotation with it. So a selection
- * that touches an anchor it is not wholly covered by is REFUSED (null):
+ * that touches any anchor whose range it does not EXACTLY equal — a partial
+ * overlap, a superset, or a strict sub-range — is REFUSED (null):
  * the grab does not lift, and the annotation is untouched. Coverage is read
  * from every text node in `[from, to)` (the intersection of the anchor ids
  * each carries), never from `doc.resolve(from).marks()` — the mark is
@@ -63,7 +70,7 @@ import type { TextObjectRef } from "./types";
  *
  * Returns null if the range is empty, the schema doesn't have the
  * `linkedAnchor` mark (defensive — shouldn't happen in practice), or the
- * range partly overlaps an existing anchor (see above).
+ * range touches an existing anchor it does not exactly equal (see above).
  */
 export function hydrateSelectionToTextObject(
   view: EditorView,
@@ -75,15 +82,16 @@ export function hydrateSelectionToTextObject(
   const markType = view.state.schema.marks.linkedAnchor;
   if (!markType) return null;
 
-  const coverage = readAnchorCoverage(view.state.doc, from, to, markType);
-  // An anchor on EVERY text node of the range: reuse its id so multiple
+  const coverage = readAnchorCoverage(view.state, from, to, markType);
+  // The selection IS an existing anchor's range: reuse its id so multiple
   // cards / popouts over the same range share identity.
-  if (coverage.covering) {
-    return { kind: "linkedRange", id: coverage.covering };
+  if (coverage.kind === "exact") {
+    return { kind: "linkedRange", id: coverage.id };
   }
-  // Some text carries an anchor that does not cover the whole range: a new
-  // mark would overwrite it there. Refuse rather than damage the annotation.
-  if (coverage.touchesAnchor) return null;
+  // Some text carries an anchor whose range is not the selection: a new mark
+  // would overwrite it there, and its id would name the wrong extent. Refuse
+  // rather than damage (or move) the annotation.
+  if (coverage.kind === "conflicts") return null;
 
   // Collect existing anchorIds in the doc so the new one doesn't collide.
   const existing = new Set<string>();
@@ -109,20 +117,39 @@ export function hydrateSelectionToTextObject(
 }
 
 /**
- * What `linkedAnchor`s the text in `[from, to)` carries: `covering` is an
- * anchor id present on EVERY text node of the range (null if none), and
- * `touchesAnchor` whether ANY text node carries one.
+ * How the text in `[from, to)` stands to the `linkedAnchor`s it carries — a
+ * three-way answer so no caller can read presence as identity (task 1373):
+ *
+ *   - `none`      — no text node in the range carries an anchor;
+ *   - `exact`     — one anchor is on EVERY text node AND its resolved range
+ *                   equals the range's text extent (the reusable case);
+ *   - `conflicts` — anything else: a partial overlap, a selection that
+ *                   contains an anchor plus more, or a strict sub-range of one.
+ *
+ * Boundary normalisation: the range is compared by its TEXT extent (first
+ * text character to last, clipped to `[from, to)`), so a selection whose
+ * edges sit on non-text positions (a paragraph boundary) still matches the
+ * anchor it spans. Coverage is read from every text node, never from
+ * `resolve(from).marks()` (the `inclusive: false` start-boundary blind spot,
+ * task 1001).
  */
 function readAnchorCoverage(
-  doc: PMNode,
+  state: EditorState,
   from: number,
   to: number,
   markType: MarkType,
-): { covering: string | null; touchesAnchor: boolean } {
+):
+  | { kind: "none" }
+  | { kind: "exact"; id: string }
+  | { kind: "conflicts" } {
   let common = null as string[] | null;
   let touchesAnchor = false;
-  doc.nodesBetween(from, to, (node) => {
+  let textFrom = Infinity;
+  let textTo = -Infinity;
+  state.doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isText) return true;
+    textFrom = Math.min(textFrom, Math.max(pos, from));
+    textTo = Math.max(textTo, Math.min(pos + node.nodeSize, to));
     const ids: string[] = [];
     for (const m of node.marks) {
       if (m.type !== markType) continue;
@@ -133,5 +160,11 @@ function readAnchorCoverage(
     common = common === null ? ids : common.filter((id) => ids.includes(id));
     return true;
   });
-  return { covering: common?.[0] ?? null, touchesAnchor };
+  if (!touchesAnchor) return { kind: "none" };
+  const id = common?.[0];
+  if (!id) return { kind: "conflicts" };
+  const range = resolveLinkedAnchorRange(state, id);
+  return range && range.from === textFrom && range.to === textTo
+    ? { kind: "exact", id }
+    : { kind: "conflicts" };
 }
