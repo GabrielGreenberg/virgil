@@ -825,7 +825,11 @@ export function TextObjectGrabHandle({ editor }: Props) {
     if (!isPrimaryDragStart(downEv)) return;
     downEv.preventDefault();
     downEv.stopPropagation();
-    if (!editor) return;
+    // The PEN axis, re-asked at press time (task 1375): `schedule()` yields no
+    // placements while `view.editable` is false, but `setEditable(false)` is a
+    // non-docChanged update `onDocUpdate` ignores, so a handle already showing
+    // when the pen passes would otherwise stay pressable.
+    if (!editor || editor.isDestroyed || !editor.isEditable) return;
     // For TextObjectRefs, derive the tentative popout key up front. If
     // already popped we still allow click-to-open-menu; just no lift.
     if (startRef.kind !== "selection") {
