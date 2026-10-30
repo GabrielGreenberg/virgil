@@ -231,3 +231,50 @@ describe("SelectionActionsMenu — the bolt is a toggle trigger (task 992)", () 
     expect(panel()).toBeNull();
   });
 });
+
+// Task 1376 — the keyboard twin reads the SAME `Mod+/` the hint renders
+// (Ctrl+/ off Mac was advertised but rejected), and a held chord's auto-repeat
+// is swallowed instead of re-toggling the menu per repeat.
+describe("SelectionActionsMenu — the Mod+/ chord (task 1376)", () => {
+  function chord(mods: Partial<KeyboardEventInit>) {
+    const e = new KeyboardEvent("keydown", {
+      key: "/",
+      bubbles: true,
+      cancelable: true,
+      ...mods,
+    });
+    act(() => {
+      window.dispatchEvent(e);
+    });
+    return e;
+  }
+
+  it("Ctrl+/ opens the menu (the advertised off-Mac chord), as ⌘/ does", () => {
+    render(<SelectionActionsMenu editor={makeEditor()} />);
+    chord({ ctrlKey: true });
+    expect(panel(), "Ctrl+/ opens").toBeTruthy();
+    chord({ ctrlKey: true });
+    expect(panel(), "a fresh press toggles closed").toBeNull();
+    chord({ metaKey: true });
+    expect(panel(), "⌘/ opens").toBeTruthy();
+  });
+
+  it("a held chord's auto-repeat changes nothing and is swallowed", () => {
+    render(<SelectionActionsMenu editor={makeEditor()} />);
+    chord({ metaKey: true });
+    expect(panel()).toBeTruthy();
+    const e = chord({ metaKey: true, repeat: true });
+    expect(panel(), "a repeat does not toggle the open menu closed").toBeTruthy();
+    expect(e.defaultPrevented, "the repeat tail is swallowed").toBe(true);
+  });
+
+  it("Alt / Shift variants and a bare / do nothing", () => {
+    render(<SelectionActionsMenu editor={makeEditor()} />);
+    chord({ metaKey: true, altKey: true });
+    chord({ metaKey: true, shiftKey: true });
+    chord({ ctrlKey: true, shiftKey: true });
+    const bare = chord({});
+    expect(panel()).toBeNull();
+    expect(bare.defaultPrevented).toBe(false);
+  });
+});

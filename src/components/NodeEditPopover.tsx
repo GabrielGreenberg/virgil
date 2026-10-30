@@ -34,6 +34,7 @@ import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { isCommitEnter } from "@/lib/key-intent";
+import { FIELD_COMMIT_SHORTCUT, matchesPortableChord } from "@/lib/portable-chord";
 import { pressProps } from "@/lib/press-props";
 
 export type NodeEditFamily = "math" | "figure";
@@ -198,7 +199,7 @@ export default function NodeEditPopover({
       commit();
       return;
     }
-    if (e.metaKey || e.ctrlKey) {
+    if (matchesPortableChord(e, FIELD_COMMIT_SHORTCUT)) {
       e.preventDefault();
       commit();
     }
@@ -275,7 +276,7 @@ export default function NodeEditPopover({
         placeholder={placeholder}
       />
       <div className="figure-popover-hint">
-        <Kbd keys={isFigure ? "Mod+Enter" : "Enter"} /> to save ·{" "}
+        <Kbd keys={isFigure ? FIELD_COMMIT_SHORTCUT : "Enter"} /> to save ·{" "}
         <Kbd keys="Esc" /> to cancel
       </div>
     </div>

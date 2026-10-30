@@ -189,6 +189,12 @@ const APP_VERSION = pkg.version;
 // vbar source. Module-scope so JSX references stay referentially
 // stable across renders.
 const noop = () => {};
+
+/** The Print / Save-now chords, stated once and matched through `chordPress`
+ *  (task 1376) — so a hint that later advertises one reads the binding's own
+ *  string, as `NEW_WINDOW_SHORTCUT` does. */
+const PRINT_SHORTCUT = "Mod+P";
+const SAVE_SHORTCUT = "Mod+S";
 // Phase-C INERT fallbacks for the pane-owned sidecar slices (read only in the
 // brief pre-bubble window — same as citationsHook/collab). Stable module-level
 // identities so they don't churn the anchor-sync/hover consumers. Typed via
@@ -235,7 +241,7 @@ import {
 } from "@/lib/doc-index";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 import { iconHint } from "@/components/Hint";
-import { matchesPortableChord } from "@/lib/portable-chord";
+import { chordPress, matchesPortableChord } from "@/lib/portable-chord";
 import { NEW_WINDOW_SHORTCUT } from "@/lib/multi-window/new-window-shortcut";
 
 
@@ -1205,10 +1211,11 @@ export default function EditorLayout() {
   // doc or in code view (where our dialog is disabled).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const isPrint = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p";
-      if (!isPrint) return;
+      const press = chordPress(e, PRINT_SHORTCUT);
+      if (!press) return;
       if (!currentDocId || codeView || pdfView) return;
       e.preventDefault();
+      if (press === "held") return; // a held ⌘P re-opens nothing
       setPrintOpen(true);
     };
     window.addEventListener("keydown", onKey);
@@ -1231,14 +1238,11 @@ export default function EditorLayout() {
   // to hide.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const isSave =
-        (e.metaKey || e.ctrlKey) &&
-        !e.shiftKey &&
-        !e.altKey &&
-        e.key.toLowerCase() === "s";
-      if (!isSave) return;
+      const press = chordPress(e, SAVE_SHORTCUT);
+      if (!press) return;
       if (!currentDocId) return; // no paper open — let the browser have it
       e.preventDefault();
+      if (press === "held") return; // a held ⌘S is one save, not one per repeat
       void (async () => {
         const outcome = await requestSaveNow(currentDocId);
         if (outcome.landed || outcome.reason === "no-door") return;
