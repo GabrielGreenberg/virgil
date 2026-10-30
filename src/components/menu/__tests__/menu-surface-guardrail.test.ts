@@ -463,11 +463,14 @@ describe("menu surface — the primitive owns the container chrome", () => {
     expect(paintsFromMenuTier(postFix)).toBe(true);
     // The live population no longer holds a declared-only menu: `OverflowPill`
     // left it in task 997 and the library pod's "+ Add paper" in task 1361,
-    // both by moving onto `AnchoredMenu`. What it still holds is the two
-    // placement holdouts — so the union is live, and the declared-menu leg is
-    // pinned by the fixture above rather than by a menu left unmigrated.
+    // both by moving onto `AnchoredMenu`, and `SlashCommandPopup` left it in
+    // task 1364 by moving its placement onto `useFloatingMenuPosition`. What it
+    // still holds is the placement holdout — so the union is live, and the
+    // declared-menu leg is pinned by the fixture above rather than by a menu
+    // left unmigrated.
     const keys = surfaceCensusPopulation().map((h) => h.key);
-    expect(keys).toContain("src/components/SlashCommandPopup.tsx::SlashCommandPopup");
+    expect(keys).toContain("src/components/FontPicker.tsx::FontPicker");
+    expect(keys).not.toContain("src/components/SlashCommandPopup.tsx::SlashCommandPopup");
     expect(keys).not.toContain("src/components/library/MyPapersPod.tsx::MyPapersPod");
     expect(keys).not.toContain("src/components/Marginalia.tsx::OverflowPill");
   });
@@ -479,7 +482,6 @@ describe("menu surface — the primitive owns the container chrome", () => {
     // narrowed back to `<MenuProvider>` mounts, this leg names it rather than
     // letting leg 4 pass on an empty set.
     const keys = handRolledMenus().map((h) => h.key);
-    expect(keys).toContain("src/components/SlashCommandPopup.tsx::SlashCommandPopup");
     expect(keys).toContain("src/components/FontPicker.tsx::FontPicker");
     // …and the non-menus really are excluded, or leg 4 would be demanding menu
     // chrome from a pane divider.

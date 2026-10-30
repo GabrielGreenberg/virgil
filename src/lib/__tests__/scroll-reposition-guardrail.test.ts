@@ -52,8 +52,6 @@ const LIBRARY = path.resolve(HERE, "../../../library"); // the Library silo
 const PERMITTED_SCROLL_REPOSITIONERS: Record<string, string> = {
   "components/PendingChangePill.tsx":
     "RAF-coalesced + `placementsEqual` bail; shares one scheduler with the trigger effect.",
-  "components/SlashCommandPopup.tsx":
-    "RAF-coalesced (`scheduleUpdate`) caret re-read; mounted only while the popup is open.",
   "hooks/useFloatingMenuPosition.ts":
     "RAF-coalesced `trackAnchor` scroll re-read + `(left,top)` equality bail.",
   "components/editor-layout/editor-scrollbar.tsx":

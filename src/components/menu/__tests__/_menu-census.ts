@@ -74,15 +74,17 @@ export const PERMITTED_HAND_ROLLED_ANCHORED_SURFACES: Record<string, string> = {
   //    (task 181) surfaced three and the CARET dialect (task 459) a fourth;
   //    task 1361 migrated two (MyPapersPod's "+ Add paper" and the Help menu
   //    + its Commands sub-menu, now `AnchoredMenu` + a nested `MenuProvider`)
-  //    and folded the other two's ROWS onto `row-tone.ts`. Each entry below
+  //    and folded the other two's ROWS onto `row-tone.ts`; task 1364 moved
+  //    `SlashCommandPopup`'s caret placement onto `useFloatingMenuPosition`
+  //    (point anchor + `maxHeight` + `trackAnchor`), retiring that holdout —
+  //    its hand-rolled flip had no height cap and no clamp, so a bare `\`
+  //    painted most rows above the window. Each entry below
   //    states ONLY what remains, with the reason it is a different job from
   //    "swap the shell". They are listed rather than hidden because leaving
   //    the signal narrow enough that they don't appear is how the first three
   //    stayed invisible for a release cycle.
   "src/components/FontPicker.tsx::FontPicker":
     "HOLDOUT (follow-up), PLACEMENT + KEYBOARD only. The font dropdown in the Fonts dialog (5 instances) still places itself with `absolute z-50 left-0 right-0 mt-1` — no flip, and clipped by the dialog's own `overflow-y-auto` body, so the bottom-most pickers open into the clip — and its options have no roving keyboard nav. Its other axes are done: dismissal is `useMenuDismiss` with Escape (task 1304), the surface is `.menu-surface` (task 459), the rows paint from `row-tone.ts` (task 1361). What remains is not a shell swap: it is a COMBOBOX (filter input + grouped options + focus into the input), so it wants `layout=\"combobox\"` / `keyboardSource=\"input\"` / `useMenuCombobox` — the `LabelRefPopover` pattern — which `AnchoredMenu` does not model today (it owns the trigger and the open state; a combobox's input owns both).",
-  "src/components/SlashCommandPopup.tsx::SlashCommandPopup":
-    "HOLDOUT (follow-up), PLACEMENT only. The `/` command popup, anchored to a CARET rect (`view.coordsAtPos(slashPos)`) rather than to a trigger. Its surface is `.menu-surface` (task 459) and its rows paint from `row-tone.ts` (task 1361); what remains is placement: it hand-rolls its own viewport clamp and vertical flip, and `useFloatingMenuPosition` is the right destination (it already models a point anchor). Not a drop-in, because this popup's placement is entangled with three laws its current effect discharges by hand — the scroll-anchor probe (`recordScrollPlacement`), the RAF coalescing with an equality bail, and the layout-gesture SUPPRESSION that hides it for a pane/window drag — so the migration has to prove the hook preserves all three rather than swap a shell.",
 };
 
 /** Referencing any of these IS building on the primitive. This regex is

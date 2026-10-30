@@ -86,8 +86,6 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
     "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS. `onScroll = () => hide()`: the suppress half in its purest form, and it must not park.",
   "src/components/PendingChangePill.tsx":
     "SUPPRESS — a text-anchored fixed portal; `update()` returns early while a gesture is live and the render gate hides the pill, settling on the end edge.",
-  "src/components/SlashCommandPopup.tsx":
-    "SUPPRESS — a caret-anchored fixed portal; `scheduleUpdate` bails on `isLayoutGestureActive()`.",
   "src/components/editor-layout/editor-scrollbar.tsx":
     "LIVE scroll path (the measure path parks and the thumb suppresses on the RESIZE family only) — see PERMITTED_LIVE_SCROLL_HANDLERS.",
   "src/components/editor-layout/reader-view-prefs.ts":

@@ -23,19 +23,22 @@
  * commit ACCEPTS.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useSlashPopupState } from "@/lib/slash-popup-store";
 import { executeSlashSelectionAt } from "@/lib/tiptap/slash-popup";
 import { slashCommandReason } from "@/lib/tiptap/slash-applicability";
-import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import { menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
 import {
   recordScrollPlacement,
   SCROLL_PORTAL_SLASH_POPUP,
 } from "@/lib/scroll-reposition-probe";
+import {
+  useFloatingMenuPosition,
+  type FloatingMenuPlacement,
+} from "@/hooks/useFloatingMenuPosition";
 import {
   isLayoutGestureActive,
   useLayoutGestureActive,
@@ -66,6 +69,7 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
   // placement effect below re-runs on the end edge (the flag is a dep), which
   // is the settle.
   const gestureActive = useLayoutGestureActive();
+  const slashPos = state.open ? state.slashPos : -1;
   useEffect(() => {
     if (!editor) return;
     if (!state.open) {
@@ -75,7 +79,7 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
     const view = editor.view;
     const update = () => {
       try {
-        const c = view.coordsAtPos(state.slashPos);
+        const c = view.coordsAtPos(slashPos);
         // Scroll-anchor stability probe (task 042): one record per coalesced frame.
         recordScrollPlacement(SCROLL_PORTAL_SLASH_POPUP, c.top);
         // Equality bail (task 317): `coordsAtPos` returns fresh numbers in a
@@ -93,9 +97,10 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
         setCoords(null);
       }
     };
-    // RAF-coalesce: scroll/resize fire per-tick; only one recompute per
-    // frame is actually useful. Previously every scroll tick called
-    // `coordsAtPos` + `setCoords` synchronously.
+    // RAF-coalesce: a burst of transactions needs one caret re-read per
+    // frame. (Scroll and window resize are NOT subscribed here any more —
+    // task 1364: they re-anchor through the placement hook's own
+    // `trackAnchor` door, RAF-coalesced and gesture-parked there.)
     const scheduleUpdate = () => {
       // SUPPRESSED during a continuous layout gesture (task 317): the popup is
       // a caret-anchored fixed portal, so it hides for the gesture (the render
@@ -110,36 +115,123 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
     update();
     const onTr = () => scheduleUpdate();
     editor.on("transaction", onTr);
-    // Scroll: the editor's actual scroll container, not window — the
-    // editor's column scrolls via the unified row scroll, and a window-
-    // scope listener picks up unrelated scroll events from panels.
-    const scrollParent = findEditorScrollFor(view.dom);
-    scrollParent?.addEventListener("scroll", scheduleUpdate, { passive: true });
-    // Resize is genuinely window-scoped (viewport change).
-    window.addEventListener("resize", scheduleUpdate);
     return () => {
       editor.off("transaction", onTr);
-      scrollParent?.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
       }
     };
-  }, [state.open, state.open ? state.slashPos : -1, editor, gestureActive]);
+  }, [state.open, slashPos, editor, gestureActive]);
+
+  // The live caret anchor the placement hook re-reads on scroll / resize
+  // (RAF-coalesced, gesture-parked — the hook's one scheduler). A throw
+  // (the slash position left the doc) falls back to the last `coords`.
+  const trackAnchor = useCallback((): CaretRect | null => {
+    if (!editor || slashPos < 0) return null;
+    try {
+      return caretRect(editor.view.coordsAtPos(slashPos));
+    } catch {
+      return null;
+    }
+  }, [editor, slashPos]);
 
   if (!state.open || !coords || gestureActive) return null;
 
-  const popupHeight = state.filtered.length * ROW_HEIGHT + POPUP_PAD_Y * 2;
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 768;
-  const width = state.disabled.length > 0 ? POPUP_WIDTH_WITH_REASONS : POPUP_WIDTH;
-  let left = coords.left;
-  left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - width - VIEWPORT_MARGIN));
-  let top = coords.bottom + GAP;
-  if (top + popupHeight > vh - VIEWPORT_MARGIN) {
-    top = coords.top - popupHeight - GAP;
-  }
+  return (
+    <SlashCommandList
+      editor={editor}
+      coords={coords}
+      filtered={state.filtered}
+      disabled={state.disabled}
+      selectedIndex={state.selectedIndex}
+      trackAnchor={trackAnchor}
+    />
+  );
+}
+
+type CaretRect = ReturnType<typeof caretRect>;
+
+/** A caret line box as the zero-width point anchor the placement hook takes. */
+function caretRect(c: Coords) {
+  return {
+    left: c.left,
+    top: c.top,
+    right: c.left,
+    bottom: c.bottom,
+    width: 0,
+    height: c.bottom - c.top,
+  };
+}
+
+/** The rows' placement candidates: under the caret line first, else over it.
+ *  Module-level so the hook's `placements` dep keeps one identity. */
+const CARET_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below" },
+  { side: "above" },
+];
+
+/**
+ * The popup's list, mounted only while it is open (so the placement hook
+ * measures — and attaches its ResizeObserver to — a live element each open).
+ *
+ * Task 1364: PLACEMENT is the shared menu door's, `useFloatingMenuPosition`,
+ * with a point anchor at the caret line. It used to be hand-rolled here as
+ * `rows * ROW_HEIGHT` plus an unconditional flip above the caret whenever
+ * "below" did not fit — no height cap and no clamp, so a bare `\` (every
+ * command, ~750px) flipped half its rows, the default-selected one included,
+ * off the top of the window. The hook brings what every other menu has: the
+ * side with room, the viewport clamp, and `maxHeight` + `overflow-y: auto`.
+ *
+ * The caret anchor is re-read through two coalesced paths: SCROLL and window
+ * RESIZE ride the hook's `trackAnchor` (its one RAF scheduler, gesture-parked,
+ * `(left,top)` equality bail, scroll-anchor probe); the TRANSACTIONS that can
+ * move the slash (a wrap as the prefix grows) stay the parent's coalesced
+ * effect, which feeds `coords` back in as `anchorRect`. The layout-gesture
+ * SUPPRESSION stays the parent's render gate: the popup hides for a
+ * pane/window drag rather than parking half-detached from its slash.
+ */
+function SlashCommandList({
+  editor,
+  coords,
+  filtered,
+  disabled,
+  selectedIndex,
+  trackAnchor,
+}: {
+  editor: Editor | null;
+  coords: Coords;
+  filtered: readonly string[];
+  disabled: readonly string[];
+  selectedIndex: number;
+  trackAnchor: () => CaretRect | null;
+}) {
+  const width = disabled.length > 0 ? POPUP_WIDTH_WITH_REASONS : POPUP_WIDTH;
+  const { ref, style: placeStyle } = useFloatingMenuPosition({
+    anchorRect: caretRect(coords),
+    placements: CARET_PLACEMENTS,
+    gap: GAP,
+    margin: VIEWPORT_MARGIN,
+    maxHeight: true,
+    trackAnchor,
+  });
+
+  // Keep the roving row inside the list's visible band. Once the list is
+  // capped and scrolls, ArrowUp/Down would otherwise move a highlight the
+  // user cannot see. `scrollTop` on the list, not `scrollIntoView`, so no
+  // ancestor (the editor column) is ever scrolled by a popup row.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const list = listRef.current;
+    const row = list?.children[selectedIndex] as HTMLElement | undefined;
+    if (!list || !row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top - POPUP_PAD_Y;
+    else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight + POPUP_PAD_Y;
+    }
+  }, [selectedIndex]);
 
   return createPortal(
     <div
@@ -152,10 +244,12 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
       // pod grey, and Tailwind's stock `shadow-md` where they use the pod halo.
       // Task 459. Everything else here is LAYOUT, which is still the caller's.
       className="slash-command-popup menu-surface py-1"
+      ref={(el) => {
+        listRef.current = el;
+        ref(el);
+      }}
       style={{
-        position: "fixed",
-        left,
-        top,
+        ...placeStyle,
         width,
         // Caret popup rides the open-chrome-menu tier (task 033), promoted off
         // the old ad-hoc `1000` so a popped card / lifted overlay can't occlude
@@ -167,7 +261,7 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
         e.preventDefault();
       }}
     >
-      {state.filtered.map((name, i) => {
+      {filtered.map((name, i) => {
         // Task 398: the popup RENDERS the registry's verdict. A command that
         // cannot run at this caret is greyed and inert — never hidden (a command
         // that vanishes reads as "Virgil doesn't have `\\section`") and never
@@ -175,8 +269,8 @@ export function SlashCommandPopup({ editor }: { editor: Editor | null }) {
         // keystrokes on its way to refusing). The `disabled` list is derived in
         // the plugin's state from the SAME `applies()` `executeSelection` reads,
         // so what this row offers is what the commit accepts.
-        const isDisabled = state.disabled.includes(name);
-        const selected = i === state.selectedIndex && !isDisabled;
+        const isDisabled = disabled.includes(name);
+        const selected = i === selectedIndex && !isDisabled;
         // Task 968: a greyed command SAYS why — a muted suffix on the row, the
         // row's hint, and its accessible description. Same row, same ctx as
         // the grey itself (`slashCommandReason` → `verdictOf`); asked only for

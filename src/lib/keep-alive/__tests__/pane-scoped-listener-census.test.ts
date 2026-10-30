@@ -94,11 +94,6 @@ const LEDGER: Record<string, Row> = {
     events: ["window.mousedown", "window.resize", "window.keydown"],
     why: "resize gated on visibility; mousedown bails unless inside this editor (its end edge is watchHeldPress, armed only by that press — task 993); keydown bails unless this editor is focused",
   },
-  "components/SlashCommandPopup.tsx": {
-    scope: "open-state",
-    events: ["window.resize"],
-    why: "armed only while THIS editor's own slash popup is open — the store is keyed by the owning editor (task 750; pinned by slash-popup-owner-scope.test.tsx)",
-  },
   "components/drop-mode/controller.ts": {
     scope: "gesture",
     events: ["window.mousemove", "window.mouseup", "window.keydown", "window.mouseup"],
