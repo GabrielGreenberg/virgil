@@ -622,6 +622,13 @@ export interface CarrierRow {
   /** Does the run still spell its construct? `null` ⇒ a REFUSAL carrier: it has
    *  no grammar, nothing can break it, and it never demotes. */
   readonly claims: ((runText: string) => boolean) | null;
+  /** Do the run's bytes EXECUTE as LaTeX? `false` ⇒ an INERT carrier: TeX
+   *  never reads its bytes as commands (a `%` comment tail, an inline `\verb`),
+   *  so a `\label{…}` spelled inside it declares nothing (task 1374). `true`
+   *  for the refusal carrier, which holds arbitrary LIVE source (an unmodeled
+   *  table env with a real `\label`) — a scanner reads it through
+   *  {@link projectStructuralLatex} rather than skipping it. */
+  readonly live: boolean;
   /** Why this row answers the way it does — read by the census, and by the
    *  next person tempted to make a refusal carrier demote. */
   readonly why: string;
@@ -637,6 +644,7 @@ export const CARRIER_ROWS: readonly CarrierRow[] = [
     // interior newline — which the serializer explicitly re-comments and
     // documents as reachable by editing — is intact, not broken.
     claims: (t) => matchCommentTailAt(t, 0) !== null,
+    live: false,
     why: "a comment tail IS its leading unescaped `%`; delete that and the bytes are prose",
   },
   {
@@ -646,12 +654,14 @@ export const CARRIER_ROWS: readonly CarrierRow[] = [
     // is not enough: `\verb|x| tail` would claim on its prefix while the tail
     // rides the byte-literal contract it never earned.
     claims: (t) => matchInlineVerbAt(t, 0) === t.length,
+    live: false,
     why: "an inline \\verb run is a construct: its lead, its name and both delimiters can each be deleted",
   },
   {
     mark: LATEX_VERBATIM_MARK,
     form: "carrier",
     claims: null,
+    live: true,
     why: "the schema's REFUSAL carrier holds arbitrary source; demoting it would escape a screenful of the user's LaTeX into printed prose",
   },
 ];
@@ -728,6 +738,17 @@ export function carrierRowFor(
     return CARRIER_ROWS.find((r) => r.mark === mark && r.form === form);
   }
   return CARRIER_ROWS.find((r) => r.mark === mark && r.form === null);
+}
+
+/**
+ * Is a run wearing `mark` (with `attrs`) an INERT carrier — bytes TeX never
+ * executes? Read off the row's `live` declaration, so a new carrier answers by
+ * declaring a row. `latexCommand` and every non-family mark answer `false`
+ * (they are live source or prose).
+ */
+export function isInertCarrierMark(mark: string, attrs?: unknown): boolean {
+  const row = carrierRowFor(mark, attrs);
+  return !!row && !row.live;
 }
 
 /**
