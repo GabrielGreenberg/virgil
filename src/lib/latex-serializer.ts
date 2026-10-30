@@ -24,6 +24,7 @@ import { commentBodyForEmit } from "@/lib/latex-comment-body";
 import { graphicsCommandEnd } from "@/lib/figures/parse-attrs";
 import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import { headingTypeCommand } from "@/lib/heading-types";
+import { refCommandLatex } from "@/lib/ref-commands";
 import {
   applyWrapperMarks,
   composeInlineRun,
@@ -1030,19 +1031,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 }
 
 function serializeLabelRef(node: JSONContent): string {
-  const label = node.attrs?.label || "";
-  const cmd = (node.attrs?.refCommand as string) || "ref";
-  // \getref / \getfullref are expex reference commands (matched by the expex
-  // fallback detector too); declare adjacent to the emit. Plain \ref is kernel.
-  if (cmd === "getref") {
-    need("expex");
-    return `\\getref{${label}}`;
-  }
-  if (cmd === "getfullref") {
-    need("expex");
-    return `\\getfullref{${label}}`;
-  }
-  return `\\ref{${label}}`;
+  // The command vocabulary + each command's package are the ONE table in
+  // `ref-commands.ts` (task 1372); declare the requirement adjacent to the
+  // emit. An unlisted name is kept verbatim — never silently rewritten to
+  // `\ref` — and a value that is no command name at all is refused.
+  const ref = refCommandLatex(node.attrs?.refCommand, node.attrs?.label || "");
+  if (!ref) throw new UnserializableNodeError(node.type);
+  if (ref.requires) need(ref.requires);
+  return ref.latex;
 }
 
 function serializeExampleInlineChildren(nodes: JSONContent[] | undefined): string {
@@ -2101,6 +2097,11 @@ function extractTitleFieldLines(preamble: string): string[] {
   return out;
 }
 
+/** Containers the uuid walks (`ensureUuids`, its `needsUuidWork` mirror and
+ *  `recoverOrphanedUuids`) descend into, each owning its own uuid — ONE set,
+ *  no longer redeclared per walk (task 1372). */
+const CONTAINER_DESCEND: ReadonlySet<string> = new Set(["bulletList", "orderedList", "blockquote"]);
+
 /** Assign UUIDs to all block-level nodes that lack one. Mutates the doc in place.
  *  Container nodes (lists, blockquote) get a single UUID — inner paragraphs are suppressed.
  *  Headings, titleFields, atom blocks (displayMath, latexComment, codeBlock) always get a UUID.
@@ -2123,10 +2124,9 @@ export function assignUuids(doc: JSONContent): void {
   // `exampleItemList` sits between an `exampleBlock` and its `exampleItem`s and
   // is not a container name, so a flag would have been reset there even with
   // the names added. The two sets stay distinct in ROLE: `CONTAINER_DESCEND`
-  // below decides where the walk descends and which nodes own their own uuid;
+  // (module-level, above) decides where the walk descends and which nodes own their own uuid;
   // `DEFERRING_PARENTS` decides only whether a paragraph yields identity to the
   // node directly above it.
-  const CONTAINER_DESCEND = new Set(["bulletList", "orderedList", "blockquote"]);
   const existing = new Set<string>();
 
   // First pass: collect existing UUIDs and detect duplicates.
@@ -2293,7 +2293,6 @@ export function needsUuidWork(doc: JSONContent): boolean {
   // — it is the rule, and whatever this walk cannot see the mutator never gets
   // the chance to heal. That is precisely what kept it answering TRUE forever
   // on any paper holding one `\ex`.
-  const CONTAINER_DESCEND = new Set(["bulletList", "orderedList", "blockquote"]);
   let work = false;
 
   // Pass 1 mirror: duplicate uuids among bearing nodes.
@@ -2489,7 +2488,6 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
   // fingerprint, and a fingerprint that names two nodes is a wrong-restore.
   // (This path is currently disabled, which is the only reason that was a
   // hazard rather than a defect.)
-  const CONTAINER_DESCEND = new Set(["bulletList", "orderedList", "blockquote"]);
 
   // 3. Walk document for UUID-eligible nodes missing a UUID, try to recover
   function recover(node: JSONContent, parentType: string | null = null) {

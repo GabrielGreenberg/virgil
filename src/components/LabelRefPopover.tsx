@@ -43,6 +43,7 @@ import { useMenuItem } from "./menu/useMenuItem";
 import { useMenuCombobox } from "./menu/useMenuCombobox";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import type { RefCommand } from "@/lib/ref-display";
+import { REF_COMMAND_NAMES } from "@/lib/ref-commands";
 import { isCommitEnter } from "@/lib/key-intent";
 
 /**
@@ -321,7 +322,7 @@ function LabelRefBody({
       {/* Ref-command tri-toggle: flip between \ref / \getref / \getfullref. */}
       {!isCreateMode && onChangeRefCommand && (
         <div className="label-ref-popover-pod label-ref-popover-refcmd">
-          {(["ref", "getref", "getfullref"] as RefCommand[]).map((cmd) => (
+          {REF_COMMAND_NAMES.map((cmd) => (
             <button
               key={cmd}
               type="button"

@@ -37,6 +37,7 @@ import {
   type ActiveMath,
 } from "@/lib/tiptap/atom-edit-target";
 import { isFigurePopoverKind, type ActiveFigure } from "@/lib/figures/popover-target";
+import { toRefCommand } from "@/lib/ref-commands";
 import {
   CITATION_CLICK_EVENT,
   ERROR_MARKER_CLICK_EVENT,
@@ -358,8 +359,7 @@ export function useMarkerClickBridges(deps: {
         at: trackAtomPos(owner, detail.pos),
         editor: owner,
         rect: detail.rect,
-        refCommand:
-          cmd === "getref" || cmd === "getfullref" || cmd === "ref" ? cmd : "ref",
+        refCommand: toRefCommand(cmd),
       });
     };
     window.addEventListener(REF_CLICK_EVENT, handler);

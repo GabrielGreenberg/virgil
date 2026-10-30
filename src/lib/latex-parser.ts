@@ -4,6 +4,7 @@ import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
 import { footnoteNumbersFor } from "@/lib/footnote-numbering";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
+import { matchRefCommandAt } from "@/lib/ref-commands";
 import {
   detachItemAnchor,
   NODE_UUID_ANCHOR,
@@ -875,17 +876,13 @@ function parseInlineInScope(
       // one accident hiding another.
 
       // \ref{key} / \getref{key} / \getfullref{key.sub} — cross-reference
-      const refCmdMatch = rest.match(/^\\(getfullref|getref|ref)\{/);
+      // The command vocabulary is the ONE table in `ref-commands.ts` (task 1372).
+      const refCmdMatch = matchRefCommandAt(rest);
       if (refCmdMatch) {
         flush();
-        const inner = extractBraced(text, i + refCmdMatch[0].length - 1);
+        const inner = extractBraced(text, i + refCmdMatch.openLength - 1);
         if (inner) {
-          const refCommand =
-            refCmdMatch[1] === "getfullref"
-              ? "getfullref"
-              : refCmdMatch[1] === "getref"
-                ? "getref"
-                : "ref";
+          const refCommand = refCmdMatch.command;
           nodes.push({
             type: "labelRef",
             attrs: {
