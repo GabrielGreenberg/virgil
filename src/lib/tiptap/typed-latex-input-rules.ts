@@ -1,5 +1,6 @@
 import { CITE_RE_FULL } from "@/lib/cite-commands";
 import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
+import { isEscaped } from "@/lib/latex-lexer";
 
 /**
  * THE typed-LaTeX input-rule census — the LIVE VOCABULARY of Virgil's FOURTH
@@ -102,3 +103,65 @@ export type TypedLatexActionId = keyof typeof TYPED_LATEX_INPUT_RULES;
 export const TYPED_LATEX_ACTION_IDS = Object.keys(
   TYPED_LATEX_INPUT_RULES,
 ) as readonly TypedLatexActionId[];
+
+/**
+ * Where each rule's DELIMITERS sit, for the escape check below — indices into
+ * the subject the rule's regex was matched against. Every index named here must
+ * be a REAL delimiter (an even backslash run before it, `isEscaped` false), or
+ * the parser would not read the typed characters as this construct.
+ *
+ *   - `citation` / `footnote` — the subject INCLUDES the typed `}`; the one
+ *     delimiter that can be escaped is the command's leading `\` (`\\cite{k}`
+ *     is a line break followed by the text `cite{k}`).
+ *   - `inline-math` — the subject EXCLUDES the typed closing `$`, which would
+ *     land at `subject.length`: the opener and that pending closer.
+ *   - `display-math` — the subject EXCLUDES the typed final `$`: the opener's
+ *     first `$` (its second is preceded by a `$`, never a backslash) and the
+ *     closer's first `$`, the subject's last character.
+ *   - `latex-comment` — anchored at block start, so the `%` has nothing before
+ *     it; listed so the rule still takes the one door.
+ */
+const DELIMITER_INDICES: Record<
+  TypedLatexActionId,
+  (subject: string, match: RegExpMatchArray) => readonly number[]
+> = {
+  citation: (_s, m) => [m.index!],
+  footnote: (_s, m) => [m.index!],
+  "inline-math": (s, m) => [m.index!, s.length],
+  "display-math": (s, m) => [m.index!, s.length - 1],
+  "latex-comment": (_s, m) => [m.index!],
+};
+
+/**
+ * THE match door for every typed-LaTeX input rule (task 1368). Runs the census
+ * regex against `subject`, then REFUSES the match (returns `null`) when any of
+ * the rule's delimiters is escaped — the parser's own `isEscaped` (tasks
+ * 206/210), so the typed surface and the parser agree on what `\$`, `\\cite`
+ * and `\\footnote` mean. Without it, typing `costs \$5, or \$` made the
+ * escaped dollars a math chip `5, or \` the source does not contain.
+ *
+ * A `(?<!\\)` lookbehind in each regex cannot do this: it cannot tell an odd
+ * backslash run (escaped) from an even one (`\\$x$` is a line break, then
+ * real math) — the naive single-character test task 206 removed from the
+ * parser. Cost: one O(backslash-run) scan per delimiter, on the trigger key.
+ */
+export function matchTypedLatexRule(
+  id: TypedLatexActionId,
+  subject: string,
+): RegExpMatchArray | null {
+  const match = subject.match(TYPED_LATEX_INPUT_RULES[id]);
+  if (!match) return null;
+  return matchHasUnescapedDelimiters(subject, DELIMITER_INDICES[id](subject, match))
+    ? match
+    : null;
+}
+
+/** `true` when every index names a real (unescaped) delimiter in `subject`.
+ *  Shared with the soft-routing `\cite ` branch, whose bare-command pattern
+ *  is not a census rule but opens on the same `\`. */
+export function matchHasUnescapedDelimiters(
+  subject: string,
+  indices: readonly number[],
+): boolean {
+  return indices.every((i) => !isEscaped(subject, i));
+}

@@ -78,19 +78,28 @@ describe("typed-LaTeX census — the table IS the live surface", () => {
     expect(gatedInputRuleFiles()).toEqual(declared);
   });
 
-  it("every census entry's extension reads its pattern FROM the census", () => {
+  it("every census entry's extension matches THROUGH the census's one escape-aware door", () => {
     // Leaf-sharing, checked at the call site: the rule must match with
-    // `TYPED_LATEX_INPUT_RULES[...]`, never a re-spelled literal. This is what
-    // makes the table load-bearing rather than descriptive — the registry's
-    // identity check (`row.inputRulePattern === TYPED_LATEX_INPUT_RULES[id]`)
-    // then pins the row to the same object, so all three agree by construction.
+    // `matchTypedLatexRule("<id>", …)`, which runs `TYPED_LATEX_INPUT_RULES[id]`
+    // — never a re-spelled literal. This is what makes the table load-bearing
+    // rather than descriptive — the registry's identity check
+    // (`row.inputRulePattern === TYPED_LATEX_INPUT_RULES[id]`) then pins the
+    // row to the same object, so all three agree by construction. Task 1368:
+    // the door is also where the parser's `isEscaped` refuses `\$` /
+    // `\\cite`, so a direct `.match(TYPED_LATEX_INPUT_RULES…)` — which would
+    // skip that refusal — is forbidden in every rule file.
     for (const id of TYPED_LATEX_ACTION_IDS) {
       const src = read(RULE_SOURCE[id]);
       expect(
-        src.includes(`TYPED_LATEX_INPUT_RULES["${id}"]`) ||
-          src.includes(`TYPED_LATEX_INPUT_RULES.${id}`),
-        `${RULE_SOURCE[id]} must match with TYPED_LATEX_INPUT_RULES["${id}"]`,
+        src.includes(`matchTypedLatexRule("${id}"`),
+        `${RULE_SOURCE[id]} must match with matchTypedLatexRule("${id}", …)`,
       ).toBe(true);
+    }
+    for (const file of new Set(Object.values(RULE_SOURCE))) {
+      expect(
+        /\.match\(\s*TYPED_LATEX_INPUT_RULES/.test(read(file)),
+        `${file} matches a census regex directly — route it through matchTypedLatexRule so the escape check runs`,
+      ).toBe(false);
     }
   });
 

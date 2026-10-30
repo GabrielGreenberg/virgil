@@ -15,7 +15,7 @@ import {
 } from "./latex-comment-convert";
 // The typed-LaTeX census (task 639) — this rule's trigger pattern is READ from
 // the table the action registry reconciles its `surfaces.typed` flags against.
-import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import { matchTypedLatexRule } from "./typed-latex-input-rules";
 import {
   armTypedLatexRevert,
   isTypedLatexRevert,
@@ -235,7 +235,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             // 639), which is the same object the `latex-comment` registry row
             // records as its `inputRulePattern` — the two surfaces cannot
             // recognize a different `%` vocabulary.
-            if (!combined.match(TYPED_LATEX_INPUT_RULES["latex-comment"])) {
+            if (!matchTypedLatexRule("latex-comment", combined)) {
               return false;
             }
 

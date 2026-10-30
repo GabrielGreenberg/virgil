@@ -14,7 +14,7 @@ import { collabReadOnly } from "./collab-read-only-gate";
 // table the action registry reconciles its `surfaces.typed` flags against, so
 // the `inline-math` / `display-math` rows and these rules cannot recognize a
 // different math vocabulary.
-import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import { matchTypedLatexRule } from "./typed-latex-input-rules";
 import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
@@ -274,7 +274,7 @@ export const InlineMath = Node.create<MathOptions>({
             // Task 578: the body class excludes the U+FFFC atom placeholder, and
             // the replace range is asked of the door — a `$` pair around an
             // inline atom must never swallow it into the math's `latex`.
-            const match = textBefore.match(TYPED_LATEX_INPUT_RULES["inline-math"]);
+            const match = matchTypedLatexRule("inline-math", textBefore);
             if (!match) return false;
             const latex = match[1];
             const start = from - match[0].length;
@@ -430,7 +430,7 @@ export const DisplayMath = Node.create<MathOptions>({
 
             // Case 2: $$content$$ — closing pair
             // Task 578: same refusal as the inline twin above.
-            const match = textBefore.match(TYPED_LATEX_INPUT_RULES["display-math"]);
+            const match = matchTypedLatexRule("display-math", textBefore);
             if (!match) return false;
             const latex = match[1];
             const start = from - match[0].length;
