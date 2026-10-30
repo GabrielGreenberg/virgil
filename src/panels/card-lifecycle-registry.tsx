@@ -130,9 +130,9 @@ export function cardKindTravels(kind: CardKind, lifecycle: CardLifecycleApi): bo
   return CARD_REGISTRY[kind]?.lifecycle.carry === true && !!lifecycle.get(kind)?.carry;
 }
 
-/** Direct constructor for callers that own a registry but don't want the
- *  provider/consumer dance (e.g. `EditorPane` handing the API into a
- *  dispatcher hook). Identity is stable across renders; only the ref's
+/** The ONE door to a pane's card lifecycle ops (see the file header):
+ *  `EditorPane` builds the per-doc registry and hands the API this returns
+ *  into its dispatcher hooks. Identity is stable across renders; only the ref's
  *  payload changes, so the api object can be a useCallback/useMemo dep
  *  without cascading re-renders. */
 export function useCardLifecycleApi(
