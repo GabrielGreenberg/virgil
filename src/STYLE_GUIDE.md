@@ -1558,6 +1558,20 @@ main-text hit) maps to `null`, and `useCardTheme(null)` /
 provenance: `ArchiveCard`'s one `useCardTheme("archive")` over cards that
 came from many panels is correct, because `archive` is the row's own kind.
 
+**One card-frame door.** Every card root takes its frame — class, the
+`.focus-outline` focus member, the inline lift/selection style, the kind
+colour var, and the `data-card` frame marker — from `cardFrameProps` /
+`cardFrameClass` + `cardFrameStyle` (`panel-primitives.tsx`); a lighter
+surface than `PanelCard` (the Search result row) spreads `cardFrameProps`
+rather than re-assembling the frame, which is how a Tabbed-to hit once wore
+the UA ring (task 1367, `cardframe-door-census.test.tsx`). Frame CHROME keys
+on `[data-card]`; card IDENTITY (`data-card-key`) is PanelCard's alone, so a
+hit never answers the hover bridge / reconciler as its source card. The
+door's `accentStripe` option — a 3px left kind stripe — is for a MIXED-kind
+list only (Search: neighbouring rows are different kinds); a single-kind
+panel names its kind by being that panel, and a kind-less row passes
+`transparent` (no stripe).
+
 **No bespoke card headers.** Pass `kind` (+ `kindLabelOverride` when the
 registry label differs from the card's overline, e.g. `bib` →
 "Bibliography item") so PanelCard renders the ONE unified header —

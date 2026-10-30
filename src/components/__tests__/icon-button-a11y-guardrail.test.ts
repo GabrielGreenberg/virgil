@@ -1597,7 +1597,23 @@ type Mechanism = "ring" | "outline" | "posture" | "none";
 function mechanismOf(m: ShellMember): Mechanism {
   if (POSTURE_MARKER.test(m.rawAbove)) return "posture";
   if (!reachesDoor(m)) return "none";
-  return OUTLINE_MEMBER.test(m.expr) ? "outline" : "ring";
+  return OUTLINE_MEMBER.test(m.expr) || resolverNamesOutline(m) ? "outline" : "ring";
+}
+
+/** The same one hop `reachesDoor` takes: a member whose class comes from a
+ *  same-file resolver (`PanelCard` → `cardFrameClass`, the card-frame door,
+ *  task 1367) supplies the member that RESOLVER names. */
+function resolverNamesOutline(m: ShellMember): boolean {
+  for (const call of m.expr.matchAll(/(?<![\w.])([a-z][A-Za-z0-9]*)\s*\(/g)) {
+    const at = new RegExp(`function\\s+${call[1]}\\s*\\(`).exec(m.fileSource);
+    if (!at) continue;
+    const bodyOpen = m.fileSource.indexOf("{", at.index + at[0].length);
+    if (bodyOpen < 0) continue;
+    const end = balancedBody(m.fileSource, bodyOpen, "{", "}");
+    const body = m.fileSource.slice(bodyOpen, end < 0 ? undefined : end);
+    if (DOOR.test(body) && OUTLINE_MEMBER.test(body)) return true;
+  }
+  return false;
 }
 
 describe("a SHELL that owns a focusable element supplies its indicator", () => {
@@ -1755,7 +1771,10 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
     );
     const writers = [...css.matchAll(/([^{}]*\{[^{}]*?outline\s*:[^{}]*\})/g)]
       .map((m) => m[1].split("{")[0].trim())
-      .filter((sel) => /data-card-key|\.focus-outline/.test(sel));
+      // `data-card` (the frame marker, task 1367) OR `data-card-key` (card
+      // identity) — the pref's hover rule keys on the FRAME since 1367, so a
+      // Search result row (frame, no identity) is covered too.
+      .filter((sel) => /data-card(?:-key)?(?![\w-])|\.focus-outline/.test(sel));
     // …in SOURCE order, and the last entry is the print one — which is how the
     // list also states that the screen rules come first.
     expect(writers).toEqual([
@@ -1766,8 +1785,8 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
       // it no longer names SELECTION (a selected card always wears the
       // inline selection halo instead), so a keyboard-focused selected card
       // shows the class's own edge — the pref can only win on hover.
-      '.card-outline-chrome [data-card-key][data-card-hovered="true"],\n' +
-        ".card-outline-chrome [data-card-key]:hover",
+      '.card-outline-chrome [data-card][data-card-hovered="true"],\n' +
+        ".card-outline-chrome [data-card]:hover",
       // The popped-card suppression — (0,4,0), so it beat the class too, and
       // unscoped it deleted the indicator on EVERY popped card. Task 554
       // scoped it to `:not(:focus-visible)`, which is what its own sentence
