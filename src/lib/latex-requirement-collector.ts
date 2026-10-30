@@ -28,7 +28,7 @@
  * never diverge.
  */
 
-import type { BibFamily } from "@/lib/bib-family";
+import { foldFamilies, type BibFamily } from "@/lib/bib-family";
 
 /**
  * Shared tikz vocabulary. Broadened past the legacy `\begin{tikzpicture}`-only
@@ -181,19 +181,10 @@ export function createRequirementCollector(): RequirementCollector {
       ids.add(id);
     },
     needBibFamily(fam: BibFamily | null) {
-      if (!fam) return;
-      // First concrete family wins → preserves the legacy "prefer natbib when
-      // both families appear" behavior, since natbib is the baseline and the
-      // detector resolved ties to natbib. Emit order follows document order,
-      // so if a doc has natbib-only cites they are typically declared first;
-      // but to be robust to order we bias toward natbib explicitly.
-      if (bibFamily === null) {
-        bibFamily = fam;
-      } else if (bibFamily !== fam) {
-        // Two different concrete families in one body — bias to natbib
-        // (baseline), matching detectBodyRequirements' precedence.
-        bibFamily = "natbib";
-      }
+      // The ONE tie rule (bib-family.ts `foldFamilies`, task 1371): first
+      // concrete family wins; a DIFFERENT later family folds to the baseline,
+      // matching `detectBodyRequirements`' precedence.
+      bibFamily = foldFamilies(bibFamily, fam);
     },
     get ids() {
       return ids;

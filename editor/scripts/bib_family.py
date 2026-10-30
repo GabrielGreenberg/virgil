@@ -29,8 +29,9 @@ THE LADDER — the app's, in the app's order (`useCitations`' resolved
      when present nothing below it is consulted. A detector that cannot report
      "I found nothing" is a SEED, never an authority (task 344).
   2. the LIVE preamble's `\usepackage` / `\RequirePackage` load.
-  3. the LIVE command usage over the whole source (natbib-only bucket first —
-     baseline precedence, matching `detectCommandBibFamily`).
+  3. the family the LIVE source PINS (`body_pinned_family`, the port of
+     `bodyPinnedFamily`): natbib-only cites → natbib; biblatex-only cites or
+     `\printbibliography` → biblatex; both → the baseline tie.
   4. `DEFAULT_BIB_FAMILY` — natbib, the family Virgil's own baseline preamble
      ships.
 
@@ -114,6 +115,9 @@ def preamble_list_loads_package(live_preamble_text: str, name: str) -> bool:
 
 _NATBIB_ONLY_CMD_RE = bucket_pattern(NATBIB_ONLY)
 _BIBLATEX_ONLY_CMD_RE = bucket_pattern(BIBLATEX_ONLY)
+# biblatex's bibliography-PRINTING commands pin biblatex too (port of
+# bib-family.ts `BIBLATEX_BODY_RE`, task 1371).
+_BIBLATEX_BODY_RE = re.compile(r"\\print(?:bibliography|bibheading)(?![a-zA-Z])")
 
 
 def as_bib_family(value) -> str | None:
@@ -163,17 +167,31 @@ def detect_preamble_bib_family(live_preamble_text: str) -> str | None:
     return None
 
 
-def detect_command_bib_family(live_source: str) -> str | None:
-    """Which family does the CITE-COMMAND USAGE pin? natbib-only wins (baseline
-    precedence, matching `detectCommandBibFamily`); else biblatex-only; else
-    `None`. Asked of the WHOLE live source, deliberately: it is a fallback for
-    documents that pin no package, a `\\citep` inside a preamble `\\newcommand`
-    is real usage, and narrowing a fallback can only lose detections."""
+def fold_families(a: str | None, b: str | None) -> str | None:
+    """The ONE tie rule (port of `foldFamilies`): equal or one absent → that
+    family; two different families → `DEFAULT_BIB_FAMILY` (absorbing)."""
+    if a is None:
+        return b
+    if b is None or a == b:
+        return a
+    return DEFAULT_BIB_FAMILY
+
+
+def body_pinned_family(live_source: str) -> str | None:
+    """Which family does the LIVE source PIN? Port of `bodyPinnedFamily`
+    (task 1371) and held to it by the shared corpus
+    `src/lib/__tests__/fixtures/body-family-pin-corpus.json`: natbib-only cites
+    → natbib; biblatex-only cites or `\\printbibliography` → biblatex; both →
+    the baseline tie; neither → `None`. Asked of the WHOLE live source,
+    deliberately: it is a fallback for documents that pin no package, a
+    `\\citep` inside a preamble `\\newcommand` is real usage, and narrowing a
+    fallback can only lose detections."""
+    fam = None
     if _NATBIB_ONLY_CMD_RE.search(live_source):
-        return "natbib"
-    if _BIBLATEX_ONLY_CMD_RE.search(live_source):
-        return "biblatex"
-    return None
+        fam = fold_families(fam, "natbib")
+    if _BIBLATEX_ONLY_CMD_RE.search(live_source) or _BIBLATEX_BODY_RE.search(live_source):
+        fam = fold_families(fam, "biblatex")
+    return fam
 
 
 def detect_bib_family(tex: str) -> str:
@@ -184,7 +202,7 @@ def detect_bib_family(tex: str) -> str:
     loaded = detect_preamble_bib_family(live_preamble(tex))
     if loaded:
         return loaded
-    by_command = detect_command_bib_family(live)
+    by_command = body_pinned_family(live)
     if by_command:
         return by_command
     return DEFAULT_BIB_FAMILY

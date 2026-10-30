@@ -1,0 +1,16 @@
+{
+  "_doc": "Which bib family does a LIVE body pin? — the shared corpus for the ONE rule (task 1371). The app reader is src/lib/__tests__/body-family-pin.test.ts (bodyPinnedFamily, detectBodyRequirements, detectBibFamily, the collector/serializer fold); the editor reader is editor/scripts/tests/test_body_family_pin_parity.py (bib_family.body_pinned_family / detect_bib_family). `family` is the pinned family or null; `seed` is detectBibFamily over a preamble that loads no bib package.",
+  "cases": [
+    { "name": "natbib-only", "body": "See \\citep{a}.", "family": "natbib", "seed": "natbib" },
+    { "name": "biblatex-only", "body": "See \\autocite{a}.", "family": "biblatex", "seed": "biblatex" },
+    { "name": "capitalized biblatex-only", "body": "\\Textcite{a} argues.", "family": "biblatex", "seed": "biblatex" },
+    { "name": "printbibliography alone", "body": "Text.\n\\printbibliography", "family": "biblatex", "seed": "biblatex" },
+    { "name": "printbibheading alone", "body": "Text.\n\\printbibheading", "family": "biblatex", "seed": "biblatex" },
+    { "name": "cite + printbibliography (the measured drift)", "body": "Text \\cite{a}.\n\\printbibliography", "family": "biblatex", "seed": "biblatex" },
+    { "name": "mixed natbib + biblatex ties to the baseline", "body": "\\citep{a} and \\autocite{b}", "family": "natbib", "seed": "natbib" },
+    { "name": "natbib cite + printbibliography ties to the baseline", "body": "\\citet{a}.\n\\printbibliography", "family": "natbib", "seed": "natbib" },
+    { "name": "shared-only pins nothing", "body": "\\cite{a} \\citeauthor{b}", "family": null, "seed": "natbib" },
+    { "name": "no cites at all", "body": "Plain prose.", "family": null, "seed": "natbib" },
+    { "name": "boundary guard: \\printbibliographyX is not the command", "body": "\\printbibliographyfoo", "family": null, "seed": "natbib" }
+  ]
+}

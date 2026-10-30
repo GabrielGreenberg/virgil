@@ -144,8 +144,10 @@ export function preambleLoadsForeignCitePackage(preamble: string): boolean {
 }
 
 /** Alternation over a command bucket + capitalized sentence-start variants,
- *  longest-first, boundary-guarded (same convention as cite-commands.ts). */
-function bucketRe(names: Iterable<string>): RegExp {
+ *  longest-first, boundary-guarded (same convention as cite-commands.ts).
+ *  The ONE builder of a cite-bucket probe — `latex-requirements.ts` held a
+ *  byte-identical private copy (`familyRe`) until task 1371. */
+export function citeBucketRe(names: Iterable<string>): RegExp {
   const all: string[] = [];
   for (const n of names) {
     all.push(n);
@@ -155,19 +157,63 @@ function bucketRe(names: Iterable<string>): RegExp {
   return new RegExp(`\\\\(?:${all.join("|")})(?![a-zA-Z])`);
 }
 
-const NATBIB_ONLY_CMD_RE = bucketRe(NATBIB_ONLY_CITE_COMMANDS);
-const BIBLATEX_ONLY_CMD_RE = bucketRe(BIBLATEX_ONLY_CITE_COMMANDS);
+const NATBIB_ONLY_CMD_RE = citeBucketRe(NATBIB_ONLY_CITE_COMMANDS);
+const BIBLATEX_ONLY_CMD_RE = citeBucketRe(BIBLATEX_ONLY_CITE_COMMANDS);
 
 /**
- * Which family does the CITE-COMMAND USAGE in a source string pin, if any?
- * natbib-only usage wins (baseline precedence, matching the requirements
- * detector); else biblatex-only usage; else null (only shared/kernel cites).
- * Used as the command-usage fallback for `detectBibPackage`.
+ * biblatex's bibliography-PRINTING commands. They are not cites, but a body
+ * that prints a biblatex bibliography needs biblatex as surely as `\autocite`
+ * does — so a `\cite`-only body that prints with `\printbibliography` pins
+ * biblatex (task 1019 taught the requirements pass this; task 1371 moved it
+ * here so the family READER learned it too).
  */
-export function detectCommandBibFamily(source: string): BibFamily | null {
-  if (NATBIB_ONLY_CMD_RE.test(source)) return "natbib";
-  if (BIBLATEX_ONLY_CMD_RE.test(source)) return "biblatex";
-  return null;
+export const BIBLATEX_BODY_RE = /\\print(?:bibliography|bibheading)(?![a-zA-Z])/;
+
+/**
+ * Fold two declared families into one: equal (or one absent) → that family;
+ * two DIFFERENT concrete families → `DEFAULT_BIB_FAMILY`. natbib and biblatex
+ * cannot co-load, so a body that pins both is already broken; the baseline is
+ * the answer every layer gives, and it is ABSORBING — fold(conflict, x) is
+ * still the default — which is what lets per-block folds compose with the
+ * cross-block fold (`latex-serializer.ts` `assembleLatex`).
+ *
+ * The ONE tie rule (task 1371): the requirement collector, the serializer's
+ * per-block fold and {@link bodyPinnedFamily} all call this.
+ */
+export function foldFamilies(
+  a: BibFamily | null,
+  b: BibFamily | null,
+): BibFamily | null {
+  if (a === null) return b;
+  if (b === null || a === b) return a;
+  return DEFAULT_BIB_FAMILY;
+}
+
+/**
+ * Which family does the BODY pin, if any? The ONE rule (task 1371) — before
+ * it, four sites spelled it by hand and had drifted (the requirements pass
+ * counted `\printbibliography`, `detectBibFamily` did not, so a
+ * `\cite` + `\printbibliography` paper read as natbib while save injected
+ * biblatex):
+ *
+ *  - natbib-only cite usage pins natbib;
+ *  - biblatex-only cite usage, or a biblatex body command
+ *    ({@link BIBLATEX_BODY_RE}), pins biblatex;
+ *  - both → {@link foldFamilies}' tie (the baseline);
+ *  - neither (only shared/kernel cites, or none) → `null`.
+ *
+ * `liveSource` must already be projected to live bytes
+ * (`projectDetectableLatex`). The Python twin is `bib_family.py`
+ * `body_pinned_family`, held to this by the shared corpus
+ * `src/lib/__tests__/fixtures/body-family-pin-corpus.json`.
+ */
+export function bodyPinnedFamily(liveSource: string): BibFamily | null {
+  let fam: BibFamily | null = null;
+  if (NATBIB_ONLY_CMD_RE.test(liveSource)) fam = foldFamilies(fam, "natbib");
+  if (BIBLATEX_ONLY_CMD_RE.test(liveSource) || BIBLATEX_BODY_RE.test(liveSource)) {
+    fam = foldFamilies(fam, "biblatex");
+  }
+  return fam;
 }
 
 /**
@@ -236,7 +282,7 @@ export function detectBibFamily(
   const preamble = withLocalLoads(preambleSliceOfProjected(live), localPackages);
   const loaded = detectPreambleBibFamily(preamble);
   if (loaded) return loaded;
-  const byCommand = detectCommandBibFamily(live);
+  const byCommand = bodyPinnedFamily(live);
   if (byCommand) return byCommand;
   return DEFAULT_BIB_FAMILY;
 }

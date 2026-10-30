@@ -60,7 +60,7 @@ import {
   TEX_BLOCK_END_ESCAPE,
 } from "@/lib/latex-lexer";
 import type { BibFamily } from "@/lib/bib-family";
-import { classifyCiteFamily } from "@/lib/bib-family";
+import { classifyCiteFamily, foldFamilies } from "@/lib/bib-family";
 import {
   createRequirementCollector,
   PACKAGE_DETECTORS,
@@ -1812,19 +1812,15 @@ export function serializeTopLevelBlock(
 
 /**
  * Fold per-block declared bib families exactly the way one whole-walk
- * collector would have: first concrete family wins; a DIFFERENT later family
- * is a conflict that resolves to natbib (the absorbing baseline —
- * latex-requirement-collector.ts `needBibFamily`). Per-block folding composes
- * with this cross-block fold because "natbib" is absorbing whether it arrived
- * as a declaration or as a conflict resolution.
+ * collector would have — through the ONE tie rule, bib-family.ts
+ * `foldFamilies` (task 1371): first concrete family wins; a DIFFERENT later
+ * family resolves to the baseline. Per-block folding composes with this
+ * cross-block fold because the baseline is absorbing whether it arrived as a
+ * declaration or as a conflict resolution.
  */
 function foldBibFamilies(parts: readonly TopLevelBlockLatex[]): BibFamily | null {
   let fam: BibFamily | null = null;
-  for (const p of parts) {
-    if (!p.bibFamily) continue;
-    if (fam === null) fam = p.bibFamily;
-    else if (fam !== p.bibFamily) fam = "natbib";
-  }
+  for (const p of parts) fam = foldFamilies(fam, p.bibFamily);
   return fam;
 }
 
