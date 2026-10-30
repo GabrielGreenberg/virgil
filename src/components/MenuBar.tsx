@@ -48,7 +48,7 @@ import { classAllowsHeadingLevel } from "@/lib/document-class";
 import { HEADING_TYPES } from "@/lib/heading-types";
 import { iconHint } from "@/components/Hint";
 import { useSpellDictionaries } from "@/lib/spell/spellcheck-context";
-import { menuTriggerAria } from "@/components/menu/menu-trigger";
+import { menuTriggerAria, useCloseOnDisabledEdge } from "@/components/menu/menu-trigger";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
 // / `handleExampleMenuPick`) were RETIRED here. The single canonical example
@@ -284,6 +284,10 @@ export function BlockTypeDropdown({
   // Stable close so the provider's dismissal effect doesn't re-subscribe its
   // capture listener on re-render.
   const close = useCallback(() => setOpen(false), []);
+  // Task 1369: greyed while open (the pen changes hands with the grid up) →
+  // CLOSE, never mask — so `aria-expanded` stays honest and the menu does not
+  // reappear, keyboard re-armed, when the pen comes back.
+  useCloseOnDisabledEdge(disabled, close);
 
   // Sizing ONLY — the surface (bg / border / shadow / radius) is
   // the primitive's `.menu-surface` (task 295). This string used to carry a
@@ -315,7 +319,7 @@ export function BlockTypeDropdown({
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
       </button>
-      {open && !disabled && (
+      {open && (
         <MenuProvider
           id="block-type"
           layout="list"

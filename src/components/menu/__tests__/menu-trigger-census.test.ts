@@ -24,7 +24,8 @@
 //   B. some file in its trigger site spells the contract helper (unless
 //      TRIGGERLESS / ARIA_EXEMPT);
 //   C. no source outside `menu-trigger.ts` hand-spells `aria-haspopup="menu"`;
-//   D. every allowlist entry still names a live provider (no stale reasons).
+//   D. every allowlist entry still names a live provider (no stale reasons);
+//   E. no popover is MASKED by its trigger's `disabled` (task 1369).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -184,6 +185,26 @@ describe("menu-trigger census (task 992)", () => {
     const HAND_SPELLED = /\baria-haspopup=|["']aria-haspopup["']\s*:/;
     expect(HAND_SPELLED.test(`<button aria-haspopup="true" aria-expanded={open} />`)).toBe(true);
     expect(HAND_SPELLED.test(`<button {...menuTriggerAria("menu", open)} />`)).toBe(false);
+  });
+
+  // Task 1369: a trigger greyed while its popover is open CLOSES it on the
+  // edge (`useCloseOnDisabledEdge`); it never MASKS it. The mask
+  // `open && !disabled && <Popover…>` hides the menu but keeps `open` true —
+  // `aria-expanded` lies, and the menu reappears unbidden (keyboard re-armed)
+  // when the grey lifts. Any `<x> && !disabled &&` guard shape is the mask.
+  const DISABLED_MASK = /&&\s*!\s*disabled\s*&&/;
+  it("E: no popover is masked by its trigger's disabled flag (close on the edge)", () => {
+    const offenders = ALL.filter(({ source }) => DISABLED_MASK.test(source)).map((s) => s.key);
+    expect(
+      offenders,
+      "MASKED POPOVER: call `useCloseOnDisabledEdge(disabled, close)` (menu/menu-trigger.ts) " +
+        "and render on `open` alone, so a greyed trigger closes its menu instead of hiding it.",
+    ).toEqual([]);
+  });
+
+  it("E is red on the shipped ¶ mask shape", () => {
+    expect(DISABLED_MASK.test(`{open && !disabled && (<MenuProvider />)}`)).toBe(true);
+    expect(DISABLED_MASK.test(`{open && (<MenuProvider />)}`)).toBe(false);
   });
 
   it("D: every allowlist entry names a live role=menu provider", () => {

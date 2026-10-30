@@ -70,3 +70,29 @@ export function useMenuTrigger<T extends HTMLElement = HTMLButtonElement>({
   const [triggerEl, triggerRef] = useState<T | null>(null);
   return { triggerEl, triggerRef, triggerProps: menuTriggerAria(role, open) };
 }
+
+/**
+ * The trigger's GREY edge, stated once (task 1369, generalising task 1168).
+ *
+ * A trigger whose host greys it while its popover is OPEN (the pen changes
+ * hands with the lightning grid up) must CLOSE that popover on the edge — not
+ * mask it. A mask (`open && !disabled && <MenuProvider…>`) hides the menu but
+ * keeps `open` true: the trigger keeps announcing `aria-expanded="true"` over
+ * nothing, and when the grey lifts the menu reappears unbidden and its
+ * provider re-installs the window-capture keyboard. The commit door refusing on
+ * its own is the other half; this is the affordance half.
+ *
+ * Adjusted on the boolean EDGE during render (React's "storing information
+ * from previous renders" pattern, not an effect): `close` runs on the
+ * enabled→disabled edge only, and MUST set state of the calling component
+ * (setting another component's state during render is a React error). A host
+ * re-renders on its `canEdit`, never on a keystroke, so this costs nothing per
+ * keystroke. `menu-trigger-census.test.ts` forbids the mask shape.
+ */
+export function useCloseOnDisabledEdge(disabled: boolean, close: () => void): void {
+  const [wasDisabled, setWasDisabled] = useState(disabled);
+  if (disabled !== wasDisabled) {
+    setWasDisabled(disabled);
+    if (disabled) close();
+  }
+}
