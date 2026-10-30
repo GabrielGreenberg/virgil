@@ -68,6 +68,7 @@ import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import { elementAnchor, type LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
+import { useCloseOnDisabledEdge } from "./menu/menu-trigger";
 import { MenuGrid, MenuList } from "./menu/regions";
 import {
   MenuItemsFromRegistry,
@@ -631,16 +632,13 @@ export function ActionsMenuPanel({
   // longer take one. Adjusted on the boolean EDGE during render (React's
   // "storing information from previous renders" pattern, not an effect): the
   // panel re-renders on `canEdit`, never on a keystroke. The stash needs no
-  // reset here — `openColorPopover` rewrites it on every open.
-  const colorCellDisabled = gridCellDisabled("text-color");
-  const [colorCellWasDisabled, setColorCellWasDisabled] = useState(colorCellDisabled);
-  if (colorCellDisabled !== colorCellWasDisabled) {
-    setColorCellWasDisabled(colorCellDisabled);
-    if (colorCellDisabled) {
-      setColorPopoverAnchor(null);
-      setColorPopoverEl(null);
-    }
-  }
+  // reset here — `openColorPopover` rewrites it on every open. The edge rule is
+  // the menu primitives' ONE `useCloseOnDisabledEdge` (task 1369), shared with
+  // the ¶ cell's `BlockTypeDropdown`.
+  useCloseOnDisabledEdge(gridCellDisabled("text-color"), () => {
+    setColorPopoverAnchor(null);
+    setColorPopoverEl(null);
+  });
 
   // The card-action rows, decorated with their per-open disabled state, fed
   // to `<MenuItemsFromRegistry>` (the same mapper the grab menu uses). CHIP 7b:
