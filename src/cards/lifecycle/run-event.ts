@@ -3,22 +3,36 @@
 /**
  * `runCardLifecycleEvent` — the single executor for a card's destructive /
  * transforming lifecycle events (T4 §3.3). Replaces the open-coded bodies of
- * the morph chokepoint (`convertCardWithRemap`) and centralizes the four
+ * the morph chokepoint (`convertCardWithRemap`) and centralizes the
  * obligations a lifecycle event incurs, each read from the declared contract
- * rather than re-derived per call site:
+ * rather than re-derived per call site. Which obligations each event runs, in
+ * the order its leg runs them (the step comments in the body use these same
+ * NAMES — deliberately no numbers and no count, which is what drifted):
  *
- *   1. CONFIRM  — built from `CARD_REGISTRY[kind].morph.drops` (morph) so the
+ *   obligation | delete | morph | archive
+ *   -----------+--------+-------+--------
+ *   GATE       |   –    |   ✓   |   –
+ *   CONFIRM    |   ✓    |   ✓   |   –
+ *   SETTLE     |   ✓    |   ✓   |   ✓
+ *   UNBRIDGE   |   ✓    |   ✓   |   ✓
+ *   MUTATE     |   ✓    |   ✓   |   ✓
+ *   SIGNAL     |   ✓    |   ✓   |   –
+ *   FINALIZE   |   ✓    |   ✓   |   ✓
+ *
+ *   GATE     — morph only: a record its kind's morph gate (`canMorphCard`)
+ *      refuses is not morphed, from any trigger (task 898).
+ *   CONFIRM  — built from `CARD_REGISTRY[kind].morph.drops` (morph) so the
  *      copy can never be direction-blind or lie (REP-F6-03), and from
  *      `cardHasContent` (delete) so every kind's content is seen (W2d-2). Since
  *      task 303 the morph confirm's TONE is read off that same `drops` set
  *      (`MORPH_DROP_FIELDS` severity) rather than hardcoded here, so a morph
  *      that discards a whole rich body warns like the delete of that same body.
- *   2. SETTLE   — when the ending record OWNS a live in-document splice (a
+ *   SETTLE   — when the ending record OWNS a live in-document splice (a
  *      `status:"applied"` suggestion's `appliedChange` → the blue
  *      `pending-ai-change` range), resolve that splice — keep or revert — BEFORE
  *      the mutation, so no range can survive its manager (2026-07-27-238). See
  *      "the third state class" below.
- *   3. UNBRIDGE — when the event DROPS aiRequest (a delete of an aiRequest-
+ *   UNBRIDGE — when the event DROPS aiRequest (a delete of an aiRequest-
  *      bearing kind, or a morph whose `drops` includes "aiRequest"), clear the
  *      pending `ai-requests.json` entry in the SAME logical step — so a
  *      report-request→report morph (or a delete of a flagged report-request)
@@ -26,10 +40,11 @@
  *      REP-F8-01 / OMNI-F6-01). The obligation owns its MODE as well as its
  *      firing (`unbridgeModeFor`, task 313): both event types are TERMINAL, so
  *      both discharge in `"terminate"` — the caller forwards, never decides.
- *   4. SIGNAL   — publish ONE `card-deleted` / `card-morphed` signal (the D6
+ *   MUTATE   — the data mutation itself, injected by the caller (see below).
+ *   SIGNAL   — publish ONE `card-deleted` / `card-morphed` signal (the D6
  *      seam) that W2b's reconciler consumes to prune / re-key `cardStore`
  *      (REP-F6-02 / OMNI-F6-02 for the sidecar kinds).
- *   5. FINALIZE — when the ending record is an AI PROPOSAL (it carries
+ *   FINALIZE — when the ending record is an AI PROPOSAL (it carries
  *      `aiOriginRequestId`; the record is the ANSWER to a Task, not the card the
  *      Task is linked to), end that Task too (task 1046). UNBRIDGE cannot reach
  *      it — it matches rows by `linkedTo`, and is gated on the kind declaring
@@ -59,8 +74,8 @@
  * unit-testable with plain stubs.
  *
  * THREE EVENTS (task 1154). Delete and morph, plus per-card ARCHIVE — which
- * ends a record's live role without removing it, so it runs SETTLE, UNBRIDGE
- * and FINALIZE but neither CONFIRM nor SIGNAL. Before 1154 the archive button
+ * ends a record's live role without removing it, so (per the table above) it
+ * runs SETTLE, UNBRIDGE, MUTATE and FINALIZE but neither CONFIRM nor SIGNAL. Before 1154 the archive button
  * was a bare flag toggle beside this executor, and the one record-ending door
  * that never asked Keep/Revert.
  *
@@ -433,13 +448,13 @@ export async function runCardLifecycleEvent(
   if (ev.type === "morph") {
     const morph = CARD_REGISTRY[ev.fromKind].morph;
     if (!morph) return false; // non-morphing kind — defensive no-op
-    // 0. GATE — a record its kind's morph gate refuses is not morphed, from any
+    // GATE — a record its kind's morph gate refuses is not morphed, from any
     //    trigger: the same `canMorphCard` the chevron's option list reads, so
     //    a morph the menu would never offer cannot be performed (task 898 — a
     //    settled suggestion must not round-trip into a pending one).
     if (!canMorphCard(ev.fromKind, ev.card)) return false;
 
-    // 1. CONFIRM (generated from drops).
+    // CONFIRM (generated from drops).
     const copy = morphConfirmMessage(ev.fromKind, ev.card);
     if (copy) {
       const ok = await deps.confirm({
@@ -456,12 +471,12 @@ export async function runCardLifecycleEvent(
       if (!ok) return false;
     }
 
-    // 2. SETTLE — resolve any live in-document splice this record owns BEFORE
+    // SETTLE — resolve any live in-document splice this record owns BEFORE
     //    the kind flips, so the range can never outlive its manager (238).
     const settled = await settleAppliedSplice(ev, deps);
     if (settled === "declined") return false;
 
-    // 3. UNBRIDGE — fire BEFORE the mutation so the pending inbox entry is
+    // UNBRIDGE — fire BEFORE the mutation so the pending inbox entry is
     //    cleared in the same logical step. Only when the morph DROPS aiRequest
     //    (the FROM kind had routing, the TO kind doesn't — assertMorphCoverage
     //    pins that "aiRequest" is only declared in exactly that case). Read off
@@ -473,41 +488,41 @@ export async function runCardLifecycleEvent(
       await deps.unbridgeAiRequest(ev.fromKind, ev.id, unbridgeModeFor(ev.type));
     }
 
-    // 4. MUTATE (the per-doc hook flips the on-disk kind via the morph transform).
+    // MUTATE (the per-doc hook flips the on-disk kind via the morph transform).
     await deps.mutate();
 
-    // 5. SIGNAL — the D6 seam: the pane's sink re-keys ITS cardStore
+    // SIGNAL — the D6 seam: the pane's sink re-keys ITS cardStore
     //    {fromKind,id}→{toKind,id} (task 739: this pane's, never every pane's)
     //    and remaps its popped float key in lockstep (789).
     deps.signal({ type: "card-morphed", fromKind: ev.fromKind, toKind: morph.to, id: ev.id });
 
-    // 6. FINALIZE — a pending proposal morphed out of the suggestion kind has
+    // FINALIZE — a pending proposal morphed out of the suggestion kind has
     //    stopped being a proposal; its Task ends (task 1046).
     finalizeEndedRecord(ev, settled, deps);
     return true;
   }
 
   if (ev.type === "archive") {
-    // 1. SETTLE — an archived card vanishes from every surface that could
+    // SETTLE — an archived card vanishes from every surface that could
     //    still Keep/Revert its splice, so the blue range would outlive its
     //    visible manager, and the leave rule below would close the Task
     //    `rejected` over an edit still in the paper (task 1154).
     const settled = await settleAppliedSplice(ev, deps);
     if (settled === "declined") return false;
-    // 2. UNBRIDGE — same gate and event-derived mode as the delete leg.
+    // UNBRIDGE — same gate and event-derived mode as the delete leg.
     if (CARD_REGISTRY[ev.kind].aiRequest != null) {
       await deps.unbridgeAiRequest(ev.kind, ev.id, unbridgeModeFor(ev.type));
     }
-    // 3. MUTATE (flip the archived flag).
+    // MUTATE (flip the archived flag).
     await deps.mutate();
-    // 4. FINALIZE — an archived AI proposal ends the Task it answers (1046),
+    // FINALIZE — an archived AI proposal ends the Task it answers (1046),
     //    unless SETTLE already finalized it.
     finalizeEndedRecord(ev, settled, deps);
     return true;
   }
 
   // DELETE.
-  // 1. CONFIRM — the caller resolved `hasContent` from the kind-aware predicate.
+  // CONFIRM — the caller resolved `hasContent` from the kind-aware predicate.
   if (ev.hasContent) {
     const ok = await deps.confirm({
       message: CARD_DELETE_CONFIRM_MESSAGE,
@@ -517,7 +532,7 @@ export async function runCardLifecycleEvent(
     if (!ok) return false;
   }
 
-  // 2. SETTLE — a delete ends the record exactly as a morph does, so the live
+  // SETTLE — a delete ends the record exactly as a morph does, so the live
   //    splice it manages must be resolved here too, or the blue range is
   //    orphaned identically (238). The upstream content-confirm has already run
   //    (`makeUnbridgingDelete` passes `hasContent:false` + an always-true
@@ -527,7 +542,7 @@ export async function runCardLifecycleEvent(
   const settled = await settleAppliedSplice(ev, deps);
   if (settled === "declined") return false;
 
-  // 3. UNBRIDGE — a delete of an aiRequest-bearing kind drops its flag → clear
+  // UNBRIDGE — a delete of an aiRequest-bearing kind drops its flag → clear
   //    the pending inbox entry (REP-F7-02, the symmetric delete leak). Same
   //    event-derived mode as the morph leg (313) — previously the one leg that
   //    happened to be wired right, by a literal at its call site.
@@ -535,14 +550,14 @@ export async function runCardLifecycleEvent(
     await deps.unbridgeAiRequest(ev.kind, ev.id, unbridgeModeFor(ev.type));
   }
 
-  // 4. MUTATE.
+  // MUTATE.
   await deps.mutate();
 
-  // 5. SIGNAL — the D6 seam: the pane's sink prunes any ref keyed on {kind,id}
+  // SIGNAL — the D6 seam: the pane's sink prunes any ref keyed on {kind,id}
   //    in ITS cardStore (task 739) and closes the card's popped float (789).
   deps.signal({ type: "card-deleted", kind: ev.kind, id: ev.id });
 
-  // 6. FINALIZE — a deleted AI proposal ends the Task it answers (task 1046).
+  // FINALIZE — a deleted AI proposal ends the Task it answers (task 1046).
   finalizeEndedRecord(ev, settled, deps);
   return true;
 }
