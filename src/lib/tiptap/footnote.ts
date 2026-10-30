@@ -39,7 +39,7 @@ import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 // surface and the registry can never recognize a different footnote vocabulary
 // — and the table `assertActionCoverage` reconciles against is the one this
 // rule actually matches with, not a description of it.
-import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import { matchTypedLatexRule } from "./typed-latex-input-rules";
 import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
@@ -203,7 +203,7 @@ export const Footnote = Node.create<FootnoteOptions>({
               undefined,
               "\ufffc"
             ) + text;
-            const match = textBefore.match(TYPED_LATEX_INPUT_RULES.footnote);
+            const match = matchTypedLatexRule("footnote", textBefore);
             if (!match) return false;
             const content = normalizeRichContent(match[1]);
             const existing = new Set<string>();

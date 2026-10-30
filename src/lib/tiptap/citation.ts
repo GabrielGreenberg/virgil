@@ -9,7 +9,10 @@ import { CITE_RE_BARE } from "@/lib/cite-commands";
 // table the coverage assertion reconciles against is the table this rule
 // matches with, not a description of it. (The bare `\cite ` soft-route stays on
 // its own `CITE_RE_BARE`; the row records the canonical full form.)
-import { TYPED_LATEX_INPUT_RULES } from "./typed-latex-input-rules";
+import {
+  matchHasUnescapedDelimiters,
+  matchTypedLatexRule,
+} from "./typed-latex-input-rules";
 import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
 import { generateShortId } from "@/lib/uuid";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
@@ -177,7 +180,7 @@ export const Citation = Node.create<CitationOptions>({
 
             if (text === "}") {
               // Full citation command ending with } (e.g. `\cite{key}`).
-              const match = textBefore.match(TYPED_LATEX_INPUT_RULES.citation);
+              const match = matchTypedLatexRule("citation", textBefore);
               if (match) {
                 const command = match[0];
                 const start = from + text.length - command.length;
@@ -231,7 +234,9 @@ export const Citation = Node.create<CitationOptions>({
               // anchored, then register the card + soft-route via the bridge.
               const beforeSpace = textBefore.slice(0, -1);
               const match = beforeSpace.match(CITE_RE_BARE);
-              if (match) {
+              // Task 1368: `\\cite ` is a line break then text — the same
+              // escape door as the census rules.
+              if (match && matchHasUnescapedDelimiters(beforeSpace, [match.index!])) {
                 const partial = match[0];
                 const start = from - partial.length;
                 // Task 578: same door as the full branch.
