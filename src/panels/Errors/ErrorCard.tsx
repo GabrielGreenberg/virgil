@@ -8,12 +8,8 @@ import {
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import {
-  diagnosticLocationLabel,
-  type LatexError,
-  type LatexErrorSeverity,
-} from "@/lib/latex-errors";
-import { ruleTitle } from "@/lib/latex-rules";
+import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
+import { errorDisplayText } from "./error-display";
 import { canJumpToError, type ErrorJumpMode } from "./error-jump";
 import { iconHint } from "@/components/Hint";
 import { ERROR_INK } from "@/lib/error-ink";
@@ -41,17 +37,6 @@ const SEVERITY_INK: Record<LatexErrorSeverity, string> = {
   ...SEVERITY_COLOR,
   error: ERROR_INK,
 };
-
-/** Short, stable title for the card header. A rule id titles from the ONE
- *  rule vocabulary (`@/lib/latex-rules`, task 983) so the header scans at a
- *  glance; an id outside it — or no id — titles from the message's first
- *  line, never from a mechanically de-hyphenated id. */
-export function errorTitle(err: LatexError): string {
-  const curated = err.ruleId ? ruleTitle(err.ruleId) : null;
-  if (curated) return curated;
-  const firstLine = err.message.split("\n")[0];
-  return firstLine.length > 60 ? firstLine.slice(0, 60) + "\u2026" : firstLine;
-}
 
 /** Triangle-with-exclamation badge, sized to match BadgeLabel. */
 function ErrorBadge({ severity }: { severity: LatexErrorSeverity }) {
@@ -81,7 +66,6 @@ function ErrorBadge({ severity }: { severity: LatexErrorSeverity }) {
 
 export interface ErrorCardProps {
   err: LatexError;
-  title: string;
   /** Source snippet from the offending line (auto-assigned from the
    *  document). Shown as a quoted header fragment, like revision cards. */
   snippet?: string;
@@ -111,7 +95,6 @@ export interface ErrorCardProps {
 
 export function ErrorCard({
   err,
-  title,
   snippet,
   selected,
   expanded,
@@ -127,9 +110,11 @@ export function ErrorCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const compressed = !expanded;
   const compressedLines = useCompressedLines();
-  // A cross-file diagnostic names its file — a bare "line 42" would read as
-  // a line of the main source (task 1208).
-  const location = diagnosticLocationLabel(err);
+  // Every word this card shows comes from ONE derivation the panel filter
+  // also searches (task 1377). Its `location` names the file for a cross-file
+  // diagnostic — a bare "line 42" would read as a main-source line (1208).
+  const text = errorDisplayText(err, snippet);
+  const { title, location } = text;
 
   // ONE jumpability answer per card, from the mount's declared semantics
   // (task 125) — used by BOTH the action (the body click below) and the
@@ -185,7 +170,7 @@ export function ErrorCard({
             {location && (
               <span className="text-ink-muted mr-1">{location} —</span>
             )}
-            {err.message}
+            {text.message}
           </div>
         </div>
       ) : (
@@ -195,54 +180,54 @@ export function ErrorCard({
         </div>
         {/* Expanded = the user asked to READ it: the snippet and the mono
             context wrap rather than truncate (task 982). */}
-        {snippet && (
+        {text.snippet && (
           <div
             data-error-snippet=""
             className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 card-mono whitespace-pre-wrap break-all"
           >
-            {snippet}
+            {text.snippet}
           </div>
         )}
 
         <div className="text-[10px] mb-1 flex items-center gap-2 flex-wrap text-ink-muted">
           <span className="font-medium" style={{ color: SEVERITY_INK[err.severity] }}>
-            {err.severity}
+            {text.severity}
           </span>
           <span>·</span>
-          <span>{err.source === "lint" ? "lint" : "compile"}</span>
+          <span>{text.source}</span>
           {location && (
             <>
               <span>·</span>
               <span data-error-location="">{location}</span>
             </>
           )}
-          {err.ruleId && (
+          {text.ruleId && (
             <>
               <span>·</span>
-              <span>{err.ruleId}</span>
+              <span>{text.ruleId}</span>
             </>
           )}
         </div>
 
         <div className="text-sm text-ink-body leading-snug break-words">
-          {err.message}
+          {text.message}
         </div>
 
-        {err.remedy && (
+        {text.remedy && (
           <div
             data-error-remedy=""
             className="text-xs text-ink-body leading-snug break-words mt-1"
           >
-            {err.remedy}
+            {text.remedy}
           </div>
         )}
 
-        {err.detail && (
+        {text.detail && (
           <div
             data-error-detail=""
             className="text-[10px] card-mono text-ink-muted mt-1 whitespace-pre-wrap break-all"
           >
-            {err.detail}
+            {text.detail}
           </div>
         )}
       </div>

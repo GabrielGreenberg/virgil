@@ -157,7 +157,6 @@ describe("consumers ask the one predicate", () => {
     const { container } = render(
       <ErrorCard
         err={cross}
-        title="Undefined control sequence"
         selected={false}
         expanded
         onExpand={() => {}}
