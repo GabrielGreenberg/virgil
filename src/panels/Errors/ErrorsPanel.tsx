@@ -5,7 +5,8 @@ import { PANEL, PrevNextCounter } from "@/components/panel-primitives";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import CompileLogDisclosure from "@/components/CompileLogDisclosure";
 import type { LatexError } from "@/lib/latex-errors";
-import { ErrorCard, errorTitle } from "./ErrorCard";
+import { ErrorCard } from "./ErrorCard";
+import { errorSearchText } from "./error-display";
 import { canJumpToError, type ErrorJump } from "./error-jump";
 
 export interface ErrorsPanelProps {
@@ -76,17 +77,21 @@ function ErrorsPanel({
     [errors, dismissedIds],
   );
 
+  // The filter searches exactly what the card can show — title, location
+  // (incl. file), severity, source, rule id, message, remedy, detail, snippet —
+  // through the SAME derivation the card renders from (task 1377), so the two
+  // vocabularies cannot drift. Haystacks are built once per error-set change,
+  // not per filter keystroke.
+  const haystacks = useMemo(
+    () => new Map(visible.map((e) => [e.id, errorSearchText(e, snippets?.get(e.id))])),
+    [visible, snippets],
+  );
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return visible;
-    return visible.filter(
-      (e) =>
-        e.message.toLowerCase().includes(q) ||
-        (e.detail?.toLowerCase().includes(q) ?? false) ||
-        (e.remedy?.toLowerCase().includes(q) ?? false) ||
-        (e.ruleId?.toLowerCase().includes(q) ?? false),
-    );
-  }, [visible, filter]);
+    return visible.filter((e) => haystacks.get(e.id)?.includes(q) ?? false);
+  }, [visible, haystacks, filter]);
 
   // Clear selection ONLY when the selected error leaves the shared error set —
   // i.e. it was dismissed or removed by a re-lint (both drop it from `visible`).
@@ -185,7 +190,6 @@ function ErrorsPanel({
       renderCard={(err, { selected }) => (
         <ErrorCard
           err={err}
-          title={errorTitle(err)}
           snippet={snippets?.get(err.id)}
           selected={selected}
           expanded={expandedIds.has(err.id)}

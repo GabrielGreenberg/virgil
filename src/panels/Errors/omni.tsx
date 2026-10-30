@@ -4,7 +4,7 @@ import type { LatexError } from "@/lib/latex-errors";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { resolveAnchorState } from "@/links/anchor-state";
-import { ErrorCard, errorTitle } from "./ErrorCard";
+import { ErrorCard } from "./ErrorCard";
 import type { ErrorJump } from "./error-jump";
 
 interface BuildArgs {
@@ -68,7 +68,6 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
         <ErrorCard
           key={omniId}
           err={err}
-          title={errorTitle(err)}
           snippet={a.snippets.get(err.id)}
           selected={isSelected}
           expanded={a.expandedIds.has(err.id)}

@@ -15,7 +15,7 @@ import {
 } from "@/lib/latex-rules";
 import { runSyntaxChecks } from "@/lib/syntax-check";
 import { runLint } from "@/lib/workers/latex-lint-core";
-import { errorTitle } from "@/panels/Errors/ErrorCard";
+import { errorTitle } from "@/panels/Errors/error-display";
 import type { LatexError } from "@/lib/latex-errors";
 
 // ErrorCard's import graph reaches the storage barrel, which resolves a
