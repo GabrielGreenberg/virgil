@@ -9,10 +9,10 @@
  *  - Headers are compact: title + count + optional action
  *
  * Usage:
- *  import { themedCard, CARD_THEMES, PANEL, Chevron, PanelHeader } from "./panel-primitives";
+ *  import { cardFrameProps, CARD_THEMES, PANEL, Chevron, PanelHeader } from "./panel-primitives";
  *
  *  <div className={PANEL.list}>
- *    <div className={themedCard(CARD_THEMES.note, isSelected)}>
+ *    <div {...cardFrameProps(CARD_THEMES.note, isSelected)}>
  *      <div className={PANEL.cardInner}>
  *        ...content...
  *        <div className={PANEL.subpod}>...expandable...</div>
@@ -676,7 +676,7 @@ export type { CardTheme } from "@/lib/panel-theme";
  *  and selection halo all come from `themedCardStyle()` applied via
  *  inline style at the render site. Unselected cards share the neutral
  *  `CARD_DEFAULT` Tailwind hover behavior. */
-export function themedCard(_theme: CardTheme | null, selected: boolean, extra?: string): string {
+function themedCard(_theme: CardTheme | null, selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? "bg-surface" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
@@ -697,9 +697,9 @@ const CARD_DROP_TARGET_RING = "0 0 0 2px var(--ring-drag-target)";
 export const NEUTRAL_SELECTED_BORDER = "var(--edge-strong)";
 
 /** Single source of truth for card-surface inline style: border color
- *  and ambient lift shadow. PanelCard, SearchPanel result rows, and any
- *  other card surface must call this so the selection visual stays
- *  uniform across kinds and contexts.
+ *  and ambient lift shadow. Rendered through {@link cardFrameProps} — the one
+ *  card-frame door — so the selection visual stays uniform across kinds and
+ *  contexts.
  *
  *  Selection no longer paints a heavy halo. A selected card's *attention*
  *  ring is the same light 1.5px/50% outline as hover (the `[data-card-key]`
@@ -750,6 +750,80 @@ export function themedCardStyle(
       ? { borderColor: theme ? theme.borderSelected : NEUTRAL_SELECTED_BORDER }
       : {}),
     boxShadow: layers.join(", "),
+  };
+}
+
+/** Options for {@link cardFrameProps}. */
+export interface CardFrameOptions {
+  /** Classes appended after the frame's own (layout, `cardClass`, …). */
+  extra?: string;
+  isPoppedOut?: boolean;
+  dropTarget?: boolean;
+  /** A 3px LEFT accent stripe in this colour — the resting kind cue of a
+   *  MIXED-kind list (Search), where neighbouring rows are different kinds.
+   *  Single-kind panels do not wear it: the panel itself names the kind.
+   *  `"transparent"` / absent = no stripe (STYLE_GUIDE → "no theme is
+   *  neutral"). */
+  accentStripe?: string;
+}
+
+/** The card FRAME marker. Frame CHROME (the `cardOutlineChrome` hover
+ *  outline and its colour, in globals.css) keys on `[data-card]`; card
+ *  IDENTITY (`data-card-key`: hover bridge, anchor reconciler,
+ *  focus-new-card, placement) is stamped separately by PanelCard, because a
+ *  Search hit wears a card's frame without BEING that card. */
+export const CARD_FRAME_MARKER = "1";
+
+/** The frame's class: `themedCard` + the OUTLINE focus member. Task 554:
+ *  `cardFrameStyle` always writes an INLINE `box-shadow` (ambient lift /
+ *  selection halo), so the ring member could never paint on a card root —
+ *  and the UA default ring is never acceptable. */
+export function cardFrameClass(
+  theme: CardTheme | null,
+  selected: boolean,
+  extra?: string,
+): string {
+  return withFocusIndicator(themedCard(theme, selected, extra), FOCUS_OUTLINE_CLASS);
+}
+
+/** The frame's inline style: `themedCardStyle` + the kind colour var
+ *  `--link-anchor-color` the `[data-card]` outline rules read (`transparent`
+ *  for a kind-less row) + the optional accent stripe. */
+export function cardFrameStyle(
+  theme: CardTheme | null,
+  selected: boolean,
+  options?: Omit<CardFrameOptions, "extra">,
+): React.CSSProperties {
+  const stripe = options?.accentStripe;
+  return {
+    ...themedCardStyle(theme, selected, {
+      isPoppedOut: options?.isPoppedOut,
+      dropTarget: options?.dropTarget,
+    }),
+    "--link-anchor-color": theme ? theme.accent : "transparent",
+    ...(stripe && stripe !== "transparent"
+      ? { borderLeftColor: stripe, borderLeftWidth: 3 }
+      : {}),
+  } as React.CSSProperties;
+}
+
+/** The ONE card-frame door (task 1367): class + style + frame marker, as
+ *  spreadable props. A card root that needs a lighter surface than
+ *  `PanelCard` (the Search result row — no header/trash/popout machinery)
+ *  spreads this; `PanelCard` itself, which interleaves its caller's own
+ *  `className`/`style`, takes the same two parts directly. Nothing else
+ *  re-assembles the frame from `themedCard` (module-private) or
+ *  `themedCardStyle` — `cardframe-door-census` pins that no file outside this
+ *  one calls either. */
+export function cardFrameProps(
+  theme: CardTheme | null,
+  selected: boolean,
+  options?: CardFrameOptions,
+): { className: string; style: React.CSSProperties; "data-card": string } {
+  return {
+    "data-card": CARD_FRAME_MARKER,
+    className: cardFrameClass(theme, selected, options?.extra),
+    style: cardFrameStyle(theme, selected, options),
   };
 }
 
@@ -3197,7 +3271,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   return (
     <div
       ref={setRefs}
-      data-card="1"
+      data-card={CARD_FRAME_MARKER}
       data-card-key={cardKey}
       // Selection marker on the card ROOT (co-located with `data-omni-entry`
       // for omni cards). Lets the omni "dim at rest" CSS exempt the selected
@@ -3228,7 +3302,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       //
       // STATED INTERACTION, not a residual left to be rediscovered: the
       // `cardOutlineChrome` View pref (default OFF) writes its own `outline`
-      // on `.card-outline-chrome [data-card-key][data-card-hovered]` / `:hover`,
+      // on `.card-outline-chrome [data-card][data-card-hovered]` / `:hover`,
       // which is (0,3,0) against this class's (0,2,0) and therefore WINS on a
       // hovered card. Since task 1179 the pref no longer names SELECTION (a
       // selected card wears the inline selection halo instead), so a
@@ -3236,22 +3310,22 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // edge on top of the halo. Which edge should win when both apply is a
       // product call, not a cascade accident; it is pinned in the census so a
       // change to either rule has to face it.
-      className={withFocusIndicator(
-        `group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`,
-        FOCUS_OUTLINE_CLASS,
+      //
+      // The frame — class, focus member, inline lift/selection style, and the
+      // kind colour `--link-anchor-color` (DERIVED from the theme accent, so
+      // all 16 kinds carry the right accent; it replaced the hand-mirrored
+      // `[data-card-key^="float:card:<kind>:"]` CSS prefix block) — comes
+      // from the ONE card-frame door (task 1367) — its two parts, because the
+      // caller's own `className`/`style` interleave with them.
+      className={cardFrameClass(
+        theme,
+        selected,
+        `group relative${cardClass ? ` ${cardClass}` : ""}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`,
       )}
       style={{
-        ...themedCardStyle(theme, selected, { isPoppedOut, dropTarget: isDropTarget }),
-        // Kind color for the card hover/selected outline rules (the
-        // `[data-card-key]` color-mix rules in globals.css) — DERIVED from
-        // the theme accent (CARD_THEMES / user color overrides), replacing
-        // the hand-mirrored `[data-card-key^="float:card:<kind>:"]` CSS
-        // prefix block. Every card passes `theme`, so all 16 kinds
-        // (including bib / ai / example / error, which the old block
-        // omitted) carry the right accent.
-        "--link-anchor-color": theme.accent,
+        ...cardFrameStyle(theme, selected, { isPoppedOut, dropTarget: isDropTarget }),
         ...style,
-      } as React.CSSProperties}
+      }}
       onClick={onClick ? (e) => {
         e.stopPropagation();
         if (trailingClick.consume()) return;

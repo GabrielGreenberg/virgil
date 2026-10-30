@@ -10,8 +10,7 @@ import {
 } from "react";
 import type { Editor } from "@tiptap/react";
 import {
-  themedCard,
-  themedCardStyle,
+  cardFrameProps,
   PANEL,
   PrevNextCounter,
   clearStaleHover,
@@ -1237,10 +1236,6 @@ const ResultCard = memo(function ResultCard({
   onClick: (result: SearchResult, idx: number) => void;
 }) {
   const color = useScopeAccent()(result.scope);
-  const borderStyle: React.CSSProperties =
-    color === "transparent"
-      ? {}
-      : { borderLeftColor: color, borderLeftWidth: 3 };
   const scopeLabel = SCOPE_LABEL[result.scope];
   const fieldLabel = result.field ? FIELD_LABEL[result.field] : undefined;
   // Every row that wears a kind's accent names that kind: Search is a MIXED
@@ -1254,11 +1249,19 @@ const ResultCard = memo(function ResultCard({
   const theme = useCardTheme(SCOPE_TO_CARD_THEME[result.scope]);
 
   return (
+    // The card frame comes through the ONE door PanelCard uses (task 1367):
+    // the focus member (not the UA ring), the `data-card` frame marker the
+    // `cardOutlineChrome` rules key on, and the mixed-list accent stripe. No
+    // `data-card-key` — a hit wears its source card's frame without BEING
+    // that card, so it must not answer the hover bridge / reconciler /
+    // focus-new-card lookups that key on card identity.
     <button
       data-result-idx={idx}
-      className={`${themedCard(theme, selected)} w-full text-left`}
+      {...cardFrameProps(theme, selected, {
+        extra: "w-full text-left",
+        accentStripe: color,
+      })}
       onClick={() => onClick(result, idx)}
-      style={{ ...themedCardStyle(theme, selected), ...borderStyle }}
     >
       <div className={PANEL.cardInner}>
         {(showScopeLabel || result.breadcrumb.length > 0) && (

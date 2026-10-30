@@ -4306,10 +4306,13 @@ textarea {
 
 /* Resting accent — small kind-colored stripe so cards are identifiable
  * without their margin icon. Inset so it doesn't shift layout. These rules
- * are grammar-agnostic (bare `[data-card-key]`); the per-kind COLOR is the
- * inline `--link-anchor-color: theme.accent` PanelCard stamps on the card
- * root (panel-primitives), derived from CARD_THEMES. */
-[data-card-key] {
+ * key on the card FRAME marker (`[data-card]`, stamped by `cardFrameProps`,
+ * the one card-frame door — task 1367), not on card IDENTITY
+ * (`[data-card-key]`): frame chrome belongs to everything that wears the
+ * frame, Search result rows included. The per-kind COLOR is the inline
+ * `--link-anchor-color` the same door stamps, derived from CARD_THEMES
+ * (`transparent` for a kind-less row). */
+[data-card] {
   outline-color: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }
 
@@ -4332,8 +4335,8 @@ textarea {
  * wears the SELECTION HALO — the margin marker's own ring, composed inline by
  * `themedCardStyle` from `selectionHaloRing`. The pref keeps only its HOVER
  * role (and the popped-window ring below). */
-.card-outline-chrome [data-card-key][data-card-hovered="true"],
-.card-outline-chrome [data-card-key]:hover {
+.card-outline-chrome [data-card][data-card-hovered="true"],
+.card-outline-chrome [data-card]:hover {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
 }
@@ -6288,7 +6291,7 @@ body.perf-contain .static-borrowed-text {
 
      `outline` is the fourth zeroed property and the one a reader would omit: it
      is what a HOVERED card carries into the print appendix
-     (`.card-outline-chrome [data-card-key][data-card-hovered]`; since task
+     (`.card-outline-chrome [data-card][data-card-hovered]`; since task
      1179 a SELECTED card's cue is the inline selection-halo box-shadow, not an
      outline), which is OUTSIDE `.tiptap` by design — so its rule is
      deliberately unscoped. */
