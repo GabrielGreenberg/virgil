@@ -419,8 +419,16 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   );
 
   const ctxValue = useMemo<MenuContextValue>(
-    () => ({ registry, role, registerExclude, handleKeyDown, listboxId, onItemActivated }),
-    [registry, role, registerExclude, handleKeyDown, listboxId, onItemActivated],
+    () => ({
+      registry,
+      role,
+      registerExclude,
+      handleKeyDown,
+      listboxId,
+      onItemActivated,
+      letterShortcuts,
+    }),
+    [registry, role, registerExclude, handleKeyDown, listboxId, onItemActivated, letterShortcuts],
   );
 
   if (typeof document === "undefined") return null;

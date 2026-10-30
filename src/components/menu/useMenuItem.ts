@@ -7,7 +7,7 @@
  * JSX cells and the `<MenuItemsFromRegistry>` mapper) funnel through this hook,
  * so they populate the SAME snapshot and the nav controller is source-agnostic.
  *
- * `getItemProps()` returns `{ role, id, aria-disabled, tabIndex: -1,
+ * `getItemProps()` returns `{ role, id, aria-disabled, aria-keyshortcuts, tabIndex: -1,
  * data-active, onClick, onMouseEnter, onMouseMove, ref }`. Items NEVER receive `.focus()`
  * (roving aria-activedescendant only) so the editor caret never moves.
  *
@@ -23,6 +23,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useMenuContext } from "./context";
+import { menuKeyShortcuts } from "./nav-core";
+import { ariaKeyShortcut, useIsMac } from "../Kbd";
 import type { MenuItemRegistration } from "./registry";
 import type { MenuItemProps, MenuRegion, MenuCoords, UseMenuItemResult } from "./types";
 
@@ -41,6 +43,13 @@ export interface UseMenuItemOptions {
   letterAliases?: string[];
   /** Activation handler. */
   run: () => void;
+  /**
+   * A portable chord (`"Mod+Shift+N"`) that runs this row's command from
+   * OUTSIDE the menu — the binding a row paints as a trailing `<Kbd>`. Not a
+   * menu key: the controller ignores it. It is announced with the row's own
+   * key verbs (task 1362) so the painted chip can be `aria-hidden`.
+   */
+  shortcut?: string;
   /**
    * The row's remove verb (task 1280): Delete/Backspace while this row is
    * ACTIVE runs it, and the menu stays open. Omit for a row with nothing to
@@ -78,12 +87,18 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     letter,
     letterAliases,
     run,
+    shortcut,
     remove,
     role: roleOverride,
     order,
     keepMenuOpen = false,
   } = opts;
-  const { registry, role: menuRole, onItemActivated } = useMenuContext();
+  const {
+    registry,
+    role: menuRole,
+    onItemActivated,
+    letterShortcuts = false,
+  } = useMenuContext();
 
   // Keep the latest `run` in a ref so re-registering on every render isn't
   // needed just because the closure identity changed; the registry calls the
@@ -177,6 +192,18 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     [registry, id],
   );
 
+  // The row's key verbs, ANNOUNCED (task 1362): derived from the same fields
+  // the keyboard controller honours, so the primitive that owns a verb also
+  // owns saying so — no menu spells `aria-keyshortcuts` itself.
+  const mac = useIsMac();
+  const keyShortcuts =
+    [
+      menuKeyShortcuts({ letter, letterAliases, disabled, region }, hasRemove, letterShortcuts),
+      shortcut ? ariaKeyShortcut(shortcut, mac) : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
+
   const getItemProps = useCallback((): MenuItemProps => {
     const resolvedRole: MenuItemProps["role"] =
       roleOverride ?? (menuRole === "listbox" ? "option" : "menuitem");
@@ -184,6 +211,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
       role: resolvedRole,
       id: registry.domIdFor(id),
       "aria-disabled": disabled ? true : undefined,
+      "aria-keyshortcuts": keyShortcuts,
       tabIndex: -1,
       "data-active": active ? "" : undefined,
       onClick: (e) => {
@@ -208,7 +236,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
       },
       ref: setRef,
     };
-  }, [roleOverride, menuRole, registry, id, disabled, active, setRef, stableRun]);
+  }, [roleOverride, menuRole, registry, id, disabled, keyShortcuts, active, setRef, stableRun]);
 
   return { active, disabled, getItemProps };
 }

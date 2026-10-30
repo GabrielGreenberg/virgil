@@ -103,6 +103,53 @@ export function formatShortcut(keys: string, mac: boolean): string {
   return tokens.join(mac ? "" : "+");
 }
 
+const ARIA_TOKENS: Record<string, { mac: string; other: string }> = {
+  mod: { mac: "Meta", other: "Control" },
+  cmd: { mac: "Meta", other: "Control" },
+  command: { mac: "Meta", other: "Control" },
+  meta: { mac: "Meta", other: "Control" },
+  "⌘": { mac: "Meta", other: "Control" },
+  ctrl: { mac: "Control", other: "Control" },
+  control: { mac: "Control", other: "Control" },
+  "⌃": { mac: "Control", other: "Control" },
+  alt: { mac: "Alt", other: "Alt" },
+  option: { mac: "Alt", other: "Alt" },
+  opt: { mac: "Alt", other: "Alt" },
+  "⌥": { mac: "Alt", other: "Alt" },
+  shift: { mac: "Shift", other: "Shift" },
+  "⇧": { mac: "Shift", other: "Shift" },
+  enter: { mac: "Enter", other: "Enter" },
+  return: { mac: "Enter", other: "Enter" },
+  "⏎": { mac: "Enter", other: "Enter" },
+  esc: { mac: "Escape", other: "Escape" },
+  escape: { mac: "Escape", other: "Escape" },
+  tab: { mac: "Tab", other: "Tab" },
+  space: { mac: "Space", other: "Space" },
+  backspace: { mac: "Backspace", other: "Backspace" },
+  delete: { mac: "Delete", other: "Delete" },
+  up: { mac: "ArrowUp", other: "ArrowUp" },
+  down: { mac: "ArrowDown", other: "ArrowDown" },
+  left: { mac: "ArrowLeft", other: "ArrowLeft" },
+  right: { mac: "ArrowRight", other: "ArrowRight" },
+};
+
+/** The SAME portable chord `<Kbd>` paints, in the `aria-keyshortcuts` grammar
+ *  (task 1362): `"Mod+Shift+n"` → `"Meta+Shift+N"` on Mac, `"Control+Shift+N"`
+ *  elsewhere. The announced chord and the painted chip read one string, so
+ *  they cannot drift; the chip itself is then `aria-hidden` wherever the
+ *  announcement rides the row. */
+export function ariaKeyShortcut(keys: string, mac: boolean): string {
+  return keys
+    .split("+")
+    .map((raw) => {
+      const hit = ARIA_TOKENS[raw.trim().toLowerCase()];
+      if (hit) return mac ? hit.mac : hit.other;
+      return raw.length === 1 ? raw.toUpperCase() : raw;
+    })
+    .filter(Boolean)
+    .join("+");
+}
+
 /** A ProseMirror/TipTap keybinding (`"Mod-Shift-s"`, the form the registry's
  *  `keybinding` and every `addKeyboardShortcuts()` use) in the portable `+`
  *  form `<Kbd>` / `data-hint-keys` take (`"Mod+Shift+s"`). The one translation
@@ -119,13 +166,21 @@ export function keysFromKeybinding(binding: string): string {
 export function Kbd({
   keys,
   className,
+  decorative = false,
 }: {
   keys: string;
   className?: string;
+  /** The chip only REPEATS a chord its host already announces (a menu row's
+   *  `aria-keyshortcuts`, task 1362) — hide it from AT so the glyphs do not
+   *  join the host's accessible name ("New paper ⌘⇧N"). */
+  decorative?: boolean;
 }) {
   const mac = useIsMac();
   return (
-    <kbd className={className ? `kbd ${className}` : "kbd"}>
+    <kbd
+      className={className ? `kbd ${className}` : "kbd"}
+      aria-hidden={decorative ? true : undefined}
+    >
       {formatShortcut(keys, mac)}
     </kbd>
   );

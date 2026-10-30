@@ -58,6 +58,10 @@ export interface MenuContextValue {
    * ViewMenu, whose rows close from inside their own `onToggle`).
    */
   onItemActivated?: (id: string) => void;
+  /** Whether this menu runs the bare-letter fast-path. Published so a row
+   *  announces its letter (`aria-keyshortcuts`, task 1362) only where the
+   *  letter actually works. */
+  letterShortcuts?: boolean;
 }
 
 export const MenuContext = createContext<MenuContextValue | null>(null);
