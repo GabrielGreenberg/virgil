@@ -306,6 +306,9 @@ function CommandsRow({
           // the sub-menu (its run re-opens what is already open).
           excludeRefs={[rowEl]}
           getActiveDescendantHost={() => triggerEl}
+          // Escape closes only the sub-menu, so focus returns to the row that
+          // opened it, not the Help trigger (task 1388; WAI-ARIA sub-menu).
+          returnFocusOnCancel={() => registry.refFor(COMMANDS_ROW_ID)}
           onArrowHorizontal={(dir) => {
             if (dir === "left") closeSub();
           }}

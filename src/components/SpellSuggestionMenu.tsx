@@ -121,6 +121,10 @@ export function SpellSuggestionMenu() {
       anchorRect={request.rect}
       trackAnchor={trackAnchor}
       placements={PLACEMENTS}
+      // Editor-anchored: Escape returns focus to the PM view it was opened
+      // over (task 1388) — a native preventScroll focus; PM restores its own
+      // selection, so the caret stays put.
+      returnFocusOnCancel={() => request.view.dom}
       onClose={close}
       ariaLabel={`Spelling suggestions for “${request.word}”`}
       containerStyle={{ minWidth: 200, padding: "4px 0" }}
