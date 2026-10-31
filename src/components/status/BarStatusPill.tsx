@@ -52,9 +52,15 @@
  * **The widget slot** (task 1214). A resident that is a small READOUT WITH
  * CONTROLS (the Pomodoro: play/pause, a clock, a progress track, dismiss)
  * passes them as `widget`: they render INSIDE the pill's chrome, which
- * becomes a labelled `group`, and the `label` becomes the pill's announced
- * sentence (the timer's "Done") — a live region mounted for the pill's whole
- * life, so a state that appears inside it is actually read out.
+ * becomes a labelled `group`, and the pill's announced sentence is its
+ * `announce` (the timer's "Writing timer done") rather than its name.
+ *
+ * **Announcement** (task 1390). The pill carries NO live-region attribute:
+ * it is created already holding its sentence (every hidden item returns
+ * null), and a region that appears WITH its text is not read out. Instead
+ * the pill writes its sentence — `announce`, defaulting to `ariaLabel` — into
+ * the cluster's ONE always-mounted `BarStatusAnnouncer` when it appears and
+ * whenever the sentence changes, through the tone's politeness.
  *
  * Census: `bar-status-pill.test.tsx` — its subjects are DERIVED from the
  * policy table's mount (`StatusCluster`'s `statusItems`, one per
@@ -65,6 +71,7 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -82,6 +89,7 @@ import { useMenuItem } from "@/components/menu/useMenuItem";
 import { menuRowReasonProps, menuRowRovingStyle, menuRowToneClass } from "@/components/menu/row-tone";
 import { iconHint } from "@/components/Hint";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
+import { useBarStatusAnnounce } from "./BarStatusAnnouncer";
 
 /** The pill's registers: the leaf's four, plus the pill's own `quiet`,
  *  `presence` and `mode` (none is an interruption). */
@@ -379,17 +387,22 @@ export interface BarStatusPillProps {
   children?: ReactNode;
   /**
    * Makes the pill ITSELF the control (task 1131 — the update chip, whose
-   * one action is the pill). The labelled element becomes a typed button: it
-   * keeps the tone's `aria-live` but not its `role`, so it stays a button.
+   * one action is the pill). The labelled element becomes a typed button.
    */
   onActivate?: () => void;
   /**
    * Inline controls rendered INSIDE the pill's chrome (task 1214 — the
-   * Pomodoro). The chrome becomes a `group` named by `ariaLabel`; `label` is
-   * then the announced sentence, rendered after the controls in a live region
-   * that stays mounted (empty until there is something to say).
+   * Pomodoro). The chrome becomes a `group` named by `ariaLabel`; `label`
+   * renders after the controls. A widget's NAME is not news, so it announces
+   * only its `announce`.
    */
   widget?: ReactNode;
+  /**
+   * The sentence spoken through the bar's announcer when the pill appears or
+   * the sentence changes (task 1390). Defaults to `ariaLabel` (a widget pill:
+   * nothing); `null` says nothing. A `presence` pill never speaks.
+   */
+  announce?: string | null;
 }
 
 export function BarStatusPill({
@@ -407,6 +420,7 @@ export function BarStatusPill({
   onActivate,
   identityEdge,
   widget,
+  announce,
 }: BarStatusPillProps) {
   const palette = barStatusPalette(tone);
   // Destructured into plain locals: the two element setters are callback
@@ -424,7 +438,15 @@ export function BarStatusPill({
     trackAnchor,
     getKebabEl,
   } = menu?.controller ?? {};
-  const announcement = barStatusAnnouncement(tone);
+  const politeness = barStatusAnnouncement(tone)["aria-live"];
+  const spoken = announce !== undefined ? announce : widget != null ? null : ariaLabel;
+  const announceToBar = useBarStatusAnnounce();
+  // The pill's visibility edge IS its mount (a hidden item renders nothing),
+  // so mount + sentence change are the two moments worth saying aloud.
+  useEffect(() => {
+    if (!announceToBar || !spoken || politeness === "off") return;
+    announceToBar(spoken, politeness);
+  }, [announceToBar, spoken, politeness]);
   const labelStyle: CSSProperties = {
     background: palette.bg,
     borderColor: identityEdge || palette.edge,
@@ -466,9 +488,7 @@ export function BarStatusPill({
         >
           {glyphEl}
           {widget}
-          {/* Mounted even while empty: a live region that only appears WITH
-              its text (or is `display:none` until then) is not read out. */}
-          <span className="truncate" {...announcement} data-bar-status-label>
+          <span className="truncate" data-bar-status-label>
             {label}
           </span>
         </div>
@@ -478,7 +498,6 @@ export function BarStatusPill({
           onClick={onActivate}
           className={`${BAR_STATUS_PILL_CLASS} cursor-pointer`}
           style={labelStyle}
-          aria-live={announcement["aria-live"]}
           // A `mode` pill is the mode's own switch, and the mode is ON while
           // it shows — a pressed toggle whose click turns it off.
           aria-pressed={tone === "mode" ? true : undefined}
@@ -490,9 +509,12 @@ export function BarStatusPill({
         </button>
       ) : (
         <span
+          // A labelled group, not a live region (task 1390): the bar's one
+          // announcer speaks the sentence; the group keeps the full name
+          // reachable (a role-less span's `aria-label` is ignored).
+          role="group"
           className={BAR_STATUS_PILL_CLASS}
           style={labelStyle}
-          {...announcement}
           aria-label={ariaLabel}
           data-hint={hint}
           data-bar-status-label

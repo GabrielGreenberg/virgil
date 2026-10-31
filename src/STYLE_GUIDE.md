@@ -326,8 +326,14 @@ the pill decides everything else:
 - **Announcement** — `announcementForTone`: `alert` + `assertive` for
   `danger`, `status` + `polite` otherwise. The same table the in-document
   interruption band reads, so a state is announced the same way in both places.
-  `presence` is the one register that is NOT a live region (`aria-live="off"`,
-  no role): its label is a duration that ticks on every heartbeat.
+  `presence` is the one register that never speaks (`aria-live="off"`): its
+  label is a duration that ticks on every heartbeat. **The pill body is never
+  the live region** (task 1390): every hidden item returns null, so a pill is
+  born holding its sentence, and a region that appears WITH its text is not
+  read out. The bar mounts ONE `BarStatusAnnouncer` (a polite and an assertive
+  visually-hidden region, alive for the cluster's whole life) and the pill
+  writes its sentence (`announce`, default `ariaLabel`) into it on appearance
+  and on change; the visible body is a labelled `role="group"`.
 - **Glyph** — 14–16px stroke, inked with the tone's `edge`.
 - **Width** — ONE cap, 280px, on the labelled span; the label truncates and the
   full sentence lives on `data-hint` and in the menu's detail block. The
@@ -341,9 +347,9 @@ the pill decides everything else:
   line, destructive-choice ink for a row that deletes), one detail block.
 - **Widget** — a resident that is a small readout WITH CONTROLS (the Pomodoro)
   passes them as `widget`: they render INSIDE the chrome, which becomes a
-  labelled `role="group"`, and `label` becomes the announced sentence in a
-  live region that stays mounted while empty (a region that appears with its
-  text is not read out). See "Compact bar widgets" for the geometry.
+  labelled `role="group"`. Its name is not news, so it speaks only an explicit
+  `announce` (the timer's completion) through the bar's announcer. See
+  "Compact bar widgets" for the geometry.
 
 The census is `bar-status-pill.test.tsx`, and its subjects are DERIVED, not
 named: every `BAR_STATUS_ORDER` row's component (read off `StatusCluster`'s

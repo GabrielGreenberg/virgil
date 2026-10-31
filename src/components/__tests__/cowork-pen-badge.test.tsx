@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 import { BAR_STATUS_POLICY } from "@/lib/bar-status-policy";
 import CoworkPenBadge from "@/components/CoworkPenBadge";
+import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 import { clearCoworkPen, noteCoworkPen } from "@/lib/cowork-pen";
 
 function hold(docId: string) {
@@ -56,19 +57,19 @@ describe("CoworkPenBadge", () => {
     vi.useFakeTimers();
     try {
       hold("doc-1");
-      render(<CoworkPenBadge docId="doc-1" />);
+      render(<CoworkPenBadge docId="doc-1" />, { wrapper: BarStatusAnnouncer });
       act(() => {
         vi.advanceTimersByTime(BAR_STATUS_POLICY["cowork-pen"].settleMs + 10);
       });
     } finally {
       vi.useRealTimers();
     }
-    expect(screen.getByText(/Virgil is editing this paper/i)).toBeTruthy();
-    // …and it says WHY the editor stopped accepting typing.
-    const label = screen
-      .getByRole("status")
-      .getAttribute("aria-label")!
-      .toLowerCase();
+    expect(
+      document.querySelector("[data-bar-status-label]")?.textContent,
+    ).toMatch(/Virgil is editing this paper/i);
+    // …and it SAYS why the editor stopped accepting typing — through the
+    // bar's one announcer (task 1390).
+    const label = (screen.getByRole("status").textContent ?? "").toLowerCase();
     expect(label).toContain("read-only");
     expect(label).toContain("saving is paused");
   });

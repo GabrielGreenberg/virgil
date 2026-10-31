@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 import SaveStateBadge from "../SaveStateBadge";
+import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 import {
   clearUnsavedWork,
   noteSaveBlocked,
@@ -140,15 +141,16 @@ describe("SaveStateBadge · the tiers", () => {
 
   it("UNSAVED — amber, AGED, and offers Save now", () => {
     act(() => noteUnsavedEdit(DOC, Date.now() - (UNSAVED_WARN_MS + 5_000)));
-    renderSettled(<SaveStateBadge docId={DOC} />);
+    renderSettled(<BarStatusAnnouncer><SaveStateBadge docId={DOC} /></BarStatusAnnouncer>);
     expect(pill()?.getAttribute("data-save-state")).toBe("unsaved");
+    // Spoken through the bar's one announcer (task 1390).
     expect(screen.getByRole("status").textContent).toMatch(/Unsaved · /);
     expect(saveBtn()).not.toBeNull();
   });
 
   it("BLOCKED — names the reason and offers the flow's own verb", () => {
     act(() => noteSaveBlocked(DOC, "conflict"));
-    render(<SaveStateBadge docId={DOC} />);
+    render(<SaveStateBadge docId={DOC} />, { wrapper: BarStatusAnnouncer });
     expect(pill()?.getAttribute("data-save-state")).toBe("blocked");
     const text = screen.getByRole("status").textContent ?? "";
     expect(text).toMatch(/changed on disk/i);
@@ -233,11 +235,14 @@ describe("SaveStateBadge · the REGISTER (task 571)", () => {
       cleanup();
       clearUnsavedWork();
       act(() => noteSaveBlocked(DOC, reason));
-      render(<SaveStateBadge docId={DOC} />);
+      render(<SaveStateBadge docId={DOC} />, { wrapper: BarStatusAnnouncer });
       expect(tone(), reason).toBe("danger");
       expect(swatch(), reason).toContain("--danger-soft");
-      // …and the alarm ramp INTERRUPTS (task 769): alert + assertive.
-      expect(screen.getByRole("alert").getAttribute("aria-live"), reason).toBe("assertive");
+      // …and the alarm ramp INTERRUPTS (task 769): spoken through the
+      // announcer's assertive region (task 1390).
+      const alarm = screen.getByRole("alert");
+      expect(alarm.getAttribute("aria-live"), reason).toBe("assertive");
+      expect(alarm.textContent, reason).not.toBe("");
       expect(saveBtn(), reason).not.toBeNull();
     }
   });
