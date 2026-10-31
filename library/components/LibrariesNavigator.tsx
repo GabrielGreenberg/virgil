@@ -110,7 +110,7 @@ export default function LibrariesNavigator({
           { key: "div", divider: true },
           {
             key: "delete",
-            label: "Delete library",
+            label: "Delete library…",
             destructive: true,
             onSelect: () => onDeleteLibrary(lib.id),
           },

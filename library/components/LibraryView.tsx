@@ -40,6 +40,7 @@ import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
 import { filesFromTransfer } from "@/lib/transfer-files";
 import { Button } from "@/components/Button";
+import { useSystemDialog } from "@/components/system-dialog-host";
 import DropZone from "./DropZone";
 import PdfDropIntroDialog from "./PdfDropIntroDialog";
 import LibraryPaneFill from "./LibraryPaneFill";
@@ -750,20 +751,25 @@ export default function LibraryView({
     [stagePickedBib, libraryTabs, reloadUnsortedBib],
   );
 
-  // "Delete library" on a custom library (F#5) — lightweight confirm, then
+  const systemDialog = useSystemDialog();
+  // "Delete library…" on a custom library (F#5) — lightweight confirm, then
   // drop the manifest. Papers + master.bib entries are untouched (a manifest
   // is only a membership list).
   const handleDeleteLibrary = useCallback(
-    (libId: string) => {
+    async (libId: string) => {
       const lib = libraryTabs.registry.libraries.find((l) => l.id === libId);
       if (!lib || lib.kind !== "custom") return;
-      const ok = window.confirm(
-        `Delete the library "${lib.label}"?\n\nThis removes the collection only — its papers and bibliography entries stay in your library.`,
-      );
+      const ok = await systemDialog.confirm({
+        title: `Delete the library "${lib.label}"?`,
+        message:
+          "This removes the collection only — its papers and bibliography entries stay in your library.",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
       if (!ok) return;
       libraryTabs.remove(libId);
     },
-    [libraryTabs],
+    [libraryTabs, systemDialog],
   );
 
   // Container-scoped drag tracking. Two responsibilities:

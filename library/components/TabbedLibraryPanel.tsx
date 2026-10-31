@@ -49,6 +49,7 @@ import {
 } from "./panel-tabs/PanelTabStrip";
 import { STRIP_SIDE_PAD } from "@/components/chrome/folder-tab-geometry";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
+import { useSystemDialog } from "@/components/system-dialog-host";
 
 interface Props {
   panel: PanelKey;
@@ -207,14 +208,19 @@ export default function TabbedLibraryPanel({
   // destructive action is a true delete (queue intent file + confirm). In
   // a custom library, it's just a local membership removal — no skill
   // call, no confirm, different label.
+  const systemDialog = useSystemDialog();
   const rowActions = useMemo<RowActions>(() => {
     if (!activeLibrary || isCentral(activeLibrary.id)) {
       return {
         deleteLabel: "Delete…",
-        onDelete: (citekey: string) => {
-          const ok = window.confirm(
-            `Delete ${citekey}?\n\nThis queues a delete request — the skill will remove the source file, indexed paper, bib entry, and catalog row.`,
-          );
+        onDelete: async (citekey: string) => {
+          const ok = await systemDialog.confirm({
+            title: `Delete ${citekey}?`,
+            message:
+              "This queues a delete request — the skill will remove the source file, indexed paper, bib entry, and catalog row.",
+            confirmLabel: "Delete",
+            tone: "danger",
+          });
           if (!ok) return;
           entryActions.queueDelete(citekey);
         },
@@ -235,13 +241,16 @@ export default function TabbedLibraryPanel({
       const citedKeys = project.citedKeys;
       return {
         deleteLabel: "Remove from references.bib…",
-        onDelete: (citekey: string) => {
+        onDelete: async (citekey: string) => {
           const consequence = citedKeys.has(citekey)
             ? ` ${citekey} is cited in the text — those \\cite{${citekey}} commands will reference a missing entry.`
             : ` ${citekey} is not cited in the text.`;
-          const ok = window.confirm(
-            `Remove ${citekey} from this project's references.bib?\n\nThe entry stays in the central library — only this document's bibliography is affected.${consequence}`,
-          );
+          const ok = await systemDialog.confirm({
+            title: `Remove ${citekey} from this project's references.bib?`,
+            message: `The entry stays in the central library — only this document's bibliography is affected.${consequence}`,
+            confirmLabel: "Remove",
+            tone: "danger",
+          });
           if (!ok) return;
           entryActions.removeFromLibrary(libId, citekey);
         },
@@ -261,7 +270,7 @@ export default function TabbedLibraryPanel({
       onTextReview: entryActions.queuePaperReview,
       onImportBib: entryActions.queueImportBib,
     };
-  }, [activeLibrary, entryActions, project.citedKeys]);
+  }, [activeLibrary, entryActions, project.citedKeys, systemDialog]);
 
   const visibleEntries = useMemo<CatalogEntry[]>(() => {
     if (!activeLibrary) return [];
