@@ -9,17 +9,14 @@ import {
   computeCategoryCounts,
   countWords,
 } from "@/lib/word-count-core";
-import { getSelectionCounts } from "@/hooks/useSelectionCounts";
 
 export type { CategoryCounts };
 export { CATEGORY_LABELS, countWords };
 
 export function useWordCount(editor: Editor | null) {
   const [counts, setCounts] = useState<CategoryCounts>(EMPTY_CATEGORY_COUNTS);
-  const [selection, setSelection] = useState<CategoryCounts | null>(null);
 
   const contentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const selTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Categorization lives in the shared word-count-core walker (SSOT with the
   // Outline panel's per-section counts). It takes JSONContent, so serialize
@@ -29,37 +26,27 @@ export function useWordCount(editor: Editor | null) {
     setCounts(computeCategoryCounts(editor.state.doc.toJSON() as JSONContent));
   }, [editor]);
 
-  const resel = useCallback(() => {
-    if (!editor) return;
-    setSelection(getSelectionCounts(editor));
-  }, [editor]);
-
   useEffect(() => {
     if (!editor) return;
 
     // initial count
     setCounts(computeCategoryCounts(editor.state.doc.toJSON() as JSONContent));
-    setSelection(getSelectionCounts(editor));
 
     const onUpdate = () => {
       clearTimeout(contentTimer.current);
       contentTimer.current = setTimeout(recount, 300);
     };
-    const onSel = () => {
-      clearTimeout(selTimer.current);
-      selTimer.current = setTimeout(resel, 50);
-    };
 
     editor.on("update", onUpdate);
-    editor.on("selectionUpdate", onSel);
 
     return () => {
       editor.off("update", onUpdate);
-      editor.off("selectionUpdate", onSel);
       clearTimeout(contentTimer.current);
-      clearTimeout(selTimer.current);
     };
-  }, [editor, recount, resel]);
+  }, [editor, recount]);
 
-  return useMemo(() => ({ counts, selection }), [counts, selection]);
+  // Content counts only. The SELECTION tally is not a pane fact: it is a lazy
+  // per-editor store read by the Word Count panel alone (useSelectionCounts,
+  // task 1395) — one producer for both DocProducts flag states.
+  return useMemo(() => ({ counts }), [counts]);
 }
