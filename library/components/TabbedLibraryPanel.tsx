@@ -50,6 +50,7 @@ import {
 import { STRIP_SIDE_PAD } from "@/components/chrome/folder-tab-geometry";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { useSystemDialog } from "@/components/system-dialog-host";
+import type { RowDotTone } from "@library/hooks/useRowDotState";
 
 interface Props {
   panel: PanelKey;
@@ -97,7 +98,7 @@ interface Props {
   /** Far-left request-state dot tone for a citekey + the "mark viewed"
    *  callback. The 6 s queue/inbox poll behind these is LIFTED to LibraryView
    *  (chip A3): one shared poll feeds BOTH panels instead of one per panel. */
-  dotToneFor: (citekey: string | null | undefined) => "red" | "green" | null;
+  dotToneFor: (citekey: string | null | undefined) => RowDotTone;
   markViewed: (citekey: string) => void;
   /** Reload master.bib after a save lands inside a paper-kind tab. */
   onBibChanged?: () => void;

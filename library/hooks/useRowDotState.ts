@@ -13,8 +13,19 @@ import {
   type ViewedMap,
 } from "@library/lib/row-viewed-store";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+import type { StatusTone } from "@/components/StatusDot";
 
-export type RowDotTone = "red" | "green" | null;
+/**
+ * What a Library row's far-left dot MEANS — a subset of the app's one
+ * `StatusTone` vocabulary, rendered with `<StatusDot tone=…>` so nothing maps
+ * a state to a colour on the way (task 1379, the library half of task 315's
+ * `AiDotTone` rename). It was `"red" | "green"` until then: a colour-named
+ * union that painted "a request is waiting for Claude" in the DANGER red,
+ * while every editor-side surface paints the same state as the amber
+ * `pending` dot (task 951). "New result" is `ok`, the tone `AiDotTone` names
+ * "AI has replied".
+ */
+export type RowDotTone = Extract<StatusTone, "pending" | "ok"> | null;
 
 const POLL_MS = 6000;
 
@@ -40,7 +51,7 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
   const queueSnapshot = useQueueState(handle);
 
   // Hydrate viewed map on mount (client-only), and re-hydrate when a peer
-  // window marks a row viewed — otherwise this window's dot stays green for a
+  // window marks a row viewed — otherwise this window's "new result" dot stays lit for a
   // notification the user already acknowledged elsewhere (task 768).
   useEffect(() => {
     const hydrate = () => setState((s) => ({ ...s, viewed: loadViewedMap() }));
@@ -79,9 +90,9 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
     (citekey: string | null | undefined): RowDotTone => {
       if (!citekey) return null;
       const s = stateRef.current;
-      if (hasQueuedRequest(queueSnapshot, citekey)) return "red";
+      if (hasQueuedRequest(queueSnapshot, citekey)) return "pending";
       const notif = s.latestNotifAt.get(citekey);
-      if (notif && notif > (s.viewed[citekey] ?? "")) return "green";
+      if (notif && notif > (s.viewed[citekey] ?? "")) return "ok";
       return null;
     },
     // stateRef is mutable; consumers re-render via state changes already

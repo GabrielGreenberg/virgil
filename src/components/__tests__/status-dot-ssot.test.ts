@@ -45,10 +45,11 @@
  *
  * What it does NOT see, enumerated rather than gestured at — each of these
  * reintroduces a hand-rolled dot with CI green:
- *   • a dot sized entirely by inline style (`style={{ width: 6, height: 6 }}`)
- *     — `CollabPresenceDots` and the library silo's `Dot` are both that shape,
- *     and 10px `borderRadius: "50%"` knobs elsewhere prove the spelling is
- *     native here;
+ *   • an inline-style size spelled through a const or a spread
+ *     (`width: DOT`, `...dotBox`) — task 1379 added the LITERAL inline leg
+ *     (`style={{ width: 6, height: 6 }}`, ≤10px), which is the shape the
+ *     library silo's private `Dot` and the LibrariesNavigator open-in-panel dot
+ *     had, so those two converted rather than being allowlisted;
  *   • an SVG `<circle>` filled by a state;
  *   • classes composed out of the tag — `clsx(DOT_SIZE, "rounded-full")`, or a
  *     template literal whose size lives in a const. `tagAround` reads the open
@@ -64,11 +65,10 @@
  * scan runs past the needle could report a bogus tag at a misleading line. No
  * such case is live — every censused hit today is a genuine element.
  *
- * The library silo is not ungoverned: `library/components/StatusPill.tsx`
- * exports a real `Dot` with a closed tone union. Stated exactly, though — that
- * union is CHROMATIC (`"green"`, `"amber"`, `"gray"`), the vocabulary
- * `StatusDot.tsx` argues is a layer-shifting mistake. It is a primitive; it is
- * not agreement with this law.
+ * The library silo has no dot of its own (task 1379): its private chromatic
+ * `Dot` (which painted a pending AI request in the danger RED) and the dead
+ * `StatusDots` are deleted, and the row dot's producer names `pending`/`ok`
+ * from `StatusTone`, exactly as the AI dot's does since task 315.
  *
  * ALLOWLIST KEYING — an entry names a file AND a fragment of the tag, and must
  * match EXACTLY ONE censused hit. The "exactly one" half is the load-bearing
@@ -123,6 +123,16 @@ const PERMITTED_NON_STATUS_DOTS: ReadonlyArray<[file: string, fragment: string, 
     "bg-[var(--accent)]",
     "'preamble drifted' marker painted in the live accent preference; a token read, no status tone applies",
   ],
+  [
+    "src/components/CollabPresenceDots.tsx",
+    "backgroundColor: p.color",
+    "each present collaborator's own identity colour (inline-sized, seen since task 1379's inline-style leg) — an identity swatch, not a state",
+  ],
+  [
+    "src/components/EditorPane.tsx",
+    "var(--drag-highlight)",
+    "a figure resize KNOB (drag-highlight fill + glow, opacity from its symmetry var) — a grab affordance, not a state",
+  ],
 ];
 
 /**
@@ -162,6 +172,10 @@ const H_DOT = /\bh-(?:1|1\.5|2|2\.5)(?![\w.[-])/;
 const SIZE_DOT = /\bsize-(?:1|1\.5|2|2\.5)(?![\w.[-])/;
 const W_ARB = /\bw-\[(?:[0-9]|10)px\]/;
 const H_ARB = /\bh-\[(?:[0-9]|10)px\]/;
+/** Inline-style sizing (task 1379): `width: 6` / `height: "8px"` at ≤10px.
+ *  `\b` keeps `minWidth`/`maxHeight` out (no word boundary inside them). */
+const W_INLINE = /\bwidth:\s*["'`]?(?:[1-9]|10)(?![\d.])(?:px)?["'`]?\s*[,}\n]/;
+const H_INLINE = /\bheight:\s*["'`]?(?:[1-9]|10)(?![\d.])(?:px)?["'`]?\s*[,}\n]/;
 
 /**
  * BOTH axes must be small. Asking either axis alone is not a wider net, it is a
@@ -172,7 +186,10 @@ const H_ARB = /\bh-\[(?:[0-9]|10)px\]/;
  */
 function isDotSized(tag: string): boolean {
   if (SIZE_DOT.test(tag)) return true;
-  return (W_DOT.test(tag) || W_ARB.test(tag)) && (H_DOT.test(tag) || H_ARB.test(tag));
+  return (
+    (W_DOT.test(tag) || W_ARB.test(tag) || W_INLINE.test(tag)) &&
+    (H_DOT.test(tag) || H_ARB.test(tag) || H_INLINE.test(tag))
+  );
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
@@ -363,6 +380,20 @@ describe("the collab pen pair is its own family, pinned byte-neutral", () => {
     const src = commentsStripped(read(path.join(SRC, "components/CollabStatusPill.tsx")));
     expect(src).toMatch(/Record<PenStatus,\s*StatusTone>/);
     expect(src).not.toMatch(/\?\?\s*["'`]#/);
+  });
+});
+
+describe("the Library row dot's producer names a state, not a colour (task 1379)", () => {
+  it("types RowDotTone as a StatusTone subset, and returns pending/ok", () => {
+    const src = commentsStripped(read(path.join(LIBRARY, "hooks/useRowDotState.ts")));
+    expect(src).toMatch(/export type RowDotTone = Extract<StatusTone,/);
+    expect(src).not.toMatch(/return\s+"(?:red|green)"/);
+    expect(src).toMatch(/return\s+"pending"/);
+  });
+
+  it("leaves no private dot component in the library silo", () => {
+    const src = commentsStripped(read(path.join(LIBRARY, "components/StatusPill.tsx")));
+    expect(src).not.toMatch(/export function (?:Dot|StatusDots)\b/);
   });
 });
 
