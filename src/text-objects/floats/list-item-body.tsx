@@ -21,7 +21,10 @@
  * range — never the whole list. Siblings + the parent list (and its uuid)
  * stay intact. An in-float Enter-split can yield >1 item; the parent list
  * accepts the siblings, so the range-replace handles it (main's block-uuid
- * backfill re-mints any split clone that copied the source uuid).
+ * backfill re-mints any split clone that copied the source uuid). The NEXT
+ * write must cover those siblings too, not just the item's own (now shrunken)
+ * range — `landFloatWrite` widens the target to the span this float last
+ * wrote (`writtenRangeRef`, task 1399).
  *
  * Modeled on `list-body.tsx` (factory float editor + `useFloatMainSync` +
  * `docIdRef` threaded so a graphicsBlock-as-first-child resolves its image +

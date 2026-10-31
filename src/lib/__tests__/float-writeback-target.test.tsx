@@ -25,7 +25,7 @@ import { renderHook, act } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import type { Editor as ReactEditor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { JSONContent } from "@tiptap/core";
+import type { JSONContent } from "@tiptap/react";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
@@ -277,7 +277,7 @@ describe("float write target — a section float that gained an ending heading",
 
   /** The float's current doc with `suffix` typed at the end of its last block. */
   function typedAtEnd(float: Editor, suffix: string): JSONContent {
-    const json = float.getJSON();
+    const json = float.getJSON() as JSONContent;
     const blocks = json.content ?? [];
     const last = blocks[blocks.length - 1];
     const runs = last.content ?? [];
