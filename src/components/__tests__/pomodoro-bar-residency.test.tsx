@@ -190,25 +190,29 @@ describe("a running timer does not repaint the Virgil bar", () => {
 });
 
 describe("the timer renders through the ONE bar pill (task 1214)", () => {
-  it("announces Done through the pill's live region, mounted before it has anything to say", () => {
+  it("announces completion through the bar's ONE announcer, mounted before the timer appears (task 1390)", () => {
     mountCluster();
+    const bar = screen.getByTestId("bar");
+    // The region exists before any pill — a region that appears WITH its
+    // text is not read out.
+    const live = bar.querySelector('[data-bar-status-announcer="polite"]')!;
+    expect(live.getAttribute("role")).toBe("status");
     act(() => { setPomodoroDuration(3000); });
     act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
-    const bar = screen.getByTestId("bar");
     const group = bar.querySelector("[data-bar-status-widget]")!;
     expect(group.getAttribute("role")).toBe("group");
     expect(group.getAttribute("aria-label")).toBe("Writing timer");
-    const live = group.querySelector("[data-bar-status-label]")!;
-    expect(live.getAttribute("role")).toBe("status");
+    // A widget's NAME is not news, and the running clock is silent.
     expect(live.textContent).toBe("");
+    // The visible label is no live region of its own.
+    expect(group.querySelector("[aria-live]")).toBeNull();
 
     act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
     act(() => { vi.advanceTimersByTime(4000); });
 
     expect(getPomodoroState().status).toBe("done");
-    // The SAME region (not a fresh one) now carries the sentence.
-    expect(bar.querySelector("[data-bar-status-widget] [data-bar-status-label]")).toBe(live);
-    expect(live.textContent).toBe("Done");
+    expect(bar.querySelector('[data-bar-status-announcer="polite"]')).toBe(live);
+    expect(live.textContent).toBe("Writing timer done");
   });
 });
 

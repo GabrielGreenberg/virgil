@@ -22,6 +22,7 @@ import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
 import { CompileStatusChip, FocusViewChip, HelperModeChip } from "@/components/BarModeChips";
+import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
 import { BAR_STATUS_ORDER, type BarStatusItemId } from "@/lib/bar-status-policy";
@@ -290,6 +291,11 @@ function StatusClusterImpl(props: StatusClusterProps) {
           all-quiet segment is `:empty` and `empty:hidden` takes its margin
           with it. Not an occupancy box: useBarOccupancy measures only the tab
           strip, the tab row and the tools wrapper. */}
+      {/* The bar's ONE announcer (task 1390): mounted for the cluster's
+          life, so a pill's sentence lands in a region assistive tech already
+          knows. Its two visually-hidden regions sit OUTSIDE the segment, so
+          an all-quiet segment stays `:empty`. */}
+      <BarStatusAnnouncer>
       <div
         data-bar-segment="status"
         className="flex items-center gap-[var(--bar-occupant-gap)] mr-[var(--bar-occupant-gap)] empty:hidden"
@@ -298,6 +304,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
           <Fragment key={id}>{statusItems[id]}</Fragment>
         ))}
       </div>
+      </BarStatusAnnouncer>
       {/* ── TIER 3: the collapsible tool group (task 395) ──────────────────
           Everything above this point is TIER 1 (PROTECTED) and everything in
           here is the bar's lowest-priority occupant: under compression it

@@ -12,7 +12,8 @@
  * inside the labelled span), and three copies of the kebab + menu row.
  *
  * Two halves:
- * - the CONTRACT: each tone yields its role/aria-live, the glyph is inked by
+ * - the CONTRACT: each tone speaks through the bar's ONE announcer at its
+ *   politeness (task 1390 — no pill body is a live region), the glyph is inked by
  *   the tone's edge, ONE width cap, actions are siblings of the labelled span;
  * - the CENSUS: every badge `StatusCluster` mounts renders through the pill,
  *   and no `*Badge.tsx` spells the raw pill class or a private kebab/row.
@@ -22,6 +23,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
+import { BarStatusAnnouncer } from "../status/BarStatusAnnouncer";
 
 import {
   BAR_STATUS_MENU_WIDTH,
@@ -54,18 +56,29 @@ describe("BarStatusPill · the contract", () => {
   };
 
   it.each(Object.entries(EXPECTED))("tone %s announces as %o", (tone, want) => {
+    expect(barStatusAnnouncement(tone as BarStatusTone)).toEqual(
+      want.role ? { role: want.role, "aria-live": want.live } : { "aria-live": want.live },
+    );
     const { container } = render(
-      <BarStatusPill
-        tone={tone as BarStatusTone}
-        glyph={<svg />}
-        label="Label"
-        ariaLabel="Accessible label"
-      />,
+      <BarStatusAnnouncer>
+        <BarStatusPill
+          tone={tone as BarStatusTone}
+          glyph={<svg />}
+          label="Label"
+          ariaLabel="Accessible label"
+        />
+      </BarStatusAnnouncer>,
     );
     const span = container.querySelector("[data-bar-status-label]")!;
-    expect(span.getAttribute("role")).toBe(want.role);
-    expect(span.getAttribute("aria-live")).toBe(want.live);
+    // The body is a labelled group, never a live region (task 1390)…
+    expect(span.getAttribute("role")).toBe("group");
+    expect(span.hasAttribute("aria-live")).toBe(false);
     expect(span.getAttribute("aria-label")).toBe("Accessible label");
+    // …the sentence lands in the announcer's region for the tone.
+    const polite = container.querySelector('[data-bar-status-announcer="polite"]')!;
+    const assertive = container.querySelector('[data-bar-status-announcer="assertive"]')!;
+    expect(polite.textContent).toBe(want.live === "polite" ? "Accessible label" : "");
+    expect(assertive.textContent).toBe(want.live === "assertive" ? "Accessible label" : "");
     // The glyph is inked by the tone's edge — the SPECIFIED value (jsdom
     // resolves no CSS vars).
     const glyph = container.querySelector("[data-bar-status-glyph]") as HTMLElement;
@@ -128,12 +141,9 @@ describe("BarStatusPill · the contract", () => {
     expect(group.getAttribute("aria-label")).toBe("Writing timer");
     expect(group.style.maxWidth).toBe(`${BAR_STATUS_PILL_MAX_WIDTH}px`);
     expect(group.querySelector("button")!.textContent).toBe("Play");
-    // The live region is mounted BEFORE it has anything to say — a region
-    // that appears with its text is not read out.
-    const live = group.querySelector("[data-bar-status-label]")!;
-    expect(live.getAttribute("role")).toBe("status");
-    expect(live.getAttribute("aria-live")).toBe("polite");
-    expect(live.textContent).toBe("");
+    // The visible label is no live region (task 1390).
+    const label = group.querySelector("[data-bar-status-label]")!;
+    expect(label.hasAttribute("aria-live")).toBe(false);
     rerender(
       <BarStatusPill
         tone="quiet"
@@ -142,8 +152,7 @@ describe("BarStatusPill · the contract", () => {
         widget={<button type="button">Play</button>}
       />,
     );
-    expect(container.querySelector("[data-bar-status-label]")).toBe(live);
-    expect(live.textContent).toBe("Done");
+    expect(label.textContent).toBe("Done");
     // No glyph given → no empty glyph wrapper.
     expect(container.querySelector("[data-bar-status-glyph]")).toBeNull();
   });
@@ -299,6 +308,62 @@ describe("BarStatusPill · the census", () => {
     expect(btn.getAttribute("type")).toBe("button");
     // A `role="status"` would rename the button for assistive tech.
     expect(btn.getAttribute("role")).toBeNull();
-    expect(btn.getAttribute("aria-live")).toBe("polite");
+    expect(btn.hasAttribute("aria-live")).toBe(false);
+  });
+});
+
+describe("BarStatusPill · the ONE announcer (task 1390)", () => {
+  const regions = (root: ParentNode) => ({
+    polite: root.querySelector('[data-bar-status-announcer="polite"]')!,
+    assertive: root.querySelector('[data-bar-status-announcer="assertive"]')!,
+  });
+
+  it("the region exists BEFORE any pill is visible, and a pill's appearance writes into it", () => {
+    const { container, rerender } = render(<BarStatusAnnouncer>{null}</BarStatusAnnouncer>);
+    const { polite, assertive } = regions(container);
+    expect(polite.getAttribute("role")).toBe("status");
+    expect(polite.getAttribute("aria-live")).toBe("polite");
+    expect(assertive.getAttribute("role")).toBe("alert");
+    expect(assertive.getAttribute("aria-live")).toBe("assertive");
+    expect(polite.textContent).toBe("");
+    rerender(
+      <BarStatusAnnouncer>
+        <BarStatusPill tone="warning" label="Unsaved" ariaLabel="Unsaved changes" />
+      </BarStatusAnnouncer>,
+    );
+    // The SAME region (not a fresh one) carries the sentence.
+    expect(regions(container).polite).toBe(polite);
+    expect(polite.textContent).toBe("Unsaved changes");
+  });
+
+  it("a changed sentence is re-spoken; a REPEAT still changes the region; presence never speaks", () => {
+    const pill = (aria: string) => (
+      <BarStatusAnnouncer>
+        <BarStatusPill tone="info" label="x" ariaLabel={aria} />
+      </BarStatusAnnouncer>
+    );
+    const { container, rerender } = render(pill("Saving"));
+    const { polite } = regions(container);
+    expect(polite.textContent).toBe("Saving");
+    rerender(pill("Saved"));
+    expect(polite.textContent).toBe("Saved");
+    // Hide, then show the same sentence again — still a change.
+    rerender(<BarStatusAnnouncer>{null}</BarStatusAnnouncer>);
+    rerender(pill("Saved"));
+    expect(polite.textContent).not.toBe("Saved");
+    expect(polite.textContent!.trim()).toBe("Saved");
+    cleanup();
+    const p = render(
+      <BarStatusAnnouncer>
+        <BarStatusPill tone="presence" label="idle 12s" ariaLabel="Ada idle 12s" />
+      </BarStatusAnnouncer>,
+    );
+    expect(regions(p.container).polite.textContent).toBe("");
+  });
+
+  it("CENSUS: no pill body carries a live-region attribute", () => {
+    const src = read("src/components/status/BarStatusPill.tsx");
+    const body = src.slice(src.indexOf("export function BarStatusPill("));
+    expect(body).not.toMatch(/aria-live=|\{\.\.\.announcement\}|role="(status|alert)"/);
   });
 });

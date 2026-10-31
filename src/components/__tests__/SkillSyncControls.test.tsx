@@ -20,6 +20,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import SkillSyncControls from "../SkillSyncControls";
+import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 
 afterEach(cleanup);
 
@@ -50,7 +51,9 @@ describe("SkillSyncControls", () => {
         onResync={onResync}
         onDismissError={onDismissError}
       />,
+      { wrapper: BarStatusAnnouncer },
     );
+    // The bar's ONE announcer speaks it, assertively (task 1390).
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/skill sync failed/i);
 
@@ -71,6 +74,7 @@ describe("SkillSyncControls", () => {
         onResync={onResync}
         onDismissError={noop}
       />,
+      { wrapper: BarStatusAnnouncer },
     );
     expect(screen.getByRole("alert").textContent).toMatch(/needs permission/i);
     fireEvent.click(screen.getByRole("button", { name: /grant & retry/i }));

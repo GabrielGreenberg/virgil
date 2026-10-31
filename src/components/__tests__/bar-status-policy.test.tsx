@@ -116,7 +116,8 @@ describe("bar status policy · the census", () => {
       .replace(/\/\/.*$/gm, "");
     expect(slice).toContain("BAR_STATUS_ORDER.map");
     const tags = [...slice.matchAll(/<([A-Z]\w*)/g)].map((m) => m[1]);
-    expect(tags.filter((t) => t !== "Fragment")).toEqual([]);
+    // The announcer (task 1390) wraps the segment; it mounts no item.
+    expect(tags.filter((t) => t !== "Fragment" && t !== "BarStatusAnnouncer")).toEqual([]);
   });
 
   it.each([...clusterItems()])(

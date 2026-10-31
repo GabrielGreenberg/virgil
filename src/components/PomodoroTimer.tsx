@@ -235,9 +235,9 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
     <BarStatusPill
       tone="quiet"
       ariaLabel="Writing timer"
-      // The announced sentence (the widget slot's live region): empty while
-      // the clock runs — a per-second readout is not news — and "Done" once
-      // the interval completes, so the completion is actually read out.
+      // Silent while the clock runs — a per-second readout is not news — and
+      // spoken through the bar's announcer once the interval completes.
+      announce={done ? "Writing timer done" : null}
       label={
         done ? (
           <span style={{ color: "var(--positive-strong)" }} data-pomodoro-done>
