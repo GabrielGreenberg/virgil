@@ -1086,6 +1086,21 @@ function wrapperMarkCommands() {
   }
   return out;
 }
+// CROSS-REFERENCE commands (`\ref`, `\getref`, `\getfullref`) are likewise
+// invisible to the alternation extractor: since task 1372 they are matched
+// from `REF_COMMANDS` (src/lib/ref-commands.ts) via `matchRefCommandAt`, not
+// from a `/^\\cmd\{/` literal. Derive them from that table — the fourth
+// instance of the same lesson: the 1372 refactor left all three reading as
+// phantoms while the doc was right and the checker was blind.
+const REF_COMMANDS_TS = "src/lib/ref-commands.ts";
+function refTableCommands() {
+  if (!exists(REF_COMMANDS_TS)) return new Set();
+  const m = /REF_COMMANDS\s*=\s*\{([\s\S]*?)\n\}/.exec(read(REF_COMMANDS_TS));
+  if (!m) return new Set();
+  const out = new Set();
+  for (const sm of m[1].matchAll(/^\s*([A-Za-z]+):\s*\{/gm)) out.add(sm[1]);
+  return out;
+}
 // `\verb<delim>…<delim>` / `\verb*` — inline verbatim, genuinely rendered
 // (latex-parser.ts handles it via the delimiter-based verbatim branch →
 // `verbatimMark()`, task 264), but NOT as a `/^\\cmd\{/` literal inside
@@ -1155,6 +1170,7 @@ function parserInlineCommands() {
   for (const e of escapeSpecialCommands()) out.add(e);
   for (const e of textMacroCommands()) out.add(e);
   for (const e of wrapperMarkCommands()) out.add(e);
+  for (const e of refTableCommands()) out.add(e);
   for (const e of ALLOWLIST_VERBATIM_HANDLED) out.add(e);
   return out;
 }
