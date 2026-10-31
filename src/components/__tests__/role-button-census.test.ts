@@ -214,7 +214,6 @@ const COMPONENTS_RATCHET: Record<string, number> = {
   "src/components/SourcePodNodeView.tsx": 4,
   "src/components/editor-layout/DocumentFolderTab.tsx": 1,
   "src/components/library/BibEntryPickerMenu.tsx": 1,
-  "src/components/library/MyPapersPod.tsx": 1,
   "src/components/menu/AnchoredMenu.tsx": 1,
   "src/components/panel-primitives.tsx": 1,
 };

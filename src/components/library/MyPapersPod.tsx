@@ -22,8 +22,9 @@
  * column via `LibraryView`'s `belowNavigator` slot.
  */
 
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, type CSSProperties } from "react";
 import NavPod from "@library/components/NavPod";
+import { NavPodEmptyHint, NavPodRow } from "@library/components/NavPodRow";
 import RowMenu from "@library/components/RowMenu";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
@@ -55,8 +56,6 @@ interface Props {
    *  back-end has no FSA handles). */
   devStorage: boolean;
 }
-
-const ACCENT = "var(--accent)";
 
 /** The "+ Add paper" trigger: a full-width pod row (its hover tint is the
  *  `triggerClassName`, not a JS mouseenter). */
@@ -145,16 +144,7 @@ export default function MyPapersPod({
   return (
     <NavPod title="My papers">
       {rows.length === 0 ? (
-        <div
-          style={{
-            padding: "2px 14px 6px",
-            fontSize: 12,
-            color: "var(--muted)",
-            fontStyle: "italic",
-          }}
-        >
-          No papers added
-        </div>
+        <NavPodEmptyHint>No papers added</NavPodEmptyHint>
       ) : (
         rows.map((doc) => {
           const active = doc.id === currentDocId;
@@ -231,62 +221,20 @@ function PaperRow({
   onClick: () => void;
   onRemove: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={onClick}
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 6px 0 14px",
-        height: 28,
-        cursor: "pointer",
-        background: active
-          ? "var(--accent-light, rgba(124, 94, 60, 0.12))"
-          : hovered
-            ? "rgba(0, 0, 0, 0.04)"
-            : "transparent",
-      }}
-    >
-      {active && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 4,
-            bottom: 4,
-            width: 3,
-            background: ACCENT,
-            borderRadius: "var(--radius-xs)",
-            pointerEvents: "none",
-          }}
+    <NavPodRow
+      label={label}
+      active={active}
+      onActivate={onClick}
+      trailing={
+        <RowMenu
+          items={[{ key: "remove", label: "Remove", onSelect: onRemove }]}
+          ariaLabel={`${label} actions`}
+          title="Actions"
+          minWidth={140}
         />
-      )}
-      <span
-        style={{
-          flex: 1,
-          fontSize: 13,
-          lineHeight: "16px",
-          color: "var(--foreground)",
-          fontWeight: active ? 500 : 400,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-        data-hint={label}
-      >
-        {label}
-      </span>
-      <RowMenu
-        items={[{ key: "remove", label: "Remove", onSelect: onRemove }]}
-        ariaLabel={`${label} actions`}
-        title="Actions"
-        minWidth={140}
-      />
-    </div>
+      }
+    />
   );
 }
 
