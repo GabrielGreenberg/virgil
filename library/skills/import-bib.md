@@ -14,8 +14,8 @@ description: |
   Triggers on: "import this paper's bibliography", "import bib for
   <citekey>", "fold <citekey>'s references into master", or as the
   drain target for an `import-bib` AI request filed from the Library
-  (the "Import bib" checkbox in the paper header / the "Import
-  bibliography" row-menu item → `.virgil/queue/<citekey>-importbib.json`).
+  (the "Import bibliography" item in the paper header's AI-requests
+  menu / the catalog row's ⋮ menu → `.virgil/queue/<citekey>-importbib.json`).
 
   Does NOT trigger for the whole-library merge — that's
   `/library/merge-bibs`. Does NOT verify a single bib entry — that's

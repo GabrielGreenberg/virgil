@@ -32,7 +32,7 @@ const entry: CatalogEntry = {
 const actions: RowActions = {
   onDelete: vi.fn(),
   onBibReview: vi.fn(),
-  onTextReview: vi.fn(),
+  onDocReview: vi.fn(),
   onImportBib: vi.fn(),
   deleteLabel: "Delete…",
 };

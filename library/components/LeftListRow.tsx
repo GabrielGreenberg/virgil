@@ -14,6 +14,12 @@ import type { RowDotTone } from "@library/hooks/useRowDotState";
 import RowActionMenu from "./RowActionMenu";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { iconHint } from "@/components/Hint";
+import {
+  OPEN_IN_TAB_HINT,
+  copyOutcomeMessage,
+  copyText,
+  type CopyOutcome,
+} from "@library/lib/paper-actions";
 
 export interface RowActions {
   /** Behavior depends on the active library:
@@ -24,7 +30,7 @@ export interface RowActions {
    *  The label switches accordingly via `deleteLabel`. */
   onDelete: (citekey: string) => void;
   onBibReview: (citekey: string) => void;
-  onTextReview: (citekey: string) => void;
+  onDocReview: (citekey: string) => void;
   /** Import this paper's references.bib into master.bib (single-paper merge). */
   onImportBib: (citekey: string) => void;
   /** Menu label for the destructive action — "Delete…" in Central,
@@ -101,7 +107,11 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
   // a disabled menu — there's nothing to review or delete by name.
   const ck = entry.citekey;
 
-  const [copied, setCopied] = useState(false);
+  // The last copy's outcome, shown for 1.2 s: a ✓ on success, the failure
+  // WITH its reason in the hint otherwise (a failed write used to look like a
+  // click that did nothing — task 1382).
+  const [copyOutcome, setCopyOutcome] = useState<CopyOutcome | null>(null);
+  const copied = copyOutcome?.ok === true;
 
   // Per-column cell body. The internals are byte-identical to the prior
   // hard-coded layout; only the SEQUENCING is now driven by `colOrder` (F#13)
@@ -206,7 +216,12 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
               <button
                 type="button"
                 className="iconbtn-xs"
-                {...iconHint({ label: "Copy citekey", hint: copied ? "Copied" : "Copy citekey" })}
+                {...iconHint({
+                  label: "Copy citekey",
+                  hint: copyOutcome
+                    ? copyOutcomeMessage(copyOutcome, "Copied")
+                    : "Copy citekey",
+                })}
                 draggable={false}
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -253,13 +268,8 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
   const handleCopyCitekey = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!ck) return;
-    try {
-      await navigator.clipboard.writeText(ck);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      setCopied(false);
-    }
+    setCopyOutcome(await copyText(ck));
+    window.setTimeout(() => setCopyOutcome(null), 1200);
   };
 
   return (
@@ -398,7 +408,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
         <button
           type="button"
           className="iconbtn-sm"
-          {...iconHint({ label: ck ? "Open in a new Virgil tab" : "Triage this entry first" })}
+          {...iconHint({ label: ck ? OPEN_IN_TAB_HINT : "Triage this entry first" })}
           disabled={!ck}
           draggable={false}
           onPointerDown={(e) => e.stopPropagation()}
@@ -449,7 +459,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           deleteLabel={actions.deleteLabel}
           onDelete={() => ck && actions.onDelete(ck)}
           onBibReview={() => ck && actions.onBibReview(ck)}
-          onTextReview={() => ck && actions.onTextReview(ck)}
+          onDocReview={() => ck && actions.onDocReview(ck)}
           onImportBib={() => ck && actions.onImportBib(ck)}
         />
       </div>

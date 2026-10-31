@@ -15,6 +15,7 @@ import { Chevron } from "@/components/Chevron";
 import { Textarea } from "@/components/field-primitives";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 import { isCommitEnter } from "@/lib/key-intent";
+import { copyOutcomeMessage, copyText } from "@library/lib/paper-actions";
 
 interface Props {
   entry: BibEntry | null;
@@ -120,12 +121,7 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
     const raw = entry.raw && entry.raw.length > 0
       ? entry.raw
       : reconstructBibtex(entry);
-    try {
-      await navigator.clipboard.writeText(raw);
-      flashOnce("copy", "copied ✓");
-    } catch {
-      flashOnce("copy", "copy failed");
-    }
+    flashOnce("copy", copyOutcomeMessage(await copyText(raw), "copied ✓"));
   };
 
   return (

@@ -113,7 +113,7 @@ const BIB_BY_KEY = new Map<string, BibEntry>();
 const ROW_ACTIONS: RowActions = {
   onDelete: () => {},
   onBibReview: () => {},
-  onTextReview: () => {},
+  onDocReview: () => {},
   onImportBib: () => {},
   deleteLabel: "Delete…",
 };

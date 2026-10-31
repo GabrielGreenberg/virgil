@@ -1,6 +1,7 @@
 "use client";
 
 import RowMenu, { type RowMenuEntry } from "./RowMenu";
+import { PAPER_REQUESTS_BY_KIND } from "@library/lib/paper-ai-requests";
 
 interface Props {
   /** Disabled when the entry has no citekey (e.g. an unsorted triage row).
@@ -10,7 +11,7 @@ interface Props {
   deleteLabel: string;
   onDelete: () => void;
   onBibReview: () => void;
-  onTextReview: () => void;
+  onDocReview: () => void;
   onImportBib: () => void;
 }
 
@@ -19,19 +20,23 @@ interface Props {
  * shared `RowMenu` primitive (F#5/F#7) — keeps this component's public API
  * stable for `LeftListRow` callers while sharing one trigger/positioning/
  * escape/outside-click implementation with the rail pods.
+ *
+ * The three request labels are READ from `PAPER_REQUESTS_BY_KIND` — the paper
+ * header's AI-requests menu declares the same actions, and the two had drifted
+ * into two vocabularies ("AI text review" vs "Doc review", task 1382).
  */
 export default function RowActionMenu({
   disabled = false,
   deleteLabel,
   onDelete,
   onBibReview,
-  onTextReview,
+  onDocReview,
   onImportBib,
 }: Props) {
   const items: RowMenuEntry[] = [
-    { key: "bib-review", label: "AI bib review", onSelect: onBibReview },
-    { key: "text-review", label: "AI text review", onSelect: onTextReview },
-    { key: "import-bib", label: "Import bibliography", onSelect: onImportBib },
+    { key: "bib-review", label: PAPER_REQUESTS_BY_KIND.bib.label, onSelect: onBibReview },
+    { key: "doc-review", label: PAPER_REQUESTS_BY_KIND.doc.label, onSelect: onDocReview },
+    { key: "import-bib", label: PAPER_REQUESTS_BY_KIND.importbib.label, onSelect: onImportBib },
     { key: "div", divider: true },
     { key: "delete", label: deleteLabel, onSelect: onDelete, destructive: true },
   ];

@@ -226,7 +226,7 @@ export default function TabbedLibraryPanel({
           entryActions.queueDelete(citekey);
         },
         onBibReview: entryActions.queueBibReview,
-        onTextReview: entryActions.queuePaperReview,
+        onDocReview: entryActions.queuePaperReview,
         onImportBib: entryActions.queueImportBib,
       };
     }
@@ -256,7 +256,7 @@ export default function TabbedLibraryPanel({
           entryActions.removeFromLibrary(libId, citekey);
         },
         onBibReview: entryActions.queueBibReview,
-        onTextReview: entryActions.queuePaperReview,
+        onDocReview: entryActions.queuePaperReview,
         onImportBib: entryActions.queueImportBib,
       };
     }
@@ -268,7 +268,7 @@ export default function TabbedLibraryPanel({
       // path (their menu is disabled when citekey is null).
       onDelete: (citekey: string) => entryActions.removeFromLibrary(libId, citekey),
       onBibReview: entryActions.queueBibReview,
-      onTextReview: entryActions.queuePaperReview,
+      onDocReview: entryActions.queuePaperReview,
       onImportBib: entryActions.queueImportBib,
     };
   }, [activeLibrary, entryActions, project.citedKeys, systemDialog]);
