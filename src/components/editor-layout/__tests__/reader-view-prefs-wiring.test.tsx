@@ -307,7 +307,6 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
       "paraNavBack",
       "paraNavForward",
       "onOpenFontsDialog",
-      "onOpenMarginsMode",
     ] as const) {
       expect(typeof menuBar[member]).toBe("function");
     }

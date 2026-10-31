@@ -29,7 +29,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
   const noop = () => {};
   return {
     vbar: { aiDot: null, compilePdf: noop, isCompiling: false, pdfStale: false },
-    collabEnabled: false,
     zenModeOn: false,
     topbarRightCollapsed: true,
     setTopbarRightCollapsed: noop,
@@ -119,7 +118,7 @@ describe("mode chips survive the bar's collapse (task 1353)", () => {
     const el = chip("focus-view")!;
     // Document order: chip precedes the tool group.
     expect(el.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(group.querySelector("span.w-px")).toBeTruthy();
+    expect(group.querySelector("[data-bar-mode-divider]")).toBeTruthy();
   });
 
   it("zen keeps hiding the chips (the policy's explicit zen rule)", () => {

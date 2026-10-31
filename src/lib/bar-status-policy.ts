@@ -226,6 +226,11 @@ export const BAR_STATUS_POLICY: {
     settleMs: 0,
     why: "Collaborator mode is on: who holds the pen decides whether typing lands (zen hides it by design).",
   },
+  // NO `zen` field, deliberately (task 1391): unlike the modes, a compile is
+  // work in flight, not chrome the user switched on, so the spinner shows in
+  // zen too — zen hides the Compile tool, and nothing else would say a
+  // minutes-long compile is still running. `compiling` is the ACTIVE pane's
+  // (`vbar.isCompiling`), the same pane the bar's Compile tool acts on.
   compile: {
     scope: "app",
     mustSee: (s) => s.compiling,

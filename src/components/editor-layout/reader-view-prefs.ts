@@ -321,11 +321,11 @@ function useReaderMenuBarBundle(
       paraNavForwardDisabled: paraNav.paraNavForwardDisabled,
 
       // ── Dialog openers ──────────────────────────────────────────
-      // Fonts…/Margins… auto-drop via READER_CHROME.showMenuBarEditItems=false
-      // (MenuBar passes them as undefined when showEditItems is false), so
-      // these typed no-ops satisfy the contract without re-adding the entries.
+      // Fonts… auto-drops via READER_CHROME.showMenuBarEditItems=false
+      // (MenuBar passes it as undefined when showEditItems is false), so this
+      // typed no-op satisfies the contract without re-adding the entry.
+      // (Margins… is pane-owned — not a bundle field.)
       onOpenFontsDialog: () => {},
-      onOpenMarginsMode: () => {},
     }),
     [vp, availableDividerLevels, activeDividerLevels, paraNav],
   );

@@ -82,7 +82,6 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
   const noop = () => {};
   return {
     vbar: { aiDot: null, compilePdf: noop, isCompiling: false, pdfStale: false },
-    collabEnabled: false,
     zenModeOn: false,
     topbarRightCollapsed: false,
     setTopbarRightCollapsed: noop,
