@@ -68,7 +68,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         padding: "6px 8px 18px 8px",
         overflow: "hidden",
         cursor: "grab",
-        color: "var(--ink-body, #1c1917)",
+        color: "var(--ink-body)",
         userSelect: "none",
       }} aria-description={`${kindLabel} · ${time}`}
     >
@@ -93,7 +93,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
           WebkitBoxOrient: "vertical",
           WebkitLineClamp: 5,
           overflow: "hidden",
-          color: "var(--ink-body, #1c1917)",
+          color: "var(--ink-body)",
         }}
       >
         {summary || "(empty)"}

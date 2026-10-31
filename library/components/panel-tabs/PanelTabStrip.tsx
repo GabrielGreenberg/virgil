@@ -797,19 +797,13 @@ const BackgroundTab = forwardRef<
       ref={ref}
       {...dragProps}
       data-tab-id={tabId}
-      // Inactive tabs darken on hover (like regular tabs in the Virgil bar:
-      // bg-black/5). Imperative on the resting bg, matching the icon-button
-      // hover pattern elsewhere in this file; skipped while a drag-drop target
-      // so the accent-light highlight isn't overwritten.
-      onMouseEnter={(e) => {
-        if (!isDropTarget)
-          (e.currentTarget as HTMLDivElement).style.background =
-            "rgba(0,0,0,0.05)";
-      }}
-      onMouseLeave={(e) => {
-        if (!isDropTarget)
-          (e.currentTarget as HTMLDivElement).style.background = "transparent";
-      }}
+      // Inactive tabs darken on hover through THE neutral hover for a strip
+      // resting on the pod/header bg (task 1381 — this and the three icon
+      // buttons below were imperative `style.background` writes at three
+      // different alphas). Withheld while a drag-drop target, so the
+      // accent-light highlight isn't overwritten; the inline `background` is
+      // left unset otherwise, because an inline value would beat `:hover`.
+      className={isDropTarget ? undefined : "hover-on-dark"}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -830,8 +824,7 @@ const BackgroundTab = forwardRef<
         outline: isDropTarget ? "2px solid var(--accent)" : "none",
         outlineOffset: isDropTarget ? -2 : 0,
         borderRadius: "var(--radius-md)",
-        background: isDropTarget ? "var(--accent-light)" : "transparent",
-        transition: "background 90ms ease",
+        background: isDropTarget ? "var(--accent-light)" : undefined,
         paddingLeft: hasPin ? 4 : 0,
         paddingRight: hasTrailing ? 4 : 0,
       }}
@@ -907,7 +900,7 @@ function PinButton({
   return (
     <button
       data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
-      className="focus-ring"
+      className="focus-ring hover-on-dark"
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -925,7 +918,6 @@ function PinButton({
       aria-pressed={pinned}
       style={{
         flexShrink: 0,
-        background: "transparent",
         border: "none",
         width: 18,
         height: 18,
@@ -940,13 +932,6 @@ function PinButton({
         cursor: "pointer",
         borderRadius: "var(--radius-xs)",
         padding: 0,
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "rgba(0,0,0,0.08)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
       }}
     >
       <svg
@@ -976,7 +961,7 @@ function CloseButton({
   return (
     <button
       data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
-      className="focus-ring"
+      className={`focus-ring hover-on-dark hover:text-foreground ${muted ? "text-[var(--muted-light)]" : "text-[var(--muted)]"}`}
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -986,7 +971,6 @@ function CloseButton({
       {...iconHint({ label: "Close tab" })}
       style={{
         flexShrink: 0,
-        background: "transparent",
         border: "none",
         width: 18,
         height: 18,
@@ -997,23 +981,10 @@ function CloseButton({
         justifyContent: "center",
         fontSize: 14,
         lineHeight: 1,
-        color: muted ? "var(--muted-light)" : "var(--muted)",
         cursor: "pointer",
         borderRadius: "var(--radius-xs)",
         fontFamily: "inherit",
         padding: 0,
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "rgba(0,0,0,0.08)";
-        (e.currentTarget as HTMLButtonElement).style.color =
-          "var(--foreground)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-        (e.currentTarget as HTMLButtonElement).style.color = muted
-          ? "var(--muted-light)"
-          : "var(--muted)";
       }}
     >
       ×
@@ -1073,7 +1044,6 @@ function TabMenuTrigger({
    *  the right edge of the tab content. */
   pushRight?: boolean;
 }) {
-  const idleColor = muted ? "var(--muted)" : "var(--foreground)";
   // The trigger as an ELEMENT in state, so the menu can anchor to it (and
   // re-read it per reposition), exempt it from click-outside and return focus
   // to it, all during render (react-hooks/refs).
@@ -1089,7 +1059,7 @@ function TabMenuTrigger({
     >
       <button
         data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
-        className="focus-ring"
+        className={`focus-ring hover-on-dark hover:text-foreground ${muted ? "text-[var(--muted)]" : "text-foreground"}`}
         ref={setBtnEl}
         type="button"
         onClick={(e) => {
@@ -1101,7 +1071,6 @@ function TabMenuTrigger({
         {...menuTriggerAria("menu", open)}
         style={{
           flexShrink: 0,
-          background: "transparent",
           border: "none",
           width: 12,
           height: 18,
@@ -1110,21 +1079,10 @@ function TabMenuTrigger({
           justifyContent: "center",
           fontSize: 14,
           lineHeight: 1,
-          color: idleColor,
           cursor: "pointer",
           fontFamily: "inherit",
           padding: 0,
           borderRadius: "var(--radius-xs)",
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background =
-            "rgba(0,0,0,0.08)";
-          (e.currentTarget as HTMLButtonElement).style.color =
-            "var(--foreground)";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-          (e.currentTarget as HTMLButtonElement).style.color = idleColor;
         }}
       >
         ⋮

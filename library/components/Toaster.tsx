@@ -5,6 +5,7 @@ import type { NotificationItem } from "@library/lib/queue";
 import { notificationSeverity, notificationTtlMs } from "@library/lib/queue";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { ERROR_INK } from "@/lib/error-ink";
+import { TOAST_Z } from "@/floats/float-policy";
 
 interface ToastEntry extends NotificationItem {
   uid: string;
@@ -49,7 +50,7 @@ export default function Toaster({ items }: { items: NotificationItem[] }) {
         display: "flex",
         flexDirection: "column",
         gap: 8,
-        zIndex: 100,
+        zIndex: TOAST_Z,
       }}
     >
       {visible.map((t) => (

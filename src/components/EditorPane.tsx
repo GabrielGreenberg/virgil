@@ -7847,7 +7847,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                           style={{
                             fontSize: 11,
                             lineHeight: 1,
-                            color: "var(--ink-body, #222)",
+                            color: "var(--ink-body)",
                             letterSpacing: "0.02em",
                             paddingLeft: 2,
                             paddingRight: 4,

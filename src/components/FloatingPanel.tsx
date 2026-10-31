@@ -1326,10 +1326,10 @@ function FloatingPanelInner({
           width: "100%",
           flex: "1 1 auto",
           minHeight: 0,
-          background: "var(--pod-panel, #f3f0eb)",
+          background: "var(--pod-panel)",
           borderRadius: surface === "panel" ? "var(--panel-radius, 14px)" : "var(--pod-radius, 8px)",
           border: surface === "panel"
-            ? "var(--panel-border, 3px solid #c9c5c5)"
+            ? "var(--panel-border)"
             : "var(--pod-border, 1px solid #e5e2dd)",
           boxShadow: "var(--card-shadow-ambient)",
           zIndex,
@@ -1344,10 +1344,10 @@ function FloatingPanelInner({
           background:
             surface === "card"
               ? "var(--surface)"
-              : "var(--pod-panel, #f3f0eb)",
+              : "var(--pod-panel)",
           borderRadius: surface === "panel" ? "var(--panel-radius, 14px)" : "var(--pod-radius, 8px)",
           border: surface === "panel"
-            ? "var(--panel-border, 3px solid #c9c5c5)"
+            ? "var(--panel-border)"
             : "var(--pod-border, 1px solid #e5e2dd)",
           boxShadow:
             surface === "card"

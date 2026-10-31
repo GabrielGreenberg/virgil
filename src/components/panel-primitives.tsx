@@ -542,7 +542,7 @@ export function compressedBodyStyle(
   // `lineHeight` may be a number (plain-summary kinds default to 1.4) or a
   // CSS-var string. Borrowed-body kinds (footnote/archive/example) render
   // their preview <p> at the LIVE `--editor-line-height` prose pref (1.6 by
-  // default, but user-tunable), so they pass `'var(--editor-line-height, 1.8)'`
+  // default, but user-tunable), so they pass `'var(--editor-line-height)'`
   // — the ceiling must track that same unit-less factor or line 2 gets clipped
   // (#42). A literal value would drift from the pref; the var stays in sync.
   // The var FALLBACK (1.8) must equal the `.tiptap p` line-height fallback
@@ -2065,7 +2065,7 @@ export function EditableCard({
               ...compressedBodyStyle(
                 compressedLines,
                 useBorrowedCompressed
-                  ? { lineHeight: "var(--editor-line-height, 1.8)" }
+                  ? { lineHeight: "var(--editor-line-height)" }
                   : undefined,
               ),
             }}

@@ -591,12 +591,14 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
 
   it("rings the focus-band handles in the surface they actually sit on", () => {
     // `--pod-panel`, not `--surface`: `FloatingPanel` fills a `surface="panel"`
-    // host (the Outline's default) with `var(--pod-panel, …)` in BOTH docked and
+    // host (the Outline's default) with `var(--pod-panel)` in BOTH docked and
     // floating modes. The two are separate preferences whose shipped defaults
-    // already differ (#fffdfa vs #ffffff), so a ring bound to `--surface` would
+    // already differ (#fdfaf5 vs #ffffff), so a ring bound to `--surface` would
     // follow a recolour of a card background this panel does not have — the
-    // wrong-by-token shape task 284 exists to retire.
-    expect(outline).toContain('border: "2px solid var(--pod-panel, #fffdfa)"');
+    // wrong-by-token shape task 284 exists to retire. (No fallback: the old
+    // `#fffdfa` one disagreed with the token and could never render — task
+    // 1381's fallback-agreement leg in phantom-css-var.test.ts.)
+    expect(outline).toContain('border: "2px solid var(--pod-panel)"');
     expect(outline).not.toMatch(/2px solid (?:white|var\(--surface)/);
   });
 

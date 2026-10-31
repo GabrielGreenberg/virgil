@@ -461,6 +461,16 @@ design-system patch's `--pod-shadow-light` outlived the patch, consumed by
 > (allowlist EMPTY), and a fallback-carrying one must be recorded in a
 > shrink-only census with the reason it is still open.
 
+> **And a fallback on a token that IS defined must agree with it — or go.**
+> A `:root` token with a literal value is defined on every element, so its
+> fallback can never paint; what it does is MISLEAD, and get copied. Task 1381
+> found 67 that disagreed (a purple `var(--accent,#7c5ed4)` on the Library drag
+> badge, five different greys "backing" `--ink-muted`) and dropped them all.
+> Write `var(--accent)`, not `var(--accent, #7c5e3c)`. The same suite's
+> fallback-agreement leg pins it in both silos (allowlist EMPTY); tokens defined
+> through another `var()`/`env()` — whose fallback can be live — are out of its
+> scope by construction.
+
 **Font families are CHAINS, and they are spelled once.** A `font-family` here
 is the user's override pref → the `next/font` variable → the load-window
 fallbacks, and every rung is load-bearing. Import `FONT_SANS` / `FONT_SERIF` /
@@ -3273,6 +3283,7 @@ number. Full ladder, low → high:
 | resting margin trigger, fixed (pending-change pill) | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
 | float layer (popped cards, lift overlay) — BOUNDED band | 1200–1204 | `FLOAT_Z_BASE` … `FLOAT_Z_MAX` (via `cardFloatZ`) |
 | draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` (= `FLOAT_Z_MAX + 1`) |
+| corner toast stack (Library `Toaster`) | 1999 | `TOAST_Z` (= `OPEN_CHROME_MENU_Z − 1`; task 1381) |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
 | inline title-edit overlay + input | 2001–2002 | `INLINE_EDIT_OVERLAY_Z`, `INLINE_EDIT_INPUT_Z` |
 | drag ghosts (strip-button ghost, clamped HTML5 ghost, inline-atom ghost) | 9998 | `DRAG_GHOST_Z` (= `DROP_INDICATOR_Z - 1`) |

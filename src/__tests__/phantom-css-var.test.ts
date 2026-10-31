@@ -628,3 +628,123 @@ describe("the census can see", () => {
     }
   });
 });
+
+// ── Leg 4: a fallback on a DEFINED token must agree with it (task 1381) ──────
+
+/**
+ * The legs above ask whether a token EXISTS. This asks the converse question
+ * about a token that does: whether its fallback tells the truth.
+ *
+ * A `:root` token whose value is a plain literal is defined in every element
+ * of the document, so `var(--accent, #7c5ed4)` can never paint `#7c5ed4` —
+ * the fallback is DEAD. Dead but not harmless: it is the value a reader takes
+ * the token to have, and a copy-paste carries it forward. 67 sites across both
+ * silos had drifted — a PURPLE `--accent` fallback on the Library drag badge,
+ * `--border-light` "#d5d3ce" where the token is `#c9c5c5`, `--ink-muted` with
+ * five different greys, a SOLID `--accent-light` "backed" by an rgba wash. A
+ * fallback either agrees with its token or is DROPPED (preferred: it can never
+ * render). Allowlist EMPTY.
+ *
+ * Scope, stated so a reader knows the hole: only tokens whose `:root` value AND
+ * every scoped re-declaration are VAR-FREE literals. A token defined through
+ * another `var()` / `env()` can be invalid at computed-value time, and then its
+ * fallback is LIVE — those reads are a different question and are not asked.
+ */
+const ROOT_VALUES = (() => {
+  const css = STYLESHEETS.map((f) => stripCssComments(read(f))).join("\n");
+  const volatile = (v: string) => /var\(|env\(|\b(?:inherit|initial|unset)\b/.test(v);
+  const values = new Map<string, string>();
+  for (const m of css.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+    if (m[1].split(";").pop()!.trim() !== ":root") continue;
+    for (const d of m[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g))
+      if (!values.has(d[1])) values.set(d[1], d[2].trim());
+  }
+  const literal = new Map<string, string>();
+  for (const [tok, v] of values) {
+    if (volatile(v)) continue;
+    const decls = [...css.matchAll(new RegExp(`(?<![\\w-])${tok}\\s*:\\s*([^;}]+)`, "g"))];
+    if (decls.some((d) => volatile(d[1]))) continue;
+    literal.set(tok, v);
+  }
+  return literal;
+})();
+
+/** Every `var(--tok, <fallback>)` in `text`, the fallback balanced on parens. */
+function fallbackReads(text: string): { tok: string; fallback: string; at: number }[] {
+  const out: { tok: string; fallback: string; at: number }[] = [];
+  const re = /var\(\s*(--[\w-]+)\s*,/g;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    let i = re.lastIndex;
+    for (let depth = 1; i < text.length && depth > 0; i++) {
+      if (text[i] === "(") depth++;
+      else if (text[i] === ")") depth--;
+    }
+    out.push({ tok: m[1], fallback: text.slice(re.lastIndex, i - 1).trim(), at: m.index });
+  }
+  return out;
+}
+
+const sameValue = (a: string, b: string) =>
+  a.toLowerCase().replace(/\s+/g, "") === b.toLowerCase().replace(/\s+/g, "");
+
+describe("a fallback on a defined literal token agrees with it (task 1381)", () => {
+  it("no dead fallback contradicts its token, in either silo", () => {
+    const lies: string[] = [];
+    for (const [file, text] of SOURCES) {
+      for (const r of fallbackReads(text)) {
+        const v = ROOT_VALUES.get(r.tok);
+        if (v === undefined || /var\(/.test(r.fallback)) continue;
+        if (sameValue(v, r.fallback)) continue;
+        const line = text.slice(0, r.at).split("\n").length;
+        lies.push(`${file}:${line} — var(${r.tok}, ${r.fallback}) but ${r.tok} is ${v}`);
+      }
+    }
+    expect(
+      lies,
+      "This fallback can never render (the token is a :root literal) and it names " +
+        "a different value. DROP it — `var(--x)` — or make it agree.",
+    ).toEqual([]);
+  });
+
+  it("the population is real and the parser balances parens (non-vacuous)", () => {
+    expect(ROOT_VALUES.get("--accent")).toBe("#7c5e3c");
+    expect(ROOT_VALUES.get("--border-light")).toBe("#c9c5c5");
+    expect(ROOT_VALUES.size).toBeGreaterThan(100);
+    expect(fallbackReads("a: var(--x, rgba(1, 2, 3, 0.4)); b: var(--y, var(--z, #fff))")).toEqual([
+      { tok: "--x", fallback: "rgba(1, 2, 3, 0.4)", at: 3 },
+      { tok: "--y", fallback: "var(--z, #fff)", at: 36 },
+      { tok: "--z", fallback: "#fff", at: 45 },
+    ]);
+  });
+});
+
+// ── Leg 5: the accent channel triple is spelled once, on :root (task 1381) ───
+
+/**
+ * STYLE_GUIDE "never re-spell a channel triple": `rgba(124, 94, 60, a)` IS
+ * `--accent` at alpha `a`, and a retone of `--accent` never reaches it. The
+ * spelling for an alpha variant is
+ * `color-mix(in oklab, var(--accent) N%, transparent)` (premultiplied, so it
+ * is exactly the live token at that alpha). The palette-guardrail censuses only
+ * `src/panels/**`; this covers both silos for the one triple that had leaked
+ * into the Library (DropZone, TabbedLibraryPanel). A declaration inside a
+ * `:root` block is the definition, not a re-spelling. Allowlist EMPTY.
+ */
+describe("the accent channel triple is not re-spelled (task 1381)", () => {
+  const TRIPLE = /rgba?\(\s*124\s*,\s*94\s*,\s*60\b/g;
+  it("no rgba(124, 94, 60, …) outside a :root block, in either silo", () => {
+    const hits: string[] = [];
+    for (const [file, text] of SOURCES) {
+      const rootSpans = file.endsWith(".css")
+        ? [...text.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+            .filter((m) => m[1].split(";").pop()!.trim() === ":root")
+            .map((m) => [m.index! + m[1].length, m.index! + m[0].length] as const)
+        : [];
+      for (const m of text.matchAll(TRIPLE)) {
+        if (rootSpans.some(([a, b]) => m.index! >= a && m.index! < b)) continue;
+        hits.push(`${file}:${text.slice(0, m.index).split("\n").length}`);
+      }
+    }
+    expect(hits, "spell it color-mix(in oklab, var(--accent) N%, transparent)").toEqual([]);
+  });
+});

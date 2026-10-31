@@ -422,7 +422,7 @@ function ExampleCardEditor({
     return (
       <div
         style={{
-          maxHeight: `calc(var(--editor-line-height, 1.8) * 1em * ${Math.max(1, clampLines)})`,
+          maxHeight: `calc(var(--editor-line-height) * 1em * ${Math.max(1, clampLines)})`,
           overflow: "hidden",
         }}
       >

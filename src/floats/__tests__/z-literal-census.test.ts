@@ -5,7 +5,9 @@
 // in float-policy.test.ts only cover the sites someone remembered to enroll;
 // seven overlay layers kept their literals (9999, 999, 1100, 99999, …) because
 // no list named them. This suite walks EVERY non-test source file under `src/`
-// and fails on any bare z-index ≥ 100 — inline style, cssText, Tailwind
+// AND `library/` (task 1381 — the Library Toaster's `zIndex: 100` sat under the
+// float layer, invisible to a `src/`-only walk; both silos paint into one
+// document, so they share one ladder) and fails on any bare z-index ≥ 100 — inline style, cssText, Tailwind
 // arbitrary class, or CSS rule — outside the ladder SSOT and a short, REASONED
 // allowlist. A new overlay must name its rung in float-policy.ts (and, for CSS,
 // read a `--*-z` var mirrored + pinned there) instead of re-typing 9999.
@@ -20,10 +22,12 @@ import path from "node:path";
 import { walkFiles } from "../../lib/__tests__/_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.resolve(HERE, "../.."); // src/
+const ROOT = path.resolve(HERE, "../../.."); // repo root
+/** Both silos paint into ONE document, so both answer to ONE ladder. */
+const SILOS = ["src", "library"] as const;
 
 /** The ladder SSOT itself — the only file whose job is to spell the numbers. */
-const SSOT = "floats/float-policy.ts";
+const SSOT = "src/floats/float-policy.ts";
 
 /**
  * Sites that may keep a bare literal, each with the reason it is NOT a ladder
@@ -31,7 +35,7 @@ const SSOT = "floats/float-policy.ts";
  * reason a reviewer would accept, not "it was already there".
  */
 const ALLOWLIST: Record<string, string> = {
-  "app/globals.css:1001":
+  "src/app/globals.css:1001":
     ".label-ref-popover-dropdown is position:absolute INSIDE the popover's own " +
     "fixed menu surface — a local stacking context, so the value orders it only " +
     "against the popover's children, never against the editor ladder.",
@@ -47,7 +51,7 @@ const PATTERNS: RegExp[] = [
 const EXTS = new Set([".ts", ".tsx", ".css"]);
 
 function walk(dir: string, out: string[]): string[] {
-  for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) {
+  for (const full of walkFiles(dir, { skipDirs: ["__tests__", "node_modules", "build", "scripts"] })) {
     if (EXTS.has(path.extname(full)) && !/\.test\.tsx?$/.test(full)) out.push(full);
   }
   return out;
@@ -75,12 +79,19 @@ function findZLiterals(rel: string, text: string): string[] {
 }
 
 describe("z-index literal census (task 793)", () => {
-  const files = walk(SRC, []);
+  const files = SILOS.flatMap((s) => walk(path.join(ROOT, s), []));
+
+  it("walks both silos (non-vacuous)", () => {
+    const rels = files.map((f) => path.relative(ROOT, f));
+    expect(rels.some((r) => r.startsWith("library/"))).toBe(true);
+    expect(rels).toContain("library/components/Toaster.tsx");
+    expect(rels).toContain(SSOT);
+  });
 
   it("finds no bare z-index ≥ 100 outside float-policy.ts and the reasoned allowlist", () => {
     const hits: string[] = [];
     for (const f of files) {
-      const rel = path.relative(SRC, f).split(path.sep).join("/");
+      const rel = path.relative(ROOT, f).split(path.sep).join("/");
       if (rel === SSOT) continue;
       hits.push(...findZLiterals(rel, readFileSync(f, "utf8")));
     }
@@ -90,7 +101,7 @@ describe("z-index literal census (task 793)", () => {
   it("every allowlist entry still matches a live literal (no stale exemptions)", () => {
     for (const key of Object.keys(ALLOWLIST)) {
       const [rel, lit] = key.split(":");
-      const code = stripComments(readFileSync(path.join(SRC, rel), "utf8"));
+      const code = stripComments(readFileSync(path.join(ROOT, rel), "utf8"));
       expect(code, key).toMatch(new RegExp(`z-index\\s*:\\s*${lit}\\b|zIndex\\s*[:=]\\s*["'\`]?${lit}\\b`));
     }
   });

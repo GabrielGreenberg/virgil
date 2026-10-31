@@ -32,7 +32,7 @@ export default function DropZone({ dragActive, children }: Props) {
           style={{
             position: "absolute",
             inset: 0,
-            background: "rgba(124, 94, 60, 0.06)",
+            background: "color-mix(in oklab, var(--accent) 6%, transparent)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

@@ -61,7 +61,7 @@ export function buildTextDragGhost(
     maxChars,
     maxWidthPx = 260,
     bg = "var(--surface, #ffffff)",
-    border = "var(--border-light, #d5d3ce)",
+    border = "var(--border-light)",
     ink = "var(--ink-body, #44403c)",
     radius = "var(--radius-xs, 3px)",
     fontSizePx = 12,

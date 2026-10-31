@@ -303,15 +303,15 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
             );
             ghost.style.width = `${rect.width}px`;
             ghost.style.background = "var(--surface, #ffffff)";
-            ghost.style.border = "1px solid var(--border-light, #d5d3ce)";
+            ghost.style.border = "1px solid var(--border-light)";
             ghost.style.opacity = "0.92";
-            ghost.style.borderRadius = "var(--radius-xs,3px)";
+            ghost.style.borderRadius = "var(--radius-xs)";
             if (keys.length > 1) {
               ghost.style.position = "relative";
               const badge = document.createElement("div");
               badge.textContent = String(keys.length);
               badge.style.cssText =
-                "position:absolute;top:-8px;right:-8px;min-width:18px;height:18px;padding:0 6px;background:var(--accent,#7c5ed4);color:#fff;border-radius:var(--radius-pill,9999px);font-size:10px;font-weight:600;line-height:18px;text-align:center;";
+                "position:absolute;top:-8px;right:-8px;min-width:18px;height:18px;padding:0 6px;background:var(--accent);color:var(--surface);border-radius:var(--radius-pill);font-size:10px;font-weight:600;line-height:18px;text-align:center;";
               ghost.appendChild(badge);
             }
             return ghost;

@@ -168,7 +168,7 @@ export default function MyPapersPod({
       <AnchoredMenu
         ariaLabel="Add paper"
         wrapperClassName="relative"
-        triggerClassName="hover:bg-black/[0.04]"
+        triggerClassName="hover-on-light"
         triggerStyle={ADD_TRIGGER_STYLE}
         containerStyle={{ minWidth: 200, maxWidth: 320 }}
         closeOnInsideClick
