@@ -29,10 +29,14 @@ import {
 import { readSidecar, readTextFile } from "@/lib/storage";
 import {
   activityMutator,
+  adoptSessionsMutator,
+  claimCardMutator,
   heartbeatMutator,
   mutateCollab,
   passPenMutator,
+  releaseClaimMutator,
   releaseSelf,
+  sweepMutator,
   adoptIdentity,
   adoptSelf,
   takePenMutator,
@@ -46,11 +50,11 @@ import {
   ensureParticipant,
   COLLAB_IDENTITY_KEY,
   findClaim,
+  holdsClaim,
   holdsPen,
   loadIdentity,
   mintCollabSession,
   saveIdentity,
-  sweepStalePresence,
   touchPresence,
   type CollabFocusClaim,
   type CollabIdentity,
@@ -65,6 +69,11 @@ import {
 // untyped.
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+import {
+  forgetCollabSession,
+  holdLiveSession,
+  inheritCollabSessions,
+} from "@/lib/collab-session";
 import {
   COWORK_PEN_CONTEXT_PATH,
   clearCoworkPen,
@@ -437,11 +446,34 @@ export function useCollab(
   useEffect(() => {
     if (!docId) return;
     return () => {
+      // A clean leave: the window no longer runs this session on the paper,
+      // so a later reload must not adopt it (task 1392).
+      forgetCollabSession(docId, session);
       const self = selfRef.current();
       if (!self) return;
       void mutateCollab(docId, releaseSelf(self));
     };
-  }, [docId]);
+  }, [docId, session]);
+
+  /* ── Reload continuity: adopt my dead predecessors (task 1392) ── */
+  // This session is live in the page for the hook's life; on each paper it
+  // registers with the window's record and ADOPTS what the sessions this
+  // window ran there before a reload still hold (the pen, the claim). A
+  // duplicated tab reads its own empty record (the window id is checked),
+  // so it adopts nothing.
+  useEffect(() => holdLiveSession(session), [session]);
+  useEffect(() => {
+    if (!docId) return;
+    let current = true;
+    void inheritCollabSessions(docId, session, () => current).then((dead) => {
+      const self = selfRef.current();
+      if (!current || !self || dead.length === 0) return;
+      void mutate(adoptSessionsMutator(self, dead));
+    });
+    return () => {
+      current = false;
+    };
+  }, [docId, session, mutate]);
 
   /* ── pagehide: best-effort release; pageshow(persisted): re-join ── */
   // `pagehide`, not `beforeunload` (task 872): it fires on close AND on
@@ -562,34 +594,22 @@ export function useCollab(
     void mutate(activityMutator(self, now));
   }, [mutate]);
 
+  // The claim is this SESSION's (task 1392): a sibling pane or window of my
+  // name neither refreshes nor releases it.
   const claimCard = useCallback(
     async (panelKind: PanelThemeKey, cardId: string) => {
-      const me = identityRef.current?.name;
-      if (!me) return;
-      const now = new Date().toISOString();
-      await mutate((prev) =>
-        touchPresence(prev, me, {
-          focusedCard: {
-            panelKind,
-            cardId,
-            focusedAt: now,
-            lastHeartbeat: now,
-          },
-        }, session),
-      );
+      const self = selfRef.current();
+      if (!self) return;
+      await mutate(claimCardMutator(self, panelKind, cardId));
     },
-    [mutate, session],
+    [mutate],
   );
 
   const releaseClaim = useCallback(async () => {
-    const me = identityRef.current?.name;
-    if (!me) return;
-    await mutate((prev) => {
-      const entry = prev.presence[me];
-      if (!entry?.focusedCard) return prev;
-      return touchPresence(prev, me, { focusedCard: null }, session);
-    });
-  }, [mutate, session]);
+    const self = selfRef.current();
+    if (!self) return;
+    await mutate(releaseClaimMutator(self));
+  }, [mutate]);
 
   const updateSelection = useCallback(
     (cards: { panelKind: PanelThemeKey; cardId: string }[]) => {
@@ -666,13 +686,15 @@ export function useCollab(
 
   /* ── Periodic stale sweep ───────────────────────────────────── */
 
+  // The VISIBLE pane sweeps (a hidden keep-alive pane has nothing to show),
+  // and a sweep that finds nothing stale writes nothing (task 1392).
   useEffect(() => {
-    if (!sidecar.enabled) return;
+    if (!sidecar.enabled || !visible) return;
     const id = setInterval(() => {
-      mutate((prev) => sweepStalePresence(prev));
+      void mutate(sweepMutator());
     }, COLLAB_TIMINGS.penStaleMs);
     return () => clearInterval(id);
-  }, [sidecar.enabled, mutate]);
+  }, [sidecar.enabled, visible, mutate]);
 
   /* ── Derived state ─────────────────────────────────────────── */
 
@@ -892,7 +914,14 @@ function mergeKeepingSelf(
       mineAt !== undefined
         ? { ...(freshMine?.sessions ?? {}), [self.session]: mineAt }
         : freshMine?.sessions;
-    const entry = { ...localMine };
+    // The claim likewise: ours only if THIS session holds it (task 1392) —
+    // otherwise the disk's, so a sibling's claim or release is not undone.
+    const entry = {
+      ...localMine,
+      focusedCard: holdsClaim(localMine.focusedCard, self)
+        ? localMine.focusedCard
+        : (freshMine?.focusedCard ?? null),
+    };
     if (sessions) entry.sessions = sessions;
     else delete entry.sessions;
     next = {

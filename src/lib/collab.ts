@@ -110,6 +110,13 @@ export interface CollabFocusClaim {
   cardId: string;
   focusedAt: string;
   lastHeartbeat: string;
+  /** Task 1392 — WHICH live session made the claim. The presence entry is
+   *  one slot per NAME (every pane and window of this browser), so the
+   *  claim names its session the way the pen names `holderSession`: only
+   *  that session's heartbeat keeps it fresh and only its release clears
+   *  it. Absent on a legacy claim — then any session of the name holds it
+   *  ({@link holdsClaim}). */
+  session?: string;
 }
 
 export interface CollabPresenceEntry {
@@ -308,7 +315,9 @@ export interface CollabSelf {
 }
 
 /** Mint a session id for one `useCollab` instance. Unique per pane per
- *  window per page load — a reload is a new session. */
+ *  window per page load — a reload is a new session, which ADOPTS what its
+ *  dead predecessor in the same window held (task 1392,
+ *  `inheritCollabSessions` in `collab-session.ts`). */
 export function mintCollabSession(): string {
   const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
   if (c && typeof c.randomUUID === "function") return c.randomUUID();
@@ -321,6 +330,19 @@ export function mintCollabSession(): string {
 export function holdsPen(pen: CollabPenState, self: CollabSelf): boolean {
   if (pen.holder !== self.name) return false;
   return !pen.holderSession || pen.holderSession === self.session;
+}
+
+/** Does `self` hold the focus `claim`? The one question every "is this
+ *  claim mine?" reader asks (task 1392) — the claim's twin of
+ *  {@link holdsPen}. A legacy claim that names no session is held by any
+ *  session of the presence entry's name; the caller has already matched
+ *  the name (the claim lives in `presence[self.name]`). */
+export function holdsClaim(
+  claim: CollabFocusClaim | null | undefined,
+  self: CollabSelf,
+): boolean {
+  if (!claim) return false;
+  return !claim.session || claim.session === self.session;
 }
 
 /* ── Pure update helpers ──────────────────────────────────────────── */
@@ -352,19 +374,24 @@ export function touchPresence(
   };
 }
 
-/** Drop presence entries whose heartbeat is older than penStaleMs. */
+/** Drop presence entries whose heartbeat is older than penStaleMs. Returns
+ *  `sidecar` itself when nothing is stale (task 1392), so the periodic sweep
+ *  can tell "nothing to do" and write nothing. */
 export function sweepStalePresence(
   sidecar: CollabSidecar,
   now = Date.now(),
 ): CollabSidecar {
   const next: Record<string, CollabPresenceEntry> = {};
+  let swept = false;
   for (const [name, entry] of Object.entries(sidecar.presence)) {
     const last = Date.parse(entry.lastHeartbeat);
     if (!Number.isFinite(last) || now - last < COLLAB_TIMINGS.penStaleMs) {
       next[name] = entry;
+    } else {
+      swept = true;
     }
   }
-  return { ...sidecar, presence: next };
+  return swept ? { ...sidecar, presence: next } : sidecar;
 }
 
 /** Find a partner's claim on (panelKind, cardId), if any, freshness-checked. */
