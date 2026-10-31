@@ -194,28 +194,7 @@ def retire_prior_extraction(library: Path, citekey: str, slug: str) -> Optional[
     return dest
 
 
-def _resync_references_bib(library: Path, citekey: str) -> bool:
-    """Sync papers/<citekey>/references.bib's own row from master.bib.
-
-    Upserts (does NOT re-emit) via `_tools.write_paper_bib_entry` — only the
-    `<citekey>` block is touched, every other entry in the file survives
-    byte-identically. Returns False when the paper folder or the master.bib
-    row is missing.
-
-    This is the entry point both `/library/authenticate-bib` (step 6) and
-    `/library/apply-bib-edit` (step 3) call.
-    """
-    paper_dir = paper_folder(library, citekey)
-    if not paper_dir.exists():
-        return False
-    entry = master_entry_for(library, citekey)
-    if not entry:
-        return False
-    write_paper_bib_entry(paper_dir, citekey, entry["type"], entry["fields"])
-    return True
-
-
-def _sync_catalog_entry_from_master(library: Path, citekey: str,
+def sync_catalog_entry_from_master(library: Path, citekey: str,
                                     bib_status: dict) -> str:
     """Sync catalog.json top-level fields from master.bib so they can't drift.
 

@@ -427,7 +427,8 @@ entry where there had been many and reports a clean run.
 
 That was live in **four** places at once (task 168): three in Python —
 `index_paper`'s index-time stamp, its `_resync_references_bib` (which
-`/library/authenticate-bib` step 6 calls unconditionally), and
+`/library/authenticate-bib` step 6 calls unconditionally — since task 1396
+`_tools.resync_paper_bib`, behind the `resync_paper_bib.py` CLI), and
 `triage_apply`'s bib-only folder creation — plus one in **skill prose**, where
 `apply-bib-edit.md` step 3 simply told the agent to "re-emit" the file by
 hand. That fourth one is the reason the fix isn't a guard per Python caller: a
@@ -1162,7 +1163,7 @@ this is about who may MINT the row. F#4's holdings gate was stated once
 (`paper_has_holdings`) and enforced by two of the three catalog writers —
 `merge_paper_references._upsert_catalog_row` and
 `triage_apply._upsert_catalog_row_bib_only`, each asking it and each
-discharging the state by hand. `index_paper._sync_catalog_entry_from_master`
+discharging the state by hand. `index_paper.sync_catalog_entry_from_master`
 asked nothing and called `upsert_catalog_entry` unconditionally, whose
 no-match branch APPENDS. So the third writer created exactly the row the
 other two refuse.
@@ -1190,7 +1191,7 @@ Three costs, and the first is the one no UI change could have fixed:
 - **It falsified the skill's own text.** `/library/authenticate-bib` step 7
   documents an `exit 1` for *"no catalog row for this citekey (a
   reference-only entry … the F#4 gate never minted one)"* — a branch the
-  `_sync_catalog_entry_from_master` call three lines above made unreachable by
+  `sync_catalog_entry_from_master` call three lines above made unreachable by
   minting the row the next command would have failed on. A documented branch
   that the same step makes unreachable is a claim the next reader acts on.
 
@@ -1224,7 +1225,7 @@ Six rules it earned:
   brace-unbalanced entry it walked to EOF and the splice replaced every
   FOLLOWING entry with one emitted block — the failure `read_master_bib`'s own
   docstring records as having once dropped ~82% of a real 34 k-entry library.
-  Pre-443 `_sync_catalog_entry_from_master` never wrote master.bib, so the gate
+  Pre-443 `sync_catalog_entry_from_master` never wrote master.bib, so the gate
   handed that walk a per-`.bib`-entry reacher. Both halves read ONE rule now
   ([`bib_entry_extent`](scripts/_tools.py)), and the WRITER **refuses**
   (`BibEntryUnbalanced`) rather than splicing over a guess: a reader may act on
