@@ -47,6 +47,7 @@ import {
 import { lightningContext } from "@/lib/actions/lightning-context";
 import { actionHint } from "@/components/action-hint";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
+import { reseedEditor } from "@/lib/reseed-caret";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -626,7 +627,11 @@ function RichTextFieldImpl({
     const desired = refreshAtomDisplay(normalizeRichContent(value));
     const current = editor.getJSON();
     if (JSON.stringify(current) !== JSON.stringify(desired)) {
-      editor.commands.setContent(desired, { emitUpdate: false });
+      // Through the re-seed door: an external value push is not the user's
+      // edit, so it must stay out of this field's undo history — else a later
+      // Cmd-Z here reverts the parent's update and `onChange` writes the
+      // revert back (task 1398).
+      reseedEditor(editor, desired);
     }
   }, [editor, value, refreshAtomDisplay]);
 

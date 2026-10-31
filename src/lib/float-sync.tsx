@@ -16,8 +16,9 @@
  *    For each transaction that wasn't ours AND that actually touched this
  *    float's source region, it calls `readSource(doc, hint)`. If the source
  *    content differs from what's currently in the float, the float's content
- *    is replaced via `setContent(..., false)` (the false suppresses the
- *    float's `onUpdate`, breaking the feedback loop).
+ *    is replaced through the re-seed door (`reseedPreservingCaret`), which
+ *    suppresses the float's `onUpdate` (breaking the feedback loop) and keeps
+ *    the foreign content out of the float's undo history (task 1398).
  *  - Stale source: when `readSource` reports `missing: true`, the hook
  *    flips `sourceMissing` on. If a later transaction makes the source
  *    available again (e.g. undo restored a deleted paragraph), the flag
@@ -266,8 +267,8 @@ export function useMainTransactionSync({
       // (a uuid re-mint on a split-off sibling, a renumber, the latexComment
       // normalizer replacing the block outright) left the source different from
       // what the float believes it wrote, so that one must re-read. Re-reading
-      // there cannot loop: the reseed runs `setContent(…, { emitUpdate: false })`,
-      // so it never provokes another write-back.
+      // there cannot loop: the reseed is stamped `preventUpdate` (the re-seed
+      // door), so it never provokes another write-back.
       const ownWrite = transaction.getMeta(FLOAT_WRITE_META) === floatId;
 
       // Track the source region FIRST, and across every docChanged transaction
