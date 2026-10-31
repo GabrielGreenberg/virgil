@@ -5,8 +5,8 @@
 // can't run in jsdom, so these tests are the primary safety net: they drive
 // `ensureExampleSeeded` / `resetExample` against an in-memory OPFS fake +
 // a mocked manifest fetch, pinning the idempotency / heal / no-clobber /
-// reset behaviors. A node-fs assertion also checks the GENERATED bundle
-// manifest lists every sample file (skipped when the artifact isn't built).
+// reset behaviors. A node-fs assertion also checks the bundle GENERATOR lists
+// every sample file (the built public/ artifact is only advisory).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -61,6 +61,7 @@ import {
   resetExample,
   EXAMPLE_DOC_ID,
   EXAMPLE_FOLDER_NAME,
+  EXAMPLE_TEX_FILENAME,
 } from "../example-seeder";
 import {
   readMirror,
@@ -72,6 +73,14 @@ import {
   offerMirrorRecovery,
 } from "@/lib/mirror-recovery";
 import { readLocalSidecar, writeLocalSidecar } from "@/lib/local-sidecar";
+import {
+  DOC_ID as BUNDLE_DOC_ID,
+  FOLDER_NAME as BUNDLE_FOLDER_NAME,
+  TEX_FILENAME as BUNDLE_TEX_FILENAME,
+  SKIP_NAMES,
+  listSampleFiles,
+  outDir as bundleOutDir,
+} from "../../../../scripts/build-example-bundle.mjs";
 import { LOCAL_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
 
 // ── In-memory OPFS fake ─────────────────────────────────────────────────────
@@ -352,32 +361,57 @@ describe("resetExample", () => {
   });
 });
 
-// ── Generated-bundle fidelity (node fs; skipped when not built) ─────────────
-describe("example bundle manifest", () => {
-  const manifestPath = join(process.cwd(), "public/examples/example0/manifest.json");
+// ── Bundle-generator fidelity (node fs) ─────────────────────────────────────
+// The assertion is about the GENERATOR (scripts/build-example-bundle.mjs), not
+// its gitignored public/ output: that artifact is stale between builds by
+// design and every reader reaches it through predev/prebuild, which regenerate
+// it — so a stale artifact is ADVISORY (a console note), never a failure
+// (task 1384; the LOUD-vs-ADVISORY doctrine of skill-bundle-freshness.test.ts).
+describe("example bundle generator", () => {
   const sampleDir = join(process.cwd(), "samples/annotation-history");
-  const SKIP = new Set([".DS_Store", ".example-seed.json", ".history"]);
 
+  /** Independent oracle: every file on disk, minus the generator's own
+   *  SKIP_NAMES (one list — what ships is policy, the walk is the check). */
   function walk(dir: string, prefix: string, out: string[]) {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
-      if (SKIP.has(e.name)) continue;
+      if (SKIP_NAMES.has(e.name)) continue;
       const rel = prefix ? `${prefix}/${e.name}` : e.name;
       if (e.isDirectory()) walk(join(dir, e.name), rel, out);
       else if (e.isFile()) out.push(rel);
     }
   }
 
-  it.skipIf(!existsSync(manifestPath))(
-    "lists every file in samples/annotation-history",
-    () => {
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-        files: { path: string }[];
-      };
-      const inManifest = new Set(manifest.files.map((f) => f.path));
-      const inSource: string[] = [];
-      walk(sampleDir, "", inSource);
-      for (const rel of inSource) expect(inManifest.has(rel)).toBe(true);
-      expect(inManifest.size).toBe(inSource.length);
-    },
-  );
+  it("lists every file in samples/annotation-history (and nothing else)", async () => {
+    const listed = await listSampleFiles();
+    const inSource: string[] = [];
+    walk(sampleDir, "", inSource);
+    expect([...listed].sort()).toEqual(inSource.sort());
+    expect(listed).toContain(EXAMPLE_TEX_FILENAME);
+  });
+
+  it("uses the seeder's identity constants", () => {
+    expect(BUNDLE_DOC_ID).toBe(EXAMPLE_DOC_ID);
+    expect(BUNDLE_FOLDER_NAME).toBe(EXAMPLE_FOLDER_NAME);
+    expect(BUNDLE_TEX_FILENAME).toBe(EXAMPLE_TEX_FILENAME);
+  });
+
+  // ADVISORY, surfaced as a named skip (the skill-bundle-freshness pattern):
+  // a stale or absent artifact is not checked and did not fail.
+  it("the built public/ artifact matches the generator (advisory)", async (ctx) => {
+    const manifestPath = join(bundleOutDir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      ctx.skip("[example-bundle] ADVISORY: public/examples not built in this checkout.");
+    }
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      files: { path: string }[];
+    };
+    const built = manifest.files.map((f) => f.path).sort().join("\n");
+    const fresh = [...(await listSampleFiles())].sort().join("\n");
+    if (built !== fresh) {
+      ctx.skip(
+        "[example-bundle] ADVISORY: public/examples manifest is stale vs the sample; " +
+          "predev/prebuild regenerate it (or run `npm run build:example-bundle`).",
+      );
+    }
+  });
 });
