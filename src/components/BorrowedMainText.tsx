@@ -51,6 +51,7 @@ import { refreshCitationDisplay } from "@/lib/borrowed-render";
 import { applyBorrowedBodyStyle } from "@/lib/borrowed-body-style";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { registerEditorMount } from "@/lib/editor-census-probe";
+import { reseedEditor } from "@/lib/reseed-caret";
 
 export interface BorrowedMainTextProps {
   /** The card's already-resolved body. JSONContent (a `doc`), or anything
@@ -162,9 +163,9 @@ export function BorrowedMainText({
   // instanceKey and the editor never remounts. Re-push the resolved body when
   // it changes by content identity. This fires on CONTENT change only — it
   // never subscribes to the main editor and runs no per-keystroke doc work — so
-  // keystroke sanctity holds. `setContent(…, { emitUpdate: false })` does not
-  // emit an update (this editor is `editable:false` with zero `editor.on`
-  // anyway), keeping the re-push silent. We compare serialized JSON so an
+  // keystroke sanctity holds. The re-seed door (`reseedEditor`) does not
+  // emit an update and records nothing in undo history (this editor is
+  // `editable:false` with zero `editor.on` anyway), keeping the re-push silent. We compare serialized JSON so an
   // unchanged body (a new object identity from re-derivation) is a no-op.
   const lastJsonRef = useRef<string | null>(null);
   useEffect(() => {
@@ -177,7 +178,7 @@ export function BorrowedMainText({
     }
     if (lastJsonRef.current === nextJson) return;
     lastJsonRef.current = nextJson;
-    editor.commands.setContent(resolved, { emitUpdate: false });
+    reseedEditor(editor, resolved);
   }, [editor, resolved]);
 
   // ── Panel typography (FIX 1 / A9 review) ─────────────────────────────────

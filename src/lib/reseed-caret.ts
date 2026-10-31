@@ -3,7 +3,8 @@
  *
  * The embedded/float editors (ExampleCard's expex body, every
  * `src/text-objects/floats/*` body via `float-sync`) re-seed themselves from
- * the live main doc with `editor.commands.setContent(nextDoc)`. `setContent`
+ * the live main doc by replacing the whole document (`dispatchReseed` below —
+ * never `setContent`, which records the replace in undo history). That
  * rebuilds the doc wholesale, so the user's caret would collapse to the start
  * unless it is explicitly re-applied afterward.
  *
@@ -26,7 +27,9 @@
  */
 
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
-import { StepMap } from "@tiptap/pm/transform";
+import { TextSelection, type Transaction } from "@tiptap/pm/state";
+import { StepMap, Transform } from "@tiptap/pm/transform";
+import { createDocument } from "@tiptap/core";
 import type { Editor, JSONContent } from "@tiptap/react";
 
 /**
@@ -113,40 +116,127 @@ export function mapPosThroughReseed(
 }
 
 /**
+ * THE re-seed door: replace an embedded editor's whole document with
+ * `nextDoc` as a NON-USER transaction (task 1398).
+ *
+ * A re-seed mirrors content that changed ELSEWHERE (main doc, a sibling float,
+ * a parent's value) into this editor. It is not an edit the user made here, so
+ * it must never enter this editor's undo history. TipTap's
+ * `setContent` with `emitUpdate: false` sets only `preventUpdate` —
+ * never `addToHistory: false` — so every re-seed through it became an undoable
+ * step (grouped with the user's own typing inside the 500 ms newGroupDelay).
+ * Cmd-Z in a float then reverted the FOREIGN edit, `onUpdate` wrote that revert
+ * back into main through the float write-back (itself `addToHistory: false`),
+ * and the foreign text was gone from both histories.
+ *
+ * So the replace is ONE transaction stamped `preventUpdate` (no onUpdate echo)
+ * AND `addToHistory: false` (prosemirror-history maps the user's own earlier
+ * steps through it, the standard foreign-change rebase). An optional
+ * `selection` callback picks the post-seed selection inside the SAME tr.
+ */
+function dispatchReseed(
+  editor: Editor,
+  nextDoc: JSONContent,
+  selection?: (oldDoc: PMNode, newDoc: PMNode) => { from: number; to: number },
+): void {
+  const { state } = editor;
+  const doc = createDocument(nextDoc, editor.schema, undefined, {
+    errorOnInvalidContent: editor.options.enableContentCheck,
+  });
+  const tr = state.tr;
+  replaceMinimally(tr, state.doc, doc);
+  tr.setMeta("preventUpdate", true).setMeta("addToHistory", false);
+  if (selection) {
+    const { from, to } = selection(state.doc, tr.doc);
+    try {
+      // Same clamp `setTextSelection` applies: into the doc's text range.
+      const minPos = TextSelection.atStart(tr.doc).from;
+      const maxPos = TextSelection.atEnd(tr.doc).to;
+      const clamp = (p: number) => Math.min(Math.max(p, minPos), maxPos);
+      tr.setSelection(TextSelection.create(tr.doc, clamp(from), clamp(to)));
+    } catch {
+      /* selection target may not be a valid text position post-reset; OK */
+    }
+  }
+  editor.view.dispatch(tr);
+}
+
+/**
+ * Replace `oldDoc` with `newDoc` in `tr` by its CHANGED region only — the span
+ * between the common prefix and common suffix — not the whole document. A
+ * whole-doc replace deletes every position, so prosemirror-history could map
+ * none of the user's earlier steps through it and their Cmd-Z would silently
+ * do nothing; a minimal step lets history rebase them past the foreign change.
+ * Falls back to the whole-doc replace if the minimal step does not reproduce
+ * `newDoc` exactly (it always should; the guard keeps the door total).
+ */
+function replaceMinimally(tr: Transaction, oldDoc: PMNode, newDoc: PMNode) {
+  const start = oldDoc.content.findDiffStart(newDoc.content);
+  if (start == null) return; // identical — nothing to replace
+  const end = oldDoc.content.findDiffEnd(newDoc.content);
+  let endA = end ? end.a : oldDoc.content.size;
+  let endB = end ? end.b : newDoc.content.size;
+  // Repeated content ("aa" → "aaa") can make the suffix overlap the prefix.
+  const overlap = start - Math.min(endA, endB);
+  if (overlap > 0) {
+    endA += overlap;
+    endB += overlap;
+  }
+  try {
+    const trial = new Transform(oldDoc).replace(
+      start,
+      endA,
+      newDoc.slice(start, endB),
+    );
+    if (trial.doc.eq(newDoc)) {
+      for (const step of trial.steps) tr.step(step);
+      return;
+    }
+  } catch {
+    /* fall through to the whole-doc replace */
+  }
+  tr.replaceWith(0, oldDoc.content.size, newDoc);
+}
+
+/**
+ * Re-seed an editor the user is NOT typing in (unfocused card field, read-only
+ * borrowed body) — through the one door, so it stays out of undo history.
+ */
+export function reseedEditor(editor: Editor, nextDoc: JSONContent): void {
+  dispatchReseed(editor, nextDoc);
+}
+
+/**
  * Re-seed an embedded TipTap editor from `nextDoc` and restore its caret to the
  * position it logically occupied BEFORE the foreign edit, mapped through the
  * structural change rather than re-applied as a raw offset (EX-F8-02 + the
  * shared float-sync class).
  *
- * Captures the live selection, replaces the content (with `onUpdate`
- * suppressed), then re-applies the mapped selection. Single owner for both the
- * ExampleCard body and every float body's caret restore so the mapping can't
- * drift between copies.
+ * Captures the live selection, replaces the content through the re-seed door
+ * (`onUpdate` suppressed, out of undo history), and applies the mapped
+ * selection in the same transaction. Single owner for both the ExampleCard
+ * body and every float body's caret restore so the mapping can't drift
+ * between copies.
  */
 export function reseedPreservingCaret(
   editor: Editor,
   nextDoc: JSONContent,
 ): void {
   const { from, to } = editor.state.selection;
-  const oldDoc = editor.state.doc;
-  editor.commands.setContent(nextDoc, { emitUpdate: false });
-  const newDoc = editor.state.doc;
-  // A FOREIGN edit (not the user's own typing) inserted exactly AT the caret
-  // should leave the caret in place rather than push it along — so a collapsed
-  // caret maps both ends with the same backward (`-1`) bias and stays
-  // collapsed. A real range selection keeps its anchor backward / head forward
-  // so a foreign insert at either boundary widens it the natural way.
-  const collapsed = from === to;
-  const mappedFrom = mapPosThroughReseed(oldDoc, newDoc, from, -1);
-  const mappedTo = collapsed
-    ? mappedFrom
-    : mapPosThroughReseed(oldDoc, newDoc, to, 1);
-  try {
-    editor.commands.setTextSelection({
+  dispatchReseed(editor, nextDoc, (oldDoc, newDoc) => {
+    // A FOREIGN edit (not the user's own typing) inserted exactly AT the caret
+    // should leave the caret in place rather than push it along — so a
+    // collapsed caret maps both ends with the same backward (`-1`) bias and
+    // stays collapsed. A real range selection keeps its anchor backward / head
+    // forward so a foreign insert at either boundary widens it the natural way.
+    const collapsed = from === to;
+    const mappedFrom = mapPosThroughReseed(oldDoc, newDoc, from, -1);
+    const mappedTo = collapsed
+      ? mappedFrom
+      : mapPosThroughReseed(oldDoc, newDoc, to, 1);
+    return {
       from: Math.min(mappedFrom, mappedTo),
       to: Math.max(mappedFrom, mappedTo),
-    });
-  } catch {
-    /* selection target may not be a valid text position post-reset; OK */
-  }
+    };
+  });
 }
