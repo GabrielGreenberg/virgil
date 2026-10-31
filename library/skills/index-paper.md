@@ -459,9 +459,11 @@ you to disambiguate something.
    stderr verbatim and skip the `references.bib` / `main.tex` sync below.
 
    Then sync this paper's own row in `papers/<citekey>/references.bib`
-   to match (use `_resync_references_bib` from `index_paper`, like
-   `/library/authenticate-bib` step 6 — it **upserts** that one entry and leaves
-   every other entry in the file untouched), and patch the `\title{}` /
+   to match — `python3 .virgil/scripts/library/resync_paper_bib.py "<citekey>"`,
+   the same door `/library/authenticate-bib` step 6 calls (task 1396). It
+   **upserts** that one entry and leaves every other entry in the file
+   untouched; on any exit but **0**, report its stderr verbatim (the codes
+   are its `--help` table) — and patch the `\title{}` /
    `\author{}` / `\date{}` lines at the top of
    `papers/<citekey>/main.tex` if any of those changed. `tex_emit.py`
    only sees the bib at extraction time, so a correction made in step 4

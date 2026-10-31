@@ -167,29 +167,29 @@ All paths below are relative to the library root.
    prior authentication. The existing `% bib.state = ...` comment is
    preserved when you omit the flag.
 
-3. **Sync `papers/<citekey>/references.bib`** through the shared helper —
-   the same one `/library/authenticate-bib` step 6 calls. Note this is the
-   one command in this skill that does **not** interpolate `"$CITEKEY"`
-   into the program text: a `$VAR` inside a heredoc/`-c` program is not
-   expanded, so the key is passed as **argv** instead.
+3. **Sync `papers/<citekey>/references.bib`** through its CLI door — the
+   same one `/library/authenticate-bib` step 6 calls (task 1396):
 
    ```bash
-   python3 - "$CITEKEY" <<'PY'
-   import sys; from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts/library")
-   from index_paper import _resync_references_bib
-   ok = _resync_references_bib(Path("."), sys.argv[1])
-   print("references.bib resynced" if ok
-         else "paper dir or master row missing — skipped")
-   PY
+   python3 .virgil/scripts/library/resync_paper_bib.py "$CITEKEY"
+   echo "resync=$?"
    ```
 
-   It **upserts**: only the `<citekey>` block is replaced, every other
-   entry survives byte-identically, and it returns False (no-op) when
-   `papers/<citekey>/` doesn't exist — legitimate, since the user may have
-   edited a hand-added bib entry that has no indexed paper folder yet.
-   On a `.bib` too malformed to splice safely it raises `BibSpliceRefused`
-   and leaves the file untouched; report that verbatim and continue.
+   It **upserts**: only the `<citekey>` block is replaced and every other
+   entry survives byte-identically. **Branch on `resync=`** — the ONE table
+   of codes is the script's docstring / `--help`:
+   - `resync=0` — synced. Continue with step 4.
+   - `resync=4` — no `papers/<citekey>/` folder. Legitimate — the user may
+     have edited a hand-added bib entry that has no indexed paper folder
+     yet. Continue with step 4.
+   - `resync=3` — master.bib has no row for the citekey, right after step 2
+     wrote it. A defect: report stderr verbatim and continue with step 4.
+   - `resync=2` — master.bib's entry can't be read (unbalanced braces, or
+     the file is missing/unreadable). Report stderr verbatim and continue
+     with step 4; the bib needs a human repair.
+   - `resync=5` — `references.bib` is too malformed to splice safely and was
+     left **untouched**. Report stderr verbatim and continue with step 4;
+     the file needs a human repair.
 
    Do **not** hand-write this file with a whole-file `Write` of one
    emitted entry. `references.bib` is a single-entry mirror of the

@@ -488,51 +488,48 @@ directory).
    Record only the changes you actually applied in `bib.fieldChanges`
    (step 7). If you applied a type change, say so in the reply.
 
-6. **Sync `references.bib`** from the updated master.bib entry. The citekey
-   goes in as **argv**, not interpolated into the program — a `$VAR` inside
-   `python3 -c '…'` single quotes is never expanded by the shell, so that
-   form silently resyncs nothing:
+6. **Sync `references.bib`** from the updated master.bib entry, through its
+   CLI door (task 1396):
    ```bash
-   python3 - "<citekey>" <<'PY'
-   import sys; from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts/library")
-   from index_paper import _resync_references_bib
-   ok = _resync_references_bib(Path("."), sys.argv[1])
-   print("references.bib resynced" if ok
-         else "paper dir or master row missing — skipped")
-   PY
+   python3 .virgil/scripts/library/resync_paper_bib.py "<citekey>"
+   echo "resync=$?"
    ```
+   **Branch on `resync=`** — the ONE table of codes is the script's
+   docstring / `--help`:
+   - `resync=0` — synced. Continue with step 7.
+   - `resync=4` — no `papers/<citekey>/` folder: a reference-only entry with
+     no indexed paper. A legitimate skip — continue with step 7.
+   - `resync=3` — master.bib has no row for the citekey, right after step 5
+     wrote it. A defect: report stderr verbatim and continue with step 7
+     (the catalog step reads the same row and will say what it found).
+   - `resync=2` — master.bib's entry can't be read (unbalanced braces, or
+     the file is missing/unreadable). Report stderr verbatim and continue
+     with step 7; the bib needs a human repair.
+   - `resync=5` — `references.bib` is too malformed to splice safely and was
+     left **untouched** — losing entries is never the fallback. Report stderr
+     verbatim and continue with step 7; the file needs a human repair.
 
-   The helper **upserts** — it replaces only the `<citekey>` block and
+   The script **upserts** — it replaces only the `<citekey>` block and
    leaves every other entry in the file byte-identical. That matters
    because `papers/<citekey>/references.bib` is a single-entry mirror of
    master.bib only until `/library/deep-index` runs: step 3f replaces it
    with the paper's **actual cited works**. Never hand-write this file
    with a whole-file `Write` of one emitted entry — that is exactly the
-   truncation this helper exists to prevent (task 168).
-
-   On a `.bib` malformed enough that the splice can't be made safely (an
-   unbalanced brace in a value), the helper raises `BibSpliceRefused` and
-   leaves the file **untouched** — losing entries is never the fallback.
-   Report the message verbatim and move on to step 7; the bib needs a human
-   repair.
+   truncation this door exists to prevent (task 168).
 
 7. **Update .virgil/catalog.json** — derive top-level fields from master.bib so
    they can't drift, and record step 4b's verdict. The citekey and the
-   verdict file go in as **argv**:
+   verdict file go in as arguments (task 1396):
    ```bash
-   python3 - "<citekey>" <runDir>/verdict.json <<'PY'
-   import sys, json
-   from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts/library")
-   from index_paper import _sync_catalog_entry_from_master
-   verdict = json.loads(Path(sys.argv[2]).read_text())
-   settled = _sync_catalog_entry_from_master(Path("."), sys.argv[1], verdict)
-   print(f"settled state: {settled}")
-   PY
+   python3 .virgil/scripts/library/settle_catalog.py "<citekey>" <runDir>/verdict.json
+   echo "settle=$?"
    rm <runDir>/result.json <runDir>/tier1.json \
       <runDir>/verdict.json
    ```
+   - `settle=0` — settled; stdout carries the `settled state:` line.
+   - `settle=2` — nothing settled (the verdict file or master.bib's entry
+     can't be read). Report stderr verbatim and **STOP before steps 8–9**,
+     so the queued request stays queued and runs again after the repair.
 
    **`settled state:` is the state this run ENDED with — use it, not
    `<final_state>`, from here on** (step 8's toast, the Reply). The helper
@@ -636,7 +633,7 @@ directory).
 
 8. **Append a notification** via the locked CLI shim. (No need to bump
    `catalog-version.txt` separately — when step 7 wrote a row,
-   `_sync_catalog_entry_from_master` bumped it for you; when it wrote none
+   `sync_catalog_entry_from_master` bumped it for you; when it wrote none
    — the reference-only case — there is no catalog change to announce, and
    the master.bib write it made instead schedules the `bib-index.json`
    rebuild the Library list actually reads for that entry.)

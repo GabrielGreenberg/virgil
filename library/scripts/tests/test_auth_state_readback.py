@@ -14,7 +14,7 @@ step 7's inline Python:
 The rule now: `bib_auth.settle_auth_verdict` decides the verdict before any
 write, `_tools.settle_catalog_bib` composes every catalog writer's `bib`
 block (state from master.bib, history appended once), and
-`_sync_catalog_entry_from_master` returns the state that SETTLED.
+`sync_catalog_entry_from_master` returns the state that SETTLED.
 
 Run: python3 library/scripts/tests/test_auth_state_readback.py
 """
@@ -82,7 +82,7 @@ def test_holding_reauth_with_a_weaker_result_keeps_the_settled_state(tmp_path):
                                     "sources": ["crossref", "openalex"],
                                     "note": "earned"}}]})
     verdict = settle_auth_verdict(_result("unverified"))
-    settled = ip._sync_catalog_entry_from_master(lib, "held", verdict)
+    settled = ip.sync_catalog_entry_from_master(lib, "held", verdict)
     assert settled == "authenticated"
     assert _master_state(lib, "held") == "authenticated"
     bib = _row(lib, "held")["bib"]
@@ -96,7 +96,7 @@ def test_reference_row_reauth_with_a_weaker_result_keeps_the_settled_state(tmp_p
     lib = _lib(tmp_path, "ref", "canonical", held=False)
     write_catalog(lib, {"version": 1, "entries": [
         {"citekey": "ref", "bib": {"state": "canonical"}}]})
-    settled = ip._sync_catalog_entry_from_master(
+    settled = ip.sync_catalog_entry_from_master(
         lib, "ref", settle_auth_verdict(_result("failed")))
     assert settled == "canonical" == _master_state(lib, "ref")
     assert _row(lib, "ref")["bib"]["state"] == "canonical"
@@ -116,7 +116,7 @@ def test_tier1_upgrade_is_computed_before_the_write_and_lands_in_master(tmp_path
     assert "authenticatedAt" in verdict
     assert verdict["sources"] == ["openlibrary", "internet-archive", "publisher-page"]
     # Even if the step-5 write stamped the raw state, step 7 re-stamps the verdict.
-    settled = ip._sync_catalog_entry_from_master(lib, "held", verdict)
+    settled = ip.sync_catalog_entry_from_master(lib, "held", verdict)
     assert settled == "authenticated" == _master_state(lib, "held")
     assert _row(lib, "held")["bib"]["state"] == "authenticated"
 
@@ -154,7 +154,7 @@ def test_pre_f4_reference_row_history_grows_by_the_fresh_list_only(tmp_path):
         {"citekey": "ref", "bib": {"state": "unverified",
                                    "fieldChanges": [{"field": "old"}]}}]})
     for n in range(1, 4):
-        ip._sync_catalog_entry_from_master(
+        ip.sync_catalog_entry_from_master(
             lib, "ref", settle_auth_verdict(_result("unverified", changes=[{"field": f"r{n}"}])))
     fields = [c["field"] for c in _row(lib, "ref")["bib"]["fieldChanges"]]
     assert fields == ["old", "r1", "r2", "r3"]
@@ -163,7 +163,7 @@ def test_pre_f4_reference_row_history_grows_by_the_fresh_list_only(tmp_path):
 def test_holding_row_history_grows_by_the_fresh_list_only(tmp_path):
     lib = _lib(tmp_path, "held", "unverified", held=True)
     for n in range(1, 4):
-        ip._sync_catalog_entry_from_master(
+        ip.sync_catalog_entry_from_master(
             lib, "held", settle_auth_verdict(_result("unverified", changes=[{"field": f"r{n}"}])))
     fields = [c["field"] for c in _row(lib, "held")["bib"]["fieldChanges"]]
     assert fields == ["r1", "r2", "r3"]

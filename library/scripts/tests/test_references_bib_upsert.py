@@ -6,7 +6,8 @@ overwrites it with the paper's **actual cited works**. FOUR paths re-emitted
 the whole file from that one row —
 
   * `index_paper._resync_references_bib` (called unconditionally by
-    `/library/authenticate-bib` step 6),
+    `/library/authenticate-bib` step 6; since task 1396
+    `_tools.resync_paper_bib`, behind `resync_paper_bib.py`),
   * `index_paper`'s index-time stamp (step 8),
   * `triage_apply._write_references_bib` (the .bib-drop folder creation), and
   * `apply-bib-edit.md` step 3, which was skill PROSE telling the agent to
@@ -335,9 +336,9 @@ def test_write_paper_bib_entry_preserves_a_deep_indexed_bibliography(tmp_path):
 
 
 def test_resync_references_bib_upserts_from_master(tmp_path):
-    """`_resync_references_bib` — the helper both bib skills call — is now an
+    """`resync_paper_bib` — the step both bib skills run — is now an
     upsert. Same fixture, driven through the real master.bib read path."""
-    from index_paper import _resync_references_bib
+    from _tools import RESYNC_SYNCED, resync_paper_bib
 
     library = tmp_path
     (library / "master.bib").write_text(
@@ -353,7 +354,7 @@ def test_resync_references_bib_upserts_from_master(tmp_path):
     paper_dir.mkdir(parents=True)
     (paper_dir / "references.bib").write_text(THREE_ENTRY)
 
-    assert _resync_references_bib(library, "smith2001") is True
+    assert resync_paper_bib(library, "smith2001") == RESYNC_SYNCED
 
     after = (paper_dir / "references.bib").read_text()
     assert [e["citekey"] for e in parse_bib_text(after)] == [
@@ -371,7 +372,7 @@ def test_resync_references_bib_upserts_from_master(tmp_path):
 def test_resync_still_creates_the_single_entry_mirror_for_a_fresh_paper(tmp_path):
     """Fresh-indexed papers (no references.bib yet) behave exactly as before —
     the merge semantics are a strict superset."""
-    from index_paper import _resync_references_bib
+    from _tools import RESYNC_SYNCED, resync_paper_bib
 
     library = tmp_path
     (library / "master.bib").write_text(
@@ -379,7 +380,7 @@ def test_resync_still_creates_the_single_entry_mirror_for_a_fresh_paper(tmp_path
     )
     (library / "papers" / "fresh2024").mkdir(parents=True)
 
-    assert _resync_references_bib(library, "fresh2024") is True
+    assert resync_paper_bib(library, "fresh2024") == RESYNC_SYNCED
     assert (library / "papers" / "fresh2024" / "references.bib").read_text() == (
         "@article{fresh2024,\n  title = {Fresh},\n  year = {2024}\n}\n"
     )
@@ -488,16 +489,17 @@ def test_the_re_emit_guard_actually_catches_the_shapes_it_claims_to():
             )
 
 
-def test_resync_returns_false_when_paper_dir_or_master_row_missing(tmp_path):
-    from index_paper import _resync_references_bib
+def test_resync_tells_a_missing_paper_dir_from_a_missing_master_row(tmp_path):
+    """Two different answers (task 1396): a legit skip vs. a defect."""
+    from _tools import RESYNC_ABSENT, RESYNC_NO_PAPER, resync_paper_bib
 
     library = tmp_path
     (library / "master.bib").write_text(
         "@article{known,\n  title = {K}\n}\n"
     )
-    assert _resync_references_bib(library, "known") is False  # no paper dir
+    assert resync_paper_bib(library, "known") == RESYNC_NO_PAPER
     (library / "papers" / "unknown").mkdir(parents=True)
-    assert _resync_references_bib(library, "unknown") is False  # no master row
+    assert resync_paper_bib(library, "unknown") == RESYNC_ABSENT
     assert not (library / "papers" / "unknown" / "references.bib").exists()
 
 

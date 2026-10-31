@@ -1,7 +1,7 @@
 """F#4 WRITE gate — one door, asked before every catalog row is minted.
 
 Task 443. F#4's holdings-only model was enforced by two of the three catalog
-writers and skipped by the third: `index_paper._sync_catalog_entry_from_master`
+writers and skipped by the third: `index_paper.sync_catalog_entry_from_master`
 — reached once per entry of every `.bib` import via `/library/authenticate-bib`
 step 7 — called `upsert_catalog_entry` unconditionally, whose no-match branch
 APPENDS. So it minted exactly the rows the other two refuse.
@@ -10,7 +10,7 @@ Covers:
   * the door (`_tools.admit_catalog_row`): True for a holding, False + a
     discharged `% bib.state` comment for a reference-only entry, and the
     "none"-never-downgrades rule;
-  * `_sync_catalog_entry_from_master` obeying it — row count unchanged for a
+  * `sync_catalog_entry_from_master` obeying it — row count unchanged for a
     fileless citekey, and the FULL row still written for a held one (the
     top-level title/authors/year/doi derivation is the part that must not
     move);
@@ -157,7 +157,7 @@ def test_sync_from_master_mints_no_row_for_a_reference_only_entry(tmp_path):
     lib = _init_library(tmp_path)
     _seed_master(lib, "refonly", state="unverified")
     before = len(_rows(lib))
-    ip._sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
+    ip.sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
     assert len(_rows(lib)) == before == 0
     # …and the state landed in its home rather than being lost.
     assert _states(lib).get("refonly") == "authenticated"
@@ -166,9 +166,9 @@ def test_sync_from_master_mints_no_row_for_a_reference_only_entry(tmp_path):
 def test_sync_from_master_refreshes_the_comment_on_every_run(tmp_path):
     lib = _init_library(tmp_path)
     _seed_master(lib, "refonly", state="unverified")
-    ip._sync_catalog_entry_from_master(lib, "refonly", _bib_status("canonical"))
+    ip.sync_catalog_entry_from_master(lib, "refonly", _bib_status("canonical"))
     assert _states(lib).get("refonly") == "canonical"
-    ip._sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
+    ip.sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
     assert _states(lib).get("refonly") == "authenticated"
     assert _rows(lib) == []
 
@@ -180,7 +180,7 @@ def test_sync_from_master_writes_the_holding_row_exactly_as_before(tmp_path):
     _seed_master(lib, "held", state="unverified")
     _make_holding(lib, "held")
     status = _bib_status("authenticated")
-    ip._sync_catalog_entry_from_master(lib, "held", status)
+    ip.sync_catalog_entry_from_master(lib, "held", status)
     rows = _rows(lib)
     assert len(rows) == 1
     row = rows[0]
@@ -204,8 +204,8 @@ def test_sync_from_master_still_updates_an_existing_holding_row(tmp_path):
     lib = _init_library(tmp_path)
     _seed_master(lib, "held", state="unverified")
     _make_holding(lib, "held")
-    ip._sync_catalog_entry_from_master(lib, "held", _bib_status("unverified"))
-    ip._sync_catalog_entry_from_master(lib, "held", _bib_status("authenticated"))
+    ip.sync_catalog_entry_from_master(lib, "held", _bib_status("unverified"))
+    ip.sync_catalog_entry_from_master(lib, "held", _bib_status("authenticated"))
     rows = _rows(lib)
     assert len(rows) == 1
     assert rows[0]["bib"]["state"] == "authenticated"
@@ -232,7 +232,7 @@ def test_sync_from_master_refreshes_a_stale_reference_row_without_minting(tmp_pa
          "pdf": {"present": False}, "indexed": {"state": "none"},
          "bib": {"state": "unverified", "fieldChanges": [{"field": "year"}]}},
     ]})
-    ip._sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
+    ip.sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
     rows = _rows(lib)
     assert len(rows) == 1, "the gate must never MINT a second row"
     assert rows[0]["bib"]["state"] == "authenticated"
@@ -282,12 +282,12 @@ def test_door_refresh_never_mints(tmp_path):
 def test_authenticate_bib_step7_exit_1_branch_is_reachable(tmp_path):
     """`/library/authenticate-bib` step 7 documents an `exit 1` for "no
     catalog row for this citekey (a reference-only entry … the F#4 gate never
-    minted one)". Pre-443 the `_sync_catalog_entry_from_master` call three
+    minted one)". Pre-443 the `sync_catalog_entry_from_master` call three
     lines above it had just minted that row, so the branch could never fire —
     a documented branch the same step made unreachable."""
     lib = _init_library(tmp_path)
     _seed_master(lib, "refonly", state="unverified")
-    ip._sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
+    ip.sync_catalog_entry_from_master(lib, "refonly", _bib_status("authenticated"))
     patch = tmp_path / "patch.json"
     patch.write_text(json.dumps({"indexed": {"warnings": []}}))
     proc = subprocess.run(
@@ -349,7 +349,7 @@ def test_writer_refuses_an_unbalanced_entry_instead_of_eating_its_neighbours(tmp
     from _tools import read_master_bib, BibEntryUnbalanced
     assert set(read_master_bib(lib / "master.bib")) == {"k1", "k2"}
     try:
-        ip._sync_catalog_entry_from_master(lib, "k1", _bib_status("authenticated"))
+        ip.sync_catalog_entry_from_master(lib, "k1", _bib_status("authenticated"))
     except BibEntryUnbalanced as e:
         assert "k1" in str(e)
     else:
@@ -811,7 +811,7 @@ def test_census_sees_the_four_real_mint_sites():
             if finder.verdict():
                 found.append(f"{p.name}::{name}")
     for expected in (
-        "index_paper.py::_sync_catalog_entry_from_master",
+        "index_paper.py::sync_catalog_entry_from_master",
         "index_paper.py::index_paper",
         "merge_paper_references.py::_upsert_catalog_row",
         "triage_apply.py::_upsert_catalog_row_bib_only",

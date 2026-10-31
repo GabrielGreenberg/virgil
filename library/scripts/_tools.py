@@ -1400,6 +1400,47 @@ def write_paper_bib_entry(
     _atomic_write_text(refs, upsert_entry_text(existing, citekey, entry_type, fields))
 
 
+RESYNC_SYNCED = "synced"
+RESYNC_NO_PAPER = "no-paper-folder"
+RESYNC_ABSENT = "absent"
+
+
+def resync_paper_bib(library: Path, citekey: str) -> str:
+    """Re-mirror `citekey`'s master.bib row into `papers/<citekey>/references.bib`.
+
+    The step both `/library/authenticate-bib` (6) and `/library/apply-bib-edit`
+    (3) run after a master.bib write; its CLI is `resync_paper_bib.py`, which
+    states each answer below as an exit code (task 1396). It UPSERTS through
+    `write_paper_bib_entry`, so every other entry in the file survives
+    byte-identically (task 168).
+
+    Three answers, and two raises that are NOT answers:
+
+    - `RESYNC_SYNCED` — the row was upserted;
+    - `RESYNC_NO_PAPER` — no `papers/<citekey>/` (a hand-added bib entry with
+      no indexed paper): a legitimate skip, nothing written;
+    - `RESYNC_ABSENT` — the folder exists but master.bib has no row for the
+      citekey — a DEFECT right after a master write, nothing written;
+    - raises whatever `master_entry_for` raises (`BibEntryUnbalanced`,
+      `MasterBibMissing`, an I/O or decode error) — the row's fields would be
+      a guess;
+    - raises `BibSpliceRefused` when references.bib cannot be spliced safely —
+      the file is left untouched.
+
+    Before task 1396 this was `index_paper._resync_references_bib`, returning
+    one bool for the first three answers — so a legit skip and a missing row
+    printed the same line — and reached by a heredoc in two skills.
+    """
+    paper_dir = paper_folder(library, citekey)
+    if not paper_dir.exists():
+        return RESYNC_NO_PAPER
+    entry = master_entry_for(library, citekey)
+    if entry is None:
+        return RESYNC_ABSENT
+    write_paper_bib_entry(paper_dir, citekey, entry["type"], entry["fields"])
+    return RESYNC_SYNCED
+
+
 # ── bib-import flag (per-paper references.bib → master.bib) ───────────
 #
 # `bib.imported` marks that a paper's references.bib has been folded into
@@ -2508,7 +2549,7 @@ def ensure_bib_state_comment(
 # (task 443). `merge_paper_references._upsert_catalog_row` and
 # `triage_apply._upsert_catalog_row_bib_only` each asked `paper_has_holdings`
 # and each discharged the state to master.bib by hand;
-# `index_paper._sync_catalog_entry_from_master` — reached by
+# `index_paper.sync_catalog_entry_from_master` — reached by
 # `/library/authenticate-bib` step 7, i.e. once per entry of every `.bib`
 # import — asked nothing and called `upsert_catalog_entry` unconditionally,
 # whose no-match branch APPENDS. So a 500-entry `.bib` drop minted 500 rows
