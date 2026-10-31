@@ -30,6 +30,7 @@
 import type { Editor } from "@tiptap/react";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
+import type { SourceRange } from "@/lib/float-source-range";
 
 export interface FloatWritePlan {
   /** The main-doc range the edit replaces. */
@@ -70,6 +71,38 @@ function contentSize(content: PMNode | readonly PMNode[]): number {
 }
 
 /**
+ * WHERE a float writes (task 1399). A plan resolves its target from the
+ * source's IDENTITY (a uuid → that node's extent; a heading uuid → its
+ * section) — but after the float's own previous write main may hold MORE of
+ * the float's content than that identity spans: an Enter-split in a list-item
+ * float wrote the item plus a new sibling; a pasted `<h1>` at the end of a
+ * section float wrote a heading that now ENDS the section. Re-deriving the
+ * identity's extent then shrinks the target, and writing every float block
+ * into it duplicates the rest in main.
+ *
+ * So the target is the span the float LAST WROTE (`written`, tracked by
+ * `useFloatMainSync`) whenever it still begins at the identity the plan
+ * resolved — the identity check — and reaches at least as far. Otherwise
+ * (no own write since the last re-read, or the identity moved) the plan's own
+ * range stands. O(1).
+ */
+export function writeTarget(
+  plan: { from: number; to: number },
+  written: SourceRange | null | undefined,
+  docSize: number,
+): { from: number; to: number } {
+  if (
+    written &&
+    written.from === plan.from &&
+    written.to > plan.to &&
+    written.to <= docSize
+  ) {
+    return { from: plan.from, to: written.to };
+  }
+  return { from: plan.from, to: plan.to };
+}
+
+/**
  * Land a whole-block surface's edit on MAIN.
  *
  * `plan` returns `null` when the source is gone (→ `no-source`), a
@@ -81,12 +114,19 @@ export function landFloatWrite(
   main: Editor | null | undefined,
   floatId: string,
   plan: (main: Editor) => FloatWritePlan | FloatWriteRefusal | null,
+  /** The span this float's own last write occupies — `useFloatMainSync`'s
+   *  `writtenRangeRef.current` (see `writeTarget`). */
+  written?: SourceRange | null,
 ): FloatWriteOutcome {
   if (!main) return { status: "no-source" };
   try {
-    const p = plan(main);
-    if (p === null) return { status: "no-source" };
-    if ("refused" in p) return { status: "refused", reason: p.refused };
+    const planned = plan(main);
+    if (planned === null) return { status: "no-source" };
+    if ("refused" in planned) return { status: "refused", reason: planned.refused };
+    const p = {
+      ...planned,
+      ...writeTarget(planned, written, main.state.doc.content.size),
+    };
     const content = p.content as PMNode | PMNode[];
     // An echo of what main already holds (the surface re-emitting unchanged
     // content) dispatches nothing. O(block), the same order as the rebuild.

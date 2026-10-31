@@ -343,7 +343,7 @@ export function ListItemBody({
       return findListItemByUuid(ed.state.doc, uuid, sourceRangeRef.current)
         ? refuseWrite(wrongRootReason("list item"))
         : null;
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -384,7 +384,13 @@ export function ListItemBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

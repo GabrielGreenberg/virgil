@@ -209,7 +209,7 @@ export function ListBody({
         },
       });
       return { from: src.start, to: src.end, content: newNode };
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -247,7 +247,13 @@ export function ListBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

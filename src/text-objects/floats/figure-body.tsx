@@ -195,7 +195,7 @@ export function FigureBody({
         },
       });
       return { from: src.start, to: src.end, content: newNode };
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -223,7 +223,13 @@ export function FigureBody({
     [uuid, kind],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
