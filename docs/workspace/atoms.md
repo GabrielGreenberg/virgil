@@ -1,4 +1,4 @@
-<!-- last-verified: 97d275d3 2026-10-30 -->
+<!-- last-verified: 90539f73 2026-10-31 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -75,7 +75,11 @@ read by both the live NodeView and `renderHTML`.
 
 `\ref{}` / `\getref{}` / `\getfullref{}` parse to a `labelRef` node; the
 `refCommand` attr records which command was used. No Card, no id marker — a
-labelRef is a pure cross-reference.
+labelRef is a pure cross-reference. The command vocabulary (name, package,
+display) is ONE table, `REF_COMMANDS` ([src/lib/ref-commands.ts](../../src/lib/ref-commands.ts),
+task 1372), read by both parsers (`matchRefCommandAt`), both serializers
+(`refCommandLatex`), ref-display and the popover; an unlisted name is kept
+verbatim, never silently turned into `\ref`.
 
 Display text comes from **ONE table** — `buildRefTargetIndex` /
 `resolveRefDisplay` ([src/lib/ref-display.ts](../../src/lib/ref-display.ts), task

@@ -1,4 +1,4 @@
-<!-- last-verified: 97d275d3 2026-10-30 -->
+<!-- last-verified: 90539f73 2026-10-31 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -234,14 +234,18 @@ elsewhere. An expex
   (`src/lib/latex-lexer.ts`) first — comments and verbatim bodies projected away
   — so a commented-out `% \usepackage{biblatex}` or an `\includegraphics` inside
   a `\begin{verbatim}` no longer injects a package the document never runs
-  (tasks 344 / 345). The declaration side reads the same vocabulary
+  (tasks 344 / 345); a top-level `\iffalse`/`\if0 … \fi` block and the
+  `comment` env are inert too (task 1370; an unmatched `\fi` fails OPEN). The declaration side reads the same vocabulary
   (`PACKAGE_DETECTORS`, `src/lib/latex-requirement-collector.ts`).
   "Does the preamble load package P?" has ONE reader (task 781): the lexer's
   wrapper-aware `preambleListLoadsPackage`, read by bib-family detection,
   requirement satisfaction, the example-family check and the compile-side
   biblatex/pass-plan detectors. A cite package that owns its own machinery
   (`FOREIGN_CITE_PACKAGES`: apacite / harvard / chicago / jurabib,
-  `src/lib/bib-family.ts`) gets no natbib injected.
+  `src/lib/bib-family.ts`) gets no natbib injected. "Which family does the BODY
+  pin?" is ONE rule there too — `bodyPinnedFamily` + `foldFamilies` (task 1371,
+  ported to `editor/scripts/bib_family.py`), so `\cite` + `\printbibliography`
+  reads biblatex at every site.
   The paper folder's own `.sty`/`.cls` loads count too (task 1090): a
   transitive local-package manifest (`src/lib/local-packages.ts`, read through
   the same load reader) is expanded at the preamble-projecting doors, so a
