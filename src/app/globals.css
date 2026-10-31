@@ -1518,7 +1518,7 @@ body {
 .tiptap {
   outline: none;
   font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
-  color: var(--editor-text-color, #2a2a2a);
+  color: var(--editor-text-color);
   /* Text-wrapping parity for the lifted-overlay drag clone (L3b.2). The
      clone carries `.tiptap` (L3b.1) but is NOT a `.ProseMirror`, so it
      misses prosemirror-view's `.ProseMirror` white-space/word-wrap base
@@ -1641,13 +1641,13 @@ textarea {
 }
 
 .tiptap p {
-  line-height: var(--editor-line-height, 1.8);
+  line-height: var(--editor-line-height);
   font-size: var(--editor-font-size, 1.05rem);
 }
 
 .tiptap h1 {
   font-size: var(--font-headers-h1-size, 1.75rem);
-  font-weight: var(--font-headers-h1-weight, 700);
+  font-weight: var(--font-headers-h1-weight);
   margin-top: 1.5em;
   margin-bottom: 0.15em;
   color: var(--h1-color, #1a1a1a);
@@ -1908,12 +1908,12 @@ textarea {
   position: relative; /* stacks above .source-pod-row-sensor in overlap */
   border: 1px dashed var(--heading-annotation-border, #a8c4de);
   border-radius: var(--pod-radius);
-  background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
+  background: var(--code-block-bg);
   padding: 8px 12px;
   cursor: pointer;
   font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
   font-size: 13px;
-  color: var(--ink-muted, #6b6660);
+  color: var(--ink-muted);
   transition: background 0.15s;
 }
 .source-pod-preview:hover {
@@ -2016,7 +2016,7 @@ textarea {
   position: relative;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: var(--pod-radius);
-  background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
+  background: var(--code-block-bg);
   padding: 14px 70px 14px 16px;
   cursor: pointer;
 }
@@ -2060,8 +2060,8 @@ textarea {
   padding: 6px 10px;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: var(--pod-radius);
-  background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
-  color: var(--ink-strong, #2a2724);
+  background: var(--code-block-bg);
+  color: var(--ink-strong);
   font-family: var(--font-mono-override, var(--font-mono)), monospace; /* .card-mono */
   font-size: 12px;
   line-height: 1.375;
@@ -2090,7 +2090,7 @@ textarea {
      leave a retuned main-text font behind (the exact `.tiptap` spelling, so the
      two cannot drift). Slightly smaller than body copy, which is what a tree
      wants: node labels are dense and the picture has to fit the column. */
-  color: var(--editor-text-color, #2a2a2a);
+  color: var(--editor-text-color);
   font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4",
     Georgia, serif;
   font-size: 0.92em;
@@ -2124,7 +2124,7 @@ textarea {
 /* Math inside a node label takes the document's math ink, exactly as inline
    math in prose does — the label is prose, not chrome. */
 .forest-node-math {
-  color: var(--math-color, inherit);
+  color: var(--math-color);
 }
 
 /* The refusal badge — a WARNING (amber), never the danger ramp: the bytes are
@@ -2139,7 +2139,7 @@ textarea {
   border: 1px solid var(--amber-500);
   border-radius: var(--radius-md);
   background: var(--amber-100);
-  color: var(--ink-strong, #2a2724);
+  color: var(--ink-strong);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -2589,7 +2589,7 @@ textarea {
   align-items: center;
   justify-content: center;
   width: var(--margin-handle-width);
-  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
+  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height));
   /* Chip 3: width of the centered grab hit/hover halo (the ::before below).
      Scales with the editor font like the handle height (~1.8× font ≈ 1.8em),
      so the target grows with larger prose rather than staying a fixed px. */
@@ -3136,12 +3136,12 @@ textarea {
   font-size: var(--font-maketitle-meta-size, 1.05rem);
   font-weight: var(--font-maketitle-meta-weight, 400);
   line-height: 1.6;
-  color: var(--editor-text-color, #2a2a2a);
+  color: var(--editor-text-color);
   min-height: 1.2em;
 }
 
 .title-field-title {
-  font-size: var(--font-maketitle-title-size, 1.75rem);
+  font-size: var(--font-maketitle-title-size);
   font-weight: var(--font-maketitle-title-weight, 700);
   line-height: 1.3;
 }
@@ -3391,7 +3391,7 @@ textarea {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85rem;
   padding: 0.4em 0.5em;
-  border: 1px solid var(--border, #d9d3c8);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   outline: none;
   resize: vertical;
@@ -3401,7 +3401,7 @@ textarea {
 }
 
 .math-popover-input:focus {
-  border-color: var(--accent, #6b4fa0);
+  border-color: var(--accent);
 }
 
 .math-popover-hint {
@@ -3432,7 +3432,7 @@ textarea {
 
 .math-popover-cancel:hover {
   color: var(--foreground);
-  border-color: var(--border, #d9d3c8);
+  border-color: var(--border);
   background: var(--code-bg, #f0eeeb);
 }
 
@@ -3490,7 +3490,7 @@ textarea {
 .figure-block.figure-block-empty {
   cursor: pointer;
   background: var(--code-bg, #f0eeeb);
-  border: 1px dashed var(--border, #d9d3c8);
+  border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
   padding: 1.5em 0.75em;
   text-align: center;
@@ -3514,7 +3514,7 @@ textarea {
   gap: 0.25em;
   padding: 0.6em 1em;
   background: var(--surface);
-  border: 1px solid var(--border, #d9d3c8);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--ink-strong);
   cursor: pointer;
@@ -3523,8 +3523,8 @@ textarea {
 }
 
 .figure-block .figure-empty-cta:hover {
-  border-color: var(--accent, #6b4fa0);
-  color: var(--accent, #6b4fa0);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .figure-block .figure-empty-cta-icon {
@@ -3545,7 +3545,7 @@ textarea {
 
 .figure-block .figure-empty-hint {
   font-size: 0.78em;
-  color: var(--ink-muted, #6b6258);
+  color: var(--ink-muted);
 }
 
 .figure-block .figure-row {
@@ -3573,7 +3573,7 @@ textarea {
 .figure-block .figure-caption {
   margin-top: 0.5em;
   font-size: 0.92em;
-  color: var(--ink-muted, #6b6258);
+  color: var(--ink-muted);
   text-align: center;
   max-width: 80%;
   margin-left: auto;
@@ -3742,7 +3742,7 @@ textarea {
 .figure-block .figure-placeholder {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
-  color: var(--ink-muted, #6b6258);
+  color: var(--ink-muted);
   padding: 1em;
   background: var(--code-bg, #f0eeeb);
   border-radius: var(--radius-sm);
@@ -3848,8 +3848,8 @@ textarea {
   justify-content: center;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--border, #d9d3c8);
-  color: var(--ink-muted, #6b6258);
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
   cursor: pointer;
   padding: 0;
   line-height: 1;
@@ -3857,8 +3857,8 @@ textarea {
 
 .figure-block .figure-chrome-btn:hover {
   background: white;
-  color: var(--accent, #6b4fa0);
-  border-color: var(--accent, #6b4fa0);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .figure-block .figure-chrome-btn-danger:hover {
@@ -3874,7 +3874,7 @@ textarea {
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--border, #d9d3c8);
+  border: 1px solid var(--border);
 }
 
 .figure-block .figure-scale[data-disabled="true"] {
@@ -3889,7 +3889,7 @@ textarea {
   justify-content: center;
   background: transparent;
   border: 0;
-  color: var(--ink-muted, #6b6258);
+  color: var(--ink-muted);
   cursor: pointer;
   padding: 0;
   font-size: 14px;
@@ -3897,12 +3897,12 @@ textarea {
 }
 
 .figure-block .figure-scale-btn:hover:not(:disabled) {
-  color: var(--accent, #6b4fa0);
+  color: var(--accent);
   background: var(--code-bg, #f0eeeb);
 }
 
 .figure-block .figure-scale-btn:disabled {
-  color: var(--ink-faint, #b8ad9e);
+  color: var(--ink-faint);
   cursor: not-allowed;
 }
 
@@ -3910,8 +3910,8 @@ textarea {
   width: 30px;
   height: 100%;
   border: 0;
-  border-left: 1px solid var(--border, #d9d3c8);
-  border-right: 1px solid var(--border, #d9d3c8);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   background: transparent;
   text-align: center;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
@@ -3946,7 +3946,7 @@ textarea {
  * chrome must not print a width the document does not contain (task 537).
  * Firefox dims placeholders by default; the ink is already the faint tier. */
 .figure-block .figure-scale-input::placeholder {
-  color: var(--ink-faint, #b8ad9e);
+  color: var(--ink-faint);
   opacity: 1;
 }
 
@@ -3969,7 +3969,7 @@ textarea {
 .figure-popover-label {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.75rem;
-  color: var(--ink-muted, #6b6258);
+  color: var(--ink-muted);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -3979,7 +3979,7 @@ textarea {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85rem;
   padding: 0.4em 0.5em;
-  border: 1px solid var(--border, #d9d3c8);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   outline: none;
   resize: vertical;
@@ -3989,7 +3989,7 @@ textarea {
 }
 
 .figure-popover-input:focus {
-  border-color: var(--accent, #6b4fa0);
+  border-color: var(--accent);
 }
 
 .figure-popover-hint {
@@ -4849,7 +4849,7 @@ body.perf-contain .static-borrowed-text {
 .citation-node[data-empty="true"] {
   border-style: dashed;
   background: transparent;
-  color: var(--ink-muted, #8a8678);
+  color: var(--ink-muted);
   font-style: italic;
   opacity: 0.85;
 }
@@ -4958,7 +4958,7 @@ body.perf-contain .static-borrowed-text {
 /* ── LabelRef Popover ── */
 
 .label-ref-popover {
-  background: var(--surface, #fff);
+  background: var(--surface);
   border: 2px solid var(--amber-highlight-edge);
   border-radius: var(--radius-md);
   box-shadow:
@@ -4973,7 +4973,7 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-pod + .label-ref-popover-pod {
-  border-top: 1px solid var(--border-light, #e0ddd7);
+  border-top: 1px solid var(--border-light);
 }
 
 /* Top pod: target heading */
@@ -5045,7 +5045,7 @@ body.perf-contain .static-borrowed-text {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
   outline: none;
-  background: var(--surface, #fff);
+  background: var(--surface);
   color: var(--foreground, #1a1a1a);
 }
 
@@ -5374,7 +5374,7 @@ body.perf-contain .static-borrowed-text {
 .expex-gloss-row-glb,
 .expex-gloss-row-glc {
   font-variant: small-caps;
-  color: var(--ink-muted, #555);
+  color: var(--ink-muted);
   font-size: 0.85em;
 }
 
@@ -5846,7 +5846,7 @@ body.perf-contain .static-borrowed-text {
   padding: 0 0.4em;
   border-radius: var(--radius-xs);
   background: var(--code-bg, #f0eeeb);
-  border: 1px solid var(--border, #d9d3c8);
+  border: 1px solid var(--border);
   color: var(--ink-strong, #292524);
   white-space: nowrap;
 }

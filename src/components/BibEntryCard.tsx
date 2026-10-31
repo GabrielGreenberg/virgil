@@ -430,8 +430,8 @@ export default function BibEntryCard({
         buildTextDragGhost(display, {
           maxChars: 80,
           bg: "var(--citation-ghost-bg, #fdf8e1)",
-          border: "var(--citation-border-color, #e0d5a8)",
-          ink: "var(--citation-color, #6b6245)",
+          border: "var(--citation-border-color)",
+          ink: "var(--citation-color)",
         }),
       cursorOffsetX: 10,
       cursorOffsetY: 14,

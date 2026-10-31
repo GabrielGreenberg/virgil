@@ -641,7 +641,7 @@ export default function TabbedLibraryPanel({
           style={{
             position: "absolute",
             inset: 0,
-            background: "rgba(124, 94, 60, 0.08)",
+            background: "color-mix(in oklab, var(--accent) 8%, transparent)",
             border: "2px dashed var(--accent)",
             pointerEvents: "none",
             zIndex: 30,

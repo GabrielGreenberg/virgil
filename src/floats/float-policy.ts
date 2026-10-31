@@ -114,6 +114,10 @@ export { FLOATING_PANEL_Z_BASE };
  *                                       dialog tier; CSS mirror is the ONE
  *                                       `--float-z-base` var in globals.css,
  *                                       pinned by float-policy.test.ts)
+ *   toast stack                 1999   (TOAST_Z — the Library Toaster: above
+ *                                       every float + draggable dialog so a
+ *                                       popped card can't cover a toast, below
+ *                                       an open menu the user is operating)
  *   open chrome menus           2000   (OPEN_CHROME_MENU_Z — the <Menu>
  *                                       primitive's CHROME_Z; a transient open
  *                                       menu, e.g. the ActionsMenuPanel that the
@@ -174,6 +178,18 @@ export const IN_SCROLL_MARGIN_TRIGGER_Z = 20;
  * (below floats) vs open-menu (above floats) split can never drift.
  */
 export const OPEN_CHROME_MENU_Z = 2000;
+
+/**
+ * Paint z-index for the corner TOAST stack (the Library `Toaster`, task 1381).
+ * It sat at a bare `zIndex: 100` — below the docked-panel band and the whole
+ * float layer, so a popped card or floating panel parked in the bottom-right
+ * corner covered the notification meant to be read. A toast is transient
+ * status, not an interaction surface: ABOVE every float and the draggable
+ * dialog, one BELOW an open chrome menu (a menu the user is driving wins the
+ * corner it opens into), and far below the modal scrim, which is meant to
+ * cover everything.
+ */
+export const TOAST_Z = OPEN_CHROME_MENU_Z - 1;
 
 /**
  * The modal / tooltip z-scale — the top of the ladder, ABOVE every float and

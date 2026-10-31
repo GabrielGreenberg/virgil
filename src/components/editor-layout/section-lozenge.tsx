@@ -23,7 +23,7 @@ export function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[
   return (
     <div
       className="pointer-events-none text-[11px] whitespace-nowrap max-w-full truncate"
-      style={{ color: "var(--muted, #857c70)" }}
+      style={{ color: "var(--muted)" }}
     >
       {sectionPath.map((entry, i) => {
         const indexFromEnd = sectionPath.length - 1 - i;

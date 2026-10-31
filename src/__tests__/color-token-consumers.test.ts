@@ -251,6 +251,50 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     expect(hits(/hover:bg-edge-subtle/)).toEqual([]);
   });
 
+  it("spells no neutral hover as a raw black alpha (task 1381)", () => {
+    // `hover:bg-black/[0.06]`, `/[0.04]`, `/5` … is the neutral hover with
+    // its role thrown away: three Library sites carried three alphas for one
+    // "icon-button / list hover". The resting bg picks the class; there is
+    // no alpha to choose. (`group-hover:` is a different role — a reveal on
+    // the PARENT's hover — and is not this needle.) Allowlist EMPTY.
+    expect(hits(/(?<![\w-])hover:bg-black\b/)).toEqual([]);
+  });
+
+  it("paints no hover fill imperatively from a mouse handler (task 1381)", () => {
+    // `onMouseEnter={(e) => (e.currentTarget).style.background = "rgba(0,0,0,0.08)"}`
+    // is the same drift one level down — and invisible to every className
+    // needle above. The four Library tab-strip sites spelled 0.05 and 0.08
+    // beside the classes' 0.04; they take `.hover-on-dark` now. A handler
+    // that writes a background on hover is CONVERT-it. Allowlist EMPTY.
+    const imperative = /\.style\.background(?:Color)?\s*=|style\.setProperty\(\s*["'`]background/;
+    const out: string[] = [];
+    for (const abs of productionTsx()) {
+      const rel = path.relative(REPO_ROOT, abs);
+      const lines = scan(readFileSync(abs, "utf8")).split("\n");
+      lines.forEach((line, i) => {
+        if (!imperative.test(line)) return;
+        // Only a write inside a pointer-hover handler is a hover fill; look
+        // back to the nearest JSX handler key that owns the statement.
+        for (let j = i; j >= Math.max(0, i - 6); j--) {
+          const owner = lines[j].match(/\bon(Mouse|Pointer)(Enter|Leave|Over|Out)\b/);
+          if (owner) {
+            out.push(`${rel}:${i + 1}`);
+            break;
+          }
+        }
+      });
+    }
+    expect(out).toEqual([]);
+    // Anti-vacuity: the detector convicts the retired shape.
+    const planted = [
+      "onMouseEnter={(e) => {",
+      "  (e.currentTarget as HTMLButtonElement).style.background =",
+      '    "rgba(0,0,0,0.08)";',
+    ];
+    expect(imperative.test(planted[1])).toBe(true);
+    expect(/\bon(Mouse|Pointer)(Enter|Leave|Over|Out)\b/.test(planted[0])).toBe(true);
+  });
+
   /** The declaration that OWNS a scanned line: the nearest preceding
    *  top-level `const X`, refined to `X.key` when an object key sits between
    *  that declaration and the hit. This is the key the exemption map is

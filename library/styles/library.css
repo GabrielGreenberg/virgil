@@ -53,6 +53,15 @@
      explicitness, yes; redeclare AHEAD of a consumer, no. */
   --pgmark-bg: #f5f0ea;
   --pgmark-color: #856a1c;
+  /* The page-mark RULE + tag (.pgmark-rule / .pgmark-rule-tag): a deliberate
+     reader-chrome red, NOT the destructive family (task 1381 — it was two
+     hand-copied literals). */
+  --pgmark-rule-color: #c0392b;
+
+  /* The Library's muted body ink (#2a2a2a) instead of the editor's #000 —
+     softer for read-only academic papers. One token for the paper body and
+     the title field, which used to re-copy the literal without the reason. */
+  --library-body-ink: #2a2a2a;
 }
 
 
@@ -82,7 +91,7 @@
   background: var(--surface-muted, var(--surface));
   border: 1px solid var(--edge-subtle);
   color: var(--ink-muted);
-  font-family: var(--font-mono), monospace;
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.02em;
@@ -206,9 +215,7 @@
      one face. Defined in src/app/globals.css; tracks the editor's
      serif font (and any FontsDialog override). */
   font-family: var(--library-editing-font), "Source Serif 4", Georgia, serif;
-  /* Library uses a slightly muted body color (#2a2a2a) instead of
-     Virgil's editor #000 — softer for read-only academic papers. */
-  color: #2a2a2a;
+  color: var(--library-body-ink);
   line-height: 1.65;
   font-size: 15.5px;
   /* The Reader mounts the editor with `contenteditable="true"` so PM
@@ -362,7 +369,7 @@
   display: block;
   position: relative;
   height: 0;
-  border-top: 1.5px solid #c0392b;
+  border-top: 1.5px solid var(--pgmark-rule-color);
   margin: 0.6em 0;
   padding-bottom: 0.3em;
 }
@@ -371,8 +378,8 @@
   position: absolute;
   top: -0.65em;
   right: 0.2em;
-  background: var(--surface, white);
-  color: #c0392b;
+  background: var(--surface);
+  color: var(--pgmark-rule-color);
   font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   font-size: 9px;
   letter-spacing: 0.05em;
@@ -399,7 +406,7 @@
 [data-virgil-library-reader] .paper-render .tiptap .title-field-content.title-field-title {
   font-size: 1.6rem;
   font-weight: 700;
-  color: #2a2a2a;
+  color: var(--library-body-ink);
   line-height: 1.2;
   margin-bottom: 0.2em;
 }

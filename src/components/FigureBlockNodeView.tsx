@@ -159,7 +159,7 @@ function FigureCardPreview({
         <div
           className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
           style={{
-            backgroundColor: "var(--surface-muted, rgba(124, 94, 60, 0.04))",
+            backgroundColor: "var(--surface-muted)",
             borderColor: "var(--edge-subtle)",
             color: "var(--ink-strong)",
           }}

@@ -130,16 +130,14 @@ const fmt = (h: Hit) => `${h.file}:${h.line} ${h.hex} — ${h.text}`;
  * Raw destructive-family reds still spelled in a CSS RULE BODY.
  *
  * `globals.css` is EMPTY and must stay so — every one of its fifteen former
- * sites reads a token now. The two survivors are a different family that this
- * task deliberately did not repaint.
+ * sites reads a token now, and since task 1381 so does library.css (its two
+ * page-mark survivors, a different family, read `--pgmark-rule-color`).
  */
 const PERMITTED_RAW_CSS_REDS: Readonly<Record<string, string>> = {
-  "library/styles/library.css:#c0392b":
-    "the library reader's page-mark RULE + tag (.pgmark-rule / .pgmark-rule-tag). " +
-    "Not a destructive affordance — it is reader chrome, and its sibling .pgmark-chip " +
-    "reads --pgmark-color (#856a1c, a gold), so the red is deliberate and belongs to " +
-    "no existing token. Minting one is a visual decision about the reader's palette, " +
-    "not this family's cleanup.",
+  // (The library reader's page-mark rule + tag red `#c0392b` — reader chrome,
+  // not this family — was the last survivor, two hand-copied literals. Task
+  // 1381 named it once, as `--pgmark-rule-color` beside `--pgmark-color` in
+  // library.css's :root, so no rule body spells it any more.)
 };
 
 describe("stylesheets spell no raw destructive red in a rule body", () => {

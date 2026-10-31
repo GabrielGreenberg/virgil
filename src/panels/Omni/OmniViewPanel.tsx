@@ -391,7 +391,7 @@ export function OmniBinStack({
         ref={occupantRef}
         data-omni-bin-sticky=""
         className="flex flex-col gap-1"
-        style={{ position: "sticky", top: "var(--pod-gap, 8px)", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
+        style={{ position: "sticky", top: "var(--pod-gap)", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
       >
         {children}
       </div>

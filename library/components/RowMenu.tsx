@@ -96,7 +96,7 @@ export default function RowMenu({
         trigger={() => glyph}
         triggerDisabled={disabled}
         triggerHint={title ?? (disabled ? "Unavailable" : ariaLabel)}
-        triggerClassName={disabled ? undefined : "hover:bg-black/[0.06]"}
+        triggerClassName={disabled ? undefined : "hover-on-light"}
         triggerStyle={resolvedTriggerStyle}
         wrapperClassName="relative shrink-0 flex"
         containerStyle={{ minWidth }}

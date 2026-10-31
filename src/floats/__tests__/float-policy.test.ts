@@ -37,6 +37,7 @@ import {
   RESTING_MARGIN_TRIGGER_Z,
   IN_SCROLL_MARGIN_TRIGGER_Z,
   STACK_CHROME_Z,
+  TOAST_Z,
   capPopoutHeight,
   cardFloatZ,
   liftSpawnRect,
@@ -144,6 +145,16 @@ describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
     expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_MAX + 1);
     // …and the task-033 value is unchanged (1205) by the task-137 re-derivation.
     expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_BASE + 5);
+  });
+
+  it("stacks the toast above every float + the draggable dialog, below open menus and the modal (task 1381)", () => {
+    // The Library Toaster sat at a bare 100 — under the panel band and the
+    // float layer, so a popped card parked in the corner covered a toast.
+    expect(TOAST_Z).toBeGreaterThan(FLOAT_Z_MAX);
+    expect(TOAST_Z).toBeGreaterThan(DRAGGABLE_DIALOG_Z);
+    expect(TOAST_Z).toBeGreaterThan(FLOATING_PANEL_Z_BASE);
+    expect(TOAST_Z).toBeLessThan(OPEN_CHROME_MENU_Z);
+    expect(TOAST_Z).toBeLessThan(MODAL_SCRIM_Z);
   });
 
   // Task 1355 — the ⚡ bolt left the fixed tier: it now rides its line inside
