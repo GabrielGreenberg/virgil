@@ -121,7 +121,7 @@ export function useStripHandlers(deps: {
 //     here, and the next click committed a `movePanel` nobody made.
 
 /** One button's slot in a strip, as SNAPSHOT at the gesture edge. */
-interface StripSlot {
+export interface StripSlot {
   /** Which panel this slot renders. The drop's CURRENCY: a drop names the
    *  panel it lands in front of, never a count (task 440) — an index counted
    *  off the RENDERED strip is not an index into the placements list, because
@@ -135,7 +135,7 @@ interface StripSlot {
 }
 
 /** One side's strip, as snapshot at the gesture edge. */
-interface StripSideGeometry {
+export interface StripSideGeometry {
   left: number;
   width: number;
   top: number;
@@ -159,12 +159,43 @@ interface StripSideGeometry {
  * and the release can never answer from two different tables (the
  * false-affordance shape task 330's adversarial pass records).
  */
-interface StripDragGeometry {
-  /** The viewport split the side test uses — snapshotted with the rest so the
-   *  hover and the commit resolve the side identically. */
+export interface StripDragGeometry {
+  /** The x the side test splits at, in the PANE's frame (task 1394) —
+   *  snapshotted with the rest so the hover and the commit resolve the side
+   *  identically. Derived by `stripSplitX`; never the window's centre. */
   centerX: number;
   left: StripSideGeometry | null;
   right: StripSideGeometry | null;
+}
+
+/** The x a strip drop splits left from right at — THE side rule (task 1394).
+ *
+ *  The strips belong to ONE pane, and a pane is centred in the window only in
+ *  the main editor without side chrome: a Library Reader in the left panel
+ *  lies wholly left of `window.innerWidth / 2`, so a window-centre split sent
+ *  EVERY drop to its left strip. The split is therefore read off the pane's own
+ *  geometry:
+ *
+ *   - both strips mounted → the midpoint between their centres;
+ *   - one strip mounted (the other side has no visible panels, so its rail is
+ *     not rendered) → the pane root's centre, so a drop past the pane's far
+ *     half still resolves to the rail-less side and appends there (how an icon
+ *     moves to an empty side);
+ *   - one strip and no pane root → every drop goes to the mounted strip;
+ *   - nothing mounted → the pane centre, or 0 (the side is moot: the commit
+ *     appends either way). */
+export function stripSplitX(
+  left: Pick<StripSideGeometry, "left" | "width"> | null,
+  right: Pick<StripSideGeometry, "left" | "width"> | null,
+  paneRect: { left: number; width: number } | null,
+): number {
+  if (left && right) {
+    return (left.left + left.width / 2 + right.left + right.width / 2) / 2;
+  }
+  if (paneRect) return paneRect.left + paneRect.width / 2;
+  if (left) return Number.POSITIVE_INFINITY;
+  if (right) return Number.NEGATIVE_INFINITY;
+  return 0;
 }
 
 function readStripSideGeometry(
@@ -207,17 +238,18 @@ function readStripDragGeometry(
   fromSide: Side,
   scope: PaneScope,
 ): StripDragGeometry {
-  return {
-    centerX: window.innerWidth / 2,
-    left: readStripSideGeometry("left", draggedId, fromSide === "left", scope),
-    right: readStripSideGeometry("right", draggedId, fromSide === "right", scope),
-  };
+  const left = readStripSideGeometry("left", draggedId, fromSide === "left", scope);
+  const right = readStripSideGeometry("right", draggedId, fromSide === "right", scope);
+  // The pane rect is read only when it can decide anything — the one-strip
+  // fallback. Once per gesture, like every other rect here.
+  const paneRect = left && right ? null : (scope?.getBoundingClientRect() ?? null);
+  return { centerX: stripSplitX(left, right, paneRect), left, right };
 }
 
 /** A resolved drop: the side, the panel it lands IN FRONT OF (`null` =
  *  append), and the slot index the INDICATOR paints at. `beforeId` is what
  *  crosses the gesture boundary; `index` never leaves this module. */
-interface StripDrop {
+export interface StripDrop {
   side: Side;
   /** Indicator geometry only — an offset into `sideGeom.slots`, which is a
    *  RENDERED projection and therefore not an index `movePanel` may splice at. */
@@ -228,7 +260,7 @@ interface StripDrop {
 
 /** Pure arithmetic over the snapshot — the ONE resolution both the hover
  *  indicator and the release commit read. */
-function resolveStripDrop(
+export function resolveStripDrop(
   geom: StripDragGeometry,
   clientX: number,
   clientY: number,
