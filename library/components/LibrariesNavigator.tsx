@@ -13,6 +13,7 @@ import {
 } from "@library/lib/library-store";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import NavPod from "./NavPod";
+import { NavPodEmptyHint, NavPodRow } from "./NavPodRow";
 import RowMenu, { type RowMenuEntry } from "./RowMenu";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { InlineRenameInput } from "@/components/InlineRenameInput";
@@ -55,9 +56,6 @@ interface Props {
    *  favour of this per-library action + the header's "New from .bib". F#5. */
   onAddBibToLibrary?: (id: string) => void;
 }
-
-const ACCENT = "var(--accent)";
-const ACCENT_LIGHT = "var(--accent-light)";
 
 export default function LibrariesNavigator({
   registry,
@@ -144,7 +142,7 @@ export default function LibrariesNavigator({
 
       <SectionHeader>Project libraries</SectionHeader>
       {projectLibraries.length === 0 ? (
-        <EmptyHint>No documents open</EmptyHint>
+        <NavPodEmptyHint>No documents open</NavPodEmptyHint>
       ) : (
         projectLibraries.map((lib) => (
           <NavRow
@@ -159,7 +157,7 @@ export default function LibrariesNavigator({
 
       <SectionHeader addMenu={newLibraryMenu}>My libraries</SectionHeader>
       {customs.length === 0 ? (
-        <EmptyHint>No custom libraries</EmptyHint>
+        <NavPodEmptyHint>No custom libraries</NavPodEmptyHint>
       ) : (
         customs.map((lib) => (
           <NavRow
@@ -215,7 +213,6 @@ function NavRow({
   menuItems,
   menuAriaLabel,
 }: NavRowProps) {
-  const [hovered, setHovered] = useState(false);
   const [dropOver, setDropOver] = useState(false);
 
   const dataTransferHas = (e: DragEvent<HTMLDivElement>, type: string) => {
@@ -262,81 +259,42 @@ function NavRow({
   };
 
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <NavPodRow
+      label={label}
+      active={active}
+      onActivate={onClick}
+      dropOver={dropOver}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "0 12px 0 14px",
-        height: 28,
-        cursor: editing ? "text" : "pointer",
-        background: dropOver
-          ? ACCENT_LIGHT
-          : active
-            ? "var(--accent-light, rgba(124, 94, 60, 0.12))"
-            : hovered
-              ? "rgba(0, 0, 0, 0.04)"
-              : "transparent",
-        outline: dropOver ? `2px solid ${ACCENT}` : undefined,
-        outlineOffset: dropOver ? -2 : undefined,
-        borderRadius: dropOver ? "var(--radius-sm)" : 0,
-      }}
-      onClick={editing ? undefined : onClick}
       onDoubleClick={onStartEdit}
-    >
-      {/* Left accent bar for the active row */}
-      {active && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 4,
-            bottom: 4,
-            width: 3,
-            background: ACCENT,
-            borderRadius: "var(--radius-xs)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      {editing ? (
-        <InlineRenameInput
-          initialValue={label}
-          emptyValue="Untitled"
-          aria-label="Library name"
-          onRename={(next) => onRename?.(next)}
-          onClose={() => onEndEdit?.()}
-        />
-      ) : (
-        <span
-          style={{
-            flex: 1,
-            fontSize: 13,
-            lineHeight: "16px",
-            color: active ? "var(--foreground)" : "var(--foreground)",
-            fontWeight: active ? 500 : 400,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-          data-hint={label}
-        >
-          {label}
-        </span>
-      )}
-      {!editing && isOpen && !active && (
-        <StatusDot size="sm" tone="muted" label="Open in a panel" />
-      )}
-      {!editing && menuItems && menuItems.length > 0 && (
-        <RowMenu items={menuItems} ariaLabel={menuAriaLabel ?? "Library actions"} />
-      )}
-    </div>
+      editing={
+        editing ? (
+          <InlineRenameInput
+            initialValue={label}
+            emptyValue="Untitled"
+            aria-label="Library name"
+            onRename={(next) => onRename?.(next)}
+            onClose={() => onEndEdit?.()}
+          />
+        ) : undefined
+      }
+      trailing={
+        editing ? null : (
+          <>
+            {isOpen && !active && (
+              <StatusDot size="sm" tone="muted" label="Open in a panel" />
+            )}
+            {menuItems && menuItems.length > 0 && (
+              <RowMenu
+                items={menuItems}
+                ariaLabel={menuAriaLabel ?? "Library actions"}
+              />
+            )}
+          </>
+        )
+      }
+    />
   );
 }
 
@@ -396,21 +354,6 @@ function SectionHeader({
           }}
         />
       ) : null}
-    </div>
-  );
-}
-
-function EmptyHint({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        padding: "2px 14px 6px",
-        fontSize: 12,
-        color: "var(--muted)",
-        fontStyle: "italic",
-      }}
-    >
-      {children}
     </div>
   );
 }
