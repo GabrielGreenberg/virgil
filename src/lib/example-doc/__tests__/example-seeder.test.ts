@@ -395,16 +395,20 @@ describe("example bundle generator", () => {
     expect(BUNDLE_TEX_FILENAME).toBe(EXAMPLE_TEX_FILENAME);
   });
 
-  it("notes (never fails on) a stale built public/ artifact", async () => {
+  // ADVISORY, surfaced as a named skip (the skill-bundle-freshness pattern):
+  // a stale or absent artifact is not checked and did not fail.
+  it("the built public/ artifact matches the generator (advisory)", async (ctx) => {
     const manifestPath = join(bundleOutDir, "manifest.json");
-    if (!existsSync(manifestPath)) return;
+    if (!existsSync(manifestPath)) {
+      ctx.skip("[example-bundle] ADVISORY: public/examples not built in this checkout.");
+    }
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
       files: { path: string }[];
     };
     const built = manifest.files.map((f) => f.path).sort().join("\n");
     const fresh = [...(await listSampleFiles())].sort().join("\n");
     if (built !== fresh) {
-      console.info(
+      ctx.skip(
         "[example-bundle] ADVISORY: public/examples manifest is stale vs the sample; " +
           "predev/prebuild regenerate it (or run `npm run build:example-bundle`).",
       );
