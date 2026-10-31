@@ -300,6 +300,7 @@ export const NON_FLAG_VIRGIL_KEYS: Readonly<Record<string, string>> = {
   "virgil:selection-menu-color-palette": "the selection menu's last-used colour palette",
   "virgil:spell-dictionary": "the user's global custom spelling dictionary",
   "virgil:pref-css-paint": "the editor-prefs custom properties last painted, replayed before first paint (pref-css-bootstrap.ts)",
+  "virgil:collab-sessions:": "sessionStorage key prefix (+ checked window id): the collab sessions this window ran per paper, adopted after a reload (collab-session.ts, task 1392)",
   "virgil:tex-delimiters-changed": "DOM event name (not a storage key)",
   "virgil:tex-delimiters-will-change": "DOM event name (not a storage key)",
   "virgil:same-window-storage": "DOM event name (not a storage key) — the in-window twin of `storage` (cross-window-storage.ts, task 1014)",

@@ -31,7 +31,9 @@ import {
   COLLAB_TIMINGS,
   derivePen,
   ensureParticipant,
+  holdsClaim,
   holdsPen,
+  sweepStalePresence,
   touchPresence,
   type CollabIdentity,
   type CollabPresenceEntry,
@@ -112,12 +114,18 @@ export function releaseSelf(
     if (entry) {
       const others = otherFreshSessions(entry, self.session, now);
       if (others) {
-        if (entry.sessions && self.session in entry.sessions) {
+        const mineListed = !!entry.sessions && self.session in entry.sessions;
+        const mineClaim = holdsClaim(entry.focusedCard, self);
+        if (mineListed || mineClaim) {
           next = {
             ...next,
             presence: {
               ...next.presence,
-              [self.name]: { ...entry, sessions: others },
+              [self.name]: {
+                ...entry,
+                sessions: others,
+                focusedCard: mineClaim ? null : entry.focusedCard,
+              },
             },
           };
         }
@@ -159,7 +167,9 @@ function otherFreshSessions(
  * session-less record to its first heartbeating session — and refresh this
  * session's presence (and focus claim) if it has one. A session that does
  * not hold the pen never touches it, so a sibling pane or window of the same
- * name cannot keep a pen fresh that it is not writing under.
+ * name cannot keep a pen fresh that it is not writing under — and the same
+ * for the focus claim (task 1392): only the claiming session refreshes it,
+ * so a claim whose window closed ages out on `cardStaleMs`.
  */
 export function heartbeatMutator(
   self: CollabSelf,
@@ -176,11 +186,17 @@ export function heartbeatMutator(
       };
     }
     const myEntry = next.presence[self.name];
-    if (myEntry?.focusedCard) {
+    if (myEntry?.focusedCard && holdsClaim(myEntry.focusedCard, self)) {
       next = touchPresence(
         next,
         self.name,
-        { focusedCard: { ...myEntry.focusedCard, lastHeartbeat: now } },
+        {
+          focusedCard: {
+            ...myEntry.focusedCard,
+            session: self.session,
+            lastHeartbeat: now,
+          },
+        },
         self.session,
       );
     } else if (myEntry) {
@@ -207,6 +223,118 @@ export function activityMutator(
         lastHeartbeat: iso,
       },
     };
+  };
+}
+
+/* ── The focus claim (task 1392) ───────────────────────────────────
+ *
+ * The claim is one slot per NAME (`presence[name].focusedCard`), but its
+ * OWNER is the session that made it — the pen's discipline (task 1213)
+ * applied to the claim. Claiming stamps the session; refreshing and
+ * releasing ask {@link holdsClaim}. A sibling session claiming a card takes
+ * the slot (one person, one focused card); the sibling it displaced then
+ * neither refreshes nor clears the new claim. */
+
+/** Claim (`panelKind`, `cardId`) for `self`'s session. */
+export function claimCardMutator(
+  self: CollabSelf,
+  panelKind: string,
+  cardId: string,
+  clock: () => number = Date.now,
+): CollabMutator {
+  return (prev) => {
+    const now = new Date(clock()).toISOString();
+    return touchPresence(
+      prev,
+      self.name,
+      {
+        focusedCard: {
+          panelKind,
+          cardId,
+          focusedAt: now,
+          lastHeartbeat: now,
+          session: self.session,
+        },
+      },
+      self.session,
+    );
+  };
+}
+
+/** Release the focus claim — only one THIS session holds. `null` when there
+ *  is no claim or a sibling session of my name holds it. */
+export function releaseClaimMutator(self: CollabSelf): CollabMutator {
+  return (prev) => {
+    const entry = prev.presence[self.name];
+    if (!holdsClaim(entry?.focusedCard, self)) return null;
+    return touchPresence(prev, self.name, { focusedCard: null }, self.session);
+  };
+}
+
+/** The periodic stale sweep as a mutator: `null` (no write) when nothing on
+ *  disk is stale (task 1392 — every pane used to rewrite the file each
+ *  sweep). */
+export function sweepMutator(now: () => number = Date.now): CollabMutator {
+  return (prev) => {
+    const next = sweepStalePresence(prev, now());
+    return next === prev ? null : next;
+  };
+}
+
+/* ── Reload continuity (task 1392) ──────────────────────────────────
+ *
+ * A session is one `useCollab` per page load, so a reload is a new session
+ * and — since ownership is the session (task 1213) — the reloaded pane found
+ * its own pen "held in another pane" that no longer exists, and its text
+ * read-only. The window knows which sessions it ran before the reload
+ * (`collab-session.ts`, keyed by the CHECKED window id, so a duplicated tab
+ * inherits none); the new session ADOPTS whatever those dead predecessors
+ * held. */
+
+/** Move what the dead sessions `from` held under `self.name` — the pen, the
+ *  focus claim, their `sessions` stamps — onto `self.session`. `null` when
+ *  none of them holds anything on disk (already adopted by a sibling pane
+ *  of the same reload, released, or taken by someone else since). */
+export function adoptSessionsMutator(
+  self: CollabSelf,
+  from: readonly string[],
+  clock: () => number = Date.now,
+): CollabMutator {
+  const dead = new Set(from.filter((s) => s !== self.session));
+  return (prev) => {
+    if (!prev.enabled || dead.size === 0) return null;
+    let next = prev;
+    if (
+      prev.pen.holder === self.name &&
+      prev.pen.holderSession &&
+      dead.has(prev.pen.holderSession)
+    ) {
+      next = { ...next, pen: { ...next.pen, holderSession: self.session } };
+    }
+    const entry = next.presence[self.name];
+    if (entry) {
+      const claim = entry.focusedCard;
+      const adoptClaim = !!claim?.session && dead.has(claim.session);
+      const stamps = Object.keys(entry.sessions ?? {}).filter((s) => dead.has(s));
+      if (adoptClaim || stamps.length > 0) {
+        const sessions = { ...(entry.sessions ?? {}) };
+        for (const s of stamps) delete sessions[s];
+        sessions[self.session] = new Date(clock()).toISOString();
+        next = {
+          ...next,
+          presence: {
+            ...next.presence,
+            [self.name]: {
+              ...entry,
+              sessions,
+              focusedCard:
+                adoptClaim && claim ? { ...claim, session: self.session } : claim,
+            },
+          },
+        };
+      }
+    }
+    return next === prev ? null : next;
   };
 }
 
