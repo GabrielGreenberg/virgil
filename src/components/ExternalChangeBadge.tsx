@@ -306,7 +306,7 @@ function ExternalChangeBadge() {
   const visible = useBarStatusVisible("external-change", {
     standing: state.severity != null,
     atRisk: state.severity === "conflict",
-  });
+  }, activeDocId);
   if (!visible || state.severity == null) {
     return null;
   }

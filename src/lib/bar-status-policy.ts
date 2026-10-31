@@ -82,7 +82,37 @@ export interface BarStatusStates {
 
 export type BarStatusItemId = keyof BarStatusStates;
 
-export interface BarStatusPolicyEntry<S> {
+/**
+ * THE ITEMS WHOSE STATE BELONGS TO ONE DOCUMENT (task 1389). Their component
+ * reads the open paper's store (save tier, pen, watcher, notices), so a paper
+ * switch hands the SAME mounted item a different document's state — and a
+ * settle dwell earned by paper A must not let paper B's pill paint at once.
+ * `useBarStatusVisible` takes a REQUIRED scope key for exactly these ids (its
+ * overloads are typed from this union), and each entry's `scope` restates it
+ * so the table and the type cannot drift.
+ */
+export type BarStatusDocScopedId =
+  | "cowork-pen"
+  | "preservation"
+  | "mirror-recovery"
+  | "sync-conflict"
+  | "external-change"
+  | "save-state";
+
+/** `"doc"` for a {@link BarStatusDocScopedId}, `"app"` for every other item. */
+export type BarStatusScope<K extends BarStatusItemId> =
+  K extends BarStatusDocScopedId ? "doc" : "app";
+
+export interface BarStatusPolicyEntry<
+  S,
+  Scope extends "doc" | "app" = "doc" | "app",
+> {
+  /**
+   * Whose state this is (task 1389): `"doc"` — one paper's, so the settle
+   * dwell is per document and restarts on a paper switch; `"app"` — the
+   * session's, one dwell for the life of the item.
+   */
+  scope: Scope;
   /** Must the user see this state? False ⇒ the item renders nothing. */
   mustSee: (state: S) => boolean;
   /**
@@ -103,34 +133,43 @@ export interface BarStatusPolicyEntry<S> {
 const COWORK_SETTLE_MS = 10_000;
 
 export const BAR_STATUS_POLICY: {
-  readonly [K in BarStatusItemId]: BarStatusPolicyEntry<BarStatusStates[K]>;
+  readonly [K in BarStatusItemId]: BarStatusPolicyEntry<
+    BarStatusStates[K],
+    BarStatusScope<K>
+  >;
 } = Object.freeze({
   "software-update": {
+    scope: "app",
     mustSee: (s) => s.update !== "none",
     settleMs: 0,
     why: "Gabriel asked to keep it — a one-click update, labelled just “Virgil update”.",
   },
   "cowork-pen": {
+    scope: "doc",
     mustSee: (s) => s.held,
     settleMs: COWORK_SETTLE_MS,
     why: "Explains why the editor has stopped accepting typing.",
   },
   preservation: {
+    scope: "doc",
     mustSee: (s) => s.standing,
     settleMs: 0,
     why: "Virgil is refusing to save this paper — work is at risk.",
   },
   "mirror-recovery": {
+    scope: "doc",
     mustSee: (s) => s.standing,
     settleMs: 0,
     why: "Unsaved work survived only in the browser and can be restored.",
   },
   "sync-conflict": {
+    scope: "doc",
     mustSee: (s) => s.standing,
     settleMs: 0,
     why: "Conflicted copies may hold writing Virgil has never shown.",
   },
   "external-change": {
+    scope: "doc",
     mustSee: (s) => s.standing,
     // Virgil's own write, or a sync service's, can blip and reconcile in
     // seconds; only edits the user has not landed make it urgent.
@@ -139,13 +178,15 @@ export const BAR_STATUS_POLICY: {
     why: "The file changed on disk; autosave may be paused until resolved.",
   },
   "save-state": {
+    scope: "doc",
     // The task-357 rule, kept: a data-integrity tier is must-see; the
     // reassurance tiers ("Saved · 13:28", "Saving…") are not shown at all.
     // Task 1174: a cowork hold is the cowork-pen pill's to explain — one event,
     // one pill — and the save pill clears 1.5 s after the pen releases, so
     // showing it here only ever doubled or trailed the pen pill.
     mustSee: (s) =>
-      isSaveTierProtected(s.tier) && !(s.tier === "blocked" && s.reason === "cowork"),
+      isSaveTierProtected(s.tier) &&
+      !(s.tier === "blocked" && s.reason === "cowork"),
     // `unsaved` already means 20 s off disk; since the autosave debounce has
     // a maxWait it cannot age there through typing, and the settle window
     // keeps a slow write that is about to land from flashing.
@@ -156,31 +197,37 @@ export const BAR_STATUS_POLICY: {
     why: "Shown only once work has not landed (unsaved) or a gate holds it (blocked).",
   },
   "skill-sync": {
+    scope: "app",
     mustSee: (s) => s.failed,
     settleMs: 0,
     why: "A failed sync leaves cowork commands stale and needs a retry; a success is informational (Help → Refresh skills).",
   },
   pomodoro: {
+    scope: "app",
     mustSee: (s) => s.open,
     settleMs: 0,
     why: "The user opened the timer.",
   },
   "focus-view": {
+    scope: "app",
     mustSee: (s) => s.active && !s.zen,
     settleMs: 0,
     why: "The user turned Focus view on; the chip is its off-switch, so collapsing the tools must not hide it (zen hides it by design).",
   },
   "helper-mode": {
+    scope: "app",
     mustSee: (s) => s.on && !s.zen,
     settleMs: 0,
     why: "The user turned Helper mode on; the chip is its off-switch (zen hides it by design).",
   },
   collab: {
+    scope: "app",
     mustSee: (s) => s.enabled && !s.zen,
     settleMs: 0,
     why: "Collaborator mode is on: who holds the pen decides whether typing lands (zen hides it by design).",
   },
   compile: {
+    scope: "app",
     mustSee: (s) => s.compiling,
     settleMs: 0,
     why: "A compile can run for minutes; with the tools collapsed nothing else says it is still working.",

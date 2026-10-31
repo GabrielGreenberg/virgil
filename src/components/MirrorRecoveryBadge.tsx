@@ -134,7 +134,7 @@ function MirrorRecoveryBadgeImpl({ docId }: { docId: string | null }) {
     }
   }, [docId, busy, confirm, takenAt]);
 
-  const visible = useBarStatusVisible("mirror-recovery", { standing: !!offer });
+  const visible = useBarStatusVisible("mirror-recovery", { standing: !!offer }, docId);
   if (!visible || !offer) return null;
 
   return (

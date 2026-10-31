@@ -238,7 +238,7 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
   // care about would make a warning out of housekeeping.
   const visible = useBarStatusVisible("sync-conflict", {
     standing: !!notice && notice.total > 0,
-  });
+  }, docId);
   if (!visible || !notice) {
     return null;
   }
