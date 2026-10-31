@@ -18,7 +18,7 @@ class ResizeObserverStub {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
 import { render, cleanup, fireEvent, within } from "@testing-library/react";
-import WordCountPanel from "@/panels/WordCount/WordCountPanel";
+import { WordCountView as WordCountPanel } from "@/panels/WordCount/WordCountPanel";
 import { EMPTY_CATEGORY_COUNTS, type CategoryCounts } from "@/lib/word-count-core";
 import { CATEGORY_LABELS } from "@/hooks/useWordCountConfig";
 

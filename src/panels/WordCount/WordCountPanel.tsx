@@ -10,10 +10,21 @@ import {
 import { Panel } from "@/panels/_shared/Panel";
 import { CardMetaLabel } from "@/components/panel-primitives";
 import { Checkbox } from "@/components/CheckSquare";
+import type { Editor } from "@tiptap/react";
+import { useSelectionCounts } from "@/hooks/useSelectionCounts";
+
+interface WordCountViewProps {
+  counts: CategoryCounts;
+  selection: CategoryCounts | null;
+}
 
 interface WordCountPanelProps {
   counts: CategoryCounts;
-  selection: CategoryCounts | null;
+  /** The pane's main editor. The panel is the ONLY reader of the selection
+   *  tally, so it owns the subscription: mounting the panel is what attaches
+   *  the lazy per-editor store (task 1395) — a closed panel counts nothing,
+   *  and a selection change re-renders this panel, not the pane. */
+  editor: Editor | null;
 }
 
 const ALL_CATS: Category[] = ALL_CATEGORIES;
@@ -34,10 +45,13 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function WordCountPanel({
-  counts,
-  selection,
-}: WordCountPanelProps) {
+export default function WordCountPanel({ counts, editor }: WordCountPanelProps) {
+  const selection = useSelectionCounts(editor);
+  return <WordCountView counts={counts} selection={selection} />;
+}
+
+/** The panel's presentation, given both tallies. */
+export function WordCountView({ counts, selection }: WordCountViewProps) {
   const { config, setInclude } = useWordCountConfig();
 
   const visible = (cat: Category) => config.include[cat];

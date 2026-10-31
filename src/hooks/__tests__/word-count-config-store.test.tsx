@@ -52,7 +52,7 @@ describe("word-count config store (task 1224)", () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     const { getByRole } = render(
       <StrictMode>
-        <WordCountPanel counts={counts({ mainText: 100, footnotes: 7 })} selection={null} />
+        <WordCountPanel counts={counts({ mainText: 100, footnotes: 7 })} editor={null} />
         <Reader id="outline" />
         <Reader id="cutter" />
       </StrictMode>,
@@ -86,7 +86,7 @@ describe("word-count config store (task 1224)", () => {
   it("a non-boolean stored include value reads OFF in the row AND in the total (one spelling)", () => {
     localStorage.setItem(KEY, JSON.stringify({ include: { mainText: null } }));
     const { getByRole, container } = render(
-      <WordCountPanel counts={counts({ mainText: 4321, footnotes: 7 })} selection={null} />,
+      <WordCountPanel counts={counts({ mainText: 4321, footnotes: 7 })} editor={null} />,
     );
     const main = getByRole("checkbox", { name: new RegExp(CATEGORY_LABELS.mainText) });
     expect(main.getAttribute("aria-checked")).toBe("false");

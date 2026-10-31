@@ -193,7 +193,6 @@ import {
   useDocProductsHost,
   docProductsEnabled,
 } from "@/lib/doc-products/use-doc-products";
-import { useSelectionCounts } from "@/hooks/useSelectionCounts";
 import { useDiagnostics, DiagnosticsProvider, useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -2692,19 +2691,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     };
   }, [pdfView, docId]);
 
-  // Word counts — surfaces in the WordCount panel below. Cheap to
-  // compute even when the panel isn't open. Flag-on: content counts come
-  // from the pipeline's shared docJson (Tier B), selection counts from the
-  // extracted selection hook; the legacy hook is disabled via null editor.
+  // Word counts — the paper's CONTENT tallies (WordCount panel, Cutter goal
+  // strip, outline). Flag-on they come from the pipeline's shared docJson
+  // (Tier B); the legacy hook is disabled via null editor. The SELECTION tally
+  // is deliberately not here: the Word Count panel reads it from a lazy
+  // per-editor store (useSelectionCounts, task 1395), so a selection change
+  // re-renders no pane and costs nothing while the panel is closed.
   const legacyWordCountHook = useWordCount(docProductsEnabled ? null : editor);
-  const selectionCounts = useSelectionCounts(docProductsEnabled ? editor : null);
   const wordCountHook = useMemo<ReturnType<typeof useWordCount>>(() => {
     if (!docProductsEnabled) return legacyWordCountHook;
     return {
       counts: docProductsHost.snapshot.wordCounts ?? EMPTY_CATEGORY_COUNTS,
-      selection: selectionCounts,
     };
-  }, [legacyWordCountHook, docProductsHost.snapshot.wordCounts, selectionCounts]);
+  }, [legacyWordCountHook, docProductsHost.snapshot.wordCounts]);
 
   // Citation creation handlers — `handleCitationCreated` lands as
   // `onCitationCreated` in the `CitationDisplayContext` so panel
@@ -6986,6 +6985,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     setSearchHighlightRange={setSearchHighlightRange}
                     openItemInPanel={openItemInPanel}
                     wordCountHook={wordCountHook}
+                    editor={editor}
                     viewPrefs={effectiveViewPrefs}
                   />
                 ) : (
@@ -7043,6 +7043,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       setSearchHighlightRange={setSearchHighlightRange}
                       openItemInPanel={openItemInPanel}
                       wordCountHook={wordCountHook}
+                      editor={editor}
                       viewPrefs={effectiveViewPrefs}
                     />
                   </PanelChromeProvider>
@@ -8024,6 +8025,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         setSearchHighlightRange={setSearchHighlightRange}
                         openItemInPanel={openItemInPanel}
                         wordCountHook={wordCountHook}
+                        editor={editor}
                         viewPrefs={effectiveViewPrefs}
                       />
                     )}
@@ -8802,6 +8804,9 @@ interface PaneRailBodyProps {
   setSearchHighlightRange: React.Dispatch<React.SetStateAction<{ from: number; to: number } | null>>;
   openItemInPanel: (panel: PanelId, itemId: string) => void;
   wordCountHook: ReturnType<typeof useWordCount>;
+  /** This pane's main editor — the Word Count panel reads its selection tally
+   *  from it (task 1395). */
+  editor: Editor | null;
   /** View-state bundle. Both the main app and the Library Reader now supply
    *  it (the Reader via `useReaderViewPrefs()`), so the body's outline branch
    *  always routes to `<OutlineHost>`. Kept optional for any future caller. */
@@ -8862,6 +8867,7 @@ function PaneRailBody({
   setSearchHighlightRange,
   openItemInPanel,
   wordCountHook,
+  editor,
   viewPrefs,
   unanchoredFootnotes,
   onDeleteUnanchoredFootnote,
@@ -9110,7 +9116,7 @@ function PaneRailBody({
     return (
       <WordCountPanel
         counts={wordCountHook.counts}
-        selection={wordCountHook.selection}
+        editor={editor}
       />
     );
   }
