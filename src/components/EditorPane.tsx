@@ -54,6 +54,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -378,6 +379,7 @@ import {
 } from "./PendingChangePill";
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
+import { PANE_ROOT_ATTR, PaneRootContext } from "./editor-layout/pane-dom";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import {
   OmniFilterMenu,
@@ -4884,6 +4886,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const editorColRef = useRef<HTMLDivElement | null>(null);
   const rowScrollRef = useRef<HTMLElement | null>(null);
   const editorPaneRootRef = useRef<HTMLDivElement | null>(null);
+  // The pane's identity for `[data-pane-root]` (task 1393) — stable for the
+  // pane's lifetime, so a caller can find THIS pane's root by id at call time.
+  const paneRootId = useId();
   useLayoutEffect(() => {
     const root = editorPaneRootRef.current;
     if (!root) {
@@ -6742,6 +6747,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       bibEntries={citationsHook.bibEntries}
     >
     <DiagnosticsProvider value={diagnostics}>
+    {/* Task 1393 — this pane's OWN root, by id: every per-pane DOM lookup
+        made under it resolves inside it, not in whichever pane is visible
+        first (two Library Readers are visible at once). See pane-dom.ts. */}
+    <PaneRootContext.Provider value={paneRootId}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar, mainTextEditable: editable }}>
     <ViewPrefProjectionProvider value={viewPrefRoot}>
@@ -7083,6 +7092,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           })()}
           <div
             ref={editorPaneRootRef}
+            {...{ [PANE_ROOT_ATTR]: paneRootId }}
             className={`editor-pane-root${viewPrefRoot.className ? ` ${viewPrefRoot.className}` : ""}`}
             {...viewPrefRootAttrs}
             style={{
@@ -8259,6 +8269,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     </ViewPrefProjectionProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
+    </PaneRootContext.Provider>
     </DiagnosticsProvider>
     </SpellcheckProvider>
     </CardPresenceProvider>

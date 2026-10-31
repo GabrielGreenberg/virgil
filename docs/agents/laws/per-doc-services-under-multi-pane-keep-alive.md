@@ -160,13 +160,22 @@ Five rules it earned:
 - **`offsetHeight > 0` is a BACKSTOP, not the primary signal.** `offsetParent`
   is null for a `position: fixed` element that is perfectly visible, so the rung
   is the disjunction. A `display:none` subtree fails both.
-- **Scoped by CSS VISIBILITY, not by REACT TREE — stated at the door.** Exact
-  for the shipped topology (at most one visible pane); NOT exact for two
-  simultaneously visible panes (a future split view), where both pass the rung
-  and the first still wins. The context-scoped fix is wider (`FloatingPanel`
-  mounts from several places) and does not help `readDockGeometry`, which is
-  called from a gesture with no pane in hand. Take the filter now; the context
-  is the follow-on if a split view ships.
+- **OWNERSHIP first, visibility second (task 1393).** "At most one visible
+  pane" was never the shipped topology: the Library renders its left and right
+  panels side by side and each can host a live Reader, so the first VISIBLE
+  match answered the right Reader's docked band, strip drag, fit check and dock
+  sweep with the LEFT Reader's DOM. Each `EditorPane` now stamps
+  `[data-pane-root=<useId>]` on `.editor-pane-root` and provides the id through
+  `PaneRootContext`; every door takes a trailing `scope`, which is
+  AUTHORITATIVE (a miss in my pane is a miss, never a neighbour's element). React
+  callers read `usePaneRoot()` — a getter that looks the root up BY ID, because
+  `FloatingPanel` renders as an earlier sibling of the root and its layout
+  effect runs before the root's ref attaches; gesture callers holding an element
+  take `paneRootOf(el)`. Scope-less callers (event-bus publishers, the pure
+  `floatOpen` reducer's spawn rect) fall to the ladder, whose first rung is now
+  the FOCUSED pane (the same rung `pickActiveByEditor` takes), then visible.
+  CI: `pane-dom-ownership.test.tsx` (two VISIBLE panes) + the census's
+  ownership block (a scope-less door call must be on its reasoned allowlist).
 
 CI: [pane-dom-multipane.test.tsx](../../../src/components/editor-layout/__tests__/pane-dom-multipane.test.tsx)
 builds TWO panes — the hidden one FIRST, as production renders them — and drives

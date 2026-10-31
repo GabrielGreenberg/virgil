@@ -241,13 +241,19 @@ export function scrollEntryIntoView(
  */
 export function scrollPanelEntryAfterMount(
   selector: string,
-  opts: { frames?: number; targetY?: number; scroll?: ScrollIntoViewOptions } = {},
+  opts: {
+    frames?: number;
+    targetY?: number;
+    scroll?: ScrollIntoViewOptions;
+    /** The caller's own pane root, when it has one (task 1393). */
+    scope?: () => HTMLElement | null;
+  } = {},
 ): void {
-  const { frames = 1, targetY, scroll } = opts;
+  const { frames = 1, targetY, scroll, scope } = opts;
   const run = (left: number) => {
     requestAnimationFrame(() => {
       if (left > 1) return run(left - 1);
-      const entry = resolvePaneMarker(selector, "fail-open");
+      const entry = resolvePaneMarker(selector, "fail-open", scope?.());
       if (!entry) return;
       if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
       else scrollEntryIntoView(entry, scroll);
