@@ -3,7 +3,7 @@ import { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
 import { scrollPanelEntryAfterMount } from "./layout-scroll";
 import { measureOmniGap } from "./panel-column";
-import { paneStrip } from "./pane-dom";
+import { paneRootOf, paneStrip, usePaneRoot, type PaneScope } from "./pane-dom";
 import { onLayoutGestureSetChange } from "@/lib/pane-resize";
 import { DROP_INDICATOR_Z } from "@/floats/float-policy";
 import { stampDragGhostLayer } from "@/lib/drag-ghost";
@@ -38,6 +38,9 @@ export function useStripHandlers(deps: {
   selections: SelectionsContextValue;
 }) {
   const { prefs, openPanelDocked, closePopout, movePanel, selections } = deps;
+  // THIS strip's pane (task 1393): the fit check and the entry scroll measure
+  // the pane the click came from, not whichever Reader is visible first.
+  const paneRoot = usePaneRoot();
 
   const handleMove = useCallback(
     (draggedId: PanelId, toSide: Side, before?: PanelId | null) => {
@@ -60,7 +63,7 @@ export function useStripHandlers(deps: {
       // Strip clicks always open the panel as a band on its side. Measure
       // the live omni gap below the docked stack so the open-time fit check
       // can evict the LRU band when there's no room.
-      openPanelDocked(id, side, measureOmniGap(side));
+      openPanelDocked(id, side, measureOmniGap(side, paneRoot()));
 
       // If the panel has a selected card, scroll to it once the panel
       // mounts — two frames so the freshly opened band's list has rendered.
@@ -72,9 +75,11 @@ export function useStripHandlers(deps: {
       scrollPanelEntryAfterMount(sel.selector, {
         frames: 2,
         scroll: { behavior: "instant", block: "start" },
+        scope: paneRoot,
       });
     },
     [
+      paneRoot,
       openPanelDocked,
       closePopout,
       prefs.poppedOutPanels,
@@ -166,12 +171,15 @@ function readStripSideGeometry(
   side: Side,
   draggedId: PanelId,
   isSameSide: boolean,
+  scope: PaneScope,
 ): StripSideGeometry | null {
   // Task 438 — the strip is a per-PANE marker. A document-global find-first
   // can answer with a hidden keep-alive pane's strip, whose every rect is
   // zero: the indicator lands at the viewport origin and the drop index is
-  // counted off the WRONG pane's icons.
-  const strip = paneStrip(side);
+  // counted off the WRONG pane's icons. Task 1393 — and with two Library
+  // Readers visible at once, the visible-first answer is the LEFT Reader's
+  // strip, so the lookup is scoped to the dragged button's own pane.
+  const strip = paneStrip(side, scope);
   if (!strip) return null;
   const rect = strip.getBoundingClientRect();
   const slots: StripSlot[] = [];
@@ -197,11 +205,12 @@ function readStripSideGeometry(
 function readStripDragGeometry(
   draggedId: PanelId,
   fromSide: Side,
+  scope: PaneScope,
 ): StripDragGeometry {
   return {
     centerX: window.innerWidth / 2,
-    left: readStripSideGeometry("left", draggedId, fromSide === "left"),
-    right: readStripSideGeometry("right", draggedId, fromSide === "right"),
+    left: readStripSideGeometry("left", draggedId, fromSide === "left", scope),
+    right: readStripSideGeometry("right", draggedId, fromSide === "right", scope),
   };
 }
 
@@ -287,7 +296,7 @@ export function StripButton({
   const geometry = useCallback((): StripDragGeometry => {
     let g = geomRef.current;
     if (!g) {
-      g = readStripDragGeometry(panelId, side);
+      g = readStripDragGeometry(panelId, side, paneRootOf(btnRef.current));
       geomRef.current = g;
     }
     return g;

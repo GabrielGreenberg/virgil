@@ -38,7 +38,11 @@ import { canCaptureToStack } from "@/floats/stack-capture";
 import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
-import { paneDockSlot } from "@/components/editor-layout/pane-dom";
+import {
+  paneDockSlot,
+  usePaneRoot,
+  type PaneScope,
+} from "@/components/editor-layout/pane-dom";
 import {
   useViewPrefProjection,
   useViewPrefProjectionAttrs,
@@ -148,10 +152,10 @@ export function clampFloatPos<P extends { x: number; y: number; width: number }>
 }
 
 /** THE move gesture's geometry sweep. Gesture edges only — never per move. */
-function readMoveGeometry(needsDock: boolean): MoveGeometry {
+function readMoveGeometry(needsDock: boolean, scope: PaneScope): MoveGeometry {
   return {
     ...readFloatViewportBounds(),
-    dock: needsDock ? readDockGeometry() : null,
+    dock: needsDock ? readDockGeometry(scope) : null,
   };
 }
 
@@ -383,6 +387,11 @@ function FloatingPanelInner({
   // so its anchor is present and EMPTY, and a document-global lookup portaled
   // the visible pane's panel straight into it.
   const isVisible = useIsVisible();
+  // The OWNING pane's root (task 1393). The dock slot and the redock sweep are
+  // per-pane markers, and two Library Readers can be visible at once — so this
+  // panel resolves them inside its own pane, never the first visible one.
+  // `null` outside a pane (an app-level float), which takes the ladder.
+  const paneRoot = usePaneRoot();
   // The owning pane's view-pref projection (task 927): a float portals out of
   // the pane's subtree, so it carries the pane's projected classes + native
   // `spellcheck` attribute on its own root — the Reader's floats follow the
@@ -671,7 +680,7 @@ function FloatingPanelInner({
     const geometry = (): MoveGeometry => {
       let g = moveGeomRef.current;
       if (!g) {
-        g = readMoveGeometry(!!handlersRef.current.onMaybeRedock);
+        g = readMoveGeometry(!!handlersRef.current.onMaybeRedock, paneRoot());
         moveGeomRef.current = g;
       }
       return g;
@@ -1092,7 +1101,8 @@ function FloatingPanelInner({
       cancelTranslate();
       cancelResize();
     };
-  }, []);
+    // `paneRoot` is stable for the pane's lifetime (its id is a `useId`).
+  }, [paneRoot]);
 
   // Header mousedown — same handler in both modes. While docked, also
   // light up the dock socket outline.
@@ -1295,14 +1305,18 @@ function FloatingPanelInner({
     // `display:none` subtree is strictly worse than the body fallback below —
     // the panel would be "open" in prefs with its strip icon lit and nothing
     // on screen anywhere — so a miss resolves to null and takes the fallback.
-    const el = paneDockSlot(slotKey);
+    //
+    // Task 1393 — and resolved in THIS panel's own pane: two Library Readers
+    // are visible at once, each with its own `left-0`, and the first visible
+    // one is the LEFT Reader's, so the right Reader's band portaled there.
+    const el = paneDockSlot(slotKey, paneRoot());
     setTarget(el);
     if (!el) {
       // Fallback — body-portal so the panel is visible somewhere even
       // if the gutter happens to be missing the anchor. Not expected.
       setTarget(document.body);
     }
-  }, [mode, slotKey, isVisible]);
+  }, [mode, slotKey, isVisible, paneRoot]);
 
   // Hidden kept-alive pane → render nothing (no portal escape, no stacking).
   if (!isVisible) return null;

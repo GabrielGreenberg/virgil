@@ -8,7 +8,7 @@ import {
   bandSlotKey,
 } from "@/hooks/useViewPrefs";
 import { BandDivider } from "../panel-primitives";
-import { paneColumn } from "./pane-dom";
+import { paneColumn, type PaneScope } from "./pane-dom";
 import { flexColumnGestureId, pinFlexColumn, useFlexColumnPin } from "./flex-column-pin";
 import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
 
@@ -45,9 +45,9 @@ export type BandSpec = { id: PanelId; height?: number };
  * EVERY pane is hidden the fail-open column is unrendered too — now
  * `undefined`, not a zero-rect "full".)
  */
-export function measureOmniGap(side: Side): number | undefined {
+export function measureOmniGap(side: Side, scope?: PaneScope): number | undefined {
   if (typeof document === "undefined") return undefined;
-  const col = paneColumn(side);
+  const col = paneColumn(side, scope);
   if (!col) return undefined;
   const frame = col.querySelector<HTMLElement>(`[${DATA_STACK_FRAME}]`);
   if (!frame || !isPaneElementVisible(frame)) return undefined;

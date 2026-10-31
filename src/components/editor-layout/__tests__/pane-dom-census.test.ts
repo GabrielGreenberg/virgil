@@ -16,6 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 import path from "node:path";
 import { commentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
 import {
@@ -616,5 +617,95 @@ describe("pane-dom census, derived — no document-global selector folds to noth
     expect(
       scanSynthetic("declare const sel: { selector: string };\nexport const f = (r: Element) => r.querySelector(sel.selector);"),
     ).toEqual([]);
+  });
+});
+
+// ─── Task 1393 — OWNERSHIP: a caller that has its pane must pass it ────────
+//
+// The visibility rung cannot tell two VISIBLE panes apart (two Library Readers
+// side by side), so every per-pane door takes a trailing `scope`. A call that
+// omits it falls to the focused/visible ladder — correct only for a caller with
+// genuinely no pane in hand, and such callers are NAMED here with the reason.
+// A new scope-less call is MIGRATE-it (pass `usePaneRoot()()` from a React
+// caller under an `EditorPane`, or `paneRootOf(el)` from a gesture holding an
+// element) or a reasoned entry below.
+describe("pane-dom census — ownership (task 1393)", () => {
+  /** Door → the arity at which its `scope` argument is present. */
+  const SCOPED_DOORS: Record<string, number> = {
+    paneColumn: 2,
+    paneColumns: 1,
+    paneDockSlot: 2,
+    paneStrip: 2,
+    measureOmniGap: 2,
+    readDockGeometry: 1,
+  };
+  /** `file → door`: scope-less on purpose. */
+  const LADDER_ONLY: Record<string, string> = {
+    "components/editor-layout/spawn-position.ts → paneColumn":
+      "computeColumnSpawnRect is reached from the PURE viewPrefs reducer " +
+      "(floatOpen ← openInMode ← openPanel/togglePanel), which marker clicks " +
+      "and programmatic opens call with no pane in hand — the focused rung " +
+      "answers the pane the user just clicked in.",
+  };
+
+  function scopeLessCalls(): string[] {
+    const out = new Set<string>();
+    for (const [file, raw] of RAW) {
+      const r = rel(file);
+      const sf = ts.createSourceFile(file, raw, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+          const arity = SCOPED_DOORS[node.expression.text];
+          if (arity !== undefined && node.arguments.length < arity) {
+            out.add(`${r} → ${node.expression.text}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+    return [...out].sort();
+  }
+
+  it("every scope-less call to a per-pane door is on the ladder-only list", () => {
+    const unlisted = scopeLessCalls().filter((k) => !(k in LADDER_ONLY));
+    expect(unlisted).toEqual([]);
+  });
+
+  it("every ladder-only entry is still earned by a real call", () => {
+    const calls = new Set(scopeLessCalls());
+    expect(Object.keys(LADDER_ONLY).filter((k) => !calls.has(k))).toEqual([]);
+    for (const [k, why] of Object.entries(LADDER_ONLY)) {
+      expect(why.length, `${k} must state a reason`).toBeGreaterThan(40);
+    }
+  });
+
+  it("the converted members read their pane", () => {
+    const expected: Array<[string, string]> = [
+      ["components/FloatingPanel.tsx", "paneDockSlot(slotKey, paneRoot())"],
+      ["components/FloatingPanel.tsx", "readDockGeometry(scope)"],
+      ["components/editor-layout/drag-drop.tsx", "measureOmniGap(side, paneRoot())"],
+      ["components/editor-layout/drag-drop.tsx", "paneRootOf(btnRef.current)"],
+      ["components/editor-layout/drag-drop.tsx", "paneStrip(side, scope)"],
+      ["components/EditorPane.tsx", "[PANE_ROOT_ATTR]: paneRootId"],
+      ["components/EditorPane.tsx", "<PaneRootContext.Provider value={paneRootId}>"],
+    ];
+    for (const [file, needle] of expected) {
+      const code = CODE.get(path.join(SRC, ...file.split("/")));
+      expect(code, `${file} not scanned`).toBeTruthy();
+      expect(code!.includes(needle), `${file} must contain ${needle}`).toBe(true);
+    }
+  });
+
+  it("can see a scope-less call (canary)", () => {
+    const sf = ts.createSourceFile("x.ts", "paneStrip('left'); paneStrip('left', r);", ts.ScriptTarget.Latest, true);
+    let n = 0;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
+          node.arguments.length < SCOPED_DOORS[node.expression.text]) n++;
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    expect(n).toBe(1);
   });
 });

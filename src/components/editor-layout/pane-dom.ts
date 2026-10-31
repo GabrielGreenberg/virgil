@@ -45,19 +45,37 @@
  *    anchored on and HIDE the visible one (task 597). Answer `null` and let the
  *    caller take its own fallback.
  *
- * ## Stated limit: this scopes by CSS VISIBILITY, not by REACT TREE
+ * ## Ownership first: a caller that has its pane resolves INSIDE it (task 1393)
  *
- * It is exact for the shipped topology (at most ONE visible pane at a time —
- * the doc panes are keep-alive siblings and the Library pane replaces them).
- * It would NOT be exact for two SIMULTANEOUSLY VISIBLE panes (a future split
- * view): both columns pass the rung and the first still wins. The structurally
- * strongest fix for that is to scope by react tree — have `PanelColumn` publish
- * its root through a per-pane context and have `FloatingPanel` resolve its
- * anchor inside that subtree — which is a wider change (`FloatingPanel` mounts
- * from several places and would need the provider above all of them) and which
- * does not help `paneColumns()` at all, since `readDockGeometry` is called from
- * a gesture with no pane in hand. Take the visibility filter now; the context is
- * the follow-on if a split view ever ships.
+ * "At most one visible pane at a time" is FALSE: the Library renders its left
+ * and right panels side by side, each can host a live Reader `EditorPane`, and
+ * both pass the visibility rung — so a first-visible-match answered the RIGHT
+ * Reader's docked band, strip drag, open-time fit check and dock sweep with the
+ * LEFT Reader's DOM. Visibility cannot tell two visible panes apart; only
+ * OWNERSHIP can. So the ladder is:
+ *
+ *  1. **scope** — the caller names its own pane root (`PaneScope`). Exact, and
+ *     AUTHORITATIVE: a miss inside the caller's own pane is a miss (its column
+ *     is not rendered), never a licence to answer with a neighbour's. Every
+ *     caller that HAS a pane must pass it:
+ *       - React callers under an `EditorPane` (`FloatingPanel`, `IconStrip`'s
+ *         `useStripHandlers`) read `usePaneRoot()` — the pane's id rides
+ *         `PaneRootContext` and the root is looked up BY ID, never through a
+ *         ref, because `FloatingPanel` renders as an EARLIER SIBLING of the
+ *         pane root and its layout effect runs before the root's ref attaches.
+ *       - gesture callers holding an element (a strip button) take
+ *         `paneRootOf(el)`.
+ *  2. **focused** — no scope in hand (the event-bus publishers: card clicks,
+ *     link jumps, `openPanel`'s spawn rect): prefer a match inside the pane that
+ *     holds `document.activeElement` — the user's click just focused it. The
+ *     same first rung `pickActiveByEditor` takes.
+ *  3. **visible** — then the first visible match (`isPaneElementVisible`).
+ *  4. the caller's stated miss policy.
+ *
+ * The root is `[data-pane-root]`, stamped once per `EditorPane` on its
+ * `.editor-pane-root` (which encloses both rails, both columns, every dock
+ * slot and the paper page). `[data-virgil-row-scroll]` is the pane's ANCESTOR,
+ * so a scoped row lookup is `scope.closest(…)`, not `querySelector`.
  *
  * ## Scope: PANE markers, not CARD markers
  *
@@ -78,22 +96,67 @@
  * CI: `pane-dom-census.test.ts` — no production file in either silo may resolve
  * one of these markers off `document` outside this file. A relative
  * `closest(…)` / `root.querySelector(…)` from an element already inside the
- * pane needs no ladder and stays legal.
+ * pane needs no ladder and stays legal. Its OWNERSHIP block pins the scoped
+ * callers: each member of task 1393 must pass a scope, and a scope-less call
+ * to a pane-marker door must sit on its named ladder-only allowlist.
  */
 
+import { createContext, useCallback, useContext } from "react";
 import type { Side } from "@/hooks/useViewPrefs";
 import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
+
+/** The attribute each `EditorPane` stamps on its root, valued with its id. */
+export const PANE_ROOT_ATTR = "data-pane-root";
+
+/** A pane root, or nothing in hand. `null`/`undefined` take the ladder. */
+export type PaneScope = HTMLElement | null | undefined;
+
+/** The owning `EditorPane`'s id (React `useId`), provided by the pane. `null`
+ *  outside any pane (an app-level float host) — such callers take the ladder. */
+export const PaneRootContext = createContext<string | null>(null);
+
+/** The root element of the pane with `id`, looked up by id at call time. */
+export function paneRootById(id: string | null | undefined): HTMLElement | null {
+  if (!id || typeof document === "undefined") return null;
+  return document.querySelector<HTMLElement>(
+    `[${PANE_ROOT_ATTR}="${id.replace(/["\\]/g, "\\$&")}"]`,
+  );
+}
+
+/** The pane that OWNS `el` (its nearest `[data-pane-root]` ancestor). */
+export function paneRootOf(el: Element | null | undefined): HTMLElement | null {
+  return (el?.closest(`[${PANE_ROOT_ATTR}]`) as HTMLElement | null) ?? null;
+}
+
+/** For a React caller under an `EditorPane`: a stable getter for its own pane
+ *  root. A GETTER, resolved at call time, because the caller may run before
+ *  the root exists (see the header's ownership section). */
+export function usePaneRoot(): () => HTMLElement | null {
+  const id = useContext(PaneRootContext);
+  return useCallback(() => paneRootById(id), [id]);
+}
+
+/** The pane holding keyboard focus — the ladder's second rung. */
+function focusedPaneRoot(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return paneRootOf(document.activeElement);
+}
 
 /** What to answer when the selector matches only HIDDEN panes. See the header —
  *  the two are different claims, which is why no call site may omit it. */
 export type PaneMarkerMiss = "fail-open" | "fail-closed";
 
-/** The ONE resolver: visible match first, then the stated miss policy. */
+/** The ONE resolver — the header's ladder: scope (authoritative), focused
+ *  pane, first visible match, then the stated miss policy. */
 export function resolvePaneMarker(
   selector: string,
   onNoneVisible: PaneMarkerMiss,
+  scope?: PaneScope,
 ): HTMLElement | null {
   if (typeof document === "undefined") return null;
+  if (scope) return scope.querySelector<HTMLElement>(selector);
+  const focused = focusedPaneRoot()?.querySelector<HTMLElement>(selector);
+  if (focused && isPaneElementVisible(focused)) return focused;
   const all = document.querySelectorAll<HTMLElement>(selector);
   for (const el of all) if (isPaneElementVisible(el)) return el;
   return onNoneVisible === "fail-open" ? (all[0] ?? null) : null;
@@ -104,18 +167,23 @@ export function resolvePaneMarker(
  * nothing, hand back everything — the pre-438 behaviour, and the direction that
  * cannot turn a gesture off.
  */
-export function resolvePaneMarkers(selector: string): HTMLElement[] {
+export function resolvePaneMarkers(
+  selector: string,
+  scope?: PaneScope,
+): HTMLElement[] {
   if (typeof document === "undefined") return [];
+  if (scope) return Array.from(scope.querySelectorAll<HTMLElement>(selector));
   const all = Array.from(document.querySelectorAll<HTMLElement>(selector));
   const visible = all.filter(isPaneElementVisible);
   return visible.length > 0 ? visible : all;
 }
 
 /** The panel column on `side` in the visible pane (fail-open: a measurement). */
-export function paneColumn(side: Side): HTMLElement | null {
+export function paneColumn(side: Side, scope?: PaneScope): HTMLElement | null {
   return resolvePaneMarker(
     `[data-panel-column-side="${side}"]`,
     "fail-open",
+    scope,
   );
 }
 
@@ -123,14 +191,14 @@ export function paneColumn(side: Side): HTMLElement | null {
  *  membership. A hidden column reports `left = right = 0`, whose snap corner
  *  `(0, frame.top)` is nearer the viewport's top-left than any real
  *  column's, so it would win the proximity test outright. */
-export function paneColumns(): HTMLElement[] {
-  return resolvePaneMarkers("[data-panel-column-side]");
+export function paneColumns(scope?: PaneScope): HTMLElement[] {
+  return resolvePaneMarkers("[data-panel-column-side]", scope);
 }
 
 /** The band anchor for `slotKey` (`"<side>-<index>"`) in the visible pane.
  *  FAIL-CLOSED — see the header. */
-export function paneDockSlot(slotKey: string): HTMLElement | null {
-  return resolvePaneMarker(`[data-dock-slot="${slotKey}"]`, "fail-closed");
+export function paneDockSlot(slotKey: string, scope?: PaneScope): HTMLElement | null {
+  return resolvePaneMarker(`[data-dock-slot="${slotKey}"]`, "fail-closed", scope);
 }
 
 /**
@@ -141,8 +209,8 @@ export function paneDockSlot(slotKey: string): HTMLElement | null {
  * strip means an indicator placed from a zero rect and an index counted off
  * the wrong pane's icons.
  */
-export function paneStrip(side: Side): HTMLElement | null {
-  return resolvePaneMarker(`[data-strip-side="${side}"]`, "fail-open");
+export function paneStrip(side: Side, scope?: PaneScope): HTMLElement | null {
+  return resolvePaneMarker(`[data-strip-side="${side}"]`, "fail-open", scope);
 }
 
 /**

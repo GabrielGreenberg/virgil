@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Side } from "@/hooks/useViewPrefs";
-import { paneColumns } from "./pane-dom";
+import { paneColumns, type PaneScope } from "./pane-dom";
 
 /**
  * Shared signal: which dock target a drag is currently over, and the
@@ -226,8 +226,13 @@ function readScrollportBand(
  * `index = bands.length` with a zero-size outline. Same shape task 272 recorded
  * for the 0px COLLAPSED column, one cause over: that one was fixed by clearing
  * the collapse sentinel, which does nothing for a hidden pane.
+ *
+ * Task 1393 — visibility is not membership either: two Library Readers are
+ * visible at once, so a scope-less sweep let a band dragged in one Reader snap
+ * into the OTHER Reader's column. A caller with its pane in hand (the panel's
+ * own `FloatingPanel`) passes `scope`, and the sweep is that pane's columns.
  */
-export function readDockGeometry(): DockGeometry {
+export function readDockGeometry(scope?: PaneScope): DockGeometry {
   if (typeof document === "undefined") {
     return { podGap: DEFAULT_POD_GAP, columns: [] };
   }
@@ -236,7 +241,7 @@ export function readDockGeometry(): DockGeometry {
       getComputedStyle(document.documentElement).getPropertyValue("--pod-gap"),
     ) || DEFAULT_POD_GAP;
   const columns: DockColumnGeometry[] = [];
-  for (const col of paneColumns()) {
+  for (const col of paneColumns(scope)) {
     const r = col.getBoundingClientRect();
     const side = (col.dataset.panelColumnSide ?? "left") as Side;
     columns.push({
