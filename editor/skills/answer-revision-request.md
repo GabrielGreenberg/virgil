@@ -124,8 +124,9 @@ source request in place.
    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 
    # Path (a) — suggestion → L3 propose: the card lands, the Task is left
-   # AWAITING REVIEW (status: in-progress), the .tex untouched until
-   # /editor/accept-suggestion. `original_text` must be verbatim from the
+   # AWAITING REVIEW (status: in-progress), the change not applied until
+   # /editor/accept-suggestion (a --range anchor still lands —
+   # _safety-levels.md). `original_text` must be verbatim from the
    # anchored paragraph (never the %!v: marker) or NOTHING lands — the same
    # question accept's stale guard asks; an empty replacement is refused too.
    cat > "$t/original" <<'TXT'

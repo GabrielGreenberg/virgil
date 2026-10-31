@@ -154,7 +154,8 @@ this skill.
    same locator accept's stale guard splices through), or when a revision's
    replacement is empty (task 957; only a Cutter cut may be empty). On success
    the card lands `pending`, the Task is left **awaiting review** (`status:
-   in-progress`, `resultId` → the card), the `.tex` is untouched, and the
+   in-progress`, `resultId` → the card), the replacement is not applied (a `--range` anchor still lands —
+   [_safety-levels.md](_safety-levels.md)), and the
    source card's `aiRequest` flag (if any) is lowered. Re-running on a Task
    whose proposal already exists returns a `noop` naming that card — reply
    `Skipped … (already answered).` ([Idempotency](#idempotency)). The

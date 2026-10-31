@@ -37,7 +37,8 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
 
 ## Procedure
 
-1. **Resolve the card** (confirm it's a movable Mode-A card):
+1. **Resolve the card** (confirm it's a movable card — paragraph- or
+   span-anchored, not atom-bearing; see Applicability):
    ```bash
    python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
    ```
@@ -84,5 +85,5 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
 ## Reply
 
 ```
-Done: move-card <cardId> → %!v:<newAnchor> (<cardKind>). Output: <panel>.json (+ notifications, version).
+Done: move-card <cardId> → %!v:<newAnchor> (<cardKind>). Output: <panel>.json (+ document.tex when a span is moved, wrapped or unwrapped, notifications, version).
 ```

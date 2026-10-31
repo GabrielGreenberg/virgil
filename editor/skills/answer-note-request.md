@@ -213,11 +213,12 @@ two paths:
    refused before any write (`responder-accept-kinds-census.test.ts` pins
    every create call in a responder to every kind it drains).
    The card lands and the Task is left **awaiting review** (`status:
-   in-progress`), the `.tex` untouched until the user accepts via
-   `/editor/accept-suggestion`. Leave the source note intact (the user's
+   in-progress`), the change not applied until the user accepts via
+   `/editor/accept-suggestion` (a `--range` anchor still lands —
+   [_safety-levels.md](_safety-levels.md)). Leave the source note intact (the user's
    prompt); `clearSourceFlag: true` clears the note's `aiRequest` flag when the
    request was bridged from one. This is the L3 propose path — *not* legacy
-   default-apply; it never edits the `.tex`.
+   default-apply; it never applies the replacement itself.
 
 5. **Reply.** One line, per path:
    - Path (b) — report (step 2's `create_card.py` already landed the card and

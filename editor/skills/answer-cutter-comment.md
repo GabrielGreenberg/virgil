@@ -121,8 +121,9 @@ once — see step 5).
    verbatim in the anchored paragraph (no paraphrase, never the `%!v:`
    marker — accept's stale guard asks the same question through the same
    locator). On success the card is `pending`, the Task **awaiting review**
-   (`status: in-progress`), the `.tex` untouched until
-   `/editor/accept-suggestion`, and the source comment's `aiRequest` lowered.
+   (`status: in-progress`), the change not applied until
+   `/editor/accept-suggestion` (a `--range` anchor still lands —
+   [_safety-levels.md](_safety-levels.md)), and the source comment's `aiRequest` lowered.
    A re-run on a Task whose proposal exists is a `noop` naming that card (on a
    `virtual:` id whose flag is already down, a `noop` with no `cardId` — the
    virtual proposal carries no back-pointer). The

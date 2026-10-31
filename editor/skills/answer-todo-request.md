@@ -157,8 +157,9 @@ matters" (write a note). Read the todo and dispatch.
      exit "$rc"
      ```
      The card lands and the todo's Task is left **awaiting review** (`status:
-     in-progress`), the `.tex` untouched until the user accepts via
-     `/editor/accept-suggestion`. This is the L3 propose path, *not* legacy
+     in-progress`), the change not applied until the user accepts via
+     `/editor/accept-suggestion` (a `--range` anchor still lands —
+     [_safety-levels.md](_safety-levels.md)). This is the L3 propose path, *not* legacy
      default-apply.
 
    - **Footnote → one hop.** The tier-1 call from step 2, verbatim; it drains

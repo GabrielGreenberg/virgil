@@ -181,8 +181,9 @@ just decides the inputs and invokes it.
    ask the user when they haven't standardized one — *no implicit default beyond
    the direct-create case* (spec §8). `create_card.py` maps the level to the
    subcommand: 1 → `write-silent`, 2 → `write-with-comment` (a sibling note rides
-   along), 3 → `complete-task --propose` (drafted, `.tex` untouched, awaiting
-   review); none → `complete-task` (direct-created). **`example` is the exception**
+   along), 3 → `complete-task --propose` (drafted, awaiting
+   review — the change is not applied; a `--range` anchor still lands, see
+   [_safety-levels.md](_safety-levels.md)); none → `complete-task` (direct-created). **`example` is the exception**
    — it is a direct tex-only create with no Task and no safety levels (see below).
 
 3. **Run the create.**
@@ -244,7 +245,9 @@ just decides the inputs and invokes it.
    Done: create-card <kind> <cardId> for <requestId> (<subcommand>). Output: <sidecar>.json + document.tex (+ ai-requests.json, notifications, version).
    ```
    For a Level-3 proposal, say the card is *drafted and awaiting review* — it's in
-   the panel but the `.tex` anchor isn't placed yet.
+   the panel, the change it proposes is not applied (a footnote/citation's
+   marker is not spliced), but a `--range` card's `\vlid` pair IS in the `.tex`
+   ([_safety-levels.md](_safety-levels.md)).
 
 ## Per-kind notes
 
