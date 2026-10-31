@@ -124,6 +124,8 @@ export function TabPlusMenu({
     [],
   );
 
+  const getTrigger = useCallback(() => btnRef.current, []);
+
   const recents = selectRecentDocs(docs, {
     excludeIds: openTabIds,
     limit: RECENT_PAPERS_MENU_LIMIT,
@@ -163,6 +165,9 @@ export function TabPlusMenu({
       // click would land "outside" and immediately self-close the menu it just
       // opened.
       excludeRefs={[wrapEl]}
+      // No activedescendant host here, so Escape's focus return names the "+"
+      // trigger explicitly (task 1388).
+      returnFocusOnCancel={getTrigger}
       onClose={close}
       ariaLabel="Open paper or create new"
       containerClassName="min-w-[280px] py-1.5"

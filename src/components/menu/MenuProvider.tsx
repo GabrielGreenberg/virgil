@@ -129,10 +129,22 @@ export interface MenuProviderProps {
    * own business (it may navigate). And focus is only RETURNED, never stolen:
    * the move happens only when focus is inside the menu or has fallen to
    * `<body>` — a trigger that still holds it (the house roving model, task
-   * 477) is left alone, and an editor-anchored menu, which keeps focus in the
-   * ProseMirror view, simply never supplies this.
+   * 477) is left alone.
+   *
+   * DEFAULT (task 1388): omitted, the target is the menu's
+   * `getActiveDescendantHost` — the element "where the keyboard user stands",
+   * resolved ONCE when the menu opens (a caret host reads live focus, which by
+   * Escape may sit on a clicked row). Supplying a host therefore IS supplying a
+   * return target; the contract is structural, not opt-in per caller. A host
+   * INSIDE the menu (a combobox's own `<input>`) is no target — it unmounts with
+   * the menu. An editor-anchored menu's host is the PM view's editable, and the
+   * return is a native `focus({ preventScroll: true })`, never TipTap's
+   * `focus()` (Refocus is not navigation): ProseMirror restores its own
+   * selection on focus, so the caret stays where it was and nothing scrolls.
+   * `false` declares an explicit exemption (the census in
+   * `menu-escape-focus-return.test.tsx` requires a host, a target or this).
    */
-  returnFocusOnCancel?: () => HTMLElement | null;
+  returnFocusOnCancel?: (() => HTMLElement | null) | false;
   /**
    * Activating a REGISTERED row dismisses this menu (task 477). The MENU-layer
    * twin of `AnchoredMenu`'s `closeOnInsideClick`, which forwards it: that flag
@@ -358,10 +370,31 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   // The CANCEL door, with the optional focus return folded in (task 1011).
   // `undefined` when there is nothing to fold, so `useMenuDismiss` keeps its
   // own `onCancel ?? onClose` default and every existing caller is unchanged.
+  // The open-time host (task 1388), captured before any row can take focus.
+  // A layout effect on mount = this open: the provider mounts per open.
+  const openHostRef = useRef<HTMLElement | null>(null);
+  const hostGetterRef = useRef(getActiveDescendantHost);
+  useLayoutEffect(() => {
+    hostGetterRef.current = getActiveDescendantHost;
+  });
+  useLayoutEffect(() => {
+    openHostRef.current = hostGetterRef.current?.() ?? null;
+  }, []);
+  const hasHost = !!getActiveDescendantHost;
   const cancelDoor = useMemo(() => {
-    if (!returnFocusOnCancel) return onCancel;
+    if (returnFocusOnCancel === false) return onCancel;
+    if (!returnFocusOnCancel && !hasHost) return onCancel;
+    const resolveTarget = (): HTMLElement | null => {
+      if (returnFocusOnCancel) return returnFocusOnCancel();
+      const outside = (el: HTMLElement | null | undefined) =>
+        !!el && el.isConnected && !containerRef.current?.contains(el);
+      const captured = openHostRef.current;
+      if (outside(captured)) return captured;
+      const live = hostGetterRef.current?.() ?? null;
+      return outside(live) ? live : null;
+    };
     return () => {
-      const target = returnFocusOnCancel();
+      const target = resolveTarget();
       const held =
         typeof document === "undefined" ? null : document.activeElement;
       const shouldReturn =
@@ -373,7 +406,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       (onCancel ?? onClose)();
       if (shouldReturn) target.focus({ preventScroll: true });
     };
-  }, [returnFocusOnCancel, onCancel, onClose]);
+  }, [returnFocusOnCancel, hasHost, onCancel, onClose]);
   useMenuDismiss({
     containerRef,
     getExcludes,

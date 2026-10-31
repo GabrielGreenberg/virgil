@@ -192,6 +192,8 @@ export interface BarStatusMenuController {
   closeMenu: () => void;
   toggleMenu: () => void;
   trackAnchor: () => DOMRect | null;
+  /** The kebab trigger — where Escape returns focus (task 1388). */
+  getKebabEl: () => HTMLButtonElement | null;
 }
 
 export function useBarStatusMenu(): BarStatusMenuController {
@@ -230,7 +232,8 @@ export function useBarStatusMenu(): BarStatusMenuController {
     });
   }, []);
   const trackAnchor = useCallback(() => kebabRef.current?.getBoundingClientRect() ?? null, []);
-  return { open, anchorRect, setKebabEl, wrapEl, setWrapEl, openMenu, closeMenu, toggleMenu, trackAnchor };
+  const getKebabEl = useCallback(() => kebabRef.current, []);
+  return { open, anchorRect, setKebabEl, wrapEl, setWrapEl, openMenu, closeMenu, toggleMenu, trackAnchor, getKebabEl };
 }
 
 function KebabIcon() {
@@ -419,6 +422,7 @@ export function BarStatusPill({
     closeMenu,
     toggleMenu,
     trackAnchor,
+    getKebabEl,
   } = menu?.controller ?? {};
   const announcement = barStatusAnnouncement(tone);
   const labelStyle: CSSProperties = {
@@ -525,6 +529,8 @@ export function BarStatusPill({
           // The kebab trigger lives outside the portaled menu, so exempt the
           // pill wrapper from click-outside (else the toggle click self-closes).
           excludeRefs={[wrapEl]}
+          // Escape hands focus back to the kebab (task 1388).
+          returnFocusOnCancel={getKebabEl}
           onClose={closeMenu}
           ariaLabel={menu.ariaLabel}
           // Body-portaled at the menu primitive's CHROME_Z so the sticky
