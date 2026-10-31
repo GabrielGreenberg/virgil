@@ -21,6 +21,11 @@ import PaperAiRequestsMenu, {
 } from "./PaperAiRequestsMenu";
 import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
 import { dispatchOpenLibrary } from "@/components/library/open-library-entry";
+import {
+  OPEN_IN_TAB_HINT,
+  copyOutcomeMessage,
+  copyText,
+} from "@library/lib/paper-actions";
 import { CopyIcon } from "@/components/icons/CopyIcon";
 import { ExternalLinkIcon } from "@/components/icons/ExternalLinkIcon";
 import { Textarea } from "@/components/field-primitives";
@@ -451,9 +456,8 @@ export default function PaperHeader({
                   className="focus-ring"
                   type="button"
                   onClick={() => {
-                    void navigator.clipboard?.writeText(citekey).then(
-                      () => flashFor("citekey copied ✓"),
-                      () => flashFor("copy failed"),
+                    void copyText(citekey).then((outcome) =>
+                      flashFor(copyOutcomeMessage(outcome, "citekey copied ✓")),
                     );
                   }}
                   {...iconHint({ label: "Copy citekey" })}
@@ -582,7 +586,7 @@ export default function PaperHeader({
               <button
                 type="button"
                 onClick={() => dispatchOpenLibrary({ citekey, target: "tab" })}
-                data-hint="Open this paper in a new tab"
+                data-hint={OPEN_IN_TAB_HINT}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",

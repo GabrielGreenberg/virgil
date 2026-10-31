@@ -169,7 +169,7 @@ describe("PaperHeader — AI-request state re-syncs without a remount (task 132)
         .getAllByRole("menuitemcheckbox")
         .filter((el) => el.getAttribute("aria-checked") === "true")
         .map((el) => (el.textContent ?? "").replace("✓", "").trim()),
-    ).toEqual(["Bib review"]);
+    ).toEqual(["AI bib review"]);
   });
 
   it("does not yank the instructions field out from under a typing user when the queue drains", async () => {

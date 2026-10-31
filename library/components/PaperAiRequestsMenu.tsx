@@ -25,8 +25,8 @@ interface Props<K extends string> {
 
 /**
  * "AI requests" header dropdown. Replaces the inline checkbox row: ONE button
- * opens a menu of the five toggleable requests (Index / Deep index / Bib review
- * / Doc review / Import bib). Each item is an independent toggle (multi-select)
+ * opens a menu of the five toggleable requests (Index / Deep index / AI bib
+ * review / AI doc review / Import bibliography). Each item is an independent toggle (multi-select)
  * showing a ✓ when queued and respecting per-item disabled state.
  *
  * Built on the app's ONE menu door (`AnchoredMenu`, task 1011). It used to be a

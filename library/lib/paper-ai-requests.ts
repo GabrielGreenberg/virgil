@@ -45,7 +45,8 @@ export interface PaperRequestContext {
 
 export interface PaperRequestDescriptor {
   kind: PaperRequestKind;
-  /** Menu label. */
+  /** The action's ONE label — the paper header's AI-requests menu and the
+   *  catalog row's ⋮ menu (`RowActionMenu`) both read it (task 1382). */
   label: string;
   /** The on-disk queue kind whose `requested` entry means "this box is
    *  checked". Read from the entry's own `kind` field, never the filename
@@ -79,14 +80,14 @@ export const PAPER_REQUESTS_BY_KIND: Record<
   },
   bib: {
     kind: "bib",
-    label: "Bib review",
+    label: "AI bib review",
     queueKind: "authenticate",
     enqueue: ({ root, citekey, note }) => queueBibReview(root, citekey, note),
     cancel: ({ root, citekey }) => cancelBibReview(root, citekey),
   },
   doc: {
     kind: "doc",
-    label: "Doc review",
+    label: "AI doc review",
     queueKind: "paper-review",
     requiresIndexed: "Index the paper first to file a document AI request",
     enqueue: ({ root, citekey, note }) => queuePaperReview(root, citekey, note),
@@ -94,7 +95,7 @@ export const PAPER_REQUESTS_BY_KIND: Record<
   },
   importbib: {
     kind: "importbib",
-    label: "Import bib",
+    label: "Import bibliography",
     queueKind: "import-bib",
     requiresIndexed: "Index the paper first to import its bibliography",
     enqueue: ({ root, citekey, note }) => queueImportBib(root, citekey, note),

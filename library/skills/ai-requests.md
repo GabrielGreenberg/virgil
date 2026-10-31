@@ -86,8 +86,8 @@ A queue entry is an AI request when **any** of these is true:
    Dispatch to `/library/deep-index <citekey>` (the skill reads the note from
    the queue file). `deepIndex` entries **without** a note are standard
    deep-index requests — leave them for `/library/index-pending` to handle.
-4. `kind == "import-bib"` — produced by the "Import bib" checkbox /
-   "Import bibliography" row-menu item. File:
+4. `kind == "import-bib"` — produced by the "Import bibliography" item
+   (paper header AI-requests menu / catalog row menu). File:
    `.virgil/queue/<citekey>-importbib.json`. `note` is optional.
    Dispatch to `/library/import-bib <citekey>` (the skill reads the note
    from the queue file, folds `references.bib` into `master.bib`, marks
