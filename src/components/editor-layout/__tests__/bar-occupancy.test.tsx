@@ -321,7 +321,6 @@ function statusProps(
 ): StatusClusterProps {
   return {
     vbar: { aiDot: null, compilePdf: noop, isCompiling: false, pdfStale: false },
-    collabEnabled: false,
     zenModeOn: false,
     topbarRightCollapsed: userCollapsed,
     setTopbarRightCollapsed: setUserCollapsed as StatusClusterProps["setTopbarRightCollapsed"],

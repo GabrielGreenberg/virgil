@@ -741,7 +741,8 @@ export interface EditorPaneMenuBarBundle {
 
   // ── Dialog openers (drive shell-owned modals) ──────────────────
   onOpenFontsDialog: () => void;
-  onOpenMarginsMode: () => void;
+  // No `onOpenMarginsMode` here (task 1391): Margins… is pane-owned — the
+  // docked MenuBar is handed this pane's own `enterMarginEditMode`.
 }
 
 /**

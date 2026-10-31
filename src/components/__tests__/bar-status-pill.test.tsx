@@ -245,11 +245,10 @@ describe("BarStatusPill · the census", () => {
       expect(files).toContain(f);
     }
     expect(policyMounts().get("pomodoro")).toBe("PomodoroTimer");
-  });
-
-  it("the collab pen pill (mounted outside the policy rows) renders through BarStatusPill", () => {
-    expect(cluster()).toMatch(/<CollabStatusPill[\s\S]*?variant="badge"/);
-    expect(read("src/components/CollabStatusPill.tsx")).toContain("<BarStatusPill");
+    // The collab pen pill is a policy row since task 1353, so the census
+    // above already holds it to BarStatusPill (task 1391 retired the
+    // separate "mounted outside the policy rows" check that duplicated it).
+    expect(policyMounts().get("collab")).toBe("CollabStatusPill");
   });
 
   it("no cluster resident spells the raw pill chrome, a private kebab, or a private menu row", () => {

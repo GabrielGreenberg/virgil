@@ -918,14 +918,6 @@ export default function EditorLayout() {
   // its aria-pressed state.
   const [manageStylesOpen, setManageStylesOpen] = useState(false);
 
-  // Margin-edit mode (interactive page-margin guides) was deleted with
-  // the visual editor JSX; reintroduce inside EditorPane to bring it
-  // back. The bundle's `onOpenMarginsMode` is currently a noop so the
-  // ViewMenu item simply does nothing.
-  const enterMarginEditMode = useCallback(() => {
-    /* margin-edit UI not yet ported to EditorPane */
-  }, []);
-
   const insertVirgilCommand = useCallback((name: string) => {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
@@ -1977,7 +1969,6 @@ export default function EditorLayout() {
     paraNavBackDisabled,
     paraNavForwardDisabled,
     onOpenFontsDialog: () => setFontsOpen(true),
-    onOpenMarginsMode: enterMarginEditMode,
   }), [
     prefs,
     availableDividerLevels,
@@ -1990,7 +1981,6 @@ export default function EditorLayout() {
     paraNavForward,
     paraNavBackDisabled,
     paraNavForwardDisabled,
-    enterMarginEditMode,
   ]);
 
   // Listen for marker clicks from the editor (in-text anchors, margin
@@ -2841,7 +2831,6 @@ export default function EditorLayout() {
   const statusClusterProps: StatusClusterProps = useMemo(
     () => ({
       vbar: statusVbar,
-      collabEnabled: collab.enabled,
       zenModeOn,
       topbarRightCollapsed: prefs.topbarRightCollapsed,
       setTopbarRightCollapsed,
@@ -2880,7 +2869,6 @@ export default function EditorLayout() {
     }),
     [
       statusVbar,
-      collab.enabled,
       zenModeOn,
       prefs.topbarRightCollapsed,
       setTopbarRightCollapsed,

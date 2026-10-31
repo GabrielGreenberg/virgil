@@ -21,7 +21,7 @@ import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
-import { CompileStatusChip, FocusViewChip, HelperModeChip } from "@/components/BarModeChips";
+import { BarModeDivider, CompileStatusChip, FocusViewChip, HelperModeChip } from "@/components/BarModeChips";
 import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
@@ -38,13 +38,10 @@ export type StatusClusterVBar = {
 
 export type StatusClusterProps = {
   vbar: StatusClusterVBar;
-  /** Whether collab mode is on (for the badge/marker conditionals). The live
-   *  collab object itself is read from CollabContext by CollabStatusPill, so a
-   *  collab pen/presence tick re-renders only the pill, not this whole cluster. */
-  collabEnabled: boolean;
-
-  // Whether the bar's owning layout is in zen mode (suppresses status markers
-  // + the divider + the prefs/help/print/etc. button group).
+  // Whether the bar's owning layout is in zen mode (suppresses the
+  // prefs/help/print/etc. button group). Collab is NOT a prop: every reader
+  // (the collab pill, the mode divider) takes the one CollabContext, so a
+  // collab pen/presence tick re-renders only those leaves.
   zenModeOn: boolean;
   /**
    * The EFFECTIVE collapsed state of the collapsible tool group. `TopBar`
@@ -124,7 +121,6 @@ export type StatusClusterProps = {
 function StatusClusterImpl(props: StatusClusterProps) {
   const {
     vbar,
-    collabEnabled,
     zenModeOn,
     topbarRightCollapsed,
     setTopbarRightCollapsed,
@@ -365,22 +361,11 @@ function StatusClusterImpl(props: StatusClusterProps) {
           prop likewise re-opened it on expand. */}
       <div key={topbarRightCollapsed ? "collapsed" : "expanded"} className="flex items-center">
       {(<>
-      {/* Divider — the boundary between the mode chips (TIER 1, just left of
-          this group since task 1353) and the standard tools. It lives IN the
-          group, so it shows only while the tools are expanded; and only when a
-          mode chip is on, which is the same predicate as the chips' policy
-          entries (`!zen && mode`). Suppressed in zen mode regardless. */}
-      {!zenModeOn && (focusActive || helperOn || collabEnabled) && (
-        <span
-          aria-hidden
-          className="self-center h-5 w-px mr-2"
-          // Its left side already has the status segment's trailing
-          // `--bar-occupant-gap` (a chip is on, so the segment is non-empty);
-          // top it up to the same 8px as the right rather than adding a
-          // second, independent margin.
-          style={{ background: "var(--edge-strong)", marginLeft: "calc(0.5rem - var(--bar-occupant-gap))" }}
-        />
-      )}
+      {/* Divider between the mode chips and the tools. It lives IN the
+          group, so it shows only while the tools are expanded; whether a mode
+          chip is on is answered by the chips' own policy verdicts
+          (`useAnyBarModeVisible`, task 1391), never re-derived here. */}
+      <BarModeDivider focusActive={focusActive} helperOn={helperOn} />
       {/* Zen mode toggle — render-gates editor chrome so the document area
           stands alone. Top bar stays visible so this button is always
           reachable. */}

@@ -17,6 +17,7 @@ import { memo } from "react";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 import { useZenMode } from "@/hooks/useZenMode";
 import { BarStatusPill } from "@/components/status/BarStatusPill";
+import { useCollabContext } from "@/hooks/useCollab";
 
 /** Focus view is on — click to turn it off. */
 function FocusViewChipImpl({ active, onExit }: { active: boolean; onExit: () => void }) {
@@ -64,6 +65,52 @@ function HelperModeChipImpl({ on, onExit }: { on: boolean; onExit: () => void })
   );
 }
 export const HelperModeChip = memo(HelperModeChipImpl);
+
+/**
+ * **Is any mode chip showing?** (task 1391) — the ONE answer, read from the
+ * same policy verdicts the chips render through (`useBarStatusVisible` per
+ * mode id, settle rule included) and the same sources they read (the zen
+ * store, the one `CollabContext`). The bar's mode/tools divider asks this
+ * rather than re-deriving "a mode is on" from layout props, so a divider can
+ * never paint beside an empty mode segment — whatever a mode entry's
+ * `settleMs`, and whichever collab source would have answered first.
+ */
+export function useAnyBarModeVisible({
+  focusActive,
+  helperOn,
+}: {
+  focusActive: boolean;
+  helperOn: boolean;
+}): boolean {
+  const zen = useZenMode().on;
+  const collab = useCollabContext();
+  const focus = useBarStatusVisible("focus-view", { active: focusActive, zen });
+  const helper = useBarStatusVisible("helper-mode", { on: helperOn, zen });
+  const collabOn = useBarStatusVisible("collab", { enabled: !!collab.enabled, zen });
+  return focus || helper || collabOn;
+}
+
+/**
+ * The boundary between the mode chips (TIER 1, just left of the tool group)
+ * and the standard tools. A memoized leaf, so a collab pen/presence tick
+ * re-renders only this span, not the cluster that mounts it.
+ */
+function BarModeDividerImpl({ focusActive, helperOn }: { focusActive: boolean; helperOn: boolean }) {
+  if (!useAnyBarModeVisible({ focusActive, helperOn })) return null;
+  return (
+    <span
+      aria-hidden
+      data-bar-mode-divider=""
+      className="self-center h-5 w-px mr-2"
+      // Its left side already has the status segment's trailing
+      // `--bar-occupant-gap` (a mode chip is visible, so the segment is
+      // non-empty — the predicate above guarantees it); top it up to the same
+      // 8px as the right rather than adding a second, independent margin.
+      style={{ background: "var(--edge-strong)", marginLeft: "calc(0.5rem - var(--bar-occupant-gap))" }}
+    />
+  );
+}
+export const BarModeDivider = memo(BarModeDividerImpl);
 
 function SpinnerIcon() {
   return (

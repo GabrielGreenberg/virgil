@@ -5,12 +5,17 @@
 // > **The Virgil bar's occupants are ranked, and under compression the LOWEST
 // > rank yields first.** The ladder is stated ONCE, here:
 // >
-// >   1. PROTECTED STATUS — the data-integrity badges (save state, preservation
-// >      refusal, external change, sync conflict, mirror recovery), the running
-// >      timer, and the collapse toggle itself. Never yields. This is not a
+// >   1. PROTECTED STATUS — every item of the bar status policy, mounted in
+// >      `BAR_STATUS_ORDER` (src/lib/bar-status-policy.ts — THAT list is the
+// >      tier's membership; this comment names its kinds, not its roster):
+// >      the data-integrity badges (save state, preservation refusal, external
+// >      change, sync conflict, mirror recovery), the cowork pen, the update
+// >      and skill-sync notices, the running timer, a running compile, and the
+// >      modes the user turned on (Focus view, Helper, Collab — task 1353) —
+// >      plus the collapse toggle itself. Never yields. This is not a
 // >      preference: docs/agents/laws/the-write-path.md ("The honesty half") makes a data-integrity
-// >      notice un-hideable by a layout preference, and the toggle is what makes
-// >      a collapse reversible.
+// >      notice un-hideable by a layout preference, a mode chip is its mode's
+// >      off-switch, and the toggle is what makes a collapse reversible.
 // >   2. TABS — Gabriel's decision (2026-08-19): "text tabs should occlude the
 // >      tools in this case." Tabs outrank the collapsible tools.
 // >   3. COLLAPSIBLE TOOLS — the `topbarRightCollapsed` group. Collapses
