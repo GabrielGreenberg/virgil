@@ -381,7 +381,7 @@ export function ExampleItemBody({
       return findExampleItemByUuid(ed.state.doc, uuid, sourceRangeRef.current)
         ? refuseWrite(wrongRootReason("example item"))
         : null;
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -422,7 +422,13 @@ export function ExampleItemBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

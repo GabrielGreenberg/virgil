@@ -341,7 +341,7 @@ export function SingleBlockBody({
         },
       });
       return { from: src.start, to: src.end, content: newNode };
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -369,7 +369,13 @@ export function SingleBlockBody({
     [config, uuid],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

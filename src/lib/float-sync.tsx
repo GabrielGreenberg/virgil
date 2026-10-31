@@ -214,6 +214,40 @@ export interface UseMainTransactionSyncArgs {
    *  load-bearing for the missing case: a float whose source was deleted must
    *  keep re-reading so an undo that restores it is noticed. */
   sourceRangeRef?: RefObject<SourceRange | null>;
+  /** The span of main this float's OWN last write-back now occupies (task
+   *  1399) — the float's write TARGET while it still holds more than its
+   *  source's identity spans. Set from the own write's step maps, mapped
+   *  forward through every later transaction, and cleared by every re-read
+   *  (`useFloatMainSync`'s `syncFromMain`), because a re-read re-seeds the
+   *  float from the identity's own extent. A foreign transaction touching it
+   *  forces that re-read even when `sourceRangeRef` would not. */
+  writtenRangeRef?: RefObject<SourceRange | null>;
+}
+
+/**
+ * The extent an own write-back occupies in the doc it produced: the union of
+ * its steps' NEW ranges, each mapped through the steps after it. O(steps).
+ * Null when the transaction moved nothing (a pure attr/mark step).
+ */
+export function writtenSpanOf(
+  tr: import("@tiptap/pm/state").Transaction,
+): SourceRange | null {
+  const { maps } = tr.mapping;
+  let from = Infinity;
+  let to = -Infinity;
+  for (let i = 0; i < maps.length; i++) {
+    maps[i].forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+      let a = newStart;
+      let b = newEnd;
+      for (let j = i + 1; j < maps.length; j++) {
+        a = maps[j].map(a, 1);
+        b = maps[j].map(b, -1);
+      }
+      if (a < from) from = a;
+      if (b > to) to = b;
+    });
+  }
+  return from <= to ? { from, to } : null;
 }
 
 /**
@@ -234,6 +268,7 @@ export function useMainTransactionSync({
   floatId,
   onMainDocChanged,
   sourceRangeRef,
+  writtenRangeRef,
 }: UseMainTransactionSyncArgs): void {
   useEffect(() => {
     if (!mainEditor) return;
@@ -276,11 +311,22 @@ export function useMainTransactionSync({
       let docChanged = false;
       let touchedByOthers = false;
       let range = sourceRangeRef?.current ?? null;
+      let written = writtenRangeRef?.current ?? null;
       for (let i = 0; i < all.length; i++) {
         const tr = all[i];
         if (!tr.docChanged) continue;
         docChanged = true;
         const ours = ownWrite && i === 0;
+        // The float's write target (task 1399): our own write REPLACES it with
+        // the span that write now occupies; every other transaction maps it,
+        // and one that touches it is a foreign edit to content this float holds.
+        if (ours) {
+          written = writtenSpanOf(tr);
+        } else if (written) {
+          const w = trackSourceRange(tr, written);
+          written = w.mapped;
+          if (w.touched) touchedByOthers = true;
+        }
         if (!range) {
           // No known region — the gate is open by design (see `sourceRangeRef`).
           if (!ours) touchedByOthers = true;
@@ -291,6 +337,7 @@ export function useMainTransactionSync({
         if (tracked.touched && !ours) touchedByOthers = true;
       }
       if (sourceRangeRef) sourceRangeRef.current = range;
+      if (writtenRangeRef) writtenRangeRef.current = written;
 
       if (!docChanged) return;
       if (!touchedByOthers) return;
@@ -301,7 +348,7 @@ export function useMainTransactionSync({
     return () => {
       mainEditor.off("transaction", handler);
     };
-  }, [mainEditor, floatId, onMainDocChanged, sourceRangeRef]);
+  }, [mainEditor, floatId, onMainDocChanged, sourceRangeRef, writtenRangeRef]);
 }
 
 export interface ReadSourceResult {
@@ -357,6 +404,12 @@ export function useFloatMainSync({
    *  every float keystroke too. Read-only for callers; a `ref` (not state) so
    *  tracking it never re-renders. */
   sourceRangeRef: RefObject<SourceRange | null>;
+  /** The span this float's own last write occupies in main, or null (task
+   *  1399). Bodies hand it to `landFloatWrite` as the write target, so a float
+   *  that has grown past its source's identity extent (an Enter-split list
+   *  item, a section that gained a terminating heading) overwrites what it
+   *  wrote rather than the shrunken identity span. Read-only for callers. */
+  writtenRangeRef: RefObject<SourceRange | null>;
   /** The message of the float's last REFUSED write-back, or null (task
    *  1170). Render it through `WriteRefusedBanner`. */
   writeRefusal: string | null;
@@ -366,6 +419,7 @@ export function useFloatMainSync({
 } {
   const [sourceMissing, setSourceMissing] = useState(false);
   const sourceRangeRef = useRef<SourceRange | null>(null);
+  const writtenRangeRef = useRef<SourceRange | null>(null);
   const [writeRefusal, setWriteRefusal] = useState<string | null>(null);
   const reportWrite = useCallback((outcome: FloatWriteOutcome) => {
     setWriteRefusal((prev) => nextWriteRefusal(prev, outcome));
@@ -386,6 +440,7 @@ export function useFloatMainSync({
       readSource,
       setSourceMissing,
       sourceRangeRef,
+      writtenRangeRef,
       onConverged,
     );
   }, [mainEditor, floatEditor, readSource, onConverged]);
@@ -397,9 +452,10 @@ export function useFloatMainSync({
     floatId,
     onMainDocChanged,
     sourceRangeRef,
+    writtenRangeRef,
   });
 
-  return { sourceMissing, sourceRangeRef, writeRefusal, reportWrite };
+  return { sourceMissing, sourceRangeRef, writtenRangeRef, writeRefusal, reportWrite };
 }
 
 function syncFromMain(
@@ -408,8 +464,13 @@ function syncFromMain(
   readSource: UseFloatMainSyncArgs["readSource"],
   setSourceMissing: (v: boolean) => void,
   sourceRangeRef: RefObject<SourceRange | null>,
+  writtenRangeRef: RefObject<SourceRange | null>,
   onConverged: () => void,
 ): void {
+  // A re-read re-seeds the float from the source's identity extent (or finds
+  // it already equal to it), so the span the float last wrote no longer
+  // describes what the float holds — its next write targets the identity.
+  writtenRangeRef.current = null;
   const { doc, missing, range } = readSource(
     mainEditor.state.doc,
     sourceRangeRef.current,

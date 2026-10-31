@@ -169,7 +169,7 @@ export function ParagraphBody({
         found.marks,
       );
       return { from: src.start, to: src.start + found.nodeSize, content: newPar };
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -196,7 +196,13 @@ export function ParagraphBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

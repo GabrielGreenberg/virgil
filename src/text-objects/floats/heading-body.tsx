@@ -192,7 +192,7 @@ export function HeadingBody({
         );
       }
       return { from: range.start, to: range.end, content: newNodes };
-    });
+    }, writtenRangeRef.current);
     reportWrite(outcome);
   }
 
@@ -223,7 +223,13 @@ export function HeadingBody({
     [uuid],
   );
 
-  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
+  const {
+    sourceMissing,
+    sourceRangeRef,
+    writtenRangeRef,
+    writeRefusal,
+    reportWrite,
+  } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
