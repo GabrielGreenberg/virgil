@@ -21,7 +21,9 @@ description: |
 
 Dismiss a **Level-3 proposal**. The mirror of
 [`accept-suggestion`](accept-suggestion.md): where accept splices the proposal
-into the document, reject turns it down — the `.tex` is **never touched**.
+into the document, reject turns it down — the `.tex` is **never touched** (a
+`--range` card's `\vlid` pair, placed when it was drafted, stays where it is —
+[_safety-levels.md](_safety-levels.md)).
 
 Like the other existing-card ops it resolves the card with
 [`card_by_id.py`](../scripts/card_by_id.py) and routes the change through the one

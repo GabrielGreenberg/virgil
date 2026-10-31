@@ -26,7 +26,8 @@ Consummate a **Level-3 proposal**. L3 ("propose a change for review") is the
 one safety level that *drafts* but doesn't *apply*: `/editor/draft-suggestion`
 (and the `answer-*-comment` responders) land a **suggestion card** —
 `revision-suggestion` or `cutter-suggestion` — carrying `original_text` and a
-proposed `suggested_text`, with the `.tex` **untouched** and the Task left
+proposed `suggested_text`, with the replacement **not applied** (a `--range`
+anchor still lands — [_safety-levels.md](_safety-levels.md)) and the Task left
 awaiting review. This skill closes that loop: it splices the proposal into the
 document.
 

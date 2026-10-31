@@ -139,7 +139,8 @@ with `/loop /editor/review`.
    umbrella doesn't build cards or pick subcommands — the dispatched subskill
    reads the level off the Task and routes its card-create through
    `create_card.py` → `apply_response.py`: **1** → silent apply, **2** → apply +
-   a sibling comment, **3** → propose (drafted; `.tex` untouched; Task left
+   a sibling comment, **3** → propose (drafted; the change not applied, a `--range` anchor
+   still lands — [_safety-levels.md](_safety-levels.md); Task left
    `in-progress`, awaiting review), **no level** → direct create. The subskill
    stamps the two-field `status`/`result` (`complete` + `silent-applied` /
    `auto-applied` / `direct-created`, or `in-progress` for a level-3 proposal).
