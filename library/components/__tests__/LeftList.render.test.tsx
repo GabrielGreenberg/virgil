@@ -125,7 +125,7 @@ function Harness({
   entries = ENTRIES,
   libId = "central",
 }: {
-  dotToneFor?: (c: string | null | undefined) => "red" | "green" | null;
+  dotToneFor?: (c: string | null | undefined) => "pending" | "ok" | null;
   entries?: CatalogEntry[];
   libId?: string;
 }) {
@@ -185,7 +185,7 @@ describe("LeftList — render-count / keystroke-sanctity", () => {
     // New tone fn identity (mimics the 6 s poll's churn) where ONLY lewis1979
     // flips to green. The parent re-renders, but only the one row whose
     // primitive `dotTone` actually changed should re-render.
-    const tone2 = (c: string | null | undefined) => (c === "lewis1979" ? "green" : null);
+    const tone2 = (c: string | null | undefined) => (c === "lewis1979" ? "ok" : null);
     rerender(<Harness dotToneFor={tone2} />);
     expect(countOf("lewis1979") - before.lewis1979).toBe(1);
     expect(countOf("kant1781") - before.kant1781).toBe(0);

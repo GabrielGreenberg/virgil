@@ -49,6 +49,7 @@ import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
 import { FONT_MONO } from "@/lib/font-stacks";
 import LibrarySearchInput from "./LibrarySearchInput";
 import { iconHint } from "@/components/Hint";
+import type { RowDotTone } from "@library/hooks/useRowDotState";
 
 // The header grid and every row consume ONE inherited template var
 // (COL_TEMPLATE_VAR / COL_TEMPLATE_REF from list-columns.ts), defined on the
@@ -90,7 +91,7 @@ interface Props {
   dropHighlight?: boolean;
   /** Far-left request-state dot tone for a citekey. Returns null for rows
    *  with no pending request and no unread completion notification. */
-  dotToneFor: (citekey: string | null | undefined) => "red" | "green" | null;
+  dotToneFor: (citekey: string | null | undefined) => RowDotTone;
   /** Called when a row is clicked, before onSelect — bumps the row's
    *  "last viewed" timestamp so a green dot clears immediately. */
   onRowViewed: (citekey: string | null | undefined) => void;

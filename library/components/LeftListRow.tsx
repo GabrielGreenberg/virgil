@@ -8,7 +8,9 @@ import { COL_TEMPLATE_VAR, type ReorderableColId } from "@library/lib/list-colum
 import { bibFieldDisplay } from "@/lib/bib-parser";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
-import { Dot, StatusPills } from "./StatusPill";
+import { StatusPills } from "./StatusPill";
+import { StatusDot } from "@/components/StatusDot";
+import type { RowDotTone } from "@library/hooks/useRowDotState";
 import RowActionMenu from "./RowActionMenu";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { iconHint } from "@/components/Hint";
@@ -65,7 +67,7 @@ interface Props {
   /** Far-left request-state dot. Red = a queue request is outstanding for
    *  this citekey; green = a completion notification has fired and the
    *  user hasn't selected the row since. Null = no dot. */
-  dotTone: "red" | "green" | null;
+  dotTone: RowDotTone;
 }
 
 /** Width of the always-visible action-menu column on the right edge. */
@@ -347,10 +349,11 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
         }}
       >
         {dotTone && (
-          <Dot
+          <StatusDot
+            size="md"
             tone={dotTone}
-            title={
-              dotTone === "red"
+            label={
+              dotTone === "pending"
                 ? "Request pending — waiting for Claude"
                 : "New result — click to mark as seen"
             }

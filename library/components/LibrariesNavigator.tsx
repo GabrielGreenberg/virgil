@@ -16,6 +16,7 @@ import NavPod from "./NavPod";
 import RowMenu, { type RowMenuEntry } from "./RowMenu";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { InlineRenameInput } from "@/components/InlineRenameInput";
+import { StatusDot } from "@/components/StatusDot";
 
 interface Props {
   registry: Registry;
@@ -330,17 +331,7 @@ function NavRow({
         </span>
       )}
       {!editing && isOpen && !active && (
-        <span
-          aria-hidden
-          data-hint="Open in a panel"
-          style={{
-            flexShrink: 0,
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "var(--muted-light, #aaa)",
-          }}
-        />
+        <StatusDot size="sm" tone="muted" label="Open in a panel" />
       )}
       {!editing && menuItems && menuItems.length > 0 && (
         <RowMenu items={menuItems} ariaLabel={menuAriaLabel ?? "Library actions"} />
