@@ -97,7 +97,7 @@ function CoworkPenBadge({ docId }: { docId: string | null }) {
   const pen = useCoworkPen(docId);
   // Self-gating: nothing holds the pen, nothing to say — and a hold that
   // releases inside the policy's settle window never paints (task 1174).
-  const visible = useBarStatusVisible("cowork-pen", { held: !!pen });
+  const visible = useBarStatusVisible("cowork-pen", { held: !!pen }, docId);
   if (!visible || !pen) return null;
   // TASK 545 — the words are the vocabulary's (`document-interruption.ts`),
   // so this pill and the in-document band name one event with one phrase.

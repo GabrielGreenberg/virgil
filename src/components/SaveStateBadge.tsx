@@ -101,7 +101,7 @@ function SaveStateBadgeImpl({ docId }: { docId: string | null }) {
   const visible = useBarStatusVisible("save-state", {
     tier: view.tier,
     reason: view.reason,
-  });
+  }, docId);
   if (!docId) return null;
   if (!visible) return null;
 

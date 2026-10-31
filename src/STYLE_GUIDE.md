@@ -4253,7 +4253,11 @@ to see it"): every row also declares a `settleMs` the state must outlast before
 it paints (plus an optional `immediate` for work genuinely at risk), and items
 render through the ONE hook `useBarStatusVisible(id, state)`, which owns the
 single settle timer — a state that clears itself inside its window never
-paints, and no item carries a timer of its own.
+paints, and no item carries a timer of its own. **The dwell belongs to a
+document** (task 1389): a row's `scope: "doc"` (the `BarStatusDocScopedId`
+union) makes the hook's third argument, the paper's id, REQUIRED — the items
+are mounted unkeyed, so a paper switch must start a fresh window rather than
+inherit the last paper's settled one.
 
 **Bar occupants are spaced by their CONTAINER, never by themselves** (task
 1354, *"there should be a small gap between visual elements"*). The status

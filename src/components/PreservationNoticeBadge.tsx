@@ -139,7 +139,7 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
   // No doc, no refusal, or the user has already answered → nothing to say.
   const visible = useBarStatusVisible("preservation", {
     standing: !!notice && !notice.acknowledged,
-  });
+  }, docId);
   if (!visible || !notice) {
     return null;
   }
