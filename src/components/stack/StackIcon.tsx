@@ -163,7 +163,7 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
         zIndex: STACK_CHROME_Z,
         padding: 0,
         transition:
-          "background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out",
+          "background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-fast) ease-out",
       }}
     >
       <StackGlyph illuminated={illuminated} />

@@ -42,7 +42,7 @@ export type ButtonSize = "sm" | "md" | "lg";
 // Button paints no hover and does not move; a native disabled `<button>`
 // dispatches no click, so nothing else changes.
 const BUTTON_BASE =
-  "inline-flex items-center justify-center rounded-md font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed enabled:active:translate-y-[0.5px]";
+  "inline-flex items-center justify-center rounded-md font-medium transition-all duration-(--motion-base) disabled:opacity-40 disabled:cursor-not-allowed enabled:active:translate-y-[0.5px]";
 
 // hover-on-light-exempt: BUTTON_BASE above owns `transition-all duration-150`,
 // which is BROADER than `.hover-on-light`'s property list (it also carries the

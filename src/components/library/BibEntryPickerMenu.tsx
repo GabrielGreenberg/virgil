@@ -702,7 +702,7 @@ function BibEntryPickerRow({
           </div>
         </div>
         <div
-          className={`flex items-center gap-1 shrink-0 transition-opacity duration-100 ${
+          className={`flex items-center gap-1 shrink-0 transition-opacity duration-(--motion-quick) ${
             showCluster
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"
@@ -719,7 +719,7 @@ function BibEntryPickerRow({
             {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >
             <MenuCaret
-              className="motion-safe:transition-transform duration-[120ms] ease-[ease]"
+              className="motion-safe:transition-transform duration-(--motion-fast) ease-[ease]"
               style={{
                 transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
               }}

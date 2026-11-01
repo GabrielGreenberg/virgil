@@ -346,13 +346,21 @@ const TOKENIZED_281: ReadonlyArray<readonly [string, string]> = [
   ],
 ];
 
+/** Task 1413, the third: the progress bar's width glide reads the motion
+ *  ladder's `--motion-slow` rung (200ms, pinned by motion-token-census)
+ *  instead of Tailwind's literal `duration-200`. Same value, by name. */
+const TOKENIZED_1413: ReadonlyArray<readonly [string, string]> = [
+  ["duration-200", "duration-(--motion-slow)"],
+];
+
 function tokenized(html: string): {
   html: string;
   substitutions: number;
   a11y: number;
+  motion: number;
 } {
   let out = html;
-  const counts = [TOKENIZED, TOKENIZED_281].map((table) => {
+  const counts = [TOKENIZED, TOKENIZED_281, TOKENIZED_1413].map((table) => {
     let n = 0;
     for (const [from, to] of table) {
       const parts = out.split(from);
@@ -364,7 +372,7 @@ function tokenized(html: string): {
   // Counted per TABLE, not in one total: each sanctioned difference has to be
   // provable on its own, or a leg asserting "the emeralds were really there"
   // can be satisfied by an a11y class instead.
-  return { html: out, substitutions: counts[0], a11y: counts[1] };
+  return { html: out, substitutions: counts[0], a11y: counts[1], motion: counts[2] };
 }
 
 /**
@@ -482,6 +490,8 @@ describe("the normalizations cannot hide a real difference", () => {
     const r = tokenized('class="bg-emerald-500" class="text-emerald-700"');
     expect(r.substitutions).toBe(2);
     expect(r.html).toBe('class="bg-[var(--positive)]" class="text-[var(--positive-strong)]"');
+    const m = tokenized('class="duration-200"');
+    expect([m.substitutions, m.a11y, m.motion]).toEqual([0, 0, 1]);
   });
 
   it("parity() compares two DIFFERENT renders as different", () => {

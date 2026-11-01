@@ -52,9 +52,11 @@ import { requestOmniCardPlacement } from "./omni-card-placement";
 import { omniEntrySelector } from "./event-bridges/open-for-card";
 import { findRowScrollFor, findScrollParent } from "./layout-scroll";
 import { resolvePaneMarker } from "./pane-dom";
+import { MOTION_MS } from "@/lib/motion";
 
-/** Matches `.omni-entry-slide` (globals.css) — one motion for both hosts. */
-export const SELECTION_SLIDE_MS = 180;
+/** The `--motion-slide` rung `.omni-entry-slide` (globals.css) transitions on
+ *  — one motion for both hosts, pinned by motion-token-census. */
+export const SELECTION_SLIDE_MS = MOTION_MS.slide;
 
 /** How many frames to look for the card before giving up. A freshly opened
  *  panel needs two to commit its list; a third is slack for a cold mount. */
