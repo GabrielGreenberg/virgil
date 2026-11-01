@@ -15,8 +15,9 @@
  * So the act is split in two, and neither half re-implements a ladder:
  *
  *   - `resolveCardJumpTarget` names a TARGET by asking the authority's own
- *     pass (`CardAnchorPass.jumpTarget`) — the row's own paragraph when a row
- *     is asking, else the authority's winner (`linkIndex`, task 664).
+ *     pass (`CardAnchorPass.jumpTarget`) — a ROW of the card, landed exactly
+ *     where it is drawn: its span when it sits at one, else its block (task
+ *     1409) — the asking row when a row is asking, else the authority's seed.
  *     Inline-atom links (footnote / citation), which the authority does not
  *     resolve, are the one fallback, located by `resolveLink`.
  *   - `jumpToTarget` is the ONE door that turns a target into a scroll: the
