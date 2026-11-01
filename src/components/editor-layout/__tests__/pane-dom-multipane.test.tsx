@@ -331,7 +331,7 @@ describe("M2b — a strip-open on a COLLAPSED side keeps the docked band (task 1
       dockStack: { left: [], right: [A] },
       panelMRU: { left: [], right: [A] },
       poppedOutPanels: [],
-      poppedOutCards: [],
+      cardFloats: {},
       floatPositions: {},
       panelModes: {},
       collapsedLeft: false,

@@ -42,6 +42,8 @@ export const CARD_ARCHIVE_VIEWS = ["active", "archived", "all"] as const;
  *  - `sided-list`    — `{ left: string[]; right: string[] }`.
  *  - `number-record` — `Record<string, number>`; non-finite entries dropped.
  *  - `rect-record`   — `Record<string, {x,y,width,height}>` of finite numbers.
+ *  - `float-slices`  — `Record<owner, { keys: string[]; positions: rect-record }>`
+ *                      (the per-DOCUMENT popped floats, task 1400).
  *  - `enum-record`   — `Record<string, V>` with `V` in `values`. */
 export type WindowPrefShape =
   | { shape: "boolean" }
@@ -49,6 +51,7 @@ export type WindowPrefShape =
   | { shape: "sided-list" }
   | { shape: "number-record" }
   | { shape: "rect-record" }
+  | { shape: "float-slices" }
   | { shape: "enum-record"; values: readonly string[] };
 
 /** A structural window key: its shape, and — when it is session-only — why.
@@ -73,8 +76,10 @@ export const STRUCTURAL_WINDOW_PREFS = {
   poppedOutPanels: { shape: "string-list" },
   floatPositions: { shape: "rect-record" },
   panelModes: { shape: "enum-record", values: PANEL_MODES },
-  poppedOutCards: { shape: "string-list" },
-  cardFloatPositions: { shape: "rect-record" },
+  // Popped card / text-object floats, keyed by OWNING DOCUMENT (task 1400) —
+  // never one window-wide list. A pre-1400 flat `poppedOutCards` /
+  // `cardFloatPositions` pair is folded by `useViewPrefs.loadPrefs`.
+  cardFloats: { shape: "float-slices" },
   topbarRightCollapsed: { shape: "boolean" },
   cardArchiveView: { shape: "enum-record", values: CARD_ARCHIVE_VIEWS },
 } as const satisfies Record<string, StructuralWindowDef>;
@@ -137,16 +142,29 @@ export function normalizeWindowPrefValue(
         typeof x === "string" && def.values.includes(x) ? x : undefined,
       );
     case "rect-record":
+      return rectRecordOf(v);
+    case "float-slices":
       return recordOf(v, (x) =>
-        isPlainObject(x) &&
-        isFiniteNumber(x.x) &&
-        isFiniteNumber(x.y) &&
-        isFiniteNumber(x.width) &&
-        isFiniteNumber(x.height)
-          ? { x: x.x, y: x.y, width: x.width, height: x.height }
+        isPlainObject(x)
+          ? {
+              keys: [...new Set(stringsOf(x.keys) ?? [])],
+              positions: rectRecordOf(x.positions) ?? {},
+            }
           : undefined,
       );
   }
+}
+
+function rectRecordOf(v: unknown): Record<string, unknown> | undefined {
+  return recordOf(v, (x) =>
+    isPlainObject(x) &&
+    isFiniteNumber(x.x) &&
+    isFiniteNumber(x.y) &&
+    isFiniteNumber(x.width) &&
+    isFiniteNumber(x.height)
+      ? { x: x.x, y: x.y, width: x.width, height: x.height }
+      : undefined,
+  );
 }
 
 /** A fresh record keeping only the entries `entry` accepts (non-`undefined`). */

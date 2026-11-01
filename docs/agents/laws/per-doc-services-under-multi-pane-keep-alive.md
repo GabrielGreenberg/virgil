@@ -668,3 +668,23 @@ changes, every other selection change resets it, and `usePlacement` reads
 bound to a real selection change, by construction. Pinned by
 `placement-intent-per-store.test.tsx` (two stores/two hosts; the no-op strand;
 a census that `usePlacement.ts` holds no module-level `let`).
+
+### The PERSISTED half: a per-doc PREF is a registry keyed by doc, projected at the pane (task 1400)
+
+The law holds for persisted view prefs too, not only module slots. Popped
+card / text-object floats were one window-wide pref (`poppedOutCards` +
+`cardFloatPositions`) handed unfiltered to every keep-alive pane's `FloatHost`:
+a paragraph popped in doc B rendered (and closed) over doc A, Cmd-W closed an
+invisible float of another doc, and a bib float keyed by a shared citekey was
+the same float in every paper. The pref is now `cardFloats: Record<docId,
+{ keys, positions }>` ([src/floats/owner-floats.ts](../../../src/floats/owner-floats.ts)),
+every engine op names its owner, and `EditorPane` projects the window bundle
+onto its OWN `docId` once, at the top of the pane (`scopePaneViewPrefs` in
+`build-editor-pane-view-prefs.ts`) — so every consumer below reads only its
+doc's slice and every float op is pre-bound to it. Window-level consumers that
+span docs (the Cmd-W MRU stack) carry the owner in each entry and act only on
+the doc on screen (`frontmostOnScreen`). A pre-1400 flat list is folded into an
+unowned slot that no pane renders, adopted by the first doc to load at boot.
+Rule: when a pref describes something that lives IN a document, key it by the
+document and scope it at the pane's identity — never filter per consumer.
+CI: `owner-floats.test.ts`, `view-prefs-window-door.test.tsx`.

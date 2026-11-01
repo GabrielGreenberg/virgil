@@ -445,6 +445,8 @@ import type {
   DockSlotKey,
 } from "@/hooks/useViewPrefs";
 import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
+import type { FloatRect } from "@/floats/owner-floats";
+import { scopePaneViewPrefs } from "@/components/editor-layout/build-editor-pane-view-prefs";
 import { REGISTRY_DEFAULTS } from "@/lib/view-prefs/registry";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import { type FocusState } from "@/hooks/useFocusMode";
@@ -524,9 +526,56 @@ export const stubAddStyleMergeRequest: PaneState["addStyleMergeRequest"] = () =>
  * OutlineHost actually touch. Window-only prefs (`editorLeftMargin`,
  * `topbarRightCollapsed`, etc.) stay in EditorLayout.
  */
+/** The view prefs a PANE reads: the window prefs with the per-document float
+ *  registry (`cardFloats`) NARROWED to this pane's own doc (task 1400), whose
+ *  slice is also spelled out flat below. The other docs' floats are not merely
+ *  unrendered here — they are absent. Still a `ViewPrefs`, so every
+ *  panel-layout helper that takes one reads it unchanged. */
+export type PaneViewPrefs = ViewPrefs & {
+  /** THIS doc's open float keys (`float:<domain>:<kind>:<id>`), oldest first. */
+  poppedOutCards: string[];
+  /** THIS doc's saved float rects, keyed like `poppedOutCards`. */
+  cardFloatPositions: Record<string, FloatRect>;
+};
+
+/** A float the window-level MRU stack tracks. A card float names its OWNING
+ *  document (task 1400): Cmd-W, raise-on-click and z-order act on the active
+ *  doc's floats only. */
+export type WindowFloatRef =
+  | { kind: "panel"; id: PanelId }
+  | { kind: "card"; owner: string; key: string };
+
+/** The fields of `EditorPaneViewPrefs` that are scoped to the pane's doc. */
+type PaneScopedFloatField =
+  | "prefs"
+  | "toggleCardPopout"
+  | "closeCardPopout"
+  | "setCardFloatPosition"
+  | "remapCardPopKey"
+  | "focusFloating"
+  | "cardFloatZIndex";
+
+/**
+ * What a producer (EditorLayout, the Reader) hands `<EditorPane viewPrefs>`:
+ * the WINDOW bundle, whose float ops all name an owning document. EditorPane
+ * projects it onto its own `docId` through `scopePaneViewPrefs` — the one
+ * place a pane's float view is derived — so a pane never sees, renders,
+ * closes or positions another document's float (task 1400).
+ */
+export type EditorPaneWindowViewPrefs = Omit<EditorPaneViewPrefs, PaneScopedFloatField> & {
+  prefs: ViewPrefs;
+  toggleCardPopout: (owner: string, key: string) => void;
+  closeCardPopout: (owner: string, key: string) => void;
+  setCardFloatPosition: (owner: string, key: string, rect: FloatRect) => void;
+  remapCardPopKey: (owner: string, oldKey: string, newKey: string) => void;
+  focusFloating: (target: WindowFloatRef) => void;
+  cardFloatZIndex?: (owner: string, key: string) => number;
+};
+
 export interface EditorPaneViewPrefs {
   // ── Read state ──────────────────────────────────────────────────
-  prefs: ViewPrefs;
+  /** Pane-scoped (task 1400): carries THIS doc's floats, never the window's. */
+  prefs: PaneViewPrefs;
   isResizingPanels: boolean;
   /** From useFocusMode. The index projection — consumed by the OmniHost
    *  fold/focus filter (resolved live against the doc). */
@@ -936,8 +985,11 @@ export interface EditorPaneProps {
    * surface (Step 7.5 sub-pass 2). Reader omits — keeps the simple
    * iconStrip + body rail. Main app post-7.8 passes its hook outputs
    * to opt EditorPane into the full dock/float system.
+   *
+   * The WINDOW bundle: its float ops name an owning doc. The pane scopes it to
+   * its own `docId` (`scopePaneViewPrefs`, task 1400) before any use.
    */
-  viewPrefs?: EditorPaneViewPrefs;
+  viewPrefs?: EditorPaneWindowViewPrefs;
 
   /**
    * Optional adornment rendered just inboard of the left `PaneRail`,
@@ -1020,7 +1072,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     onTogglePdfView,
     onToggleCodeView,
     placements,
-    viewPrefs,
+    viewPrefs: windowViewPrefs,
     leftMarginPrelude,
     chromeHeaderTrailing,
     menuBar,
@@ -1031,6 +1083,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 ) {
   const innerRef = useRef<EditorHandle>(null);
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
+  // Task 1400: the ONE projection of the window's per-document float registry
+  // onto THIS pane's doc. Everything below reads `viewPrefs` — so no float,
+  // close or position of another document is visible or actionable here.
+  const viewPrefs = useMemo(
+    () => (windowViewPrefs ? scopePaneViewPrefs(windowViewPrefs, docId) : undefined),
+    [windowViewPrefs, docId],
+  );
   const [editor, setEditor] = useState<Editor | null>(null);
   // A plain `RefObject<Editor | null>` kept in sync with the `editor` state,
   // for consumers that take a raw editor ref (not the `EditorHandle`). The
@@ -1132,12 +1191,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
 
   // A plain selection grab's invisible transient anchor is stripped when its
-  // popout closes — by THIS pane, in THIS pane's doc (task 1000). The popout
-  // list is window-global, but the anchor lives in exactly one doc; a single
+  // popout closes — by THIS pane, in THIS pane's doc (task 1000). A single
   // layout-level watcher bound to the ACTIVE editor stripped the wrong doc
   // whenever the popout closed while another pane was in front, leaking
-  // `\vlid…\vlidend` into the owning doc's .tex. Every keep-alive pane
-  // watches; the strip is a guarded no-op in the panes whose doc lacks the id.
+  // `\vlid…\vlidend` into the owning doc's .tex. The list read here is this
+  // pane's own doc's (task 1400 — `scopePaneViewPrefs`), so every keep-alive
+  // pane watches only its own floats.
   useTransientAnchorCleanup(
     editor,
     viewPrefs?.prefs.poppedOutCards ?? NO_POPPED_KEYS,
@@ -3140,7 +3199,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // docked-stack/collapsed sentinels; with an empty placements array,
   // `ensurePanelActive` defaults to "right" for every panel id and the
   // no-op setters keep things quiet.
-  const readerPrefs = useMemo<ViewPrefs>(
+  const readerPrefs = useMemo<PaneViewPrefs>(
     () =>
       ({
         placements: [],
@@ -3153,11 +3212,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         poppedOutPanels: [],
         floatPositions: {},
         panelModes: {},
+        cardFloats: {},
         poppedOutCards: [],
         cardFloatPositions: {},
         showHighlights: REGISTRY_DEFAULTS.showHighlights,
         hiddenHighlightTypes: [...REGISTRY_DEFAULTS.hiddenHighlightTypes],
-      }) as unknown as ViewPrefs,
+      }) as unknown as PaneViewPrefs,
     [],
   );
 

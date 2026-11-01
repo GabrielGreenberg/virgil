@@ -88,16 +88,16 @@ describe("applyPanelRenames — every PanelId-keyed carrier", () => {
 
   it("leaves NON-panel-keyed collections alone (side keys, card keys)", () => {
     const panelWidths = { left: 300, right: 280 };
-    const poppedOutCards = ["float:card:note:abc"];
-    const cardFloatPositions = { "float:card:note:abc": { x: 0, y: 0, width: 1, height: 1 } };
-    const out = applyPanelRenames(
-      { panelWidths, poppedOutCards, cardFloatPositions },
-      PANEL_RENAMES,
-    );
+    const cardFloats = {
+      docA: {
+        keys: ["float:card:note:abc"],
+        positions: { "float:card:note:abc": { x: 0, y: 0, width: 1, height: 1 } },
+      },
+    };
+    const out = applyPanelRenames({ panelWidths, cardFloats }, PANEL_RENAMES);
     // Untouched by IDENTITY — no copy was even made.
     expect(out.panelWidths).toBe(panelWidths);
-    expect(out.poppedOutCards).toBe(poppedOutCards);
-    expect(out.cardFloatPositions).toBe(cardFloatPositions);
+    expect(out.cardFloats).toBe(cardFloats);
   });
 
   it("never rewrites the card-kind vocabularies that COLLIDE by spelling", () => {

@@ -74,8 +74,8 @@
  *   BY CONSTRUCTION rather than by anyone remembering to skip them.
  * - `virgil-panel-colors` / `virgil-panel-typography` are keyed by card/theme
  *   keys (`citation`, `footnote`, `archive`, …) despite the "panel" in their
- *   names, and `poppedOutCards` / `cardFloatPositions` by float CARD keys. All
- *   four are other stores or non-carriers here.
+ *   names, and `cardFloats` by doc id → float CARD keys. All
+ *   three are other stores or non-carriers here.
  * - The shipped `*.defaults.json` sidecars and the non-persisted `PanelId`-keyed
  *   source maps (`PANEL_ICONS`, `PANEL_KIND_TO_BODY_KEY`, …) are SOURCE. A
  *   rename edits them; a load migration cannot.

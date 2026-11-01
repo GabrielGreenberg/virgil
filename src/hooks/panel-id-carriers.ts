@@ -47,7 +47,7 @@
  *   census below excludes them BY CONSTRUCTION rather than by anyone
  *   remembering to skip them — and a new view toggle stays ONE registry row
  *   with zero edits here (task 274).
- * - `poppedOutCards` / `cardFloatPositions` are keyed by float CARD keys, and
+ * - `cardFloats` is keyed by owning doc id → float CARD keys, and
  *   `panelWidths` by `Side`. They are classified `null`
  *   below: an answer ("it is keyed by X"), not an omission.
  */
@@ -132,8 +132,7 @@ export const PANEL_ID_CARRIERS: Readonly<
 
   // Not panel-keyed:
   panelWidths: null, // keyed by Side (`"left"` / `"right"`)
-  poppedOutCards: null, // keyed by float card key (`float:<domain>:<kind>:<id>`)
-  cardFloatPositions: null, // keyed by float card key
+  cardFloats: null, // keyed by owning DOC id → float card keys (`float:<domain>:<kind>:<id>`)
   appliedPrefMigrations: null, // keyed by nothing — migration ids, not panels
 };
 

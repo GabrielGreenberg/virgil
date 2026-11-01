@@ -27,11 +27,12 @@
  * annotation is never deleted on close.
  *
  * OWNED PER PANE (task 1000): mounted by every `EditorPane` with ITS editor,
- * never once by the layout with the ACTIVE one. `poppedOutCards` is
- * window-global while the anchor lives in exactly one doc, so an active-editor
- * watcher stripped the wrong doc whenever the popout closed with another pane
- * in front — and then forgot the id, leaking the mark into the owning doc's
- * .tex. Per pane, the owning doc always strips; the rest are guarded no-ops.
+ * never once by the layout with the ACTIVE one — an active-editor watcher
+ * stripped the wrong doc whenever the popout closed with another pane in
+ * front, leaking the mark into the owning doc's .tex. Since task 1400 the
+ * popout list itself is per document (`cardFloats[docId]`, projected by
+ * `scopePaneViewPrefs`), so each pane watches only its own doc's floats; the
+ * strip stays a guarded no-op where the id is absent.
  *
  * Keystroke-safe: depends only on the editor instance and the
  * `poppedOutCards` identity — neither changes on a plain keystroke — and does

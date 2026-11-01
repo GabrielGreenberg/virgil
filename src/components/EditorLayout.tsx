@@ -110,7 +110,7 @@ import {
   deriveCategorySides,
   omniCategoriesForSide,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId } from "@/hooks/useViewPrefs";
+import { useViewPrefs } from "@/hooks/useViewPrefs";
 import { Button } from "./Button";
 import { cardFloatZ } from "@/floats/float-policy";
 import {
@@ -148,7 +148,12 @@ import { themeColorFromVars, writeThemeColorMeta } from "@/lib/theme-color";
 import { notifyChromePaletteChanged } from "@/lib/chrome-palette-signal";
 import PreferencesModal from "./PreferencesModal";
 import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
-import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./EditorPane";
+import type {
+  PaneState,
+  EditorPaneWindowViewPrefs,
+  EditorPaneMenuBarBundle,
+  WindowFloatRef,
+} from "./EditorPane";
 import {
   buildEditorPaneViewPrefs,
   EMPTY_SECTION_PATHS,
@@ -180,6 +185,7 @@ import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
 import { useCloseFloatChord } from "@/hooks/useCloseFloatChord";
+import { frontmostOnScreen } from "@/floats/owner-floats";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
 
@@ -591,6 +597,7 @@ export default function EditorLayout() {
     closePopout,
     closeCardPopout,
     migratePoppedOutCards,
+    adoptLegacyCardFloats,
     setPrintOptions,
     setTopbarRightCollapsed,
     // The three registry-driven view-pref writers (task 274). Every view pref
@@ -637,11 +644,15 @@ export default function EditorLayout() {
   // frontmost). Push on first focus / on open; reconcile when underlying
   // lists shrink. Independent of paint z-index — z is still derived from
   // insertion order in the popped-out arrays.
-  type FloatingRef =
-    | { kind: "panel"; id: PanelId }
-    | { kind: "card"; key: string };
+  //
+  // Card floats are per DOCUMENT (task 1400): every card entry names its
+  // owner, the stack spans every doc's floats (so a doc's MRU order survives a
+  // switch away and back), and each consumer below acts on the ACTIVE doc's
+  // entries only — a float of a hidden doc is not on screen, so it is never
+  // the Cmd-W target and never shares a z band with this doc's floats.
+  type FloatingRef = WindowFloatRef;
   const refKey = (r: FloatingRef): string =>
-    r.kind === "panel" ? `panel:${r.id}` : `card:${r.key}`;
+    r.kind === "panel" ? `panel:${r.id}` : `card:${r.owner}\u0000${r.key}`;
   const [focusStack, setFocusStack] = useState<FloatingRef[]>([]);
   const focusFloating = useCallback((ref: FloatingRef) => {
     setFocusStack((prev) => {
@@ -657,46 +668,51 @@ export default function EditorLayout() {
   // stack — so popping a panel out makes it the Cmd-W target even before
   // the user clicks it.
   useEffect(() => {
-    const liveKeys = new Set<string>();
-    for (const id of prefs.poppedOutPanels) liveKeys.add(`panel:${id}`);
-    for (const key of prefs.poppedOutCards) liveKeys.add(`card:${key}`);
+    const live: FloatingRef[] = prefs.poppedOutPanels.map((id) => ({ kind: "panel", id }));
+    for (const [owner, slice] of Object.entries(prefs.cardFloats)) {
+      for (const key of slice.keys) live.push({ kind: "card", owner, key });
+    }
+    const liveKeys = new Set(live.map(refKey));
     setFocusStack((prev) => {
       const known = new Set(prev.map(refKey));
       const pruned = prev.filter((r) => liveKeys.has(refKey(r)));
-      const additions: FloatingRef[] = [];
-      for (const id of prefs.poppedOutPanels) {
-        if (!known.has(`panel:${id}`)) additions.push({ kind: "panel", id });
-      }
-      for (const key of prefs.poppedOutCards) {
-        if (!known.has(`card:${key}`)) additions.push({ kind: "card", key });
-      }
+      const additions = live.filter((r) => !known.has(refKey(r)));
       if (pruned.length === prev.length && additions.length === 0) return prev;
       return [...pruned, ...additions];
     });
-  }, [prefs.poppedOutPanels, prefs.poppedOutCards]);
+  }, [prefs.poppedOutPanels, prefs.cardFloats]);
 
-  // Cmd-W closes the most-recently-focused floating window (the top of
-  // the MRU stack) — one per press, never per auto-repeat. When the stack is
-  // empty the host (PWA window or browser tab) handles the keystroke as usual.
-  // `toolbar` kind no longer originates here — EditorPane owns the detached
-  // toolbars and dismisses them via its own MRU.
+  // Cmd-W closes the most-recently-focused floating window ON SCREEN — a
+  // panel float, or a card float of the doc in front — one per press, never
+  // per auto-repeat. A float of a hidden doc is never the target (task 1400:
+  // it used to be, closing an invisible float while the visible one stayed).
+  // When nothing qualifies the host (PWA window or browser tab) handles the
+  // keystroke as usual. `toolbar` kind no longer originates here — EditorPane
+  // owns the detached toolbars and dismisses them via its own MRU.
+  const docFloatsOnScreen = activePane === "doc" ? currentDocId : null;
+  const frontmostFloat = useMemo(
+    () => frontmostOnScreen(focusStack, docFloatsOnScreen),
+    [focusStack, docFloatsOnScreen],
+  );
   const closeFloating = useCallback(
     (target: FloatingRef) => {
       if (target.kind === "panel") closePopout(target.id);
-      else closeCardPopout(target.key);
+      else closeCardPopout(target.owner, target.key);
     },
     [closePopout, closeCardPopout],
   );
-  useCloseFloatChord(focusStack[focusStack.length - 1], closeFloating);
+  useCloseFloatChord(frontmostFloat, closeFloating);
 
   // Raise-on-click: paint z-index for a card/text-object float, derived from the
   // MRU focus stack so clicking a buried float brings it forward (was insertion
   // order). Cards focused most recently sit at the end of the stack → highest z.
-  // A just-opened float not yet in the stack falls to the top of the band.
+  // A just-opened float not yet in the stack falls to the top of the band. The
+  // band is the OWNER's floats only — another doc's are not on screen.
   const cardFloatZIndex = useCallback(
-    (key: string): number => {
+    (owner: string, key: string): number => {
       const cards = focusStack.filter(
-        (r): r is { kind: "card"; key: string } => r.kind === "card",
+        (r): r is Extract<FloatingRef, { kind: "card" }> =>
+          r.kind === "card" && r.owner === owner,
       );
       const idx = cards.findIndex((r) => r.key === key);
       // Bounded card-float band, anchored at the top: the most recent card is
@@ -712,9 +728,9 @@ export default function EditorLayout() {
   // kind and the float vanishes). Routes through `migratePoppedOutCards` so the
   // saved rect in `cardFloatPositions` moves with the key (never orphans).
   const remapCardPopKey = useCallback(
-    (oldKey: string, newKey: string) => {
+    (owner: string, oldKey: string, newKey: string) => {
       if (oldKey === newKey) return;
-      migratePoppedOutCards((k) => (k === oldKey ? newKey : k));
+      migratePoppedOutCards((k) => (k === oldKey ? newKey : k), owner);
     },
     [migratePoppedOutCards],
   );
@@ -1956,6 +1972,11 @@ export default function EditorLayout() {
   // + the three registry-driven writers (task 274). It carries no per-pref
   // field and no per-pref callback, so a new view pref is a registry row and
   // nothing here.
+  // "Close all panels" closes the window's panels and THIS doc's card floats —
+  // never another doc's (task 1400).
+  const closeAllPanelsAndDocFloats = useCallback(() => {
+    closeAllPanels(currentDocId ?? "");
+  }, [closeAllPanels, currentDocId]);
   const editorPaneMenuBar: EditorPaneMenuBarBundle = useMemo(() => ({
     prefs,
     availableDividerLevels,
@@ -1963,7 +1984,7 @@ export default function EditorLayout() {
     toggleViewPref,
     setViewPref,
     toggleViewPrefMember,
-    closeAllPanels,
+    closeAllPanels: closeAllPanelsAndDocFloats,
     paraNavBack,
     paraNavForward,
     paraNavBackDisabled,
@@ -1976,7 +1997,7 @@ export default function EditorLayout() {
     toggleViewPref,
     setViewPref,
     toggleViewPrefMember,
-    closeAllPanels,
+    closeAllPanelsAndDocFloats,
     paraNavBack,
     paraNavForward,
     paraNavBackDisabled,
@@ -2365,7 +2386,7 @@ export default function EditorLayout() {
   // The ACTIVE pane's bundle — folds in live section paths (Phase 5a), so it
   // re-identifies on every scroll. Only the visible pane reads it, so that
   // churn is intentional and harmless.
-  const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(
+  const editorPaneViewPrefs: EditorPaneWindowViewPrefs = useMemo(
     () =>
       buildEditorPaneViewPrefs(
         viewPrefsResult,
@@ -2388,7 +2409,7 @@ export default function EditorLayout() {
   // `viewPrefs` prop identity-stable so `React.memo(EditorPane)` bails for them
   // (Phase 5d). Hidden panes don't surface a breadcrumb/Outline highlight, so
   // empty section paths are correct for them.
-  const editorPaneViewPrefsInactive: EditorPaneViewPrefs = useMemo(
+  const editorPaneViewPrefsInactive: EditorPaneWindowViewPrefs = useMemo(
     () =>
       buildEditorPaneViewPrefs(
         viewPrefsResult,
@@ -2632,8 +2653,16 @@ export default function EditorLayout() {
     if (!editorInstance || !docIdForHooks) return;
     if (popoutKeysSweptDocRef.current === docIdForHooks) return;
     popoutKeysSweptDocRef.current = docIdForHooks;
-    migratePoppedOutCards((key) => migrateDocAwarePopoutKey(editorInstance, key));
-  }, [editorInstance, docIdForHooks, migratePoppedOutCards]);
+    // Task 1400: a pre-1400 popout list named no doc — it belongs to the doc
+    // in front at boot, so the first doc to load adopts it (a no-op once
+    // adopted). Then THIS doc's keys — never another doc's — are resolved
+    // against THIS doc's editor.
+    adoptLegacyCardFloats(docIdForHooks);
+    migratePoppedOutCards(
+      (key) => migrateDocAwarePopoutKey(editorInstance, key),
+      docIdForHooks,
+    );
+  }, [editorInstance, docIdForHooks, migratePoppedOutCards, adoptLegacyCardFloats]);
 
 
   // Virgil-bar right-cluster source: post-7.8 the bar reads per-doc
