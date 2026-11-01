@@ -688,3 +688,24 @@ unowned slot that no pane renders, adopted by the first doc to load at boot.
 Rule: when a pref describes something that lives IN a document, key it by the
 document and scope it at the pane's identity — never filter per consumer.
 CI: `owner-floats.test.ts`, `view-prefs-window-door.test.tsx`.
+
+### The ENUMERATION half: a per-doc lookup enumerates ONE owner's entries (task 1401)
+
+Keying a registry by owner is not enough if some door still enumerates ALL of
+it. The drop-target registry (`src/components/drop-mode/target-registry.ts`)
+used to publish `getRegisteredEditors()` — every mounted editor, hidden
+keep-alive panes included — and `locateAtom` (`util/inline-atom-move.ts`)
+walked it to find a dragged footnote/citation card's atom by id. Ids are unique
+only within one parse, so a hidden sibling paper sharing an id turned an
+unanchored card's `create` into a `move-across` that silently deleted the atom
+from the hidden paper.
+
+Each entry now records its OWNER — the `PaneRootContext` id read at the
+registering component (`Editor.tsx`, `RichTextField.tsx`; `null` outside any
+pane) — and `DropCtx.owner` carries the same id from `DropModeProvider`. The
+only enumeration is `getEditorsOwnedBy(owner)`; the owner-blind one is
+DELETED so no future caller reaches a sibling paper by default. The hit-test
+takes the session ctx's owner too and refuses an editor registered under
+another pane (`dropTargetOwner(editor) !== ctxOwner`), so a payload of paper A
+never lands in paper B's prose even with both on screen. Suite:
+`locate-atom-pane-owner.test.ts`.

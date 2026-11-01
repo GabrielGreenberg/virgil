@@ -684,6 +684,7 @@ function runMovePass() {
     session.inlinePayload,
     session.blockPayload,
     session.sourceRange,
+    session.ctx.owner ?? null,
   );
   // Stamped even when `updatePlacement` bails on equality: the hit-test just
   // re-asked THIS doc, so an equal position is a fresh one.

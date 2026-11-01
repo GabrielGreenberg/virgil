@@ -18,10 +18,11 @@
  * through `DropCtx.confirm` so spec code stays sync-friendly.
  */
 
-import { useEffect, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { useConfirmDialog } from "../ConfirmDialog";
 import { registerDropCtx } from "./controller";
+import { PaneRootContext } from "../editor-layout/pane-dom";
 import type {
   DropCtx,
   InlineAtomCardApis,
@@ -64,6 +65,9 @@ export function DropModeProvider({
   atomCards,
 }: DropModeProviderProps) {
   const { confirm, dialog } = useConfirmDialog();
+  // The owning pane — the key its editors register with the target registry
+  // under, so this ctx's lookups never reach a sibling (hidden) pane's doc.
+  const owner = useContext(PaneRootContext);
 
   // Snapshot the live ctx fields every render into a ref. The controller reads
   // them back through `ctxRef.current` (via the getters below), so the
@@ -81,6 +85,7 @@ export function DropModeProvider({
   // kind (R5). Running once — values read live through the ref — makes the drag
   // immune to ALL render/memo/hook churn, while a true unmount still cancels.
   const snapshot: DropCtx = {
+    owner,
     mainEditor,
     closePopout,
     requestAnchorFlush,
@@ -115,6 +120,9 @@ export function DropModeProvider({
     // every field. `[]` deps ⇒ the cleanup's `setDropCtx(null)` fires only on a
     // real unmount.
     const liveCtx: DropCtx = {
+      get owner() {
+        return ctxRef.current.owner;
+      },
       get mainEditor() {
         return ctxRef.current.mainEditor;
       },

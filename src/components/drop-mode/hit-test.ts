@@ -40,7 +40,7 @@ import {
 } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
 import { parseAnyKey } from "@/floats/float-key";
-import { findEditorAtPoint } from "./target-registry";
+import { dropTargetOwner, findEditorAtPoint } from "./target-registry";
 import { winningPlacementKind } from "./placement-policy";
 import { inlineCursorHostsPayload, type InlineDropPayload } from "./inline-host";
 import type { BlockDropPayload } from "./block-payload";
@@ -93,9 +93,17 @@ export function hitTest(
   inlinePayload: InlineDropPayload,
   blockPayload: BlockDropPayload,
   sourceRange: DropSourceRange | null,
+  /** The session ctx's pane (`DropCtx.owner`). When given, an editor
+   *  registered under a DIFFERENT pane is no target (task 1401): a payload of
+   *  paper A never lands in paper B's prose, even with both on screen. Omitted
+   *  (`undefined`) by the bare-harness suites, which skip the rung. */
+  ctxOwner?: string | null,
 ): Placement | null {
   const editor = findEditorAtPoint(x, y);
   if (!editor) return null;
+  if (ctxOwner !== undefined && dropTargetOwner(editor) !== ctxOwner) {
+    return null;
+  }
   // TASK 733 — both axes. `editor.isEditable` is `view.editable`, which MAIN
   // pins `true` for the view's lifetime, so a host-read-only pane (the Library
   // Reader) accepted every drop target here and handed the gesture on to a

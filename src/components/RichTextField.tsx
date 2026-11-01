@@ -13,7 +13,7 @@
  * caret while the user is typing.
  */
 
-import { Fragment, useEffect, useRef, useState, useCallback, memo, type CSSProperties, type ReactNode } from "react";
+import { useContext, Fragment, useEffect, useRef, useState, useCallback, memo, type CSSProperties, type ReactNode } from "react";
 import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
 import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
 import { SpellcheckDecorator } from "@/lib/tiptap/spellcheck-decorator";
@@ -33,6 +33,7 @@ import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
+import { PaneRootContext } from "@/components/editor-layout/pane-dom";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { iconHint } from "@/components/Hint";
 import { pressProps } from "@/lib/press-props";
@@ -684,10 +685,13 @@ function RichTextFieldImpl({
 
   // Register this nested editor with the drop-mode target registry, so
   // drop-mode can target card bodies in addition to the main editor.
+  // Registered under the owning pane (task 1401): a by-id atom lookup and the
+  // drop hit-test consult only the dragging pane's editors.
+  const dropTargetOwner = useContext(PaneRootContext);
   useEffect(() => {
     if (!editor) return;
-    return registerDropTarget(editor);
-  }, [editor]);
+    return registerDropTarget(editor, dropTargetOwner);
+  }, [editor, dropTargetOwner]);
 
   // Sync the per-panel body style onto the ProseMirror DOM. NOTE:
   // `usePanelBodyStyle` returns the FULL effective typography (registry
