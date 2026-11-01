@@ -165,7 +165,7 @@ def test_bracket_numeric_reads_the_list_under_any_heading(tmp_path):
     # The rewriter's own body/tail split keeps the list out of the scan.
     new, _count = rc.rewrite_bracket_numeric(text, {"1": "smith2001"})
     assert new.endswith(tail)
-    assert "\\cite{smith2001}" in new
+    assert "\\citep{smith2001}" in new
 
 
 # --- 3. census --------------------------------------------------------------

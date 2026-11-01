@@ -88,8 +88,9 @@ commands:
 
 Use the natbib / biblatex `\cite…` vocabulary from
 [_latex-allowlist.md](_latex-allowlist.md) (locator + multi-key forms
-included). For extraction, the common picks are `\cite{key}` (parenthetical),
-`\citet{key}` (textual — "Smith (2008) argues …"), `\citealt`/`\citealp`
+included). For extraction, the VOICE is that file's voice table — `\citep`
+parenthetical, `\citet` textual; never bare `\cite`, which natbib (Virgil's
+baseline) renders textually. Beyond the voices, `\citealt`/`\citealp`
 (bare and parens-safe forms for footnote lists and `(e.g., …)` wrappers), and
 `\citeauthor`/`\citeyear`/`\citeyearpar` for possessives and split
 author/year references.
