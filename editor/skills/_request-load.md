@@ -79,7 +79,9 @@ from each skill, never restated in a skill's own words (task 1045).
    hand-rolled card-existence scan first.
 3. **`Skipped` means nothing happened.** Use it only for (1)/(2). A path that
    CLOSES the Task without a card — a limit you can't act on, a source you
-   can't find (`complete-only --note` / `--result impossible`) — did act: it
-   finished the Task. Its reply opens `Done: <requestId> — could not act:
+   can't find — did act: it finished the Task. It closes as a FAILURE, never a
+   success: `complete-only <requestId> --result impossible --note "@$t/note"` (status
+   `failed`), and it marks nothing done on the source card — the user's ask
+   was not met. Its reply opens `Done: <requestId> — could not act:
    <reason>.`, never `Skipped`.
 

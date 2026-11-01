@@ -86,8 +86,9 @@ matters" (write a note). Read the todo and dispatch.
    - **Analysis / explanation** ("why does this matter", "how does
      this connect to X") → emit a sibling **note** card.
    - **Action you can't take** ("get permission from coauthor",
-     "check the dataset"): mark complete with a note explaining the
-     limit; don't pretend.
+     "check the dataset"): close the Task as **failed** (`--result
+     impossible`) with a note explaining the limit, and leave the todo
+     open; don't pretend it was done.
 
 3. **Land the result** per the chosen shape. **Every `create_card.py` call
    below passes `--anchor <uuid>`, taken from the row's `paragraphIds[0]`** —
@@ -179,17 +180,27 @@ matters" (write a note). Read the todo and dispatch.
      `status` drives step 4 like any other branch.
    - **Citation → handoff.** Nothing lands here: `/editor/find-citation`
      drains the Task. Say in your reply which skill you handed to.
-   - **Action you can't take → complete-with-note:** unchanged (step 2) —
-     `apply_response.py <docPath> complete-only <id> --note "@$t/note"`,
-     the limit written to heredoc scratch like any free text
-     ([`_op-json.md`](_op-json.md)); it creates no card.
+   - **Action you can't take → failed with a note** (step 2) — the same
+     two-field failure close as `/editor/find-citation` and
+     `/editor/style-merge` (status `failed`, result `impossible`;
+     [_request-load.md](_request-load.md) → "Idempotency" rule 3), the limit
+     written to heredoc scratch like any free text
+     ([`_op-json.md`](_op-json.md)); it creates no card:
+     ```bash
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
+     cat > "$t/note" <<'TXT'
+     <the limit: what the todo asks for and why the AI cannot do it>
+     TXT
+     python3 editor/scripts/apply_response.py <docPath> complete-only <id> --result impossible --note "@$t/note"; rc=$?
+     rm -rf "$t"
+     exit "$rc"
+     ```
 
 4. **Finalize the source todo by the returned outcome** — don't mark a proposal
    done. The rule is keyed on the JSON `status` the landing call returned, not
    on which branch you took:
    - **`status: complete`** (a sibling note created direct / silent /
-     auto-applied, the tier-1 footnote, the verification report, or
-     complete-with-limit): mark the source
+     auto-applied, the tier-1 footnote, or the verification report): mark the source
      todo done through the contract's `update` op — the same door
      [`/editor/edit-card`](edit-card.md) `<docPath> <cardId> --field done=true`
      uses (atomic, pen-protected, version-bumped). The op carries only an id
@@ -211,6 +222,11 @@ matters" (write a note). Read the todo and dispatch.
      `accepted`; a reject completes it `rejected` and leaves the todo open (task
      1043). An L3 **note** proposal has no accept step, so the user ticks that
      todo themselves — say so in the reply only on the note path.
+   - **`status: failed`** (the could-not-act close, result `impossible`):
+     leave the todo `done: false`. Nothing was done, so ticking it off would
+     report a failure as finished work and change the user's own todo. The
+     landing call already lowered its `aiRequest` flag, so it is back to an
+     ordinary open todo; the limit lives in the Task's note and notification.
    - **Citation handoff:** nothing to finalize here — `/editor/find-citation`
      owns the Task from this point.
 
@@ -239,9 +255,9 @@ matters" (write a note). Read the todo and dispatch.
      ```
      Handed off request <requestId> (todo <cardId>) to /editor/find-citation — a citation needs a sourced bib entry, which that skill owns; it drains this Task.
      ```
-   - Limit-explanation (the Task is COMPLETED with a note — not skipped):
+   - Limit-explanation (the Task is CLOSED as failed with a note — not skipped):
      ```
-     Done: <requestId> — could not act: <reason>. Source todo <cardId> marked done with note.
+     Done: <requestId> — could not act: <reason>. Source todo <cardId> left open (the limit is in the request's note).
      ```
 
 ## Idempotency
