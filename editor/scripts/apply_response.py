@@ -3149,7 +3149,9 @@ def cmd_link(doc: Path, op: dict) -> dict:
 #
 # L3 ("propose a change for review") is the one safety level that DRAFTS but
 # can't consummate: draft-suggestion lands a suggestion card (revision- or
-# cutter-) with the .tex untouched and the Task left awaiting review. These two
+# cutter-) with the proposed change unapplied — the .tex carries at most the
+# card's `--range` anchor pair, which lands with the card at every level
+# (editor/skills/_safety-levels.md) — and the Task left awaiting review. These two
 # ops close that loop, on the SAME atomic + pen + audit spine as the other
 # mutations (_mutation_commit):
 #

@@ -110,8 +110,8 @@ two paths:
    `create_card.py --kind=note` — it builds the `UserNote`, anchors it (Mode A),
    stamps the `aiOriginRequestId` back-pointer, flips the Task's `status`/`result`,
    clears the source flag, and bumps the version, all atomically under the pen.
-   The subcommand is chosen from the Task's `safetyLevel` (none → direct create;
-   1 → silent; 2 → +comment; 3 → propose) — you don't pick it. Carry the title via
+   The subcommand is chosen from the Task's `safetyLevel`
+   ([_safety-levels.md](_safety-levels.md)) — you don't pick it. Carry the title via
    `--title`. Don't pass `--margin`: which side a note's margin chrome sits on
    follows the Notes panel's dock and is resolved live by the app.
 
