@@ -25,7 +25,14 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
 ## Args
 
 - `<docPath>` — the paper folder.
-- `<cardId>` — the id of the card to re-anchor.
+- `<cardId>` — the id of the card to re-anchor. If you were not handed one,
+  list the candidates — never guess or take the first match:
+  `cards_for_paragraph.py <docPath> <uuid>` for one paragraph's cards, or
+  `cards_for_paragraph.py <docPath> --doc` for the whole paper, narrowed with
+  `--kind <k>`, `--status <s>` and `--archived` / `--live`. One row → use its
+  `cardId`; several → ask which, quoting each `summary`. (The front door's
+  "Card routes" recipe, `virgil/skills/start.md`, is the same procedure for
+  every card-bound skill.)
 - `<newAnchor>` — the **paragraph `%!v:` UUID** to anchor at. It must already
   exist in the `.tex` (the op refuses an unknown anchor rather than guess). If
   you only have a selection or a heading, resolve its paragraph uuid first with

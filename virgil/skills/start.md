@@ -124,7 +124,7 @@ So run the catalog helper **once** per front-door turn. It sits beside
 dev flow `editor/scripts/skill_catalog.py`), finds the skills itself, and
 prints one JSON line per skill: `name`, `slash`, the whitespace-normalised
 `description`, and the declarations the rules below read — `heavy`, `light`,
-`developerOnly`, `requiredIds`:
+`developerOnly`, `requiredIds`, `requiredCardIds`:
 
 ```
 python3 <skill_catalog.py>
@@ -155,6 +155,14 @@ itself rather than a list kept here:
    contract immediately below applies. A **bracketed** `[<requestId>]` is the
    skill declaring the id optional: `/editor/create-card` is that door, and it
    is the answer to "there is no Task".
+   **A specialist is card-bound** when its `Args:` line requires a
+   `<cardId>` (or `<cardAId>` / `<cardBId>`) — the catalog's
+   `requiredCardIds`. It acts on a card that already exists, and the
+   [Card routes](#card-routes-where-the-card-id-comes-from) recipe below
+   says where that id comes from. Every required id a skill declares
+   belongs to one of these two families; the catalog exits non-zero naming
+   any id token it cannot classify, so do not route that skill — say it
+   declares an id the front door has no recipe for.
 4. **When two skills both fit, prefer the narrower one**, and read the loser's
    `Does NOT trigger for …` line — the descriptions disambiguate each other by
    design (`/editor/edit-card` refuses a suggestion's `status`;
@@ -227,6 +235,44 @@ Answer this before you dispatch a Task-bound specialist:
    and give the user the one action that mints a real Task: flag the paragraph
    or the card for AI in Virgil, then ask again — or run
    `/editor/review <docPath>` once it is flagged.
+
+#### Card routes: where the card id comes from
+
+A **card-bound** specialist (rule 3 above — `requiredCardIds`) accepts,
+rejects, edits, archives, restores, moves or links a card **that already
+exists** in the paper's sidecars. Each resolves its id through
+`card_by_id.py` and refuses one that does not exist — but a **wrong** id
+that does exist is not refused: accepting the first pending suggestion you
+find when several are pending splices the wrong rewrite into the user's
+`.tex`. So the card id, like a Task id, is never invented, guessed, or
+first-picked.
+
+Resolve it with the card lister (same `<editor-scripts>` prefix as above):
+
+```bash
+# the ask names or quotes a passage → that paragraph's cards
+python3 <editor-scripts>/cards_for_paragraph.py <docPath> <paragraph-uuid> [filters]
+# the ask names no passage → every card in the paper
+python3 <editor-scripts>/cards_for_paragraph.py <docPath> --doc [filters]
+```
+
+Narrow with the filters the ask implies: `--kind suggestion --status pending`
+for accept / reject, `--kind note` (or `todo`, `report`, …) for "this note",
+`--archived` for `/editor/restore-card`, `--live` for everything else. Each row
+carries `cardId`, `kind`, `cardKind`, `status` and a `summary`; a `--doc` row
+also names its `paragraphs`. Resolve the paragraph uuid the same way as for
+Workflow B above. Then:
+
+- **exactly one row** → pass its `cardId` and dispatch;
+- **several rows** → ask **one short question** quoting each row's `summary`
+  ("which one — *Trim the lede…* or *Foreground the framing verb…*?"), then
+  dispatch the one the user picks. An ask that explicitly covers them all
+  ("accept all the pending suggestions") is one dispatch per row, each
+  echoed;
+- **no row** → say so plainly ("there is no pending suggestion on that
+  paragraph") and stop. Do not fall back to a card of another kind.
+
+`/editor/link-cards` takes two card ids: resolve each the same way.
 
 The table below is **not** the route list. It records only the handful of
 asks that carry something no description can say: a front-door branch with no
@@ -357,13 +403,27 @@ Branches:
     Queued deep-index for <citekey> at <library-root>/.virgil/queue/.
     Your library session (or the next `/loop /library/index-pending` tick) will pick this up.
     ```
-    If the line also carries `"companion": {"result": "written", …}`, add:
-    `It isn't indexed yet, so a plain index was queued to run first.`
+    The paper may not be indexed yet; then the line also carries a
+    `"companion"` — the plain index the deep index needs first. Report it
+    by its own result, never by silence:
+    - `"companion": {"result": "written", …}` or
+      `"companion": {"result": "already-queued", …}` → add: *It isn't indexed
+      yet, so a plain index is queued to run first.*
+    - `"companion": {"result": "in-flight", …}` → add: *Its plain index is
+      running right now; the deep index follows it.*
+    - `"companion": {"result": "occupied", …}` → add: *It isn't indexed yet,
+      and an older queue entry for it blocked the plain index, so nothing
+      will index it first — the deep index will fail until it is indexed.
+      Open the library session and index it there.*
   - `"result": "already-queued"` → *A deep index of <citekey> is already
     waiting in the queue — nothing new was added.*
   - `"result": "in-flight"` (exit 3) → *Your library session is deep-indexing
     <citekey> right now; nothing was queued. Ask again once it finishes if
     you want another pass.*
+  - `"result": "occupied"` (exit 3) → *An older queue entry for <citekey>
+    holds its slot, so nothing was queued. Open the library session to clear
+    it.* (A deep index has its own per-kind slot, so this is not expected —
+    but it is a result the door can print, and "Queued" for it would be false.)
 - **Run here anyway** → dispatch the specialist inline as a subagent, having
   said what it costs. The choice was surfaced; that is the invariant, not a
   refusal.
@@ -395,6 +455,9 @@ Done: oriented user. Output: state-summary.
   flock-protected shims. In particular it never appends, edits, or fabricates
   a row (or an id) in `virgil/ai-requests.json` — there is no door for that,
   and Step 2 says what to do instead.
+- Does **not** pick a card for the user. A card-bound skill gets a card id
+  the lister returned and, when several fit, the one the user chose (Step 2,
+  Card routes) — never the first match.
 - Does **not** silently run a heavy library operation from a paper session.
   Whenever the mode is not `in-library`, Step 4 surfaces the choice first —
   mount, queue, run here anyway, or skip. Running it *after* the user picks

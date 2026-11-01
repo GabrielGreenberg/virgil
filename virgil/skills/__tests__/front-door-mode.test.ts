@@ -416,6 +416,22 @@ describe("Step 4 is reachable, and its Queue branch states the entry", () => {
         `${unreported.join(", ")}.`,
     ).toEqual([]);
     expect(s4.includes('"companion"'), "Step 4 ignores the companion index").toBe(true);
+    // Task 1415: the COMPANION is a plain `write_request` into the bare index
+    // slot, so it can return ANY of the door's four results — OCCUPIED among
+    // them (a legacy entry holds the bare slot, and the index the deep index
+    // needs was NOT queued). Reporting only "written" left that silent.
+    const all = ["WRITTEN", "ALREADY_QUEUED", "IN_FLIGHT", "OCCUPIED"].map((c) => {
+      const m = py.match(new RegExp(`^${c} = "([a-z-]+)"`, "m"));
+      expect(m, `queue_slot.py no longer defines ${c}`).not.toBeNull();
+      return m![1];
+    });
+    const companionUnreported = all.filter(
+      (r) => !s4.includes(`"companion": {"result": "${r}"`),
+    );
+    expect(
+      companionUnreported,
+      `Step 4 does not say what to report for companion result(s): ${companionUnreported.join(", ")}.`,
+    ).toEqual([]);
   });
 
   it("the declared invariant is true of the shipped file", () => {
