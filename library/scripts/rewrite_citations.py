@@ -1,5 +1,5 @@
 """Rewrite bare `Author Year` mentions in main.tex body to natbib
-\\cite / \\citealt / \\citet commands.
+\\citep / \\citealt / \\citet commands.
 
 Parses references.bib (treating both `author = {}` and `editor = {}`
 fields identically) into a {(normalized-surname-tuple, year) → citekey}
@@ -7,9 +7,15 @@ map. Walks the body region (everything before the References heading, as
 `_refs_section.body_end` locates it),
 finding bare `Author Year` and `(Author Year)` mentions, and rewrites:
 
-- `(Author Year)` parenthetical → `\\cite{key}`
+- `(Author Year)` parenthetical → `\\citep{key}` (the parens are consumed)
+- `(Author Year, p. 5)` / `(Author Year; …)` → `(\\citealt{key}, p. 5)` —
+  the parens are not the citation's alone, so they stay and the cite is bare
 - `Author Year` inside `\\footnote{...}` argument → `\\citealt{key}`
 - `Author Year` bare in body prose → `\\citealt{key}`
+
+Every emission goes through `_cite(voice, …)`; the voice → command table is
+`VOICE_COMMANDS`. Bare `\\cite` is never emitted: under natbib (Virgil's
+default family, and what a library main.tex gets) it renders TEXTUALLY.
 
 Skips mentions inside existing `\\cite…{}` commands and inside
 non-citation contexts (front-matter `First published`, ISBN, classical
@@ -38,6 +44,23 @@ def normalize_surname(s: str) -> str:
     s = re.sub(r"[^a-z]", "", s)
     s = re.sub(r"(jr|sr|iii)$", "", s)
     return s
+
+
+# The VOICE of a rewrite is decided by the surface it replaces — never by
+# which function happens to emit it — and spelled here, once. natbib's bare
+# `\cite` is `\citet` (Author (Year)), so a parenthesized source is `\citep`.
+# Mirrors the natbib column of _latex-allowlist.md's voice table (pinned by
+# tests/test_rewrite_citations_voice.py).
+VOICE_COMMANDS = {
+    "parenthetical": "citep",  # (Smith 2008) — the source's parens consumed
+    "textual": "citet",        # Smith (2008)
+    "bare": "citealt",         # Smith 2008 — prose, footnote, surviving parens
+}
+
+
+def _cite(voice: str, keys: list[str], loc: str = "", sep: str = ",") -> str:
+    """The one door every rewrite's LaTeX goes out through."""
+    return f"\\{VOICE_COMMANDS[voice]}{loc}{{{sep.join(keys)}}}"
 
 
 def _strip_et_al(s: str) -> str:
@@ -320,13 +343,15 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str],
         char_before = body[start - 1] if start > 0 else ""
         char_after = body[end] if end < len(body) else ""
 
-        if char_before == "(":
-            close_paren_pos = end + 1 if char_after == ")" else end
-            rewrites.append((start - 1, close_paren_pos, "\\cite{" + citekey + "}"))
-        elif in_footnote:
-            rewrites.append((start, end, "\\citealt{" + citekey + "}"))
+        if char_before == "(" and char_after == ")":
+            # The parens wrap exactly this citation: they ARE its voice.
+            rewrites.append((start - 1, end + 1, _cite("parenthetical", [citekey])))
         else:
-            rewrites.append((start, end, "\\citealt{" + citekey + "}"))
+            # Prose, a footnote, or parens shared with a locator / a second
+            # citation (`(Smith 2008, p. 5)`, `(Smith 2008; Jones 2010)`):
+            # the surrounding text is untouched, so the cite is bare. (This
+            # branch once consumed a lone `(` and orphaned the `)`.)
+            rewrites.append((start, end, _cite("bare", [citekey])))
 
     # Apply rewrites right-to-left
     rewrites.sort(key=lambda r: -r[0])
@@ -338,7 +363,7 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str],
 
 
 def rewrite_bracket_keys(text: str, bracket_map: dict[str, str]) -> tuple[str, int]:
-    """For bracket-key style: rewrite inline `[KEY]` to `\\cite{citekey}`."""
+    """For bracket-key style: rewrite inline `[KEY]` to `\\citep{citekey}`."""
     refs_start = body_end(text)
     body = text[:refs_start]
     tail = text[refs_start:]
@@ -350,7 +375,7 @@ def rewrite_bracket_keys(text: str, bracket_map: dict[str, str]) -> tuple[str, i
         if not ck:
             return m.group(0)
         count += 1
-        return f"\\cite{{{ck}}}"
+        return _cite("parenthetical", [ck])
     new_body = re.sub(r"\[([A-Z][\w+]*)\]", replace, body)
     return new_body + tail, count
 
@@ -398,7 +423,7 @@ def rewrite_bracket_numeric(
     text: str, numeric_map: dict[str, str],
 ) -> tuple[str, int]:
     """For bracket-numeric style (CS theses, Vancouver): rewrite
-    `[N]`, `[N, M]`, `[N-M]`, `[N--M]` to `\\cite{key1,key2,...}`.
+    `[N]`, `[N, M]`, `[N-M]`, `[N--M]` to `\\citep{key1,key2,...}`.
 
     Skips occurrences inside the References section itself.
     """
@@ -434,7 +459,7 @@ def rewrite_bracket_numeric(
         if not keys:
             return m.group(0)
         count += 1
-        return "\\cite{" + ",".join(keys) + "}"
+        return _cite("parenthetical", keys)
 
     new_body = re.sub(r"\[((?:\d+(?:\s*(?:--|-)\s*\d+)?)(?:\s*,\s*\d+(?:\s*(?:--|-)\s*\d+)?)*)\]",
                       replace, body)
@@ -488,7 +513,7 @@ def rewrite_bracket_author_year(
         if not keys:
             return m.group(0)
         count += 1
-        return "\\cite{" + ",".join(keys) + "}"
+        return _cite("parenthetical", keys)
 
     new_body = multi_cite.sub(replace_multi, body)
     # one_cite is now redundant for paren-bracketed mentions but still
@@ -534,8 +559,8 @@ def rewrite_author_year_paren(
         count += 1
         if page_part:
             page_arg = page_part.replace("-", "--")
-            return f"\\citet[p.~{page_arg}]{{{ck}}}"
-        return f"\\citet{{{ck}}}"
+            return _cite("textual", [ck], loc=f"[p.~{page_arg}]")
+        return _cite("textual", [ck])
 
     new_body = pattern.sub(replace, body)
     return new_body + tail, count, unresolved
@@ -629,7 +654,7 @@ def rewrite_bracket_locator(
         if not keys:
             return m.group(0)
         count += 1
-        return f"\\citet{{{','.join(keys)}}}"
+        return _cite("textual", keys)
 
     # Pass 2: single year (or `forthcoming`) with optional locator.
     # Locator content excludes `]` `)` `(` `[` and newlines, and caps at
@@ -657,7 +682,7 @@ def rewrite_bracket_locator(
             return m.group(0)
         count += 1
         loc_arg = format_locator(locator) if locator else ""
-        return f"\\citet{loc_arg}{{{ck}}}"
+        return _cite("textual", [ck], loc=loc_arg)
 
     new_body = multi_year_re.sub(replace_multi_year, body)
     new_body = single_re.sub(replace_single, new_body)
@@ -724,13 +749,15 @@ def style_lines() -> list[str]:
 def rewrite_multi_year_same_author(
     text: str, bibmap: dict[tuple, str],
 ) -> tuple[str, int]:
-    """Fold `(Author YYYY, YYYY)` into a single `\\citealt{k1, k2}`.
+    """Fold `(Author YYYY, YYYY)` into a single `\\citep{k1, k2}`.
 
     The standard rewriter (rewrite_citations / rewrite_author_year_paren)
     handles the first year and leaves the second as orphan prose, then
     `(Author 1945, 1963)` becomes `(\\citealt{a1945}, 1963)` —
     unbalanced parens (cohenmscoherence memo). This pass runs FIRST so
-    the standard rewriter sees a clean `\\citealt{...}` instead.
+    the standard rewriter sees a clean `\\citep{...}` instead. The match
+    consumes both parens, so the voice is parenthetical (natbib folds the
+    shared author: "(Quine 1945, 1963)").
     """
     refs_start = body_end(text)
     body = text[:refs_start]
@@ -767,7 +794,7 @@ def rewrite_multi_year_same_author(
                 return m.group(0)  # bail: leave the source untouched
             keys.append(ck)
         count += 1
-        return "\\citealt{" + ", ".join(keys) + "}"
+        return _cite("parenthetical", keys, sep=", ")
 
     new_body = pattern_paren.sub(replace_paren, body)
     return new_body + tail, count
@@ -914,7 +941,7 @@ def main() -> int:
     if count:
         print(
             f"Rewrote {count} {style}-style mentions to "
-            f"\\cite/\\citealt/\\citet."
+            f"\\citep/\\citealt/\\citet."
         )
 
     if unresolved:

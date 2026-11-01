@@ -516,7 +516,7 @@ surname set from `references.bib`, with particle list (`von`, `de`,
 
 **Title-only fallback.** After the structured-citation pass, run a
 title-only matcher: any `'<title>'` quote ≥15 chars matching a
-`references.bib` title (strong prefix match) gets `\cite{key}`
+`references.bib` title (strong prefix match) gets `\citep{key}`
 appended after the title. Safeguards: skip text inside existing
 `\cite[]{}` args; require strong prefix match to avoid catching
 concept quotes.
@@ -556,7 +556,7 @@ It parses both `author = {}` AND `editor = {}` fields from
 `@book{gregorygombrich1973illusion, editor = {Gregory, R. L. and
 Gombrich, E. H.}}` — a citation-rewriter that only reads `author`
 silently misses these), normalizes surnames via NFKD-fold for fuzzy
-matching, and applies natbib rewrites (`\cite{}` for parenthetical,
+matching, and applies natbib rewrites (`\citep{}` for parenthetical,
 `\citealt{}` inside footnotes and bare prose, `\citet{}` for
 `Author (Year)`). It also fixes common OCR year garbles like
 `i960` → `1960`. The auto-pass handles ~95% of cases; remaining
@@ -577,12 +577,15 @@ resolution per the spec below.
 
 ### Natbib vocabulary (author-year sources)
 
-For author-year sources, use **natbib** semantics. The vocabulary is
-richer than just `\cite` and `\citet` — pick the form that matches
+For author-year sources, use **natbib** semantics. The two VOICES are
+[_latex-allowlist.md](_latex-allowlist.md)'s voice table — `\citep`
+parenthetical, `\citet` textual; never bare `\cite`, which natbib renders
+TEXTUALLY (`Author (Year)`), so a `(Author Year)` source rewritten to it
+loses its parentheses. Beyond the two voices, pick the form that matches
 the surface prose so the chip renders without nested parens or
 duplicated authors:
 
-- `\cite{key}` — `(Author Year)` parenthetical (the default).
+- `\citep{key}` — `(Author Year)` parenthetical.
 - `\citet{key}` — `Author (Year)` textual.
 - `\citealp{key}` — `Author, Year` *without* surrounding parens.
 - `\citealt{key}` — `Author Year` *without* surrounding parens.
@@ -595,16 +598,16 @@ All seven accept the same `[locator]{key}` syntax, e.g.
 
 | Body text | Rewrite |
 | --- | --- |
-| `(Bach 2002)` | `\cite{bach2002giorgione}` |
-| `(Bach, 2002)` | `\cite{bach2002giorgione}` (drop the inner comma) |
+| `(Bach 2002)` | `\citep{bach2002giorgione}` |
+| `(Bach, 2002)` | `\citep{bach2002giorgione}` (drop the inner comma) |
 | `Bach (2002)` | `\citet{bach2002giorgione}` |
-| `(Bach 2002, p. 75)` | `\cite[p.~75]{bach2002giorgione}` |
-| `(Bach 2002, pp. 75–80)` | `\cite[pp.~75--80]{bach2002giorgione}` |
-| `(Smith and Jones 2008)` | `\cite{smithjones2008keyword}` |
+| `(Bach 2002, p. 75)` | `\citep[p.~75]{bach2002giorgione}` |
+| `(Bach 2002, pp. 75–80)` | `\citep[pp.~75--80]{bach2002giorgione}` |
+| `(Smith and Jones 2008)` | `\citep{smithjones2008keyword}` |
 | `Smith and Jones (2008)` | `\citet{smithjones2008keyword}` (textual two-author) |
-| `(Smith et al. 2008)` | `\cite{smithetal2008keyword}` |
-| `(Bach 2002; Burge 1977)` | `\cite{bach2002giorgione,burge1977belief}` |
-| `(Bach 2002a; Bach 2002b)` | `\cite{bach2002a,bach2002b}` |
+| `(Smith et al. 2008)` | `\citep{smithetal2008keyword}` |
+| `(Bach 2002; Burge 1977)` | `\citep{bach2002giorgione,burge1977belief}` |
+| `(Bach 2002a; Bach 2002b)` | `\citep{bach2002a,bach2002b}` |
 | `Hobbs (1979, 1985)` | `\citet{hobbs1979coherence,hobbs1985coherence}` (multi-year, same author) |
 | `Mann and Thompson (1988, p. 243)` | `\citet[p.~243]{mannthompson1988rhetorical}` (textual + locator) |
 | `(e.g., Roberts 1996: 50)` | `(e.g., \citealp[p.~50]{roberts1996information})` |
@@ -617,7 +620,7 @@ Pattern notes:
 
 - **Parenthetical wrappers** ("(e.g., …)", "(see …)", "(cf. …)"): use
   `\citealp` so the whole thing reads `(e.g., Author, Year)` instead of
-  the broken `(e.g., (Author, Year))` that `\cite` would produce.
+  the broken `(e.g., (Author, Year))` that `\citep` would produce.
 - **Possessives** ("Persson's", "Hume's"): split into
   `\citeauthor{}` + `'s` + `\citeyearpar{}`. Don't try to fold the `'s`
   into a single chip — the renderer has no facility for it.

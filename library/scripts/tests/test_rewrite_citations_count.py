@@ -53,7 +53,7 @@ def test_fold_only_paper_is_written():
     proc, out = _run(tex)
     assert proc.returncode == 0, proc.stderr
     assert "Multi-year folded: 1" in proc.stdout
-    assert "\\citealt{quine1945, quine1963}" in out
+    assert "\\citep{quine1945, quine1963}" in out
     assert "1963)" not in out
     assert "Rewrote 1 " in proc.stdout
 
@@ -65,7 +65,7 @@ def test_fold_plus_ordinary_rewrite_sums():
     )
     proc, out = _run(tex)
     assert proc.returncode == 0, proc.stderr
-    assert "\\citealt{quine1945, quine1963}" in out
+    assert "\\citep{quine1945, quine1963}" in out
     assert "lewis1986" in out
     assert "Rewrote 2 " in proc.stdout, proc.stdout
 
