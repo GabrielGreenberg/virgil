@@ -13,24 +13,46 @@
  * view that nests `.ProseMirror` elements (table cells, for instance),
  * `elementsFromPoint` may surface a child `.ProseMirror` first. The
  * lookup walks the elements list in order and returns the first match.
+ *
+ * OWNERSHIP (task 1401, the "per-doc services under multi-pane keep-alive"
+ * law). Under multi-doc keep-alive several `EditorPane`s are mounted at once,
+ * the hidden ones `display:none`, and every one of their editors registers
+ * here. So each entry records its OWNER — the `PaneRootContext` id of the pane
+ * it mounted under (`null` outside any pane: a bare test harness, an app-level
+ * host). A per-document question ("where is the atom with this id?") is asked
+ * of ONE owner's editors through {@link getEditorsOwnedBy}; there is
+ * deliberately no owner-blind enumeration, so no caller can reach a hidden
+ * paper's document by default.
  */
 
 import type { Editor } from "@tiptap/react";
 
-const editorByDom = new Map<HTMLElement, Editor>();
+/** The pane an editor belongs to: its `PaneRootContext` id, or `null`. */
+export type DropTargetOwner = string | null;
+
+interface TargetEntry {
+  editor: Editor;
+  owner: DropTargetOwner;
+}
+
+const entryByDom = new Map<HTMLElement, TargetEntry>();
 
 /**
- * Register an editor with the target registry. Returns a dispose
- * function — callers should run it on unmount. Safe to call with a
+ * Register an editor with the target registry, under the pane that owns it
+ * (`useContext(PaneRootContext)` at the registering component). Returns a
+ * dispose function — callers should run it on unmount. Safe to call with a
  * null editor (no-op).
  */
-export function registerDropTarget(editor: Editor | null): () => void {
+export function registerDropTarget(
+  editor: Editor | null,
+  owner: DropTargetOwner = null,
+): () => void {
   if (!editor) return () => {};
   const dom = editor.view.dom as HTMLElement;
-  editorByDom.set(dom, editor);
+  entryByDom.set(dom, { editor, owner });
   return () => {
-    if (editorByDom.get(dom) === editor) {
-      editorByDom.delete(dom);
+    if (entryByDom.get(dom)?.editor === editor) {
+      entryByDom.delete(dom);
     }
   };
 }
@@ -51,16 +73,27 @@ export function findEditorAtPoint(x: number, y: number): Editor | null {
       ? el
       : el.closest<HTMLElement>(".ProseMirror");
     if (pm) {
-      const ed = editorByDom.get(pm);
-      if (ed) return ed;
+      const entry = entryByDom.get(pm);
+      if (entry) return entry.editor;
     }
   }
   return null;
 }
 
-/** Every registered editor — a PRODUCTION enumeration, not a test helper:
+/** The owner `editor` was registered under; `undefined` if it is not
+ *  registered at all. */
+export function dropTargetOwner(editor: Editor): DropTargetOwner | undefined {
+  return entryByDom.get(editor.view.dom as HTMLElement)?.owner;
+}
+
+/** Every registered editor OWNED BY `owner` — one pane's main editor and card
+ *  bodies, never a sibling pane's. A PRODUCTION enumeration:
  *  `util/inline-atom-move.ts`'s `locateAtom` walks it to find a by-id atom in
- *  whichever pane holds it. Changing or deleting it breaks inline-atom moves. */
-export function getRegisteredEditors(): Editor[] {
-  return Array.from(editorByDom.values());
+ *  the dragging pane's own document set. */
+export function getEditorsOwnedBy(owner: DropTargetOwner): Editor[] {
+  const out: Editor[] = [];
+  for (const entry of entryByDom.values()) {
+    if (entry.owner === owner) out.push(entry.editor);
+  }
+  return out;
 }

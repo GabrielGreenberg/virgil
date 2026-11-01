@@ -40,7 +40,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
-import { getRegisteredEditors } from "../target-registry";
+import { getEditorsOwnedBy } from "../target-registry";
 import { adoptNodeIntoSchema, insertLanded } from "../schema-adopt";
 import {
   commitCrossEditorMove,
@@ -184,7 +184,7 @@ export function inlineAtomMoveSpec<
   const resolve = (cardKey: string, ctx: DropCtx): AtomLocation | null =>
     opts.resolveSource
       ? opts.resolveSource(cardKey, ctx)
-      : locateAtom(opts, extractId(cardKey), ctx.mainEditor);
+      : locateAtom(opts, extractId(cardKey), ctx);
 
   /**
    * The ONE resolution. PURE — it builds values and transactions and dispatches
@@ -651,20 +651,26 @@ function parkCaretBeforeChange(editor: Editor, pos: number): void {
   }
 }
 
-/** Walk the main editor first, then every other registered editor,
- *  looking for an inline atom with the matching id. Used by the by-id
- *  (float-header) resolver only. */
+/** Walk the main editor first, then every other editor registered under the
+ *  SAME pane (its card bodies), looking for an inline atom with the matching
+ *  id. Used by the by-id (float-header) resolver only.
+ *
+ *  Never another pane's editors (task 1401): ids are unique only within one
+ *  parse, so a hidden keep-alive pane holding a sibling paper can carry the
+ *  same footnote/citation id — finding it there turned a `create` into a
+ *  `move-across` that silently deleted the atom from the hidden paper. */
 function locateAtom(
   opts: Pick<InlineAtomMoveOptions, "nodeName" | "idAttr">,
   id: string | null,
-  mainEditor: Editor | null,
+  ctx: Pick<DropCtx, "mainEditor" | "owner">,
 ): AtomLocation | null {
+  const mainEditor = ctx.mainEditor;
   if (!id || !opts.nodeName || !opts.idAttr) return null;
   const nodeName = opts.nodeName;
   const idAttr = opts.idAttr;
   const editors: Editor[] = [];
   if (mainEditor) editors.push(mainEditor);
-  for (const e of getRegisteredEditors()) {
+  for (const e of getEditorsOwnedBy(ctx.owner ?? null)) {
     if (e !== mainEditor) editors.push(e);
   }
   for (const editor of editors) {

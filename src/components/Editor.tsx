@@ -10,7 +10,7 @@ import {
 } from "@/lib/editor-geometry";
 import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
-import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useContext, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { landOnBlock } from "@/lib/tiptap/block-landing";
 import { scrollBlockToReadingLine } from "@/lib/editor-geometry/reading-line";
@@ -36,6 +36,7 @@ import {
 } from "@/lib/marginalia";
 import { getAtomText } from "@/lib/atom-text";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
+import { PaneRootContext } from "@/components/editor-layout/pane-dom";
 // Side-effect import: registers every TextObject float body with the
 // registry via `registerFloatBody`. Must run before any popout renders.
 import "@/text-objects/floats";
@@ -1711,10 +1712,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // registry, so drop-mode hit-testing can find this editor under the
   // cursor. Re-registers when the editor instance changes (extension
   // reloads, doc swaps).
+  // Registered under the owning pane (task 1401): a by-id atom lookup and the
+  // drop hit-test consult only the dragging pane's editors.
+  const dropTargetOwner = useContext(PaneRootContext);
   useEffect(() => {
     if (!editor) return;
-    return registerDropTarget(editor);
-  }, [editor]);
+    return registerDropTarget(editor, dropTargetOwner);
+  }, [editor, dropTargetOwner]);
 
   return (
     <div className="flex flex-col flex-1 min-w-0">

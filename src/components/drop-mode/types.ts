@@ -210,6 +210,12 @@ export type ModeBReanchorPolicy =
  * setters on the right hook.
  */
 export interface DropCtx {
+  /** The pane that published this ctx — its `PaneRootContext` id (`null` /
+   *  absent outside any pane: test harnesses, the legacy default slot). The
+   *  same owner every editor under that pane registers with the target
+   *  registry, so a by-id atom lookup and the hit-test stay inside this pane
+   *  (task 1401). */
+  owner?: string | null;
   /** The main document's editor — distinguished from card-body editors
    *  so specs can enforce `targetScope: "main-only"`. */
   mainEditor: Editor | null;
