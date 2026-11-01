@@ -97,7 +97,7 @@
   letter-spacing: 0.02em;
   box-shadow: var(--menu-shadow);
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--motion-fade) ease;
   z-index: 10;
   pointer-events: none;
   user-select: none;
@@ -466,7 +466,7 @@
   min-width: 0;
   padding: 8px 12px;
   font-size: 14px;
-  transition: border-color 120ms;
+  transition: border-color var(--motion-fast);
 }
 
 .lib-dashboard-browsebtn {
@@ -479,7 +479,7 @@
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms, border-color 120ms;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 
 .lib-dashboard-browsebtn:hover {
@@ -581,7 +581,7 @@
   background: transparent;
   cursor: pointer;
   font-size: 12px;
-  transition: background 100ms;
+  transition: background var(--motion-quick);
 }
 
 .lib-dashboard-palette-row:last-child {
@@ -646,7 +646,7 @@
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms, border-color 120ms;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 
 .lib-dashboard-browseall:hover {
@@ -698,7 +698,7 @@
 .list-col-resizer {
   cursor: col-resize;
   background: transparent;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  transition: background var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 .list-col-resizer:hover {
   background: var(--drag-highlight);

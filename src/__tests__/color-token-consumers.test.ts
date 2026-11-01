@@ -443,7 +443,8 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
     ]) {
       expect(props).toMatch(new RegExp(`(^|[\\s,])${p}\\s*(,|$)`));
     }
-    expect(block).toMatch(/transition-duration:\s*120ms\s*;/);
+    // The 120ms rung, by name (task 1413 — motion-token-census pins its value).
+    expect(block).toMatch(/transition-duration:\s*var\(--motion-fast\)\s*;/);
     expect(block).toMatch(/transition-timing-function:\s*ease-out\s*;/);
     // No `transition-delay`, so a site's own `delay-*` still composes.
     expect(block).not.toMatch(/transition-delay/);

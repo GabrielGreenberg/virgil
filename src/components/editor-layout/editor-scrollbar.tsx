@@ -37,7 +37,6 @@ import {
  * unless the user is hovering or dragging.
  */
 const FADE_DELAY = 1000;
-const FADE_DURATION = 300;
 
 /** The gesture families that suppress the thumb — the ones that move the
  *  editor column's edges. A content drag (drop-mode session) is deliberately
@@ -381,7 +380,7 @@ export function EditorScrollbar({
             : "rgba(0,0,0,0.18)",
           opacity: effectiveOpacity,
           cursor: "grab",
-          transition: `opacity ${FADE_DURATION}ms ease, background 120ms ease`,
+          transition: "opacity var(--motion-settle) ease, background var(--motion-fast) ease",
         }}
       />
     </div>

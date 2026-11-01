@@ -34,6 +34,7 @@ import { createPortal } from "react-dom";
 import { DOCK_OUTLINE_Z, LIFT_OUTLINE_Z } from "@/floats/float-policy";
 import { useDockDragTarget } from "@/components/editor-layout/dock-drag";
 import { useCardLiftTarget } from "@/components/card-lift";
+import { MOTION_MS } from "@/lib/motion";
 
 /** Shared drag-outline chrome, tokenized in globals.css ("Drag glow/ring
  *  layers"). Both outlines read these — one definition, so they can't drift. */
@@ -163,8 +164,8 @@ function DockOutline() {
   return (
     <DragOutline
       target={useDockDragTarget()}
-      fadeInMs={120}
-      fadeOutMs={120}
+      fadeInMs={MOTION_MS.fast}
+      fadeOutMs={MOTION_MS.fast}
       zIndex={DOCK_OUTLINE_Z}
       marker="data-dock-outline"
     />

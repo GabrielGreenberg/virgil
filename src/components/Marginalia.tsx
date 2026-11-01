@@ -429,7 +429,7 @@ export function MarkerButton({
         background: palette.bg,
         border: `1.5px solid ${palette.border}`,
         boxShadow: interactionShadow,
-        transition: "box-shadow 120ms ease-out",
+        transition: "box-shadow var(--motion-fast) ease-out",
         opacity: m.muted ? 0.4 : undefined,
         cursor: grabHint ? "grab" : "pointer",
         padding: 0,

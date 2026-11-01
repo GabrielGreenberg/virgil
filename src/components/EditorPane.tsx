@@ -7674,7 +7674,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       for expand/collapse-all (no menu/keyboard fallback), so
                       discoverability would be badly hurt. */}
                   <div className="absolute top-0 left-0 right-0 h-6 pointer-events-auto" aria-hidden="true" />
-                  <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 pointer-events-auto">
+                  <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-(--motion-base) pointer-events-auto">
                     <button
                       type="button"
                       onClick={() => innerRef.current?.expandAllSections()}
@@ -7883,7 +7883,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                               border: "1.5px solid #fff",
                               boxShadow: "var(--drag-glow-knob)",
                               opacity: `var(${mk.symVar}, 0)`,
-                              transition: "opacity 80ms ease-out",
+                              transition: "opacity var(--motion-instant) ease-out",
                             }}
                           />
                         );

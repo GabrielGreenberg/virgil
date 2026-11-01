@@ -1448,6 +1448,26 @@ of a drag. Census: `src/__tests__/reduced-motion-census.test.ts` (both
 stylesheets, inline styles, Tailwind tokens; one allowlisted site, the
 Button press nudge).
 
+**Every duration reads a named rung (task 1413).** The ladder lives in
+globals.css's `--motion-*` block: `instant` 80ms · `quick` 100 · `fast` 120
+(the hover utilities' one speed) · `base` 150 · `slide` 180 · `slow` 200 ·
+`fade` 250 · `settle` 300, plus `--motion-ease-emphasis`
+(`cubic-bezier(0.22, 1, 0.36, 1)`, the omni slide). Spell CSS and inline
+strings as `opacity var(--motion-fast) ease`, Tailwind as
+`duration-(--motion-base)` — never `0.15s`, `150ms` or `duration-150`. JS
+that must agree with a CSS rung (a rAF slide, a WAAPI fade) reads `MOTION_MS`
+from `src/lib/motion.ts`, pinned to the CSS values. Easing keywords (`ease`,
+`ease-out`) stay spelled; a bezier gets a token. Never name a token
+`--ease-*`: Tailwind's theme owns `--ease-out`, and redefining it re-curves
+every `ease-out` utility. The one literal kept is the cowork pen's 1.6s
+breathe loop (a loop, not a response). Census:
+`src/__tests__/motion-token-census.test.ts` (the pin, both stylesheets,
+inline strings, Tailwind literals, unknown-rung reads). The ladder was seeded
+byte-neutral, so it carries near-duplicates a later taste call may collapse:
+`fast`/`base` (120/150), `slide`/`slow` (180/200), and the lift outline's
+off-ladder WAAPI 90/360ms in `DragOutlines.tsx` (JS numbers, out of the
+census's reach).
+
 ## Cards & themes
 
 A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,

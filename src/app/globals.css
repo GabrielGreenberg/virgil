@@ -1040,6 +1040,32 @@ body[data-zen-mode="on"] {
   --radius-4xl: initial;
 }
 
+/* ── Motion timing (task 1413) ────────────────────────────────────
+   THE duration ladder: every transition / animation in both stylesheets,
+   every inline TSX transition and every Tailwind `duration-*` reads one of
+   these — `duration-(--motion-base)`, `opacity var(--motion-fast) ease`.
+   Seeded byte-neutral from the values already shipped, so the ladder has
+   near-duplicate rungs (120/150, 180/200) that a later taste call may
+   collapse (STYLE_GUIDE "Motion"). JS timers that must agree with a CSS
+   rung (the omni slide's rAF, the scrollbar fade) read MOTION_MS in
+   src/lib/motion.ts, which the census pins to these values.
+   Easing: CSS keywords (`ease`, `ease-out`) are already names and stay
+   spelled; a bezier is a token. NOT `--ease-*`: Tailwind v4's theme owns
+   `--ease-out`/`--ease-in-out`, and redefining them would re-curve every
+   `ease-out` utility in the app.
+   Census: src/__tests__/motion-token-census.test.ts. */
+:root {
+  --motion-instant: 80ms; /* drop-mode bars, press filter, overlay fade */
+  --motion-quick: 100ms;
+  --motion-fast: 120ms; /* the hover utilities' one speed */
+  --motion-base: 150ms;
+  --motion-slide: 180ms; /* omni entry slide; outline focus-band glide */
+  --motion-slow: 200ms;
+  --motion-fade: 250ms;
+  --motion-settle: 300ms; /* scrollbar thumb + editor-scrollbar fade */
+  --motion-ease-emphasis: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* ── Hover utilities ──────────────────────────────────────────────
    THE neutral hover. Two variants, chosen by resting bg — never a
    hand-rolled `hover:bg-*`:
@@ -1091,7 +1117,7 @@ body[data-zen-mode="on"] {
   transition-property:
     color, background-color, border-color, text-decoration-color, fill,
     stroke, opacity;
-  transition-duration: 120ms;
+  transition-duration: var(--motion-fast);
   transition-timing-function: ease-out;
 }
 .hover-on-light:hover {
@@ -1142,8 +1168,8 @@ body[data-zen-mode="on"] {
   border: 1px solid var(--edge-hover);
   box-shadow: var(--card-shadow-ambient);
   transition:
-    background-color 120ms ease-out,
-    border-color 120ms ease-out;
+    background-color var(--motion-fast) ease-out,
+    border-color var(--motion-fast) ease-out;
 }
 .omni-bin-pill:hover {
   background-color: var(--surface-muted-strong);
@@ -1751,7 +1777,7 @@ textarea {
   border: none;
   cursor: pointer;
   color: var(--muted-light, #b5b0aa);
-  transition: color 0.15s; /* + transform under the opt-in just below */
+  transition: color var(--motion-base); /* + transform under the opt-in just below */
   /* The SVG path is a right-pointing chevron. We rotate the button (not
      the SVG — CSS transform on root <svg> is flaky in some browsers).
      Expanded: points down. */
@@ -1761,7 +1787,7 @@ textarea {
 /* The rotation is movement, so it eases only under the opt-in (task 775). */
 @media (prefers-reduced-motion: no-preference) {
   .margin-fold-chevron {
-    transition: color 0.15s, transform 0.15s ease;
+    transition: color var(--motion-base), transform var(--motion-base) ease;
   }
 }
 .margin-fold-chevron:hover {
@@ -1921,7 +1947,7 @@ textarea {
   font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
   font-size: 13px;
   color: var(--ink-muted);
-  transition: background 0.15s;
+  transition: background var(--motion-base);
 }
 .source-pod-preview:hover {
   background: var(--code-block-bg-hover);
@@ -1993,7 +2019,7 @@ textarea {
   color: var(--heading-annotation-color, #6b9ac4);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+  transition: opacity var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   /* …and the one child that IS a control opts back in (see the corner rule). */
   pointer-events: auto;
 }
@@ -2199,7 +2225,7 @@ textarea {
    (.tex-block-float-title-host) keeps its always-visible +T. */
 :is(.tex-block, .forest-block) .par-title-add {
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-base);
 }
 :is(.tex-block, .forest-block) .par-title-annotation:hover .par-title-add {
   opacity: 0.6;
@@ -2472,7 +2498,7 @@ textarea {
   border: none;
   padding: 0;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-base);
 }
 .card-title-add:hover {
   opacity: 1;
@@ -2740,10 +2766,10 @@ textarea {
   box-shadow: none;
   border-radius: var(--pod-radius, 8px);
   transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+    opacity var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
 }
 
 /* Popout deviation — full chrome matching the released float. The header
@@ -2811,7 +2837,7 @@ textarea {
   /* Matches the overlay's chrome transition timing so header + body
      border fade in together when popout mode engages. */
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-fast) ease;
 }
 
 .lifted-text-overlay__header[data-lift-mode="popout"] {
@@ -3053,7 +3079,7 @@ textarea {
   filter: brightness(0.92);
   cursor: grabbing;
   user-select: none;
-  transition: filter 80ms ease-out;
+  transition: filter var(--motion-instant) ease-out;
 }
 
 /* heading-wrapper needs `position: relative` so the absolutely-
@@ -3111,7 +3137,7 @@ textarea {
 .par-title-wrapper.has-add-btn > .par-title-annotation,
 .list-title-wrapper.has-add-btn > .par-title-annotation {
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-base);
 }
 
 .par-title-wrapper.has-add-btn > .par-title-annotation:hover,
@@ -3303,7 +3329,7 @@ textarea {
   cursor: pointer;
   border-radius: var(--radius-sm);
   padding: 0 0.15em;
-  transition: background 120ms ease;
+  transition: background var(--motion-fast) ease;
 }
 
 .inline-math:hover,
@@ -3318,7 +3344,7 @@ textarea {
   padding: 0.5em 1em;
   border-radius: var(--pod-radius);
   text-align: center;
-  transition: background 120ms ease;
+  transition: background var(--motion-fast) ease;
 }
 
 .display-math:hover,
@@ -3526,7 +3552,7 @@ textarea {
   color: var(--ink-strong);
   cursor: pointer;
   font-size: 0.92em;
-  transition: border-color 120ms ease-out, color 120ms ease-out;
+  transition: border-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out;
 }
 
 .figure-block .figure-empty-cta:hover {
@@ -3781,7 +3807,7 @@ textarea {
   align-items: center;
   gap: 4px;
   opacity: 0;
-  transition: opacity 120ms ease-out;
+  transition: opacity var(--motion-fast) ease-out;
   pointer-events: none;
 }
 
@@ -4026,7 +4052,7 @@ textarea {
   --link-anchor-color: #fbbf24; /* amber fallback for unrecognised kinds */
   background: transparent;
   border-radius: var(--radius-xs);
-  transition: background-color 120ms ease-out;
+  transition: background-color var(--motion-fast) ease-out;
 }
 /* The `var(…, <hex>)` fallback reproduces the shipped DEFAULT_PANEL_COLORS
  * accent for the pre-mount window before EditorLayout injects the live vars
@@ -4417,7 +4443,7 @@ textarea {
   border: 1.5px solid var(--note-marker-border, #86efac);
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--motion-base), border-color var(--motion-base);
   line-height: 1;
 }
 .note-marker:hover {
@@ -4549,7 +4575,7 @@ textarea {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
   font-style: italic;
-  transition: background 0.15s, outline-color 0.15s;
+  transition: background var(--motion-base), outline-color var(--motion-base);
 }
 
 .latex-comment:hover {
@@ -4581,7 +4607,7 @@ textarea {
   border-radius: var(--radius-xs) 0 0 var(--radius-xs);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background var(--motion-base);
 }
 
 .latex-comment-handle:hover {
@@ -4647,7 +4673,7 @@ body[data-drop-mode-active="true"] [data-marginalia-overflow] {
 }
 body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-source="true"] {
   opacity: 0.6;
-  transition: opacity 0.1s ease;
+  transition: opacity var(--motion-quick) ease;
 }
 /* A grabbed margin marker is the session's SOURCE while its ghost rides the
  * cursor (task 1404, stamped by drop-ghost.ts `markSource`): it stays in its
@@ -4749,18 +4775,18 @@ body.perf-contain .static-borrowed-text {
   .dropmode-bar-gap,
   .dropmode-bar-side,
   .dropmode-bar-inline {
-    animation: dropmode-bar-fadein 0.08s ease-out;
+    animation: dropmode-bar-fadein var(--motion-instant) ease-out;
   }
   .dropmode-bar-side,
   .dropmode-bar-inline {
-    transition: transform 0.08s ease, height 0.08s ease;
+    transition: transform var(--motion-instant) ease, height var(--motion-instant) ease;
   }
   .dropmode-bar-gap,
   #virgil-drop-indicator {
-    transition: transform 0.08s ease;
+    transition: transform var(--motion-instant) ease;
   }
   .dropmode-bar-vertical {
-    transition: transform 0.08s ease, height 0.08s ease;
+    transition: transform var(--motion-instant) ease, height var(--motion-instant) ease;
   }
 }
 @keyframes dropmode-bar-fadein {
@@ -4845,7 +4871,7 @@ body.perf-contain .static-borrowed-text {
   background: var(--citation-bg, #ffffff);
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   border: 1px solid var(--citation-border-color, #a8c4de);
   padding: 0px 4px;
   color: var(--citation-color, #555);
@@ -4884,7 +4910,7 @@ body.perf-contain .static-borrowed-text {
   background: var(--label-ref-bg, #f0f0f0);
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   border: 1px solid var(--label-ref-border-color, #d5d3ce);
   padding: 0px 4px;
   color: var(--label-ref-color, #555555);
@@ -5170,7 +5196,7 @@ body.perf-contain .static-borrowed-text {
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
 
 .label-ref-popover-refcmd-btn:hover {
@@ -5510,7 +5536,7 @@ body.perf-contain .static-borrowed-text {
 
 @media (prefers-reduced-motion: no-preference) {
   ::-webkit-scrollbar-thumb {
-    transition: background-color 300ms ease;
+    transition: background-color var(--motion-settle) ease;
   }
 }
 
@@ -5838,7 +5864,7 @@ body.perf-contain .static-borrowed-text {
   box-shadow: var(--menu-shadow);
   pointer-events: none;
   white-space: nowrap;
-  animation: hint-fade-in 120ms ease-out;
+  animation: hint-fade-in var(--motion-fast) ease-out;
 }
 
 .hint-bubble__label {
@@ -6011,14 +6037,14 @@ body.perf-contain .static-borrowed-text {
   /* The pill's GROW (width/height) is movement, so it eases only under the
      reduced-motion opt-in just below (task 775); the colour/opacity fade
      always does. */
-  transition: background 120ms ease, opacity 120ms ease;
+  transition: background var(--motion-fast) ease, opacity var(--motion-fast) ease;
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
   .drag-gap-h.band-grip::after,
   .drag-gap-v.band-grip::after {
-    transition: background 120ms ease, opacity 120ms ease, width 120ms ease,
-      height 120ms ease;
+    transition: background var(--motion-fast) ease, opacity var(--motion-fast) ease, width var(--motion-fast) ease,
+      height var(--motion-fast) ease;
   }
 }
 
@@ -6105,7 +6131,7 @@ body.perf-contain .static-borrowed-text {
  * a teleport the eye can miss into a visible glide it cannot. */
 @media (prefers-reduced-motion: no-preference) {
   .omni-entry-slide {
-    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform var(--motion-slide) var(--motion-ease-emphasis);
   }
 }
 
@@ -6616,7 +6642,7 @@ body.perf-contain .static-borrowed-text {
 }
 @media (prefers-reduced-motion: no-preference) {
   .editor-pane-root .editor-pane-pod .ProseMirror {
-    transition: opacity 0.25s ease;
+    transition: opacity var(--motion-fade) ease;
   }
 }
 @media print {

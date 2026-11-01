@@ -208,7 +208,7 @@ function PositionHighlight({ scrollRef, attr, color }: {
     <div
       // The glide is movement, so it rides `motion-safe:` (task 775) — an
       // inline `transition` is out of reach of any reduced-motion query.
-      className="motion-safe:transition-[transform,height] duration-200 ease-out"
+      className="motion-safe:transition-[transform,height] duration-(--motion-slow) ease-out"
       style={{
         position: "absolute",
         left: 0,
@@ -549,7 +549,7 @@ function ParTitleRow({
         paddingTop: 2,
         paddingBottom: 2,
         opacity: dim ? 0.3 : 1,
-        transition: "opacity 200ms ease",
+        transition: "opacity var(--motion-slow) ease",
         position: "relative",
         zIndex: 5,
       }}
@@ -634,7 +634,7 @@ function OutlineNode({
       <div
         data-outline-pos={`h-${node.heading.index}`}
         className={`flex items-start group cursor-pointer rounded focus-ring ${isFocusEditing ? "" : "hover-on-light"}`}
-        style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
+        style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity var(--motion-slow) ease", position: "relative", zIndex: 5 }}
         /* A container, not a <button>: it holds the fold chevron and the
            label controls. The helper's target guard keeps Enter on THOSE
            theirs (task 956). */
@@ -1357,7 +1357,7 @@ function FocusBand({
 
   if (!band) return null;
 
-  const transition = animated ? "top 180ms ease, height 180ms ease" : "none";
+  const transition = animated ? "top var(--motion-slide) ease, height var(--motion-slide) ease" : "none";
 
   return (
     <>
@@ -1419,7 +1419,7 @@ function FocusBand({
             border: "2px solid var(--pod-panel)",
             cursor: "ns-resize",
             zIndex: 6,
-            transition: animated ? "top 180ms ease" : "none",
+            transition: animated ? "top var(--motion-slide) ease" : "none",
             boxShadow: "var(--menu-shadow)",
           }}
         />
@@ -1440,7 +1440,7 @@ function FocusBand({
             border: "2px solid var(--pod-panel)",
             cursor: "ns-resize",
             zIndex: 6,
-            transition: animated ? "top 180ms ease" : "none",
+            transition: animated ? "top var(--motion-slide) ease" : "none",
             boxShadow: "var(--menu-shadow)",
           }}
         />
