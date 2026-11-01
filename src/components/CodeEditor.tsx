@@ -42,6 +42,9 @@ const virgilTheme = EditorView.theme(
   withCmPalette(
     {
       "&": {
+        // Reading text, not UI chrome: the code pane's body size sits between
+        // Button md (13px) and the editor prose on purpose — a stated
+        // exemption in type-size-census.test.ts (task 1414).
         fontSize: "13.5px",
         fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
         backgroundColor: "var(--background)",

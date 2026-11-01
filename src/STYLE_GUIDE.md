@@ -840,6 +840,15 @@ Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
 tracking-wider (`PanelHeader`), card title `--par-title-size`
 (0.78rem ≈ 12.5px)/500, badge 10px/600.
 
+**UI sizes are integer px rungs** (task 1414). Every named UI size above is a
+whole pixel; a half-pixel (`text-[10.5px]`, `fontSize: 12.5`, `font-size:
+11.5px`) is a value nobody picked from the ladder — snap it to the nearest
+rung for its register (a muted secondary line → 10px, the META analogue).
+The only kept half-pixels are READING text, not chrome — the code pane body
+(13.5px) and the Library Reader prose (15.5px) — each stated at its site.
+rem/em sizes are out of scope (em inside inline atoms is relative on
+purpose). Census: `type-size-census.test.ts`.
+
 **Type is viewport-invariant. Geometry adapts to width; type never does.**
 There is not one width-based media query, `@container` rule, responsive text
 utility (`md:text-*`) or `vw`-sized font in `src/` or `library/` — the only

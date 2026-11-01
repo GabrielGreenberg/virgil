@@ -245,7 +245,7 @@ function LinkEdgeRow({
   };
 
   return (
-    <div className="flex items-center gap-2 pl-6 py-0.5 text-[10.5px] text-ink-muted">
+    <div className="flex items-center gap-2 pl-6 py-0.5 text-[10px] text-ink-muted">
       <span className="text-ink-faint">↳</span>
       {/* A two-state toggle: `aria-pressed` announces the state and
           `.iconbtn-toggle` paints it (task 1305) — the name stays fixed, the
@@ -348,7 +348,7 @@ function Section({
       >
         <span className="block text-[12px] font-semibold text-ink-strong">{section.label}</span>
         {section.description && (
-          <span className="block text-[10.5px] text-ink-muted leading-tight">{section.description}</span>
+          <span className="block text-[10px] text-ink-muted leading-tight">{section.description}</span>
         )}
       </PodDisclosure>
       {open && (
