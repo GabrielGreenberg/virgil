@@ -52,6 +52,7 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
+import { withoutTransientAnchors } from "@/lib/linked-anchor-range";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { DropPlan } from "./types";
 
@@ -140,7 +141,17 @@ export function dispatchPlan(
   editor: Editor,
   tr: Transaction,
   after?: () => void,
-): DropPlan {
+): DropPlan | null {
+  // A plan is a PROMISE that `commit()` changes something (planned-spec.ts).
+  // Task 1403: a drop can resolve to a transaction that rebuilds the document
+  // it started from — a whole paragraph's text released in that paragraph's
+  // own boundary gap is cut, its emptied shell shed and its uuid handed to the
+  // new paragraph, landing byte-identical. Committing that records an undo
+  // step and `postDrop: "close"` dismisses the float over a gesture that went
+  // nowhere. The door, not each spec, holds the promise: an identity
+  // transaction with no sidecar half refuses here, so `classifyDrop` answers
+  // `no-op` and the session cancels like any other self-drop.
+  if (!after && isIdentityTransaction(editor, tr)) return null;
   return {
     commit: () => {
       if (!commitDocThenCards(editor, tr, after)) return false;
@@ -148,6 +159,22 @@ export function dispatchPlan(
       return true;
     },
   };
+}
+
+/**
+ * Does `tr` leave `editor`'s document exactly as it is — modulo gesture
+ * scaffolding (the transient grab handle a text-range move sheds)?
+ *
+ * A size check gates the walk: every real move, insert or wrap changes the
+ * content size, and shedding a mark never does, so the O(doc) comparison runs
+ * only for the rare same-size rebuild. Asked at plan time (twice per gesture),
+ * never per hover frame.
+ */
+export function isIdentityTransaction(editor: Editor, tr: Transaction): boolean {
+  const before = editor.state.doc;
+  if (!tr.docChanged || tr.doc === before) return true;
+  if (tr.doc.content.size !== before.content.size) return false;
+  return withoutTransientAnchors(tr.doc).eq(withoutTransientAnchors(before));
 }
 
 /** One cross-editor move: insert into `target`, then remove from `source`. */

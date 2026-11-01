@@ -419,3 +419,56 @@ describe("multi-block text-range move — inline-cursor branch", () => {
     expect(result.textContent).toContain("tar");
   });
 });
+
+// ── D. A drop that rebuilds its own document is a no-op (task 1403) ────────
+
+describe("whole-paragraph range released in its own boundary gap", () => {
+  // head = [0,6), the source paragraph "alpha" = [6,13), tail = [13,19).
+  const doc3 = (marked: "whole" | "partial") =>
+    schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        para("s0", text("head")),
+        marked === "whole"
+          ? para("s1", text("alpha", true))
+          : para("s1", text("al", true), text("pha")),
+        para("s3", text("tail")),
+      ],
+    });
+
+  for (const [label, gap] of [
+    ["upper", 6],
+    ["lower", 13],
+  ] as const) {
+    it(`classifies the ${label} gap as no-op and dispatches nothing`, () => {
+      const d = doc3("whole");
+      const { editor, dispatched, ctx } = mockEditor(d);
+      const placement = betweenBlocks(editor, gap);
+      expect(
+        textRangeMoveDropSpec.classifyDrop(placement, RANGE_KEY, ctx),
+      ).toEqual({ kind: "no-op" });
+      expect(textRangeMoveDropSpec.applyDrop(placement, RANGE_KEY, ctx)).toBe(false);
+      expect(dispatched).toHaveLength(0);
+    });
+  }
+
+  it("still commits a PARTIAL fragment outdented into the gap above", () => {
+    const d = doc3("partial");
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const placement = betweenBlocks(editor, 6);
+    expect(
+      textRangeMoveDropSpec.classifyDrop(placement, RANGE_KEY, ctx),
+    ).toEqual({ kind: "apply" });
+    textRangeMoveDropSpec.applyDrop(placement, RANGE_KEY, ctx);
+    expect(dispatched).toHaveLength(1);
+    expect(topLevelTexts(dispatched[0].doc)).toEqual(["head", "al", "pha", "tail"]);
+  });
+
+  it("still commits the whole paragraph moved one gap further", () => {
+    const d = doc3("whole");
+    const { editor, dispatched, ctx } = mockEditor(d);
+    textRangeMoveDropSpec.applyDrop(betweenBlocks(editor, 19), RANGE_KEY, ctx);
+    expect(dispatched).toHaveLength(1);
+    expect(topLevelTexts(dispatched[0].doc)).toEqual(["head", "tail", "alpha"]);
+  });
+});

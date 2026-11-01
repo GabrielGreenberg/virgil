@@ -182,6 +182,35 @@ export function stripLinkedAnchorMarks(
 }
 
 /**
+ * `doc` with every TRANSIENT `linkedAnchor` mark removed — the plain grab's
+ * cardless handle is gesture scaffolding, not content (see `moveSliceOf`), so a
+ * question about what a gesture CHANGED must not count it. Unchanged subtrees
+ * keep their node identity, so a following `Node.eq` against a structurally
+ * shared document stays cheap. O(doc); callers ask it at a commit decision,
+ * never per keystroke or per hover frame.
+ */
+export function withoutTransientAnchors(doc: PMNode): PMNode {
+  const strip = (n: PMNode): PMNode => {
+    if (n.isText) {
+      const kept = n.marks.filter(
+        (m) => !(m.type.name === "linkedAnchor" && m.attrs.kind === "transient"),
+      );
+      return kept.length === n.marks.length ? n : n.mark(kept);
+    }
+    if (n.isLeaf) return n;
+    let changed = false;
+    const kids: PMNode[] = [];
+    n.content.forEach((c) => {
+      const s = strip(c);
+      if (s !== c) changed = true;
+      kids.push(s);
+    });
+    return changed ? n.copy(Fragment.fromArray(kids)) : n;
+  };
+  return strip(doc);
+}
+
+/**
  * The payload of MOVING `[from, to)` within `state`'s document (task 1023).
  *
  * A move is not a paste. A paste is a COPY: the source keeps its anchor, so a
