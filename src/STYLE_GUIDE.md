@@ -1705,10 +1705,12 @@ one of a card's content FIELDS (body editor, title input, textarea, select)
 selects the card — the halo a header click gives — and nothing else: no
 expand toggle, no jump, no editor scroll (`placement: "none"`), a no-op when
 already selected. Stated ONCE: `PanelCard`'s root capture phase fires
-`onSelectOnly` (from `useAnchoredCardShell`'s bundle) when
-`isCardContentField` matches, so a field's `stopPropagation` can't swallow it
-and no card component keeps its own copy (census:
-`card-content-selects-census.test.tsx`). Non-field targets (body padding, a
+`onSelectOnly` (from `useAnchoredCardShell`'s bundle — or, for a card that
+renders `<PanelCard>` without the shell, its own pure-select handler, e.g. the
+bib card's `onSelect`, task 1410) when `isCardContentField` matches, so a
+field's `stopPropagation` can't swallow it and no card component keeps its own
+copy (census: `card-content-selects-census.test.tsx`, whose population is every
+`<PanelCard` render site in `src/`, not a directory). Non-field targets (body padding, a
 collapsed summary, a read-only body) stay on the body-click contract.
 
 **The grip paints iff the lift can land (task 277).** The dots glyph is

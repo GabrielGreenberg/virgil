@@ -1018,6 +1018,7 @@ function BibliographyPanel({
               handleSelectBibKey(selected ? null : entry.key);
               listRef.current?.focus();
             }}
+            onSelect={() => handleSelectBibKey(entry.key)}
             onJump={canJump ? (sourceEl) => handleJumpToBibKey(entry.key, sourceEl) : undefined}
             getAnnotation={getAnnotation}
             setAnnotation={setAnnotation}
