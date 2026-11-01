@@ -165,6 +165,9 @@ function sources(): { file: string; src: string; raw: string }[] {
 
 /* ── The icon-only question ──────────────────────────────────────────── */
 
+/** A child expression that is only a member path ending in `icon`/`Icon`. */
+const ICON_CHILD = /^\s*(?:[A-Za-z_$][\w$]*\??\.)*[A-Za-z_$]*[iI]con\s*$/;
+
 /** Index just past the `}` matching the `{` at `i`. */
 function skipBraces(s: string, i: number): number {
   let depth = 1;
@@ -218,6 +221,10 @@ export function renderedText(region: string, elementDepth = 1): string | null {
           const nested = renderedText(inner, 0);
           if (nested === null) return null;
           out += nested;
+        } else if (ICON_CHILD.test(inner)) {
+          // A bare member path NAMED as an icon (`{meta.icon}`) renders one
+          // (task 2026-11-01-1411): reading it as "TEXT" kept the marginalia
+          // marker out of every icon-only leg.
         } else if (inner.trim()) {
           // Any other child expression may evaluate to text.
           out += "TEXT";
@@ -321,13 +328,44 @@ export function hasVisibleText(hit: JsxElementHit): boolean | null {
 
 /* ── Tag predicates ──────────────────────────────────────────────────── */
 
-/** A spread this census cannot resolve — anything but an `iconHint(…)` call. */
-const opaqueSpread = (tag: string) => /\{\s*\.\.\.\s*(?!iconHint\s*\()/.test(tag);
+/**
+ * A PROPS spread this census cannot resolve — anything but an `iconHint(…)`
+ * call — at ATTRIBUTE position only (task 2026-11-01-1411). A spread inside an
+ * attribute's VALUE (`style={{ ...(cell ? {…} : {}) }}`) spreads a style
+ * object, not unknown props; reading it as opaque dropped the marginalia
+ * marker out of every leg above, so it shipped `focus:outline-none` with no
+ * indicator. Walks the tag at depth 0: a `{` after `=` is a value (skipped
+ * whole), any other `{` is an attribute spread.
+ */
+export function opaqueSpread(tag: string): boolean {
+  let i = 0;
+  let prev = "";
+  while (i < tag.length) {
+    const c = tag[i];
+    if (c === '"' || c === "'") {
+      const close = tag.indexOf(c, i + 1);
+      i = close < 0 ? tag.length : close + 1;
+      prev = c;
+      continue;
+    }
+    if (c === "{") {
+      if (prev !== "=" && /^\{\s*\.\.\.\s*(?!iconHint\s*\()/.test(tag.slice(i))) return true;
+      i = skipBraces(tag, i);
+      prev = "}";
+      continue;
+    }
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return false;
+}
 const namesItself = (tag: string) =>
   /(?<![\w-])aria-label\s*=|(?<![\w-])aria-labelledby\s*=|iconHint\s*\(/.test(tag);
 const literalHint = (tag: string) => /(?<![\w-])data-hint\s*=/.test(tag);
 const literalLabel = (tag: string) => /(?<![\w-])aria-label\s*=/.test(tag);
-const RING = /iconbtn-(?:xs|sm|md|lg)|topbarbtn|focus-ring|focus-visible:ring/;
+/** The indicators this leg accepts — `focus-outline` is the ring's twin for an
+ *  element whose `box-shadow` is inline (focus-indicator.ts, task 554). */
+const RING = /iconbtn-(?:xs|sm|md|lg)|topbarbtn|focus-ring|focus-outline|focus-visible:ring/;
 /** A literal `className="…"` / `` className={`…`} ``, or null when computed. */
 function literalClassName(tag: string): string | null {
   const m = /(?<![\w-])className\s*=\s*/.exec(tag);
@@ -843,6 +881,14 @@ describe("the icon-only classifier (self-check)", () => {
     expect(isIconOnly(hit(` Retry `))).toBe(false);
   });
 
+  it("reads a child NAMED as an icon as icon-only, and other members as text (task 1411)", () => {
+    expect(isIconOnly(hit(`{meta.icon}`))).toBe(true);
+    expect(isIconOnly(hit(`{ props?.leadingIcon }`))).toBe(true);
+    expect(isIconOnly(hit(`{meta.label}`))).toBe(false);
+    expect(isIconOnly(hit(`{iconLabel}`))).toBe(false);
+    expect(isIconOnly(hit(`{icon ?? label}`))).toBe(false);
+  });
+
   it("reads a bare icon child, and a letterless glyph, as icon-only", () => {
     expect(isIconOnly(hit(" <IconX /> "))).toBe(true);
     // `×` announces as nothing useful, so it is exactly a control that needs
@@ -852,6 +898,20 @@ describe("the icon-only classifier (self-check)", () => {
 
   it("fails LOUD on a subtree it cannot parse", () => {
     expect(isIconOnly({ tag: "<button>", subtree: null, index: 0 })).toBeNull();
+  });
+});
+
+describe("the opaque-spread predicate (self-check, task 1411)", () => {
+  it("reads an ATTRIBUTE spread as opaque, and an iconHint spread as resolvable", () => {
+    expect(opaqueSpread(`<button {...props} type="button">`)).toBe(true);
+    expect(opaqueSpread(`<button type="button" { ...rest }>`)).toBe(true);
+    expect(opaqueSpread(`<button {...iconHint({ label: "x" })}>`)).toBe(false);
+  });
+
+  it("does not read a spread inside an attribute VALUE as opaque", () => {
+    expect(opaqueSpread(`<button style={{ ...(cell ? { left: 1 } : {}), width: 4 }}>`)).toBe(false);
+    expect(opaqueSpread(`<button onClick={() => f({ ...a })} data-x="{...}">`)).toBe(false);
+    expect(opaqueSpread(`<button style={{ ...a }} {...b}>`)).toBe(true);
   });
 });
 

@@ -416,7 +416,11 @@ export function MarkerButton({
       data-marginalia-marker={`${m.type}:${m.id}`}
       data-card-selected={selected ? "true" : undefined}
       data-card-hovered={hovered ? "true" : undefined}
-      className={`marginalia-marker pointer-events-auto flex items-center justify-center rounded focus:outline-none${cell ? " absolute" : ""}`}
+      data-iconbtn-exempt="margin marker: a kind-palette chip sized to the marginalia grid cell (MARGINALIA_ICON_SIZE)"
+      // `focus-outline`, not `focus-ring`: the marker's selection/hover lift is
+      // the INLINE `boxShadow` below, which beats any stylesheet ring — so the
+      // indicator takes the free `outline` (STYLE_GUIDE "Focus", task 1411).
+      className={`marginalia-marker pointer-events-auto flex items-center justify-center rounded focus-outline${cell ? " absolute" : ""}`}
       style={{
         ...(cell ? { left: cell.x, top: cell.y } : {}),
         width: MARGINALIA_ICON_SIZE,
