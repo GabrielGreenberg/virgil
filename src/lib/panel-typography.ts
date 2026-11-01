@@ -45,6 +45,9 @@ export interface PanelTypography {
  *    (17px) but one size down for visual hierarchy.
  *  - `"sans"` → 12px Inter (compact): everyone else (notes, todos, revisions,
  *    cuts, citations, bib, reports). Modeled on Cut Comments. */
+// The ink is a concrete hex (= `--ink-body`), not a `var()`: it is a PREF
+// DEFAULT, a stored value the typography picker compares and persists. Listed
+// as such in the raw colour-VALUE census (panel-chrome-palette-guardrail).
 export const BODY_CLASS_TYPOGRAPHY: Record<"borrowed" | "sans", PanelTypography> = {
   borrowed: { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
   sans:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },

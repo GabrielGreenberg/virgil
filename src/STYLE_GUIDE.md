@@ -52,13 +52,20 @@ is premultiplied, so it is exactly the live token at that alpha, and it keeps
 tracking the token when the value changes. Never re-spell a channel triple.
 
 CI, and the honest limit of it: `panel-chrome-palette-guardrail.test.ts` censuses
-BOTH spellings — the Tailwind palette utility and the raw VALUE (hex, `rgb()`,
-`hsl()`, chromatic CSS keyword) — but only over `src/panels/**` plus the two
-shared panel/field primitives. Both of its allowlists may only SHRINK, and the
-raw-value one is now EMPTY (task 287 drained the last five, the checkbox glyph's).
-Chrome authored elsewhere under `src/components/**` is **not** censused; widening
-it is a separate decision with its own draining cost. `check:radius` still covers
-radii only.
+BOTH spellings, over two populations. The raw VALUE (hex, `rgb()`, `hsl()`,
+chromatic CSS keyword in a CSS-value position) is censused in **every production
+`.ts`/`.tsx` under `src/`** (task 1412); its allowlist holds only the declared
+colour TABLES (panel-theme presets, collab presence, the selection menu's text
+colours, the hue wheel), the ruled keeps a non-CSS consumer needs as a concrete
+value (`PENDING_AI_TINT`, the typography pref default, the web manifest, the
+pdf.js backdrop) and the AI window's status chips awaiting a `--status-*`
+family. The Tailwind palette UTILITY is still censused only over `src/panels/**`
+plus the two shared panel/field primitives — chrome utilities elsewhere under
+`src/components/**` (the Library's deliberate multi-hue chips) are **not**;
+widening that leg is a separate decision with its own draining cost. Both
+allowlists may only SHRINK. Neither leg reads CSS files or judges achromatic
+values (`#fff`, `rgba(0,0,0,α)`), and a `var(--token, #fallback)` read passes.
+`check:radius` still covers radii only.
 
 ### The destructive / alarm family
 

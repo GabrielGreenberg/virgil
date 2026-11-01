@@ -80,8 +80,11 @@ export const TRANSIENT_HIGHLIGHT_CLASS = "virgil-transient-highlight";
 
 /** The amber every transient band uses today. Was inlined at three call sites
  *  in `Editor.applyHighlight`. The per-target `color` stays a parameter because
- *  a tinted band (per-card accent) is the natural next consumer. */
-export const TRANSIENT_HIGHLIGHT_COLOR = "#fbbf2480";
+ *  a tinted band (per-card accent) is the natural next consumer.
+ *
+ *  It READS the `--transient-highlight` token rather than re-spelling its value
+ *  (task 1412) — the inline style resolves it like any other `var()`. */
+export const TRANSIENT_HIGHLIGHT_COLOR = "var(--transient-highlight)";
 
 /** One transient band, in live PM coordinates at dispatch time. */
 export type TransientHighlightTarget = {
