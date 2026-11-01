@@ -55,7 +55,7 @@ import {
   type RefObject,
 } from "react";
 import type { Editor } from "@tiptap/react";
-import type { EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "@/components/EditorPane";
+import type { EditorPaneWindowViewPrefs, EditorPaneMenuBarBundle } from "@/components/EditorPane";
 import type { EditorHandle } from "@/components/Editor";
 import {
   useViewPrefs,
@@ -576,7 +576,7 @@ export function useReaderView(
    *  within the ReaderLRU keep-alive preserves that (a display:none flip, not a
    *  remount). */
   host: ReaderHostKind,
-): { viewPrefs: EditorPaneViewPrefs; menuBar: EditorPaneMenuBarBundle } {
+): { viewPrefs: EditorPaneWindowViewPrefs; menuBar: EditorPaneMenuBarBundle } {
   // The real engine, but in-memory only — its setters mutate session state
   // and never touch the user's persisted editor layout. The host profile is
   // compiled onto the seed through the dock + panel-side engines (never a
@@ -674,8 +674,8 @@ export function useReaderView(
       setOmniSideToDefault: vp.resetOmniSide,
       categorySides,
       // The real engine owns the card-popout-key remap; route it through.
-      remapCardPopKey: (oldKey: string, newKey: string) =>
-        vp.migratePoppedOutCards((k) => (k === oldKey ? newKey : k)),
+      remapCardPopKey: (owner: string, oldKey: string, newKey: string) =>
+        vp.migratePoppedOutCards((k) => (k === oldKey ? newKey : k), owner),
       // No float z-index painter in the Reader (no MRU focus stack).
     }),
     // `vp` is referentially stable (useViewPrefs memoizes its return), so
@@ -690,7 +690,7 @@ export function useReaderView(
   // its scroll-churn doesn't bust the otherwise-stable `derivations` bundle.
   const sectionPaths = useReaderSectionPath(editor, scrollEl);
 
-  const viewPrefs = useMemo<EditorPaneViewPrefs>(
+  const viewPrefs = useMemo<EditorPaneWindowViewPrefs>(
     () => buildEditorPaneViewPrefs(vp, handlers, derivations, sectionPaths),
     [vp, handlers, derivations, sectionPaths],
   );

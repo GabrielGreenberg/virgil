@@ -18,7 +18,12 @@
  * This is a PURE function — no hooks, no side effects — so it is safe to
  * call inside a `useMemo` (main app) or a thin wrapper hook (Reader).
  */
-import type { EditorPaneViewPrefs } from "@/components/EditorPane";
+import type {
+  EditorPaneViewPrefs,
+  EditorPaneWindowViewPrefs,
+  PaneViewPrefs,
+} from "@/components/EditorPane";
+import { sliceOf } from "@/floats/owner-floats";
 import type {
   PanelId,
   Side,
@@ -77,7 +82,7 @@ export interface EditorMutationHandlers {
   onFocusSnapBoundary: (edge: "top" | "bottom", target: BlockAddress) => void;
 
   // Float focus management (raise-on-click).
-  focusFloating: EditorPaneViewPrefs["focusFloating"];
+  focusFloating: EditorPaneWindowViewPrefs["focusFloating"];
 
   // Panel-resize chrome lifecycle.
   setIsResizingPanels: (r: boolean) => void;
@@ -140,13 +145,13 @@ export interface EditorPaneViewDerivations {
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   setOmniSideToDefault: (side: Side) => void;
   categorySides: Record<OmniCategory, Side | null>;
-  /** Lockstep-remap a card popout key. EditorLayout supplies its own (the
-   *  Reader supplies a session-only equivalent), so it rides the view bag
-   *  rather than `vp` to keep both producers explicit. */
-  remapCardPopKey: (oldKey: string, newKey: string) => void;
+  /** Lockstep-remap a card popout key in its OWNING doc's floats. EditorLayout
+   *  supplies its own (the Reader supplies a session-only equivalent), so it
+   *  rides the view bag rather than `vp` to keep both producers explicit. */
+  remapCardPopKey: (owner: string, oldKey: string, newKey: string) => void;
   /** Optional — only the main app paints float z-index from its MRU focus
    *  stack; the Reader omits it. */
-  cardFloatZIndex?: (key: string) => number;
+  cardFloatZIndex?: (owner: string, key: string) => number;
 }
 
 /**
@@ -173,7 +178,7 @@ export function buildEditorPaneViewPrefs(
   editorHandlers: EditorMutationHandlers,
   view: EditorPaneViewDerivations,
   sectionPaths: EditorPaneSectionPaths,
-): EditorPaneViewPrefs {
+): EditorPaneWindowViewPrefs {
   return {
     // ── Read state ──────────────────────────────────────────────────
     prefs: vp.prefs,
@@ -271,3 +276,39 @@ export function buildEditorPaneViewPrefs(
 // Re-export PanelId/Side for the Reader's convenience (it builds handlers
 // typed in these terms and importing from one place keeps it tidy).
 export type { PanelId, Side };
+
+/**
+ * Project the WINDOW bundle onto ONE pane's document (task 1400) — the only
+ * place a pane's view of popped floats is derived. `prefs.cardFloats` (every
+ * doc's floats) is NARROWED to `owner`'s slice, also spelled flat as
+ * `poppedOutCards` / `cardFloatPositions`, and every float op is bound to
+ * `owner`, so the pane can
+ * neither see nor act on another document's float: the "per-doc services under
+ * multi-pane keep-alive" law, applied at the pane's own identity rather than by
+ * each consumer remembering to filter. Pure — `EditorPane` memoizes it on
+ * (bundle, docId).
+ */
+export function scopePaneViewPrefs(
+  win: EditorPaneWindowViewPrefs,
+  owner: string,
+): EditorPaneViewPrefs {
+  const slice = sliceOf(win.prefs.cardFloats, owner);
+  const prefs: PaneViewPrefs = {
+    ...win.prefs,
+    cardFloats: slice.keys.length || Object.keys(slice.positions).length ? { [owner]: slice } : {},
+    poppedOutCards: slice.keys,
+    cardFloatPositions: slice.positions,
+  };
+  const zIndex = win.cardFloatZIndex;
+  return {
+    ...win,
+    prefs,
+    toggleCardPopout: (key) => win.toggleCardPopout(owner, key),
+    closeCardPopout: (key) => win.closeCardPopout(owner, key),
+    setCardFloatPosition: (key, rect) => win.setCardFloatPosition(owner, key, rect),
+    remapCardPopKey: (oldKey, newKey) => win.remapCardPopKey(owner, oldKey, newKey),
+    focusFloating: (target) =>
+      win.focusFloating(target.kind === "card" ? { kind: "card", owner, key: target.key } : target),
+    cardFloatZIndex: zIndex ? (key) => zIndex(owner, key) : undefined,
+  };
+}

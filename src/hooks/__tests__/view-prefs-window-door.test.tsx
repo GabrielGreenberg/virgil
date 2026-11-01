@@ -21,6 +21,7 @@ vi.mock("@/lib/multi-window/bus", () => ({
 
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import { useViewPrefs, loadPrefs } from "../useViewPrefs";
+import { LEGACY_FLOAT_OWNER } from "@/floats/owner-floats";
 import defaultsJson from "../useViewPrefs.defaults.json";
 import {
   EPHEMERAL_WINDOW_PREF_KEYS,
@@ -113,8 +114,9 @@ describe("the window door validates every structural window key", () => {
       },
     });
     const p = loadPrefs();
-    expect(p.poppedOutCards).toEqual([]);
-    expect(p.cardFloatPositions).toEqual({});
+    // The retired flat pair (task 1400) folds to an EMPTY legacy slice — so
+    // no slot at all.
+    expect(p.cardFloats).toEqual({});
     expect(p.panelModes).toEqual({ outline: "floating" });
     expect(p.cardArchiveView).toEqual({ notes: "all" });
     expect(p.panelHeights).toEqual({ outline: 120 });
@@ -177,6 +179,50 @@ describe("an ephemeral key is never loaded, persisted or shipped", () => {
 
   it("the shipped defaults JSON omits every ephemeral key", () => {
     for (const k of EPHEMERAL_WINDOW_PREF_KEYS) expect(k in defaultsJson, k).toBe(false);
+  });
+});
+
+function FloatProbe() {
+  const vp = useViewPrefs();
+  return (
+    <>
+      <button data-testid="adopt" onClick={() => vp.adoptLegacyCardFloats("docA")} />
+      <button data-testid="pop-b" onClick={() => vp.toggleCardPopout("docB", "float:card:bib:k")} />
+      <span data-testid="floats">{JSON.stringify(vp.prefs.cardFloats)}</span>
+    </>
+  );
+}
+
+describe("popped floats are owned by a document (task 1400)", () => {
+  const KEY = "float:textobject:paragraph:u1";
+  const RECT = { x: 1, y: 2, width: 3, height: 4 };
+
+  it("a pre-1400 flat list loads under the unowned slot, AF-migrated, not under any doc", () => {
+    write(WINDOW_KEY, { poppedOutCards: ["paragraph:u1"], cardFloatPositions: { "paragraph:u1": RECT } });
+    expect(loadPrefs().cardFloats).toEqual({
+      [LEGACY_FLOAT_OWNER]: { keys: [KEY], positions: { [KEY]: RECT } },
+    });
+  });
+
+  it("adoption hands it to one doc and the next write deletes the flat pair from disk", () => {
+    write(WINDOW_KEY, { poppedOutCards: [KEY], cardFloatPositions: {} });
+    const { getByTestId } = render(<FloatProbe />);
+    fireEvent.click(getByTestId("adopt"));
+    expect(JSON.parse(getByTestId("floats").textContent!)).toEqual({
+      docA: { keys: [KEY], positions: {} },
+    });
+    const w = read(WINDOW_KEY);
+    expect("poppedOutCards" in w).toBe(false);
+    expect("cardFloatPositions" in w).toBe(false);
+    expect(w.cardFloats).toEqual({ docA: { keys: [KEY], positions: {} } });
+  });
+
+  it("a float popped in one doc is stored under that doc only", () => {
+    const { getByTestId } = render(<FloatProbe />);
+    fireEvent.click(getByTestId("pop-b"));
+    expect(read(WINDOW_KEY).cardFloats).toEqual({
+      docB: { keys: ["float:card:bib:k"], positions: {} },
+    });
   });
 });
 

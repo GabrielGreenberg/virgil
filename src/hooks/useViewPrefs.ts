@@ -48,7 +48,18 @@ import {
   type EphemeralWindowPrefKey,
   type StructuralWindowPrefKey,
 } from "@/lib/view-prefs/structural-window";
-import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import { migrateLegacyKeyToFloat } from "@/floats/float-key";
+import {
+  type CardFloats,
+  type FloatRect,
+  adoptLegacyCardFloats as adoptLegacyCardFloatsIn,
+  closeAllCardFloats,
+  closeCardFloat,
+  legacyFlatToCardFloats,
+  migrateCardFloats,
+  setCardFloatRect,
+  toggleCardFloat,
+} from "@/floats/owner-floats";
 import {
   filterPlacements,
   filterOmniSide,
@@ -179,10 +190,12 @@ export interface ViewPrefs extends RegistryPrefs {
   /** Per-panel preferred mode. Persisted. New panels default to
    *  "docked"; switches to "floating" the first time the user undocks. */
   panelModes: Partial<Record<PanelId, PanelMode>>;
-  /** Cards currently displayed as floating windows — keys shaped `${kind}:${id}`. */
-  poppedOutCards: string[];
-  /** Saved position/size of each floating card, keyed by card key. */
-  cardFloatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
+  /** Popped card / text-object floats, keyed by OWNING DOCUMENT id (task
+   *  1400): each doc's ordered open keys (`float:<domain>:<kind>:<id>`) and
+   *  saved rects. Never read whole by a pane — `EditorPane` projects its own
+   *  doc's slice (`scopePaneViewPrefs`), so no float of one document is
+   *  visible or actionable from another. */
+  cardFloats: CardFloats;
   /* `showHighlights` + `hiddenHighlightTypes` are registry-owned
    *  (`VIEW_PREF_REGISTRY`, global scope) and arrive via `RegistryPrefs`. */
   /** In-editor text margins (padding inside the editor pod), in pixels.
@@ -314,6 +327,12 @@ const RETIRED_PREF_KEYS = [
 /** Pre-blob standalone localStorage keys whose feature is retired — removed at
  *  load rather than folded. `virgil-omni-hide-all-cards` held the ancestor of
  *  `omniHideAllCards` (task 807). */
+/** The pre-1400 WINDOW-GLOBAL popout pair. `loadPrefs` folds it into
+ *  `cardFloats` under the unowned legacy slot (the layout adopts that into the
+ *  doc active at boot) and deletes it — carrying it through a write would
+ *  re-fold it, and so re-open closed floats, on every load. */
+const RETIRED_FLOAT_KEYS = ["poppedOutCards", "cardFloatPositions"] as const;
+
 const RETIRED_LEGACY_STORAGE_KEYS = ["virgil-omni-hide-all-cards"] as const;
 
 /** The ≤2-panel split model's keys (pre-`dockStack`, task 273). `loadPrefs`
@@ -436,6 +455,7 @@ const REGISTRY_WINDOW_KEYS = VIEW_PREF_KEYS.filter((k) => !GLOBAL_PREF_SET.has(k
 const CONSUMED_PREF_KEYS = new Set<string>([
   ...RETIRED_PREF_KEYS,
   ...RETIRED_LAYOUT_KEYS,
+  ...RETIRED_FLOAT_KEYS,
   // The pre-381 per-side omni lists, folded to `omniHiddenCategories`.
   "omniCategories",
   // Session-only window keys (task 1319): never written, so a value an
@@ -1083,10 +1103,21 @@ export function loadPrefs(): ViewPrefs {
       applyPanelRenames(unioned, PANEL_RENAMES),
     );
 
+    // Task 1400: the pre-1400 flat pair named no document. Fold it into the
+    // owner-keyed `cardFloats` under the unowned legacy slot (rendered by no
+    // pane until the layout adopts it into the doc active at boot); the flat
+    // keys are CONSUMED, so the next write deletes them from disk.
+    if (!("cardFloats" in parsed)) {
+      const legacy = legacyFlatToCardFloats(parsed.poppedOutCards, parsed.cardFloatPositions);
+      if (legacy) parsed.cardFloats = legacy;
+    }
+    delete parsed.poppedOutCards;
+    delete parsed.cardFloatPositions;
+
     // AF popout-key migration (read-time leg). Converts every persisted key to
-    // the unified `float:<domain>:<kind>:<id>` grammar, in LOCKSTEP across
-    // BOTH `poppedOutCards` AND `cardFloatPositions` (the prior D10 migration
-    // rewrote only the former → every saved float rect orphaned; this fixes it).
+    // the unified `float:<domain>:<kind>:<id>` grammar, in LOCKSTEP across each
+    // doc's keys AND rects (the prior D10 migration rewrote only the keys →
+    // every saved float rect orphaned; this fixes it).
     //
     // Block-popout prefixes (`paragraph:`/`heading:`/`texBlock:`) first rewrite
     // to `textobject:…`, then to `float:textobject:…`. `selection:`/`sel:` were
@@ -1094,31 +1125,20 @@ export function loadPrefs(): ViewPrefs {
     // resolve kind, so they pass through here and the doc-aware leg
     // (`post-load-migrations`, fired once the editor mounts) converts them.
     // Idempotent: keys already `float:` pass straight through.
-    if (Array.isArray(parsed.poppedOutCards)) {
-      const droppedSelection = (parsed.poppedOutCards as unknown[]).filter(
-        (k): k is string =>
-          typeof k === "string" &&
-          (k.startsWith("selection:") || k.startsWith("sel:")),
-      );
-      const positions =
-        parsed.cardFloatPositions && typeof parsed.cardFloatPositions === "object"
-          ? (parsed.cardFloatPositions as Record<string, unknown>)
-          : {};
-      const result = migrateFloatKeys(
-        (parsed.poppedOutCards as unknown[]).filter(
-          (k): k is string => typeof k === "string",
-        ),
-        positions,
-        readTimePopoutKeyToFloat,
-      );
-      if (result.changed) {
-        parsed.poppedOutCards = result.keys;
-        parsed.cardFloatPositions = result.positions;
-      }
-      if (droppedSelection.length > 0) {
-        console.warn(
-          `[viewPrefs] AF migration dropped ${droppedSelection.length} session-only selection popout key(s): ${droppedSelection.slice(0, 3).join(", ")}${droppedSelection.length > 3 ? ", …" : ""}`,
-        );
+    if (parsed.cardFloats && typeof parsed.cardFloats === "object" && !Array.isArray(parsed.cardFloats)) {
+      const stored = adoptWindowSlice({ cardFloats: parsed.cardFloats }).cardFloats as
+        | CardFloats
+        | undefined;
+      if (stored) {
+        const droppedSelection = Object.values(stored)
+          .flatMap((slice) => slice.keys)
+          .filter((k) => k.startsWith("selection:") || k.startsWith("sel:"));
+        parsed.cardFloats = migrateCardFloats(stored, readTimePopoutKeyToFloat);
+        if (droppedSelection.length > 0) {
+          console.warn(
+            `[viewPrefs] AF migration dropped ${droppedSelection.length} session-only selection popout key(s): ${droppedSelection.slice(0, 3).join(", ")}${droppedSelection.length > 3 ? ", …" : ""}`,
+          );
+        }
       }
     }
 
@@ -1644,10 +1664,14 @@ export function useViewPrefs(opts?: {
   /** Close any open panels and pop-outs, but leave the side columns
    *  themselves expanded (they fall back to the omni-view background).
    *  Leaves collapsed sides collapsed. */
-  const closeAllPanels = useCallback(() => {
-    // Panels via the engine; `poppedOutCards` is the CARD float axis, which
-    // the dock engine deliberately doesn't own.
-    update((p) => ({ ...closeAllPanelsIn(p), poppedOutCards: [] }));
+  const closeAllPanels = useCallback((floatOwner?: string) => {
+    // Panels via the engine; `cardFloats` is the CARD float axis, which the
+    // dock engine deliberately doesn't own. Panels are window-wide; card floats
+    // are per document (task 1400), so a caller with a doc in front names it
+    // and only THAT doc's floats close. No owner = every doc's (the Reader's
+    // engine holds one doc). Typed `string`, so a stray event arg can't be one.
+    const owner = typeof floatOwner === "string" ? floatOwner : undefined;
+    update((p) => ({ ...closeAllPanelsIn(p), cardFloats: closeAllCardFloats(p.cardFloats, owner) }));
   }, [update]);
 
   // Strip-click toggle: open if closed, close if open. "Open" means
@@ -1928,70 +1952,55 @@ export function useViewPrefs(opts?: {
     [update],
   );
 
-  const toggleCardPopout = useCallback((key: string) => {
-    update((p) => {
-      const isPopped = p.poppedOutCards.includes(key);
-      if (isPopped) {
-        // Re-dock: forget the dragged float position so next pop spawns
-        // fresh from the trigger.
-        const { [key]: _droppedPos, ...remainingPositions } = p.cardFloatPositions;
-        return {
-          ...p,
-          poppedOutCards: p.poppedOutCards.filter((x) => x !== key),
-          cardFloatPositions: remainingPositions,
-        };
-      }
-      return {
-        ...p,
-        poppedOutCards: [...p.poppedOutCards, key],
-      };
-    });
+  // ── Card / text-object floats — OWNER-KEYED (task 1400) ──────────────
+  // Every op names the document that owns the float. A pane never calls these
+  // directly: `scopePaneViewPrefs` binds its own `docId`, so a pane can only
+  // open, close, move or migrate its OWN doc's floats.
+  const toggleCardPopout = useCallback((owner: string, key: string) => {
+    // Toggling off forgets the dragged rect so the next pop spawns fresh.
+    update((p) => ({ ...p, cardFloats: toggleCardFloat(p.cardFloats, owner, key) }));
   }, [update]);
 
-  const closeCardPopout = useCallback((key: string) => {
+  const closeCardPopout = useCallback((owner: string, key: string) => {
     update((p) => {
-      const { [key]: _droppedPos, ...remainingPositions } = p.cardFloatPositions;
-      return {
-        ...p,
-        poppedOutCards: p.poppedOutCards.filter((x) => x !== key),
-        cardFloatPositions: remainingPositions,
-      };
+      const cardFloats = closeCardFloat(p.cardFloats, owner, key);
+      return cardFloats === p.cardFloats ? p : { ...p, cardFloats };
     });
   }, [update]);
 
   const setCardFloatPosition = useCallback(
-    (key: string, pos: { x: number; y: number; width: number; height: number }) => {
-      update((p) => ({ ...p, cardFloatPositions: { ...p.cardFloatPositions, [key]: pos } }));
+    (owner: string, key: string, pos: FloatRect) => {
+      update((p) => ({ ...p, cardFloats: setCardFloatRect(p.cardFloats, owner, key, pos) }));
     },
     [update],
   );
 
   /**
-   * Apply a per-key migration to the popout keys, in LOCKSTEP across both
-   * `poppedOutCards` AND `cardFloatPositions`, so a saved rect follows its key
-   * to the new grammar (never orphans). `mapKey` returns the new key, or `null`
+   * Apply a per-key migration to ONE doc's popout keys (or, `owner` omitted,
+   * every doc's), in LOCKSTEP across its keys AND rects, so a saved rect
+   * follows its key (never orphans). `mapKey` returns the new key, or `null`
    * to drop it. No-op (no prefs write) when nothing changed. Used by the
-   * doc-aware post-load leg that resolves legacy `list:`/`example:` keys to
-   * `float:textobject:…` vs `float:card:example:…` using the editor doc.
+   * doc-aware post-load leg that resolves legacy `list:`/`example:` keys
+   * against THAT doc's editor, and by the morph remap.
    */
   const migratePoppedOutCards = useCallback(
-    (mapKey: (key: string) => string | null) => {
+    (mapKey: (key: string) => string | null, owner?: string) => {
       update((p) => {
-        const result = migrateFloatKeys(
-          p.poppedOutCards,
-          p.cardFloatPositions,
-          mapKey,
-        );
-        if (!result.changed) return p;
-        return {
-          ...p,
-          poppedOutCards: result.keys,
-          cardFloatPositions: result.positions,
-        };
+        const cardFloats = migrateCardFloats(p.cardFloats, mapKey, owner);
+        return cardFloats === p.cardFloats ? p : { ...p, cardFloats };
       });
     },
     [update],
   );
+
+  /** Hand the pre-1400 unowned popout list (if any) to `owner` — the layout
+   *  calls this with the doc active at boot. No-op when there is none. */
+  const adoptLegacyCardFloats = useCallback((owner: string) => {
+    update((p) => {
+      const cardFloats = adoptLegacyCardFloatsIn(p.cardFloats, owner);
+      return cardFloats === p.cardFloats ? p : { ...p, cardFloats };
+    });
+  }, [update]);
 
   const setCodePaneRatio = useCallback((ratio: number) => {
     // Sanity clamp only. The LEGAL split depends on container width, which
@@ -2102,6 +2111,7 @@ export function useViewPrefs(opts?: {
     closeCardPopout,
     setCardFloatPosition,
     migratePoppedOutCards,
+    adoptLegacyCardFloats,
     setPrintOptions,
     setTopbarRightCollapsed,
     // `prefs` is the only changing input; `leftItems`/`rightItems` derive purely

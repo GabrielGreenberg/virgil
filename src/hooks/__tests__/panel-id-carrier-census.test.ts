@@ -119,12 +119,16 @@ describe("PANEL_ID_CARRIERS — the SUBTRACTIVE half covers every classified car
   });
 
   it("never touches a carrier classified `null` — those are keyed by something else", () => {
-    // `panelWidths` is keyed by Side and `cardFloatPositions` by float card
+    // `panelWidths` is keyed by Side and `cardFloats` by doc id → float card
     // key. Scrubbing them against the panel registry would delete every entry.
     const blob = {
       panelWidths: { left: 320, right: 280 },
-      cardFloatPositions: { "float:margin:note:abc": { x: 1, y: 2, width: 3, height: 4 } },
-      poppedOutCards: ["float:margin:note:abc"],
+      cardFloats: {
+        docA: {
+          keys: ["float:margin:note:abc"],
+          positions: { "float:margin:note:abc": { x: 1, y: 2, width: 3, height: 4 } },
+        },
+      },
       appliedPrefMigrations: ["some-migration-id"],
     };
     expect(scrubUnknownPanelIds(blob)).toBe(blob);
