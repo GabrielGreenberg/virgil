@@ -58,8 +58,9 @@ export const DROP_DRAG_THRESHOLD_PX = 3;
 export type BeginDropSessionOpts = Parameters<typeof beginDropSession>[0];
 
 export interface PendDropSessionOpts extends BeginDropSessionOpts {
-  /** Runs on the promote edge, only when `beginDropSession` accepted. */
-  onPromote?: () => void;
+  /** Runs on the promote edge, only when `beginDropSession` accepted, with
+   *  the move that crossed the threshold (the live cursor a ghost seeds at). */
+  onPromote?: (e: MouseEvent) => void;
 }
 
 let disposePending: (() => void) | null = null;
@@ -143,8 +144,8 @@ export function pendDropSession(opts: PendDropSessionOpts): () => void {
   const { onPromote, ...begin } = opts;
   return pendDrag({
     origin: opts.origin,
-    onPromote: () => {
-      if (beginDropSession(begin)) onPromote?.();
+    onPromote: (e) => {
+      if (beginDropSession(begin)) onPromote?.(e);
     },
   });
 }

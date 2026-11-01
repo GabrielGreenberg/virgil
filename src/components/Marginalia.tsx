@@ -52,6 +52,7 @@ import {
   NON_REGISTRY_MARKER_TYPES,
 } from "@/cards/marker-meta";
 import {
+  useCardStore,
   useHoverClaim,
   useIsHovered,
   useIsSelected,
@@ -339,6 +340,7 @@ export function MarkerButton({
   const ref: AnchoredCardRef | null = m.entityKind
     ? { kind: m.entityKind, id: m.entityId }
     : null;
+  const cardStore = useCardStore();
   const selected = useIsSelected(ref);
   const hovered = useIsHovered(ref);
   // The hover claim releases itself if this button unmounts under the pointer
@@ -452,7 +454,19 @@ export function MarkerButton({
         beginCardDropGesture({
           cardKey: reanchorKey,
           origin: { x: e.clientX, y: e.clientY },
-          onPromote: () => trailingClick.arm(),
+          // The drag carries the marker's icon under the cursor and dims the
+          // marker in place (task 1404); the controller ends both with the
+          // session, so a same-paragraph release simply restores it.
+          ghostFrom: e.currentTarget,
+          onPromote: () => {
+            trailingClick.arm();
+            // The dragged card is the SUBJECT: select it so the marker and its
+            // panel card wear the selection halo for the gesture (task 1404).
+            // Select only — never the click's toggle-off, and `placement:
+            // "none"` + no panel open/pin (the click's bridge dispatch): nothing
+            // may scroll the editor or move a panel under a held drag.
+            if (ref) cardStore.select(ref, { placement: "none" });
+          },
         });
       } : undefined}
       onClick={(e) => {

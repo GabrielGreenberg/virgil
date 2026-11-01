@@ -2,7 +2,7 @@
 
 /**
  * The drop-mode overlays — the blue placement bar (`DropModeIndicator`) and the
- * inline-atom drag ghost (`InlineAtomGhost`). Mounted ONCE, at app level
+ * inline-atom drag ghost (`DropGhost`). Mounted ONCE, at app level
  * (`src/app/page.tsx`, beside `HintLayer`), never per pane (task 1027).
  *
  * Both render from APP-GLOBAL state — the one drop session (`useDropSession`)
@@ -22,13 +22,13 @@
  */
 
 import { DropModeIndicator } from "./Indicator";
-import { InlineAtomGhost } from "./InlineAtomGhost";
+import { DropGhost } from "./DropGhost";
 
 export function DropModeOverlays() {
   return (
     <>
       <DropModeIndicator />
-      <InlineAtomGhost />
+      <DropGhost />
     </>
   );
 }

@@ -42,7 +42,7 @@ import {
   setDropCtx,
 } from "@/components/drop-mode/controller";
 import type { DropCtx } from "@/components/drop-mode/types";
-import { useInlineAtomGhost } from "@/components/drop-mode/inline-atom-ghost";
+import { useDropGhost } from "@/components/drop-mode/drop-ghost";
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
@@ -141,7 +141,7 @@ afterEach(() => {
 describe("a drop session that ends WITHOUT the grab's own mouseup", () => {
   it("post-threshold: the controller's missed-release clears the ghost and frees the latch", () => {
     const ed = mount();
-    const ghost = renderHook(() => useInlineAtomGhost());
+    const ghost = renderHook(() => useDropGhost());
 
     expect(press(ed)).toBe(true);
     dragPastThreshold();
@@ -171,7 +171,7 @@ describe("a drop session that ends WITHOUT the grab's own mouseup", () => {
 
   it("post-threshold: Escape clears the ghost and frees the latch", () => {
     const ed = mount();
-    const ghost = renderHook(() => useInlineAtomGhost());
+    const ghost = renderHook(() => useDropGhost());
 
     expect(press(ed)).toBe(true);
     dragPastThreshold();

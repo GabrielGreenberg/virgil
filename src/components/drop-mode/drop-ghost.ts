@@ -1,25 +1,41 @@
 /**
- * Module store for the inline-atom drag ghost — the data the
- * `<InlineAtomGhost>` overlay renders while an Atom is being dragged in
- * the prose.
+ * Module store for the drop-session GHOST — the "what am I carrying" copy the
+ * `<DropGhost>` overlay floats under the cursor while a drop session runs.
  *
- * The `InlineAtomGrab` ProseMirror plugin is NOT a React component, so it
- * can't drive a React overlay directly (the way `TextObjectGrabHandle`
- * drives `<LiftedTextOverlay>` for the block lift). Instead it writes this
+ * Two producer families write it (task 1404 generalized it from the
+ * inline-atom ghost):
+ *   - the in-text inline-atom grab (`@/lib/tiptap/inline-atom-grab`), on its
+ *     own threshold edge;
+ *   - every "grab a card to (re)anchor it" gesture that rides
+ *     `beginCardDropGesture` (the margin pin today), on the press's promote
+ *     edge, via its `ghostFrom` subject. That gesture may also mark its
+ *     pressed element as the session's SOURCE (`markSource`), which stamps
+ *     `data-drop-mode-source` so CSS dims it as a placeholder.
+ *
+ * The ghost's LIFETIME is the session's, owned by the controller: its
+ * `onMove` feeds the cursor (`updateGhostCursor`) and its commit entry +
+ * `endDropSession` — the door every ending funnels through — clear it
+ * (`clearGhost`). So no producer can strand a ghost on an end path it cannot
+ * see (task 644 class), and no producer runs a cursor listener of its own.
+ *
+ * Neither producer can drive a React overlay directly: the atom grab is a
+ * ProseMirror plugin and the card gesture is a runtime leaf (contrast
+ * `TextObjectGrabHandle` driving `<LiftedTextOverlay>` for the block lift).
+ * Instead each writes this
  * module store and a small React subscriber reads it via
  * `useSyncExternalStore` — the same producer/subscriber split the drop-mode
  * controller ↔ `Indicator` already use. The store idiom mirrors
  * `@/links/_shared/anchored-card-store`.
  *
- * The ghost holds a sanitized `cloneNode` of the grabbed atom as a live
+ * The ghost holds a sanitized `cloneNode` of the grabbed element as a live
  * `HTMLElement` (NOT an HTML string): inline-math renders KaTeX into the
  * DOM, and an `outerHTML` round-trip re-parsed via `dangerouslySetInnerHTML`
  * mangles the embedded MathML subtree — so we append the node, exactly as
  * `LiftedTextOverlay` does (and for the same reason).
  *
- * Keystroke-sanctity: gesture-only. The setters are called from the grab
- * plugin's mousedown/mousemove handlers, never per keystroke or per
- * transaction.
+ * Keystroke-sanctity: gesture-only. The setters are called from a
+ * producer's drag edge and the controller's session mousemove/end, never per
+ * keystroke or per transaction.
  *
  * Motion is NOT React state (task 773). The store emits only on EDGES — the
  * ghost lifting and ending — and the cursor rides the shared
@@ -44,8 +60,9 @@ import {
 import { CARD_ATOM_DOM_ID_ATTRS } from "@/lib/tiptap/atom-registry";
 import { VIEW_ONLY_ATTENTION_ATTRS } from "@/lib/view-only-chrome";
 
-export interface InlineAtomGhostState {
-  /** Sanitized, detached clone of the grabbed atom's NodeView DOM. */
+export interface DropGhostState {
+  /** Sanitized, detached clone of the grabbed element (an atom's NodeView
+   *  DOM, a margin marker). */
   el: HTMLElement;
   /** Grab point as an offset from the atom rect's top-left (viewport px),
    *  so the cursor pins to exactly where the user pressed on the glyph. */
@@ -53,7 +70,13 @@ export interface InlineAtomGhostState {
   grabOffsetY: number;
 }
 
-let _state: InlineAtomGhostState | null = null;
+let _state: DropGhostState | null = null;
+/** The live element stamped as the session's source (dimmed), if any. */
+let _source: HTMLElement | null = null;
+
+/** The attribute that marks a drop session's SOURCE element — the same one
+ *  `markSourceFloat` stamps on a dimmed float. CSS keys the dim on it. */
+export const DROP_SOURCE_ATTR = "data-drop-mode-source";
 const _listeners = new Set<() => void>();
 
 /** Gap between the cursor and the ghost's near edge (px). */
@@ -154,6 +177,11 @@ const STRIP_ATTRS = [
   // a fifth Card-bearing kind is stripped from the ghost for free instead of
   // silently riding into the clone with a live id.
   ...CARD_ATOM_DOM_ID_ATTRS,
+  // The margin marker's identity hook (task 1404): a clone carrying it would
+  // answer `[data-marginalia-marker=…]` queries as a second marker.
+  "data-marginalia-marker",
+  // A clone of a stamped source must not dim itself.
+  DROP_SOURCE_ATTR,
 ];
 
 function sanitizeClone(src: HTMLElement): HTMLElement {
@@ -174,19 +202,30 @@ function sanitizeClone(src: HTMLElement): HTMLElement {
     c.querySelectorAll(`[${attr}]`).forEach((el) => el.removeAttribute(attr));
   }
   c.style.pointerEvents = "none";
+  // The ghost lays out IN FLOW inside its fixed host: a source placed by its
+  // own `left`/`top` (the margin marker's grid cell, its `absolute` class)
+  // would otherwise sit that far off the cursor.
+  c.style.position = "static";
+  c.style.left = "";
+  c.style.top = "";
   return c;
 }
 
-/** Begin the ghost: clone + sanitize the grabbed atom, pin the grab offset,
- *  seed the cursor. Called once at the `InlineAtomGrab` threshold-cross — an
- *  EDGE, so it emits; the component mounts and `attachGhostNode` places it. */
+/** Begin the ghost: clone + sanitize the grabbed element, pin the grab
+ *  offset, seed the cursor. Called once on a producer's drag edge (the atom
+ *  grab's threshold-cross, a card gesture's promote) — an EDGE, so it emits;
+ *  the component mounts and `attachGhostNode` places it. `markSource` stamps
+ *  the LIVE element as the session's source (dimmed until `clearGhost`); the
+ *  clone is taken first, so it never carries the stamp. */
 export function setGhost(opts: {
   el: HTMLElement;
   grabOffsetX: number;
   grabOffsetY: number;
   cursorX: number;
   cursorY: number;
+  markSource?: boolean;
 }): void {
+  releaseSource();
   _state = {
     el: sanitizeClone(opts.el),
     grabOffsetX: opts.grabOffsetX,
@@ -195,10 +234,20 @@ export function setGhost(opts: {
   _motion.cancel();
   _motion.reset();
   _motion.set(opts.cursorX, opts.cursorY);
+  if (opts.markSource) {
+    _source = opts.el;
+    _source.setAttribute(DROP_SOURCE_ATTR, "true");
+  }
   emit();
 }
 
-/** Track the cursor — per RAW mousemove, so it NEVER emits: it records the
+function releaseSource(): void {
+  _source?.removeAttribute(DROP_SOURCE_ATTR);
+  _source = null;
+}
+
+/** Track the cursor — per RAW mousemove (the controller's session `onMove`
+ *  is the one caller), so it NEVER emits: it records the
  *  live value on the motion channel, which writes at most once per frame and
  *  not at all at an unchanged cursor. */
 export function updateGhostCursor(cursorX: number, cursorY: number): void {
@@ -206,10 +255,12 @@ export function updateGhostCursor(cursorX: number, cursorY: number): void {
   _motion.set(cursorX, cursorY);
 }
 
-/** End the ghost (gesture commit / cancel / cleanup). Idempotent. Drops any
+/** End the ghost and restore its source. Called by the controller on the
+ *  session's commit entry and end (every ending). Idempotent. Drops any
  *  queued frame first, so no write lands behind the gesture's end. */
 export function clearGhost(): void {
   _motion.cancel();
+  releaseSource();
   if (!_state) return;
   _state = null;
   emit();
@@ -218,10 +269,10 @@ export function clearGhost(): void {
 // `getSnapshot` returns the stored state reference directly — stable between
 // emits (setters replace the whole object), which `useSyncExternalStore`
 // requires to avoid an infinite render loop.
-const getSnapshot = (): InlineAtomGhostState | null => _state;
-const getServerSnapshot = (): InlineAtomGhostState | null => null;
+const getSnapshot = (): DropGhostState | null => _state;
+const getServerSnapshot = (): DropGhostState | null => null;
 
 /** Subscribe a React component to the ghost. */
-export function useInlineAtomGhost(): InlineAtomGhostState | null {
+export function useDropGhost(): DropGhostState | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

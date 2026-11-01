@@ -179,7 +179,7 @@ describe("the census can SEE what it forbids (task 645 — anti-vacuity)", () =>
       "B",
     ],
     [
-      "inline-atom-ghost STRIP_ATTRS",
+      "drop-ghost STRIP_ATTRS",
       '  "data-footnote-id",\n  "data-citation-id",\n];',
       "B",
     ],

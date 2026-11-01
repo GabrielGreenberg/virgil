@@ -2,7 +2,7 @@
 /**
  * Task 1027 — the app-global drop overlays mount ONCE, not once per pane.
  *
- * `DropModeIndicator` (the blue placement bar) and `InlineAtomGhost` (the
+ * `DropModeIndicator` (the blue placement bar) and `DropGhost` (the
  * inline-atom drag ghost) render from APP-GLOBAL state — the one drop session
  * and the one ghost module store — and portal to `document.body`. They used to
  * be rendered by `DropModeProvider`, one per `EditorPane` (keep-alive mounts N),
@@ -54,7 +54,7 @@ import {
   clearGhost,
   detachGhostNode,
   setGhost,
-} from "../inline-atom-ghost";
+} from "../drop-ghost";
 
 afterEach(() => {
   act(() => {
@@ -98,7 +98,7 @@ describe("drop overlays — one mount site (census)", () => {
     expect(sitesOf("DropModeIndicator")).toEqual([
       "src/components/drop-mode/DropModeOverlays.tsx",
     ]);
-    expect(sitesOf("InlineAtomGhost")).toEqual([
+    expect(sitesOf("DropGhost")).toEqual([
       "src/components/drop-mode/DropModeOverlays.tsx",
     ]);
   });
@@ -131,7 +131,7 @@ describe("drop overlays — N panes mounted", () => {
       setGhost({ el: atom, grabOffsetX: 2, grabOffsetY: 2, cursorX: 100, cursorY: 200 });
     });
 
-    const ghosts = () => document.querySelectorAll(".inline-atom-ghost");
+    const ghosts = () => document.querySelectorAll(".drop-ghost");
     expect(ghosts()).toHaveLength(1);
     const host = ghosts()[0] as HTMLElement;
     expect(__getGhostNode()).toBe(host);
