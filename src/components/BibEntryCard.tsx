@@ -40,6 +40,16 @@ export interface BibEntryCardProps {
   entry: BibEntry;
   isSelected: boolean;
   onClick: () => void;
+  /**
+   * SELECT this entry and nothing else — no toggle, no focus move, no scroll
+   * (task 1410). PanelCard fires it from its root capture phase when a
+   * pointer-down or focus lands in one of the card's content fields
+   * (`onSelectOnly`, task 1357's one rule), so typing into a popped-out
+   * card's annotation or BibTeX fields selects the card it is typing in.
+   * Omitted by a host whose card has no selection of its own (the Citations
+   * card's embedded preview).
+   */
+  onSelect?: () => void;
   // BIB-F1-02 (audit-confirmed dead surface, removed): a `getFormattedBib`
   // prop implied a CSL-formatted reference preview inside the bib card, but
   // no such preview was ever built — the prop was destructured and never
@@ -219,7 +229,7 @@ function AnnotationEditor({
 
 /* ── BibEntryCard ─────────────────────────────────────────────────── */
 export default function BibEntryCard({
-  entry, isSelected, onClick, getAnnotation, setAnnotation,
+  entry, isSelected, onClick, onSelect, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, getReviewNotes, onSaveBibEntry,
   occurrenceInfo, bibEntries, isCited = true, onJump,
   isPoppedOut, headerMeta, addAction, readOnly,
@@ -812,6 +822,9 @@ export default function BibEntryCard({
       // Selection IS the expansion axis here (compressed = !selected), so a
       // header click toggles selection just like a body click.
       onHeaderActivate={onClick}
+      // Interacting with a field selects the card — once (already selected →
+      // nothing to do), never the toggle `onClick` makes.
+      onSelectOnly={onSelect && !isSelected ? onSelect : undefined}
       isCollapsed={compressed}
       extraCardClass={`cursor-pointer${!isCited ? " opacity-60" : ""}`}
       draggable={draggable}

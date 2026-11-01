@@ -175,6 +175,30 @@ describe("CENSUS — every anchored card reaches the one content-select rule", (
     expect(offenders).toEqual([]);
   });
 
+  // Task 1410: the population is every file that RENDERS `<PanelCard`,
+  // derived from the whole source tree — not a directory. The bib card lives
+  // in `src/components/` and escaped a `panels/`-only walk.
+  it("every <PanelCard> render site, anywhere in src, reaches onSelectOnly", () => {
+    // A site exempt from the rule names why. Keep this list short.
+    const EXEMPT: Record<string, string> = {
+      "components/panel-primitives.tsx": "defines PanelCard and forwards onSelectOnly",
+      "panels/Errors/ErrorCard.tsx": "read-only diagnostics — no content fields",
+    };
+    const sites = walkFiles(ROOT, { skipDirs: ["__tests__"] })
+      .filter((p) => p.endsWith(".tsx"))
+      .map((p) => ({ file: relative(ROOT, p), src: readFileSync(p, "utf8") }))
+      .filter(({ src }) => /<PanelCard\b/.test(src));
+    expect(sites.map((s) => s.file)).toContain("components/BibEntryCard.tsx");
+    const offenders = sites
+      .filter(({ file }) => !(file in EXEMPT))
+      .filter(({ src }) => !/\{\.\.\.shell\}/.test(src) && !/\bonSelectOnly=\{/.test(src))
+      .map((s) => s.file);
+    expect(offenders).toEqual([]);
+    for (const file of Object.keys(EXEMPT)) {
+      expect(sites.map((s) => s.file), `stale exemption ${file}`).toContain(file);
+    }
+  });
+
   it("the shell bundle carries onSelectOnly (so every `{...shell}` spread inherits it)", () => {
     const shellSrc = readFileSync(join(ROOT, "panels/_shared/useAnchoredCardShell.ts"), "utf8");
     expect(shellSrc).toMatch(/onSelectOnly: \(\) => ac\.onSelectOnly\(/);
