@@ -30,7 +30,12 @@
  *    The question is `surfaceEditableNow`'s, asked through that one door (task
  *    638 put it at the deepest point a deferred commit passes through; this is
  *    the same seam for the drop gestures, and task 733 widened the door from
- *    the pen alone to pen ∧ host).
+ *    the pen alone to pen ∧ host). Since task 1402 the COMMIT holds it too:
+ *    `controller.finishApply` asks it of the landing editor and main before
+ *    every spec's `applyDrop` (after any confirm), so a sidecar-only commit —
+ *    a card re-anchor, a Stack card pull — which never reaches a dispatch door,
+ *    is gated as well. The doors keep their own check (a cross-editor SOURCE
+ *    is known only to them).
  * 2. **Dispatch, then measure the EFFECT.** `insertLanded` (schema-adopt.ts) is
  *    the PRE-dispatch net: it asks whether the built `Transform` kept the
  *    payload. It cannot see a veto, which happens strictly later. `dispatchLanded`

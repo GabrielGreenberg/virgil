@@ -46,6 +46,7 @@ import {
 } from "./block-payload";
 import { resolveSessionSourceRange, withinOriginDeadZone } from "./self-drop";
 import { lookupSpec } from "./registry";
+import { commitSurfacesWritable } from "./commit-seam";
 import { parseAnyKey } from "@/floats/float-key";
 // The content-gesture publisher pair is imported from the bus MODULE, not the
 // pane-resize barrel — it is publisher-only API (kind pinned to "content"
@@ -468,7 +469,16 @@ function docOf(editor: Editor | null | undefined): PMNode | null {
 
 /** Is this placement still addressing the document it was measured against? */
 function placementIsLive(placement: Placement, measuredAgainst: PMNode | null): boolean {
-  if (placement.kind === "paragraph-side") return true; // uuid-keyed
+  // A minted paragraph-side placement is uuid-keyed and survives any edit. An
+  // UNMINTED one rides a pos-keyed sentinel (`unminted@<pos>`) until the
+  // commit mints it (task 1402 moved that mint past the confirm), so it is as
+  // positional as a `between-blocks` insertPos and ages with the doc the same way.
+  if (
+    placement.kind === "paragraph-side" &&
+    !isUnmintedParagraphId(placement.paragraphId)
+  ) {
+    return true;
+  }
   return docOf(placement.editor) === measuredAgainst;
 }
 
@@ -766,27 +776,16 @@ export async function commitDropSession(): Promise<void> {
   const ctx = s.ctx;
   // The WRITE asks the live doc (task 1217): a positional placement measured
   // against a doc that has since moved is re-resolved at the release point.
-  let placement = livePlacement();
+  const placement = livePlacement();
   if (!placement) {
     cancelDropSession();
     return;
   }
-  // Mint-at-commit: the per-move hit-test never mints (the D4 drag cliff —
-  // full doc walk + dispatch + synchronous .tex flush per pointermove). A
-  // uuid-less target rode a pos-keyed sentinel; resolve it to a real minted
-  // uuid NOW, through the same ensureAnchorUuid SSOT, exactly once per
-  // gesture. A vanished block (sentinel no longer resolvable) is a no-op.
-  if (
-    placement.kind === "paragraph-side" &&
-    isUnmintedParagraphId(placement.paragraphId)
-  ) {
-    const minted = mintPlacementUuid(placement.editor, placement.paragraphId);
-    if (!minted) {
-      cancelDropSession();
-      return;
-    }
-    placement = { ...placement, paragraphId: minted };
-  }
+  // A uuid-less paragraph-side target still rides its pos-keyed sentinel here:
+  // the mint is a WRITE, so it waits for `finishApply` — past the decision and
+  // past the user's answer (task 1402). Every spec's `classifyDrop` reads the
+  // sentinel as "a paragraph nothing is anchored to yet", which is exactly
+  // what an unminted block is.
   const resolvedAgainst = docOf(placement.editor);
   const decision = s.spec.classifyDrop(placement, s.cardKey, ctx);
   if (decision.kind === "no-op") {
@@ -837,10 +836,49 @@ export async function commitDropSession(): Promise<void> {
 
 function finishApply(
   spec: DropSpec,
-  placement: Placement,
+  measured: Placement,
   cardKey: string,
   ctx: DropCtx,
 ) {
+  // OBLIGATION 1 OF THE COMMIT SEAM, held by the COMMIT itself (task 1402).
+  // `commit-seam.ts` asks editability "at the COMMIT, for every surface the
+  // compound touches" — but that question lived only inside the dispatch doors
+  // (`commitDocThenCards`, `dispatchPlan`, `commitCrossEditorMove`), so a
+  // commit with NO ProseMirror dispatch never met it: a card re-anchor
+  // rewrote sidecar links (and stripped a main-doc mark outside any door) and
+  // a Stack card pull created a card + upserted the `.bib`, both after the
+  // collab pen or the host could have flipped — the re-anchor after an
+  // AWAITED confirm, the longest gap in the system. This is the one function
+  // every spec's `applyDrop` is reached through, and it runs after any
+  // confirm, so asking here gates every spec, present and future. Both
+  // surfaces: the landing editor, and MAIN — whose sidecars every card write
+  // belongs to. The door-level checks stay (they also guard a cross-editor
+  // SOURCE, which only the door knows).
+  if (!commitSurfacesWritable(measured.editor, ctx.mainEditor)) {
+    endDropSession();
+    return;
+  }
+  // Mint-at-commit: the per-move hit-test never mints (the D4 drag cliff —
+  // full doc walk + dispatch + synchronous .tex flush per pointermove). A
+  // uuid-less target rode a pos-keyed sentinel; resolve it to a real minted
+  // uuid NOW, through the same ensureAnchorUuid SSOT, exactly once per
+  // gesture. It used to run BEFORE `classifyDrop`, so a `no-op` decision or a
+  // Cancel left a minted uuid and an undo step in a doc the user had declined
+  // to change (task 1402) — planned-spec's rule is that nothing writes before
+  // the user agrees, and the mint is a write. A vanished block (sentinel no
+  // longer resolvable) refuses the drop.
+  let placement = measured;
+  if (
+    placement.kind === "paragraph-side" &&
+    isUnmintedParagraphId(placement.paragraphId)
+  ) {
+    const minted = mintPlacementUuid(placement.editor, placement.paragraphId);
+    if (!minted) {
+      endDropSession();
+      return;
+    }
+    placement = { ...placement, paragraphId: minted };
+  }
   let applied = false;
   try {
     // The spec's own report (task 1024), not "nothing threw": a commit refused
