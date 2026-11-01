@@ -290,7 +290,7 @@
    * `-filter` suffix marks the form: this value cannot be used in
    * `box-shadow` and a box shadow cannot be used here.
    *
-   * Readers: `.inline-atom-ghost` (globals.css, the grabbed inline atom)
+   * Readers: `.drop-ghost` (globals.css, the grabbed inline atom)
    * and ONE TS door, `stampDragGhostLayer` (src/lib/drag-ghost.ts), which
    * `attachClampedDragGhost` applies to every HTML5 ghost (text pills,
    * Library row + tab clones, citation/bib cards, Outline rows) and the
@@ -559,7 +559,7 @@
   /* Hint-bubble tier — the CSS MIRROR of HINT_Z (same pattern, same pin). */
   --hint-z: 10010;
   /* Cursor-following drag-ghost rung — the CSS MIRROR of DRAG_GHOST_Z (same
-     pattern, same pin). Read by .inline-atom-ghost (task 1218). */
+     pattern, same pin). Read by .drop-ghost (task 1218). */
   --drag-ghost-z: 9998;
 
   /* Drag glow/ring layers — DERIVED from --drag-highlight, never
@@ -4642,6 +4642,13 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   opacity: 0.6;
   transition: opacity 0.1s ease;
 }
+/* A grabbed margin marker is the session's SOURCE while its ghost rides the
+ * cursor (task 1404, stamped by drop-ghost.ts `markSource`): it stays in its
+ * cell as a dimmed placeholder, and restores when the session ends. Important
+ * because the marker carries an inline opacity when muted. */
+body[data-drop-mode-active="true"] .marginalia-marker[data-drop-mode-source="true"] {
+  opacity: 0.35 !important;
+}
 /* Suppress native text-selection for the whole drop gesture. The inline-atom
  * grab starts ON editable content (the atom is its own handle), so without
  * this the browser draws a text-selection highlight competing with the blue
@@ -4756,7 +4763,7 @@ body.perf-contain .static-borrowed-text {
 
 /* Inline-atom drag ghost — the translucent copy of the grabbed Atom that
  * floats with the cursor (the inline cousin of `.lifted-text-overlay`).
- * Rendered by <InlineAtomGhost>, portaled to document.body. It is a
+ * Rendered by <DropGhost>, portaled to document.body. It is a
  * cursor-following DRAG GHOST, so it sits on the ladder's DRAG_GHOST_Z rung
  * (`--drag-ghost-z`, 9998): above every popped card it is dragged across, and
  * strictly BELOW the blue drop bar (DROP_INDICATOR_Z, 9999) so the insertion
@@ -4765,7 +4772,7 @@ body.perf-contain .static-borrowed-text {
  * popped card). pointer-events:none lets the live cursor drive posAtCoords
  * underneath. Sized to the atom (no width/height); the inner clone carries
  * the atom's own class-based look via the `.tiptap` wrapper. */
-.inline-atom-ghost {
+.drop-ghost {
   position: fixed;
   z-index: var(--drag-ghost-z);
   pointer-events: none;

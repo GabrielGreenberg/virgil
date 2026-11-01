@@ -366,7 +366,7 @@ describe("a component's sans chain never skips the user's override", () => {
  * NEITHER mechanism ever built — so the next reader who wanted a
  * composited-alpha shadow found a token that said it was for exactly that and
  * no example of it working, and wrote their own literal instead. Two of them
- * did (`.inline-atom-ghost` and the Library tab ghost, at `0 2px 6px` and
+ * did (`.drop-ghost` and the Library tab ghost, at `0 2px 6px` and
  * `0 8px 16px` for one role). A dead token is not inert: it is an invitation
  * to a fork.
  *
@@ -513,7 +513,7 @@ describe("every declared token has a reader", () => {
   it("the drag-ghost lift is one token read through one door per language", () => {
     // The token this leg was written for. One value, and no `drop-shadow(`
     // literal left anywhere: the ONLY spelling of the function in either silo
-    // is the declaration itself. Readers: the CSS `.inline-atom-ghost` rule and
+    // is the declaration itself. Readers: the CSS `.drop-ghost` rule and
     // the TS door every other ghost is stamped through (task 817).
     const GHOST = "--shadow-drag-ghost-filter";
     expect(DECLARED_TOKENS.has(GHOST), `${GHOST} must be declared`).toBe(true);

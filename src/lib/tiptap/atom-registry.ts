@@ -271,7 +271,7 @@ export const CARD_ATOM_DOM_ID_ATTRS: ReadonlyArray<string> = CARD_ATOMS.map(
 // `CARD_ATOM_DOM_ID_SELECTOR` — `CARD_ATOM_DOM_ID_ATTRS` joined into
 // `[data-footnote-id],[data-citation-id]` — justified by the two surfaces that
 // read an atom's id off the DOM. Neither could ever have used it, and that is
-// the interesting part: the ghost (`inline-atom-ghost.ts`) REMOVES each attr,
+// the interesting part: the ghost (`drop-ghost.ts`) REMOVES each attr,
 // so it needs the list, not a selector; and the hover bridge
 // (`useTextHoverBridge.ts`) climbs the ancestor chain asking each row in turn
 // because it must answer WHICH KIND matched, which a joined selector erases by

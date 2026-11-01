@@ -610,7 +610,7 @@ hooks (`renderGhost` / `liftSourceRect` / `computeLabel`, overridden only by
 
 "Drop-mode" ([drop-mode/](../../src/components/drop-mode)) is the drag-drop
 engine. `DropModeProvider` holds the session (the lifted payload + the live drop
-indicator) and mounts the `DropModeIndicator` + `InlineAtomGhost`. Every drag is
+indicator) and mounts the `DropModeIndicator` + `DropGhost`. Every drag is
 dispatched by **`cardKey`** through `lookupSpec`
 ([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) — there is
 **no DOM MIME map**; the `cardKey` (`"<prefix>:<id>"` / `"float:<domain>:<kind>:<id>"`)

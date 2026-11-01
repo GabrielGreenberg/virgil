@@ -20,7 +20,7 @@
  * → on movement past an 8px threshold, capture the source and
  * `beginDropSession({inPlace, externalCommit})`, arm a one-shot
  * capture-phase click suppressor, and lift a cursor-following ghost
- * (`inline-atom-ghost.ts` → `<InlineAtomGhost>`) while clearing the native
+ * (`drop-ghost.ts` → `<DropGhost>`) while clearing the native
  * text-selection → on mouseup, `commitDropSession()`. A
  * no-drag press arms no suppressor, so the atom's own click handler fires
  * (opens the Card / edit popover). The shared drop-mode controller drives
@@ -74,9 +74,8 @@ import {
 } from "@/components/drop-mode/util/inline-atom-source";
 import {
   setGhost,
-  updateGhostCursor,
   clearGhost,
-} from "@/components/drop-mode/inline-atom-ghost";
+} from "@/components/drop-mode/drop-ghost";
 
 export interface InlineAtomGrabOptions {
   /** Read-only mirror (library reader keeps `view.editable=true`, gates
@@ -304,10 +303,8 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         return;
       }
       if (pending.triggered) {
-        // Post-threshold: the controller's own mousemove drives the hit-test
-        // + indicator; here we only keep the floating ghost glued to the
-        // cursor (cheap — coords only, no doc work).
-        updateGhostCursor(e.clientX, e.clientY);
+        // Post-threshold: the controller's own mousemove drives the hit-test,
+        // the indicator AND the floating ghost (its one cursor feed, task 1404).
         return;
       }
       const dx = e.clientX - pending.startX;

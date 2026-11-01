@@ -25,7 +25,7 @@
  * value), so the channel stays agnostic to delta-vs-absolute placement.
  *
  * Consumers: the block lift overlay (`LiftHost`, delta from a frozen base) and
- * the inline-atom ghost (`inline-atom-ghost.ts`, absolute cursor placement).
+ * the inline-atom ghost (`drop-ghost.ts`, absolute cursor placement).
  */
 
 export interface TransformChannel {

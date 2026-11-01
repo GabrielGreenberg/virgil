@@ -2,7 +2,7 @@
 //
 // Task 773 — the inline-atom drag ghost moves on the SHARED cursor-following
 // channel (`@/lib/transform-channel`), driven through the REAL `InlineAtomGrab`
-// gesture and the real `<InlineAtomGhost>` portal.
+// gesture and the real `<DropGhost>` portal.
 //
 // The pre-773 shape emitted a new store state per RAW mousemove, so every event
 // re-rendered the portal and wrote `left`/`top` on a `position:fixed` node — a
@@ -35,8 +35,8 @@ import {
   setDropCtx,
 } from "@/components/drop-mode/controller";
 import type { DropCtx } from "@/components/drop-mode/types";
-import { InlineAtomGhost } from "@/components/drop-mode/InlineAtomGhost";
-import { ghostTransform } from "@/components/drop-mode/inline-atom-ghost";
+import { DropGhost } from "@/components/drop-mode/DropGhost";
+import { ghostTransform } from "@/components/drop-mode/drop-ghost";
 import { createTransformChannel } from "@/lib/transform-channel";
 
 // ── RAF harness: nothing is written until a frame runs. ──────────────────────
@@ -174,13 +174,13 @@ function liftGhost() {
   let renders = 0;
   render(
     <Profiler id="ghost" onRender={() => (renders += 1)}>
-      <InlineAtomGhost />
+      <DropGhost />
     </Profiler>,
   );
   press(ed);
   act(() => move(200, 200));
   expect(getDropSession()).not.toBeNull();
-  const node = document.body.querySelector<HTMLElement>(".inline-atom-ghost");
+  const node = document.body.querySelector<HTMLElement>(".drop-ghost");
   expect(node, "the ghost did not mount").toBeTruthy();
   return { node: node!, renders: () => renders, writes: recordWrites(node!) };
 }
@@ -231,7 +231,7 @@ describe("the inline-atom ghost moves on the shared transform channel", () => {
     act(() => move(260, 260)); // queued, not yet applied
     act(() => move(270, 270, 0)); // the release nobody saw — controller ends it
     expect(getDropSession()).toBeNull();
-    expect(document.body.querySelector(".inline-atom-ghost")).toBeNull();
+    expect(document.body.querySelector(".drop-ghost")).toBeNull();
     act(() => flushFrame());
     expect(writes.transform, "a frame wrote after the gesture ended").toEqual([]);
   });

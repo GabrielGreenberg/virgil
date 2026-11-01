@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * InlineAtomGhost — the translucent copy of an inline Atom that floats with
+ * DropGhost — the translucent copy of an inline Atom that floats with
  * the cursor during an `InlineAtomGrab` drag. The inline cousin of
  * `<LiftedTextOverlay>` (the block-lift ghost), minus the header / popout
  * mode: an atom is tiny, and its "float" is its Card — a separate thing.
  *
  * `InlineAtomGrab` is a ProseMirror plugin (not React), so it can't drive
- * this overlay directly; it writes the `inline-atom-ghost` module store and
+ * this overlay directly; it writes the `drop-ghost` module store and
  * this component subscribes — the same producer/subscriber split the
  * drop-mode `Indicator` uses (controller ← plugin, Indicator → portal).
  *
@@ -32,11 +32,11 @@ import { useDropSession } from "./controller";
 import {
   attachGhostNode,
   detachGhostNode,
-  useInlineAtomGhost,
-} from "./inline-atom-ghost";
+  useDropGhost,
+} from "./drop-ghost";
 
-export function InlineAtomGhost() {
-  const ghost = useInlineAtomGhost();
+export function DropGhost() {
+  const ghost = useDropGhost();
   const session = useDropSession();
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const el = ghost?.el ?? null;
@@ -72,7 +72,7 @@ export function InlineAtomGhost() {
       // class-based styling (and global KaTeX CSS) resolves on the clone even
       // though the portal lives outside `.tiptap`'s ancestor chain — same
       // reasoning as LiftedTextOverlay's `.tiptap`-wrapped body.
-      className="inline-atom-ghost tiptap"
+      className="drop-ghost tiptap"
       aria-hidden="true"
       // Base box pinned at the viewport origin; the whole placement (grab
       // offset + the off-cursor displacement) is the channel's transform,

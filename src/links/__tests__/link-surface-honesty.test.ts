@@ -436,7 +436,7 @@ describe("the link DOM contract has ONE speller", () => {
     "lib/tiptap/linked-anchor-attrs.ts",
     "lib/tiptap/footnote.ts",
     "lib/tiptap/citation.ts",
-    "components/drop-mode/inline-atom-ghost.ts",
+    "components/drop-mode/drop-ghost.ts",
   ];
 
   /** Files that WRITE a contract attribute whose name may stay a literal, with

@@ -338,7 +338,7 @@ describe("task 032 consumer wiring", () => {
     // A cursor-following drag ghost, not a float-band card: it must clear every
     // popped card (FLOAT_Z_MAX) and stay under the drop bar.
     expect(css).toContain(`--drag-ghost-z: ${DRAG_GHOST_Z};`);
-    const at = css.indexOf(".inline-atom-ghost {");
+    const at = css.indexOf(".drop-ghost {");
     expect(at).toBeGreaterThan(-1);
     expect(css.slice(at, css.indexOf("}", at))).toContain("z-index: var(--drag-ghost-z);");
   });

@@ -38,6 +38,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { pickActiveByEditor } from "@/lib/active-editor-probe";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
+import { clearGhost, updateGhostCursor } from "./drop-ghost";
 import { resolveSessionPlacements } from "./placement-policy";
 import { resolveSessionInlinePayload, TEXT_ONLY_PAYLOAD } from "./inline-host";
 import {
@@ -422,6 +423,9 @@ export function endDropSession() {
   // content gesture would hold every parked geometry follower app-wide.
   endContentGesture();
   removeListeners();
+  // The ghost's lifetime IS the session's (task 1404): whichever producer
+  // lifted it, every ending clears it — and restores its dimmed source — here.
+  clearGhost();
   if (typeof document !== "undefined") {
     document.body.removeAttribute("data-drop-mode-active");
     document.body.style.cursor = "";
@@ -553,6 +557,10 @@ function installListeners(opts: { attachMouseUp: boolean }) {
     // hit-test runs once per coalesced frame rather than inline here.
     lastPointerX = e.clientX;
     lastPointerY = e.clientY;
+    // The session's ghost (if a producer lifted one) rides the pointer through
+    // its RAF-coalesced transform channel — a value write, no measure, no
+    // render (task 1404: the controller is its ONE cursor feed).
+    updateGhostCursor(e.clientX, e.clientY);
     scheduleMovePass();
     // Edge-zone auto-scroll (wave 2 P4): the container comes from the ONE
     // gesture geometry door (captured on first read, dropped at teardown); the
@@ -768,6 +776,10 @@ export async function commitDropSession(): Promise<void> {
   // normal live paths, one coalesced pass each. `endDropSession` repeats the
   // call harmlessly for the cancel legs below.
   endContentGesture();
+  // The carried copy is over with the pointer gesture too: the source restores
+  // on release, before any confirm dialog, and the commit re-renders it at its
+  // new anchor (task 1404).
+  clearGhost();
   const s = session;
   const serial = sessionSerial;
   // The ctx this gesture STARTED in — never a re-read of "the active pane",
