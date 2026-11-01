@@ -69,6 +69,30 @@ check(cat["editor:create-card"]["requiredIds"] == [], "create-card: bracketed [<
 check(cat["editor:draft-footnote"]["requiredIds"] == ["<requestId>"], "draft-footnote requires <requestId>")
 check(cat["editor:answer-bib-review"]["requiredIds"] == ["<bibKey>"], "answer-bib-review requires <bibKey>")
 check(cat["editor:accept-suggestion"]["requiredIds"] == [], "accept-suggestion takes a cardId, no inbox id")
+
+# Task 1415: the CARD id family. Card ids stay out of `requiredIds` (rule 3's
+# Task contract) but are reported in their own field, which the front door's
+# "Card routes" recipe reads.
+CARD_BOUND = {
+    "accept-suggestion": ["<cardId>"], "reject-suggestion": ["<cardId>"],
+    "edit-card": ["<cardId>"], "archive-card": ["<cardId>"],
+    "restore-card": ["<cardId>"], "move-card": ["<cardId>"],
+    "link-cards": ["<cardAId>", "<cardBId>"],
+}
+for n, ids in CARD_BOUND.items():
+    check(cat[f"editor:{n}"]["requiredCardIds"] == ids, f"{n} reports card ids {ids}")
+check(sorted(n.split(":", 1)[1] for n, v in cat.items() if v["requiredCardIds"]) == sorted(CARD_BOUND),
+      "exactly the seven card-bound skills report card ids")
+check(cat["editor:create-card"]["requiredCardIds"] == [], "create-card owes no card id")
+check(all(not v["unclassifiedIds"] for v in cat.values() if not v["developerOnly"]),
+      "no routable skill declares an unclassified id")
+check(cat["editor:reflect"]["unclassifiedIds"] == ["<taskId>"] and cat["editor:reflect"]["developerOnly"],
+      "reflect's <taskId> is unclassified but developer-only (exempt)")
+fam = json.loads(subprocess.run([sys.executable, str(HELPER), "--families"],
+                                capture_output=True, text=True).stdout)
+check(fam == {"task": {"field": "requiredIds", "tokens": ["<requestId>", "<bibKey>"]},
+              "card": {"field": "requiredCardIds", "tokens": ["<cardId>", "<cardAId>", "<cardBId>"]}},
+      "--families prints the family table")
 check(cat["editor:dream"]["developerOnly"] and not cat["editor:review"]["developerOnly"], "developerOnly")
 check(cat["editor:review"]["slash"] == "/editor/review", "slash spelling")
 
@@ -86,6 +110,8 @@ check(skill_catalog.required_ids("X. Args: <docPath> [<requestId>] --kind=<k>.")
       "bracketed id is optional")
 check(skill_catalog.required_ids("X. Args: <docPath> <requestId>.") == ["<requestId>"],
       "terminal Args line")
+check(skill_catalog.unclassified_ids("X. Args: <docPath> <widgetId> [<gizmoId>].") == ["<widgetId>"],
+      "an unbracketed unknown <…Id> is unclassified; a bracketed one is optional")
 
 # ---------------------------------------------------------------- the synced layout
 print("\n=== a managed folder (helper synced under .virgil/scripts/editor/) ===")
@@ -102,6 +128,12 @@ try:
     r, cat = run(script=scripts / "skill_catalog.py")
     check(r.returncode == 0 and list(cat) == ["library:big-op"], "reads .claude/commands, skips _includes")
     check(cat.get("library:big-op", {}).get("heavy") is True, "wrapped HEAVY operation detected")
+    (lib / "new-family.md").write_text(
+        "---\ndescription: Does a thing. Args: <citekey> <widgetId>.\n---\n")
+    r, cat = run(script=scripts / "skill_catalog.py")
+    check(r.returncode == 1 and "library:new-family <widgetId>" in r.stderr
+          and "library:new-family" in cat, "an unclassified id exits 1, naming it, after the rows")
+    (lib / "new-family.md").unlink()
     r, cat = run("--root", str(tmp / "nowhere"))
     check(r.returncode == 1 and "no skills found" in r.stderr, "empty vocabulary exits 1, loud")
 finally:

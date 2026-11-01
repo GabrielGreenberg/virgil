@@ -127,6 +127,35 @@ for py in SCRIPTS.glob("*.py"):
             offenders.append(f"{py.name}:{n}")
 check(not offenders, f"only ALL_CARD_SIDECARS names file/list-key pairs (offenders: {offenders})")
 
+print("\n=== --doc: the doc-wide lister the front door resolves card ids with (task 1415) ===")
+
+
+def run_args(*args):
+    r = subprocess.run([sys.executable, CLI, *map(str, args)], capture_output=True, text=True)
+    rows = [json.loads(l) for l in r.stdout.splitlines() if l.strip().startswith("{")]
+    return r, rows
+
+
+r, every = run_args(SAMPLE, "--doc")
+check(r.returncode == 0 and len(every) == sum(1 for _ in iter_cards(SAMPLE)),
+      f"--doc lists every card iter_cards walks ({len(every)})")
+check(all(isinstance(x.get("paragraphs"), list) for x in every), "--doc rows name their paragraph(s)")
+r, sugg = run_args(SAMPLE, "--doc", "--kind", "suggestion", "--status", "pending")
+check(sugg and all(x["kind"] == "suggestion" and x["status"] == "pending" for x in sugg),
+      f"--kind suggestion --status pending narrows ({len(sugg)})")
+r, rev = run_args(SAMPLE, "--doc", "--kind", "revision-suggestion")
+check(rev and all(x["cardKind"] == "revision-suggestion" for x in rev), "--kind also matches cardKind")
+r, arch = run_args(SAMPLE, "--doc", "--archived")
+check(arch and all(x["archived"] for x in arch), "--archived lists only archived snippets")
+r, live = run_args(SAMPLE, "--doc", "--live")
+check(len(live) + len(arch) == len(every) and not any(x["archived"] for x in live), "--live is the complement")
+r, para = run_args(SAMPLE, "2201", "--kind", "footnote")
+check([x["cardId"] for x in para] == ["f002"], "filters compose with the paragraph mode")
+r, _ = run_args(SAMPLE)
+check(r.returncode != 0, "neither <uuid> nor --doc is a usage error")
+r, _ = run_args(SAMPLE, "2201", "--doc")
+check(r.returncode != 0, "both <uuid> and --doc is a usage error")
+
 print("\n=== marker_paragraph_ids ===")
 text = ("A \\vfid{aa01}\\footnote{x} b. %!v:1111\n"
         "Comment. %!v:2222\n"

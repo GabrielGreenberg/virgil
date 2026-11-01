@@ -42,11 +42,25 @@ Output: one JSON object per line, sorted by name —
                 (task 1310), so the front door never routes to a skill that
                 is not on disk
   requiredIds   unbracketed `<requestId>` / `<bibKey>` in its `Args:` line
-                (a bracketed `[<requestId>]` is optional — create-card)
+                (a bracketed `[<requestId>]` is optional — create-card):
+                the TASK id family, resolved via `list_requests.py`
+  requiredCardIds  unbracketed `<cardId>` / `<cardAId>` / `<cardBId>`: the
+                CARD id family, resolved via `cards_for_paragraph.py`
+                (task 1415 — the front door had a recipe for Task ids only)
 
-CLI:  python3 skill_catalog.py [--root <dir>] [--silo editor|library]
+ID FAMILIES (task 1415). Every required id-shaped token (`<…Id>`, `<bibKey>`)
+in a user-routable skill's `Args:` line must belong to a family in
+`ID_FAMILIES`, and every family has a catalog field (`FAMILY_FIELDS`) and a
+`#### <Family> routes` recipe in `virgil/skills/start.md` (pinned by
+front-door-doctrine.test.ts). An UNCLASSIFIED token exits 1 after the rows,
+naming it — so the next id family cannot ship with no front-door recipe.
+Developer-only skills are exempt (`reflect`'s `<taskId>` is a dev-dream id,
+never routed). `--families` prints the family table as one JSON object.
+
+CLI:  python3 skill_catalog.py [--root <dir>] [--silo editor|library] [--families]
 Exits 0 with the catalog; exits 1 naming the paths it tried when no skill
-directory resolves (an empty vocabulary is an error, not an answer).
+directory resolves (an empty vocabulary is an error, not an answer), and exits
+1 after printing the rows when a routable skill declares an unclassified id.
 """
 
 from __future__ import annotations
@@ -59,7 +73,18 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 SILOS = ("editor", "library")
-ID_TOKENS = ("<requestId>", "<bibKey>")
+# Required-id token → the family whose front-door recipe resolves it.
+ID_FAMILIES = {
+    "<requestId>": "task",
+    "<bibKey>": "task",
+    "<cardId>": "card",
+    "<cardAId>": "card",
+    "<cardBId>": "card",
+}
+# Family → the catalog field that carries its tokens.
+FAMILY_FIELDS = {"task": "requiredIds", "card": "requiredCardIds"}
+ID_TOKENS = tuple(t for t, f in ID_FAMILIES.items() if f == "task")
+_ID_SHAPED = re.compile(r"<\w*Id>|<bibKey>")
 
 _HEAVY = re.compile(r"heavy operation", re.I)
 _LIGHT = re.compile(r"\blight\s*[—–-]+\s*safe to invoke", re.I)
@@ -102,12 +127,28 @@ def parse_description(text: str) -> Optional[str]:
     return None
 
 
-def required_ids(description: str) -> list[str]:
+def _required_args(description: str) -> str:
+    """The `Args:` line with every bracketed (optional) arg removed."""
     m = _ARGS.search(description)
-    if not m:
-        return []
-    required = re.sub(r"\[[^\]]*\]", "", m.group(1))
-    return [t for t in ID_TOKENS if t in required]
+    return re.sub(r"\[[^\]]*\]", "", m.group(1)) if m else ""
+
+
+def required_tokens(description: str, family: str) -> list[str]:
+    required = _required_args(description)
+    return [t for t, f in ID_FAMILIES.items() if f == family and t in required]
+
+
+def required_ids(description: str) -> list[str]:
+    return required_tokens(description, "task")
+
+
+def unclassified_ids(description: str) -> list[str]:
+    """Required id-shaped tokens no family claims — a route with no recipe."""
+    seen = []
+    for t in _ID_SHAPED.findall(_required_args(description)):
+        if t not in ID_FAMILIES and t not in seen:
+            seen.append(t)
+    return seen
 
 
 def entry(silo: str, path: Path) -> Optional[dict]:
@@ -122,7 +163,8 @@ def entry(silo: str, path: Path) -> Optional[dict]:
         "heavy": bool(_HEAVY.search(desc)),
         "light": bool(_LIGHT.search(desc)),
         "developerOnly": bool(_DEV_ONLY.match(desc)),
-        "requiredIds": required_ids(desc),
+        **{field: required_tokens(desc, fam) for fam, field in FAMILY_FIELDS.items()},
+        "unclassifiedIds": unclassified_ids(desc),
     }
 
 
@@ -166,7 +208,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--root", type=Path, default=None)
     ap.add_argument("--silo", choices=SILOS, action="append")
+    ap.add_argument("--families", action="store_true",
+                    help="print {family: {field, tokens}} and exit")
     args = ap.parse_args(argv)
+    if args.families:
+        print(json.dumps({
+            fam: {"field": field, "tokens": [t for t, f in ID_FAMILIES.items() if f == fam]}
+            for fam, field in FAMILY_FIELDS.items()
+        }))
+        return 0
     silos = args.silo or list(SILOS)
     rows = catalog(args.root, silos)
     if not rows:
@@ -180,6 +230,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
     for r in rows:
         print(json.dumps(r, ensure_ascii=False))
+    stray = [(r["name"], t) for r in rows if not r["developerOnly"] for t in r["unclassifiedIds"]]
+    if stray:
+        print(
+            "skill_catalog: unclassified required id(s) — "
+            + ", ".join(f"{n} {t}" for n, t in stray)
+            + ". Add the token to ID_FAMILIES (and, for a new family, a FAMILY_FIELDS "
+            "field and a `#### <Family> routes` recipe in virgil/skills/start.md).",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

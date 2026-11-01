@@ -132,6 +132,8 @@ interface CatalogRow {
   light: boolean;
   developerOnly: boolean;
   requiredIds: string[];
+  requiredCardIds: string[];
+  unclassifiedIds: string[];
 }
 
 const SKILL_CATALOG_PY = "editor/scripts/skill_catalog.py";
@@ -503,6 +505,50 @@ describe("front door — the descriptions are the vocabulary, not a hand list", 
     expect(by("editor:draft-footnote").requiredIds).toEqual(["<requestId>"]);
     expect(by("editor:answer-bib-review").requiredIds).toEqual(["<bibKey>"]);
     expect(by("editor:dream").developerOnly).toBe(true);
+  });
+
+  it("every id family the catalog declares has its front-door recipe (task 1415)", () => {
+    // The Task-id contract had a recipe ("Task routes") and the card-id family
+    // — seven skills whose Args: require a <cardId> — had none, so the front
+    // door could reach accept-suggestion with no way to obtain the id but a
+    // guess. The families are the CATALOG's (`--families`), so a new family
+    // added there fails here until start.md states where its id comes from;
+    // a new id token added to a skill and to no family fails the catalog run
+    // itself (`skillCatalog()` throws on its non-zero exit).
+    const families = JSON.parse(
+      execFileSync("python3", [join(repoRoot, SKILL_CATALOG_PY), "--families"], { encoding: "utf8" }),
+    ) as Record<string, { field: string; tokens: string[] }>;
+    expect(Object.keys(families).sort()).toEqual(["card", "task"]);
+    const start = read(`${FRONT_DOOR_DIR}/start.md`);
+    const rows = skillCatalog();
+    for (const [family, { field }] of Object.entries(families)) {
+      const routed = rows.filter(
+        (r) => !r.developerOnly && ((r as unknown as Record<string, string[]>)[field] ?? []).length > 0,
+      );
+      expect(routed.length, `no skill reports ${field} — canary`).toBeGreaterThan(0);
+      const heading = `#### ${family[0].toUpperCase()}${family.slice(1)} routes`;
+      expect(start.includes(heading), `start.md has no "${heading}" recipe for ${field}`).toBe(true);
+      expect(flat(`${FRONT_DOOR_DIR}/start.md`).includes(`\`${field}\``),
+        `start.md never names the catalog field ${field}`).toBe(true);
+    }
+    for (const r of rows) {
+      if (r.developerOnly) continue;
+      expect(r.unclassifiedIds, `${r.name} declares an id no family claims`).toEqual([]);
+    }
+    expect(
+      rows.filter((r) => r.requiredCardIds.length > 0).map((r) => r.name).sort(),
+    ).toEqual([
+      "editor:accept-suggestion", "editor:archive-card", "editor:edit-card", "editor:link-cards",
+      "editor:move-card", "editor:reject-suggestion", "editor:restore-card",
+    ]);
+    // The card recipe names its lister, its doc-wide mode, and the
+    // never-first-pick rule — the hazard the family exists to close.
+    const body = flat(`${FRONT_DOOR_DIR}/start.md`);
+    const card = body.slice(body.indexOf("#### Card routes"), body.indexOf("The table below is **not**"));
+    expect(card.includes("cards_for_paragraph.py"), "Card routes names no lister").toBe(true);
+    expect(card.includes("--doc"), "Card routes has no doc-wide mode").toBe(true);
+    expect(/first-picked/.test(card), "Card routes does not forbid first-picking").toBe(true);
+    expect(/several rows/.test(card) && /no row/.test(card), "Card routes is not total (one/several/none)").toBe(true);
   });
 
   it("start.md routes from the catalog, not from the harness listing (task 1056)", () => {
