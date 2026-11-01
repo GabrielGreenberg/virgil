@@ -17,6 +17,13 @@
 // claims the `.tex` is untouched / never edited AND is about the L3 propose
 // path must cite the include. A refusal ("writes nothing — `.tex` … untouched")
 // is a true statement on any path and is not a claim about L3.
+//
+// Second detector (task 1406): a paragraph that RESTATES the level mapping
+// (`3 → propose`, `**3** → propose`, `3 → \`complete-task --propose\``) must
+// cite the include too. The first detector only hunted one wrong claim
+// ("untouched"); a restatement can drift the other way — draft-footnote's copy
+// said create_card "splices the `.tex` … 3 → propose", with no citation, while
+// Level 3 withholds that splice. Citing is what keeps a restatement honest.
 
 import { describe, it, expect } from "vitest";
 import { readdirSync } from "node:fs";
@@ -31,6 +38,8 @@ const TEX_UNTOUCHED =
   /\.tex`?\s+(?:\*\*)?(?:is\s+)?(?:left\s+)?(?:\*\*)?untouched|never edits the `?\.tex|\.tex`? anchor isn't placed/i;
 const L3_CONTEXT = /level[- ]?3|\bL3\b|propos|awaiting review/i;
 const REFUSAL = /writes nothing|refus|validation failed/i;
+/** An inline restatement of the level → subcommand mapping. */
+const LEVEL_MAPPING = /\b3\b\*{0,2}\s*(?:→|->)\s*\*{0,2}`?(?:complete-task\s+--)?propos/i;
 
 /** Blank-line-delimited blocks with their starting line number. */
 function blocks(src: string): { line: number; text: string }[] {
@@ -53,6 +62,13 @@ function blocks(src: string): { line: number; text: string }[] {
 /** Drop YAML frontmatter: a `description:` is trigger text naming the op's own
  *  behaviour (reject's "the .tex UNTOUCHED" is true of reject), not the L3 path. */
 const body = (src: string) => src.replace(/^---\n[\s\S]*?\n---\n/, "");
+
+/** Uncited level-mapping restatements in one skill's text. */
+function mappingViolations(src: string): number[] {
+  return blocks(body(src))
+    .filter(({ text }) => LEVEL_MAPPING.test(text) && !text.includes(INCLUDE))
+    .map((b) => b.line);
+}
 
 /** The uncited L3 "`.tex` untouched" claims in one skill's text. */
 function violations(src: string): number[] {
@@ -95,6 +111,33 @@ describe("L3 anchor promise census (task 1397)", () => {
 
   it.each(skillFiles)("%s cites the include wherever it promises L3 leaves the .tex untouched", (f) => {
     expect(violations(read(`${SKILLS}/${f}`)), `uncited L3 ".tex untouched" claim(s) in ${f} at block line(s)`).toEqual([]);
+  });
+
+  it("mapping detector catches the pre-fix restatements (non-vacuous, task 1406)", () => {
+    const preFix = [
+      "   subcommand from the Task's `safetyLevel` (none → direct create; 1 → silent;\n   2 → +comment; 3 → propose):",
+      "   create; if it carries one, `create_card.py` honors it (1 → silent,\n   2 → +comment, 3 → propose).",
+      "     direct create, 1 → silent, 2 → +comment, 3 → **propose** — you don't pick it.",
+      "a sibling comment, **3** → propose (drafted",
+      "2 → `write-with-comment`, 3 → `complete-task --propose` (drafted, awaiting",
+    ];
+    for (const s of preFix) expect(mappingViolations(s), s).toHaveLength(1);
+    expect(mappingViolations(`${preFix[0]} see [${INCLUDE}](${INCLUDE})`)).toHaveLength(0);
+    expect(mappingViolations("Level 3 proposes; 2 → +comment.")).toHaveLength(0);
+  });
+
+  it.each(skillFiles)("%s cites the include wherever it restates the level mapping (task 1406)", (f) => {
+    expect(mappingViolations(read(`${SKILLS}/${f}`)), `uncited level-mapping restatement(s) in ${f} at block line(s)`).toEqual([]);
+  });
+
+  it("the include states where the level does NOT apply (task 1406)", () => {
+    const inc = read(`${SKILLS}/${INCLUDE}`);
+    expect(inc).toMatch(/Where the level does NOT apply/);
+    expect(inc).toMatch(/`--unanchored` create is always direct/);
+    expect(inc).toMatch(/in-place revision \(`update`\) is not gated/);
+    // The door the include paraphrases: create_card.py's subcommand pick sends
+    // an unanchored create to a direct complete-task at every level.
+    expect(read("editor/scripts/create_card.py")).toMatch(/if ctx\.safety is None or ctx\.unanchored:/);
   });
 
   it("move-card names span-anchored cards as movable and lists document.tex in its output", () => {

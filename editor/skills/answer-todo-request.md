@@ -117,8 +117,8 @@ matters" (write a note). Read the todo and dispatch.
      rm -rf "$t"
      exit "$rc"
      ```
-     `create_card.py` picks the subcommand from the Task's `safetyLevel` — none →
-     direct create, 1 → silent, 2 → +comment, 3 → **propose** — you don't pick it.
+     `create_card.py` picks the subcommand from the Task's `safetyLevel`
+     ([_safety-levels.md](_safety-levels.md)) — you don't pick it.
      At level 3 the note still lands (it's sidecar-only — there's no `.tex` to
      withhold), but the Task is left `in-progress`, awaiting review. **Read the
      returned JSON `status`** to finalize (step 4): `complete` is terminal;

@@ -65,8 +65,8 @@ Report Request by appending a **Report card authored by AI** to
    paragraph, flips the Task's `status`/`result`, clears the source flag,
    stamps the `aiOriginRequestId` back-pointer, and bumps the version,
    atomically under the pen. A Report Request with no `safetyLevel` is a direct
-   create; if it carries one, `create_card.py` honors it (1 → silent,
-   2 → +comment, 3 → propose). The title and body are free text, so they reach
+   create; if it carries one, `create_card.py` honors it (see
+   [_safety-levels.md](_safety-levels.md)). The title and body are free text, so they reach
    the helper through heredoc scratch files, never as quoted argv — see
    [`_op-json.md`](_op-json.md).
 

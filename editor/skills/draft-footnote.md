@@ -164,7 +164,10 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    `\footnote{}` body, completes the Task (`complete` / `auto-applied` — a
    revision in place created nothing), and lowers the footnote's `aiRequest` flag
    (the Task's `linkedTo`, or the card the virtual id names) — all in one atomic,
-   pen-protected transaction. It never spawns a duplicate, and it never lands the
+   pen-protected transaction. An in-place revision is not gated by the Task's
+   `safetyLevel` — it applies at every level
+   ([_safety-levels.md](_safety-levels.md) § Where the level does NOT apply).
+   It never spawns a duplicate, and it never lands the
    answer without closing the request: **do not** follow it with a separate
    `complete-task` or a second `update` to lower the flag. Two commits is how a
    failure between them left the request open over an already-rewritten
@@ -231,8 +234,10 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
 3. **Land it via the contract.** Hand the composed body to `create_card.py`,
    which allocates the `\vfid` id, builds the `footnotes.json` entry, splices
    the `.tex`, and commits everything atomically under the pen — choosing the
-   subcommand from the Task's `safetyLevel` (none → direct create; 1 → silent;
-   2 → +comment; 3 → propose):
+   subcommand from the Task's `safetyLevel` (see
+   [_safety-levels.md](_safety-levels.md)). At Level 3 the card is drafted but
+   the `\vfid…\footnote{}` splice is the proposed change, so it is WITHHELD
+   until the user accepts; don't tell the user the footnote is in the text:
    ```bash
    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/body" <<'TXT'
