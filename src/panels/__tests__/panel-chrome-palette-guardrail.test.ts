@@ -33,11 +33,13 @@ import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests_
  *    reasons that have nothing to do with colour. The cost is that a file may
  *    grow a SECOND occurrence of a literal it already carries without failing.
  *    Accepted: the realistic drift is a new hue in a new place, and that fails.
- *  - Scope is the panel tree plus the two shared panel/field primitives. Panel
- *    chrome authored elsewhere in `src/components/**` (the Library surfaces
- *    above all, which run a deliberate multi-hue chip vocabulary) is NOT
- *    censused here. Widening it is a separate decision with its own draining
- *    cost, not an oversight of this one.
+ *  - The PALETTE-utility leg's scope is the panel tree plus the two shared
+ *    panel/field primitives. Panel chrome authored elsewhere in
+ *    `src/components/**` (the Library surfaces above all, which run a
+ *    deliberate multi-hue chip vocabulary) is NOT censused by that leg.
+ *    Widening it is a separate decision with its own draining cost, not an
+ *    oversight of this one. The VALUE leg below is not so limited — see "The
+ *    third needle".
  *
  * ── The second needle: a VALUE is a palette choice too (task 2026-08-02-284)
  *
@@ -91,6 +93,32 @@ import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests_
  *    `querySelector("#abc")` would read as a colour. None occurs today.
  *  - A value assembled at runtime (`"#" + hex`) is invisible, as it is to every
  *    other colour guard in the repo.
+ *
+ * ── The third needle: the VALUE leg reads every production file (task 1412)
+ *
+ * A raw value is the same habit wherever it is written, and the panel-tree
+ * scope left `src/components/**` and `src/lib/**` re-spelling token values as
+ * JS literals with no guard: the transient-highlight amber (`--mark-bg` plus an
+ * alpha, as a hex), a `--border` copy inside a fallback slot nobody reads, the
+ * AI window's amber/violet status pair. So the VALUE leg's population is every
+ * production `.ts`/`.tsx` under `src/` (`valueCensusFiles`), and the declared
+ * colour SSOT tables it meets there — panel-theme, collab presence, the
+ * selection-colour and actions-menu palettes — are LISTED, each with the reason
+ * it must stay a concrete value. That is the same shrink-only list, not a new
+ * one: an entry names a table or a decision, never a convenience.
+ *
+ * Widening the population made two of the needle's arms noisy against prose
+ * the panel tree never carried, and both are tightened rather than listed:
+ *
+ *  - `&#182;` is an HTML ENTITY, not a hex colour — the hex arm skips a match
+ *    preceded by `&`.
+ *  - A colour WORD in a string is not a colour VALUE unless it sits where CSS
+ *    reads one: "The quick brown fox", a `Tone = "green"` union member, a
+ *    font-family regex naming Crimson. The keyword arm therefore fires only in
+ *    a CSS-value context — after a colour-taking property (`color:`,
+ *    `background:`, `fill=`, `borderColor:` …) or a border-style word
+ *    (`solid gold`). A keyword reached any other way — `const c = "gold";
+ *    style={{ color: c }}` — is a hole, stated here rather than implied.
  */
 const ROOT = path.resolve(__dirname, "..", "..", "..");
 
@@ -196,7 +224,7 @@ const NAMED_COLOURS = [
  * `text-red-700` in the tree reports a second time as a bare `red`.
  */
 const RAW_VALUE = new RegExp(
-  "#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\\b" +
+  "(?<!&)#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\\b" +
     "|\\b(rgba?|hsla?)\\(\\s*([\\d.]+)[\\s,]+([\\d.]+)[\\s,]+([\\d.]+)" +
     `|(?<![-\\w])(?:${NAMED_COLOURS.join("|")})(?![-\\w])`,
   "g",
@@ -204,6 +232,14 @@ const RAW_VALUE = new RegExp(
 
 /** The fallback slot of a `var(--token, …)` read, ending exactly at the match. */
 const VAR_FALLBACK = /var\(\s*--[a-zA-Z0-9-]+\s*,\s*$/;
+
+/**
+ * Where CSS reads a colour, ending exactly at a keyword match: a colour-taking
+ * property (CSS, camelCase style-object or JSX-attribute spelling) with its
+ * `:`/`=` and opening quote, or a border-style word. See "The third needle".
+ */
+const CSS_COLOUR_CONTEXT =
+  /(?:(?:color|Color|background|fill|stroke|border|outline|caret|accent)[\w-]*\s*[:=]\s*\{?\s*["'`]?\s*|\b(?:solid|dashed|dotted|double)\s+)$/;
 
 function hexToRgb(hex: string): [number, number, number] {
   let h = hex.slice(1);
@@ -220,17 +256,74 @@ function hexToRgb(hex: string): [number, number, number] {
  * shrink-only rule as the palette list above.
  */
 const PERMITTED_RAW_VALUE_LITERALS: Record<string, string> = {
-  // EMPTY. The five entries that lived here — the done-checkbox glyph pair,
-  // where `TodoRow`'s `TodoDoneToggle` and the shared `AiRequestCheckbox` drew
-  // the same 14×14 rounded rect from the same literals — were drained by task
-  // 2026-08-02-287: one `CheckSquare` primitive owns the geometry, the box edge
-  // reads `--muted-light` (the token `#b5b0aa` was re-spelling), the checked
-  // fill and tick read the minted `--checkbox-fill` / `--checkbox-mark`, and the
-  // AI tick derives from the `aiRequest` panel-theme accent. Contract:
+  // The panel tree has no entry. The five that lived here — the done-checkbox
+  // glyph pair, where `TodoRow`'s `TodoDoneToggle` and the shared
+  // `AiRequestCheckbox` drew the same 14×14 rounded rect from the same literals
+  // — were drained by task 2026-08-02-287: one `CheckSquare` primitive owns the
+  // geometry, the box edge reads `--muted-light`, the checked fill and tick read
+  // the minted `--checkbox-fill` / `--checkbox-mark`, and the AI tick derives
+  // from the `aiRequest` panel-theme accent. Contract:
   // `src/components/__tests__/checkbox-glyph-ssot.test.tsx`.
   //
-  // A new entry here is TOKENIZE-it, not a listing: this set may only grow when
-  // it names a decision nobody has made yet, and it has none pending.
+  // Everything below arrived with the VALUE leg's widening to all of `src/`
+  // (task 1412). A new entry is TOKENIZE-it, not a listing.
+
+  // DECLARED COLOUR TABLES — user-pickable swatches. A swatch is a stored VALUE
+  // (it is persisted to prefs, sidecars, or written into the .tex), so it must
+  // be a concrete colour, never a `var()`; the hue censuses already name these
+  // tables as SSOTs.
+  "src/lib/panel-theme.ts :: #0ea5e9": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #14b8a6": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #15803d": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #3b82f6": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #6366f1": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #65a30d": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #7191b0": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #78716c": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #8b6f47": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #9333ea": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #b45757": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #b8a968": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #d4a843": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/panel-theme.ts :: #ec4899": "PRESET_COLORS — the panel-theme picker palette (stored per-panel accent values)",
+  "src/lib/collab.ts :: #0ea5e9": "COLLAB_COLORS — collaborator presence swatches (a subset of PRESET_COLORS, sent to peers)",
+  "src/lib/collab.ts :: #14b8a6": "COLLAB_COLORS — collaborator presence swatches (a subset of PRESET_COLORS, sent to peers)",
+  "src/lib/collab.ts :: #15803d": "COLLAB_COLORS — collaborator presence swatches (a subset of PRESET_COLORS, sent to peers)",
+  "src/lib/collab.ts :: #6366f1": "COLLAB_COLORS — collaborator presence swatches (a subset of PRESET_COLORS, sent to peers)",
+  "src/lib/collab.ts :: #d4a843": "COLLAB_COLORS — collaborator presence swatches (a subset of PRESET_COLORS, sent to peers)",
+  "src/lib/collab.ts :: #ec4899": "COLLAB_COLORS — collaborator presence swatches (a subset of PRESET_COLORS, sent to peers)",
+  "src/components/ActionsMenuPanel.tsx :: #16a34a": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/ActionsMenuPanel.tsx :: #2563eb": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/ActionsMenuPanel.tsx :: #6b7280": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/ActionsMenuPanel.tsx :: #9333ea": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/ActionsMenuPanel.tsx :: #ca8a04": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/ActionsMenuPanel.tsx :: #dc2626": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/ActionsMenuPanel.tsx :: #ea580c": "DEFAULT_PALETTE — the selection menu's text-colour swatches (written into the .tex as \\textcolor)",
+  "src/components/SelectionColorPopover.tsx :: #0000ff": "the custom-colour HUE WHEEL's conic-gradient stops — the spectrum itself, not a palette choice",
+  "src/components/SelectionColorPopover.tsx :: #00ff00": "the custom-colour HUE WHEEL's conic-gradient stops — the spectrum itself, not a palette choice",
+  "src/components/SelectionColorPopover.tsx :: #00ffff": "the custom-colour HUE WHEEL's conic-gradient stops — the spectrum itself, not a palette choice",
+  "src/components/SelectionColorPopover.tsx :: #ff0000": "the custom-colour HUE WHEEL's conic-gradient stops — the spectrum itself, not a palette choice",
+  "src/components/SelectionColorPopover.tsx :: #ff00ff": "the custom-colour HUE WHEEL's conic-gradient stops — the spectrum itself, not a palette choice",
+  "src/components/SelectionColorPopover.tsx :: #ffff00": "the custom-colour HUE WHEEL's conic-gradient stops — the spectrum itself, not a palette choice",
+
+  // RULED KEEPS — a concrete value some non-CSS consumer requires.
+  "src/cards/legacy-token-crosswalk.ts :: #bfdbfe": "PENDING_AI_TINT — task 1066 kept the TS source, pinned equal to --pending-ai-tint by pending-ai-tint-family.test.ts",
+  "src/lib/panel-typography.ts :: #44403c": "BODY_CLASS_TYPOGRAPHY default ink — a typography PREF default is a stored value, so it needs a concrete hex (= --ink-body)",
+  "src/app/manifest.ts :: #f8f3ed": "web-app manifest background_color — read by the OS before any CSS exists, so it cannot be a var()",
+  "src/components/FramedViewerSurface.tsx :: #525659": "BACKDROPS.dark — mirrors the vendored pdf.js viewer's own chrome grey, which the viewer owns (not a Virgil token)",
+
+  // AWAITING A DECISION — the AI window's status chips. Task 1066 left this
+  // vocabulary "awaiting a --status-* decision"; converging it MOVES colours,
+  // which is a visual call, not a swap.
+  "src/components/AIWindow.tsx :: #d97706": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #fff7ed": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #9a3412": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #7c3aed": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #f5f3ff": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #5b21b6": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #16a34a": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #f0fdf4": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
+  "src/components/AIWindow.tsx :: #15803d": "STATUS_META — AI-request status chip vocabulary, awaiting the --status-* family (task 1066)",
 };
 
 /**
@@ -255,6 +348,19 @@ function censusFiles(): string[] {
   // belong in the census rather than outside it.
   out.push("src/components/panel-primitives.tsx", "src/components/field-primitives.tsx");
   return out.sort();
+}
+
+/**
+ * The VALUE leg's population: every production `.ts`/`.tsx` under `src/`
+ * (task 1412 — "The third needle"). Test directories and `*.test.*` files are
+ * out; `.d.ts` declarations carry no values. A superset of `censusFiles()`, so
+ * the panel-tree defect legs below still drive the same census.
+ */
+function valueCensusFiles(): string[] {
+  return walkFiles(path.join(ROOT, "src"), { skipDirs: ["__tests__"] })
+    .map((abs) => path.relative(ROOT, abs).split(path.sep).join("/"))
+    .filter((rel) => /\.tsx?$/.test(rel) && !/\.d\.ts$/.test(rel) && !/\.test\.tsx?$/.test(rel))
+    .sort();
 }
 
 /**
@@ -292,7 +398,7 @@ function flaggedLiterals(): Set<string> {
  */
 function flaggedValues(source?: (rel: string) => string): Set<string> {
   const flagged = new Set<string>();
-  for (const rel of censusFiles()) {
+  for (const rel of valueCensusFiles()) {
     const src = commentsStripped(
       source ? source(rel) : readFileSync(path.join(ROOT, rel), "utf8"),
     );
@@ -316,7 +422,9 @@ function flaggedValues(source?: (rel: string) => string): Set<string> {
           flagged.add(`${rel} :: rgb(${c1},${c2},${c3})`);
         }
       } else {
-        // A chromatic CSS keyword; membership in NAMED_COLOURS IS the test.
+        // A chromatic CSS keyword; membership in NAMED_COLOURS IS the test —
+        // once the word sits where CSS reads a colour ("The third needle").
+        if (!CSS_COLOUR_CONTEXT.test(src.slice(Math.max(0, start - 60), start))) continue;
         flagged.add(`${rel} :: ${m[0]}`);
       }
     }
@@ -412,7 +520,8 @@ describe("census self-checks", () => {
     // obvious third needle and is not usable — `atomless-refs.ts` keeps more
     // than half of its semicolons inside a worked example in its own header.
     const declCount = (s: string) => (s.match(/^(?:export|import)\s/gm) ?? []).length;
-    for (const rel of censusFiles()) {
+    // The VALUE population, which is the superset: both legs strip it.
+    for (const rel of valueCensusFiles()) {
       const raw = readFileSync(path.join(ROOT, rel), "utf8");
       const stripped = commentsStripped(raw);
       expect(declCount(stripped), rel).toBe(declCount(raw));
@@ -502,6 +611,62 @@ describe("census self-checks", () => {
     expect(files).toContain("src/components/panel-primitives.tsx");
     expect(files.some((f) => f.includes("__tests__"))).toBe(false);
     expect(files.length).toBeGreaterThan(40);
+  });
+
+  it("reads every production file for VALUES, not just the panel tree (task 1412)", () => {
+    const files = valueCensusFiles();
+    // A superset of the palette leg's population, so the defect legs above
+    // still exercise the census the VALUE leg actually runs.
+    for (const f of censusFiles()) expect(files).toContain(f);
+    for (const f of [
+      "src/components/AIWindow.tsx",
+      "src/lib/tiptap/transient-highlight.ts",
+      "src/hooks/useCollab.ts",
+      "src/cards/legacy-token-crosswalk.ts",
+      "src/app/manifest.ts",
+    ]) expect(files).toContain(f);
+    expect(files.some((f) => f.includes("__tests__") || /\.test\.tsx?$/.test(f))).toBe(false);
+    expect(files.length).toBeGreaterThan(censusFiles().length * 4);
+  });
+
+  it("fails a raw value planted OUTSIDE the panel tree (the widening's defect leg)", () => {
+    // `#44403c` is `--ink-body`'s own value: the shape the drift takes is a
+    // token re-spelled, and src/components was where nothing could see it.
+    const SITE = "src/components/FloatingPanel.tsx";
+    const live = readFileSync(path.join(ROOT, SITE), "utf8");
+    const planted = `${live}\nconst planted = { color: "#44403c" };\n`;
+    const flagged = flaggedValues((rel) =>
+      rel === SITE ? planted : readFileSync(path.join(ROOT, rel), "utf8"),
+    );
+    expect([...flagged].filter((k) => k.startsWith(`${SITE} ::`))).toEqual([`${SITE} :: #44403c`]);
+    // …and the shipped file is clean — its dead `--border` fallback is drained.
+    expect([...flaggedValues()].filter((k) => k.startsWith(`${SITE} ::`))).toEqual([]);
+  });
+
+  it("spares an HTML entity and a colour WORD outside a CSS-value context", () => {
+    const SITE = "src/components/MenuBar.tsx";
+    const fixture = [
+      '<span>&#182;</span>;',                                 // entity, not a hex
+      'const t = "The quick brown fox";',                     // prose
+      'type Tone = "green" | "red";',                         // a union of NAMES
+      'const a = { authenticated: "green" };',                // a tone name keyed by status
+      // The controls: each spelling CSS actually reads still fails.
+      'const b = { color: "red" };',
+      'const c = <rect fill="orange" />;',
+      'const d = { borderColor: "teal" };',
+      'const e = { border: "1px dashed gold" };',
+      'const f = { background: "#d97706" };',
+    ].join("\n");
+    const flagged = [...flaggedValues((rel) =>
+      rel === SITE ? fixture : readFileSync(path.join(ROOT, rel), "utf8"),
+    )].filter((k) => k.startsWith(`${SITE} ::`)).sort();
+    expect(flagged).toEqual([
+      `${SITE} :: #d97706`,
+      `${SITE} :: gold`,
+      `${SITE} :: orange`,
+      `${SITE} :: red`,
+      `${SITE} :: teal`,
+    ]);
   });
 });
 

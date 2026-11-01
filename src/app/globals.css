@@ -480,6 +480,13 @@
   --amber-highlight-wash-active: #fef08a;  /* active / selected state */
   --amber-highlight-edge: var(--amber-500); /* border + ring, both states */
   --amber-highlight-ink: #4a3f20;          /* text on either wash */
+  /* The TRANSIENT band (search hit, diagnostics span, flashed range —
+     transient-highlight.ts). Was a `#fbbf2480` literal in TS (task 1412). It
+     shares --mark-bg's amber at half alpha but is deliberately NOT read from
+     it: --mark-bg is the user's "Suggestions › Mark background" preference,
+     and which elements that row should paint is an open visual call
+     (inert-preference-controls). Not a pref; one value for both themes. */
+  --transient-highlight: #fbbf2480;
 
   /* ── Footnote rust scale ──────────────────────────────────────────
      Footnote, cut, and error markers consolidate here.
