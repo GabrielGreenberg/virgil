@@ -178,3 +178,77 @@ describe("idempotency rule (SSOT + every responder, task 1045)", () => {
     expect(m![1]).toContain(POINTER);
   });
 });
+
+// Task 1408 adds the COULD-NOT-ACT legs. answer-todo-request's "action you
+// can't take" path closed the Task with a bare `complete-only --note` (status
+// `complete`, the SUCCESS outcome) and then ticked the user's own todo
+// `done: true` — while find-citation and style-merge already closed the same
+// family as `--result impossible` (status `failed`). The rule is now stated
+// once in the SSOT (rule 3) and pinned here over every skill:
+//
+//   8. a branch that names a can't-act limit and lands through `complete-only`
+//      passes `--result impossible`;
+//   9. such a branch never flips the source card `done`;
+//  10. no "could not act" reply claims the source was marked done.
+describe("could-not-act rule (SSOT + every skill, task 1408)", () => {
+  const CANT_ACT = /can't (?:take|act)|cannot act|could not act|complete-with-limit|\bimpossible\b/i;
+  const LANDS = /complete-only\b/;
+  const DONE_FLIP = /"done"\s*:\s*true|done=true/;
+
+  /** A skill split into branches: a heading or a list item opens one; a fenced
+   *  code block belongs to the branch it sits in (never splits it). */
+  function branches(file: string): string[] {
+    const out: string[] = [];
+    let cur: string[] = [];
+    let fence = false;
+    for (const line of read(file).split("\n")) {
+      if (/^\s*```/.test(line)) fence = !fence;
+      else if (!fence && /^(?:#{1,6} |\s*[-*] |\s*\d+\. )/.test(line)) {
+        if (cur.length) out.push(cur.join("\n"));
+        cur = [];
+      }
+      cur.push(line);
+    }
+    if (cur.length) out.push(cur.join("\n"));
+    return out;
+  }
+
+  it("SSOT states the failure close", () => {
+    const doc = flat(SSOT);
+    expect(doc).toMatch(/It closes as a FAILURE, never a success/);
+    expect(doc).toMatch(/--result impossible --note "@\$t\/note"/);
+    expect(doc).toMatch(/marks nothing done on the source card/);
+  });
+
+  it("the census sees the can't-act branches it guards", () => {
+    const hits = SKILLS.filter((f) =>
+      branches(f).some((b) => CANT_ACT.test(b) && LANDS.test(b)),
+    );
+    expect(hits).toEqual(
+      expect.arrayContaining([
+        "editor/skills/answer-todo-request.md",
+        "editor/skills/find-citation.md",
+        "editor/skills/style-merge.md",
+      ]),
+    );
+  });
+
+  it.each(SKILLS)("%s: a can't-act `complete-only` landing passes --result impossible", (file) => {
+    for (const b of branches(file)) {
+      if (!CANT_ACT.test(b) || !LANDS.test(b)) continue;
+      expect(b, `can't-act branch closes as success:\n${b}`).toMatch(/--result impossible/);
+    }
+  });
+
+  it.each(SKILLS)("%s: a can't-act branch never ticks the source done", (file) => {
+    for (const b of branches(file)) {
+      if (!CANT_ACT.test(b)) continue;
+      expect(b, `can't-act branch flips done:\n${b}`).not.toMatch(DONE_FLIP);
+    }
+  });
+
+  it.each(SKILLS)("%s: no could-not-act reply says the source was marked done", (file) => {
+    const replies = read(file).match(/could not act[^\n]*/g) ?? [];
+    for (const r of replies) expect(r).not.toMatch(/marked done|\bdone with\b/i);
+  });
+});
