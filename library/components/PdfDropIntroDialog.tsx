@@ -63,7 +63,7 @@ export default function PdfDropIntroDialog({ fileNames, onClose }: Props) {
             display: "flex",
             alignItems: "center",
             gap: 8,
-            fontSize: 12.5,
+            fontSize: 12,
             color: "var(--muted)",
             cursor: "pointer",
             userSelect: "none",

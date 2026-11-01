@@ -217,6 +217,8 @@
   font-family: var(--library-editing-font), "Source Serif 4", Georgia, serif;
   color: var(--library-body-ink);
   line-height: 1.65;
+  /* Reader PROSE, not UI chrome — a stated exemption in
+     type-size-census.test.ts (task 1414). */
   font-size: 15.5px;
   /* The Reader mounts the editor with `contenteditable="true"` so PM
      can sync native drag-to-select into its selection state (the

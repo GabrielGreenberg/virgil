@@ -695,7 +695,7 @@ function BibEntryPickerRow({
             )}
           </div>
           <div
-            className="text-[11.5px] text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
+            className="text-[11px] text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
             data-hint={title}
           >
             {title}
@@ -917,7 +917,7 @@ function ExpandedDetails({
         </div>
       )}
       {doi && (
-        <div className="text-[10.5px] text-ink-muted font-mono leading-snug">
+        <div className="text-[10px] text-ink-muted font-mono leading-snug">
           doi:{doi}
         </div>
       )}
@@ -937,7 +937,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
     void copy(citekey);
   }, [citekey, copy]);
   return (
-    <div className="flex items-center gap-1.5 text-[10.5px] text-ink-muted font-mono">
+    <div className="flex items-center gap-1.5 text-[10px] text-ink-muted font-mono">
       <span>citekey:</span>
       <span className="text-ink-body">{citekey}</span>
       <button
