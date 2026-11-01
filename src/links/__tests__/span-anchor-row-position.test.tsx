@@ -25,6 +25,7 @@ import {
 import { createLinkedAnchor, type CardWithLinks } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
+import { resolveCardJumpTarget } from "@/links/jump-to-card";
 
 const TEXT = "A long opening clause, and then this span, and more after it.";
 
@@ -159,6 +160,53 @@ describe("span-anchored rows sit at their span (task 1334)", () => {
     expect(row?.pid).toBe("P");
     expect(row.anchorId).toBeUndefined();
     expect(rowAnchorPos(row)).toBe(blockPos(editor, "P"));
+    editor.destroy();
+  });
+});
+
+// TASK 1409 — the Jump lands where the row is DRAWN. It used to re-derive the
+// span as "the first Mode-B mark in link order on the row's paragraph", a
+// second answer beside `placeRowAtSpan`'s.
+describe("a row's Jump lands on the row's own span (task 1409)", () => {
+  it("two spans, later one first in link order: the Jump takes the EARLIER span the row sits at", () => {
+    const editor = mountDoc();
+    const late = markSpan(editor, "more after");
+    const early = markSpan(editor, "opening clause");
+    const c = card("bb", [modeB(late.anchorId), modeB(early.anchorId)]);
+    const pass = buildCardAnchorPass(editor);
+    const [row] = pass.resolve(c).rows;
+    expect(row.anchorId).toBe(early.anchorId);
+
+    // Both the omni row's ask (with its pid) and the rowless ask.
+    expect(pass.jumpTarget(c, row.pid)?.anchorId).toBe(row.anchorId);
+    expect(pass.jumpTarget(c)?.anchorId).toBe(row.anchorId);
+    expect(resolveCardJumpTarget(editor, c, row.pid)).toEqual({ kind: "mark", anchorId: early.anchorId });
+    editor.destroy();
+  });
+
+  it("a card ALSO bound to the whole paragraph jumps to the block top, where it sits", () => {
+    const editor = mountDoc();
+    const { anchorId } = markSpan(editor, "this span");
+    const c = card("ab", [modeA("P"), modeB(anchorId)]);
+    const pass = buildCardAnchorPass(editor);
+    const [row] = pass.resolve(c).rows;
+    expect(row.anchorId).toBeUndefined();
+
+    expect(pass.jumpTarget(c, row.pid)).toMatchObject({ paragraphId: "P", anchorId: null });
+    expect(resolveCardJumpTarget(editor, c, "P")).toEqual({
+      kind: "paragraph",
+      paragraphId: "P",
+      pos: blockPos(editor, "P"),
+    });
+    editor.destroy();
+  });
+
+  it("a single-span row still lands on its words", () => {
+    const editor = mountDoc();
+    const { anchorId } = markSpan(editor, "this span");
+    const c = card("b", [modeB(anchorId)]);
+    expect(resolveCardJumpTarget(editor, c, "P")).toEqual({ kind: "mark", anchorId });
+    expect(resolveCardJumpTarget(editor, c)).toEqual({ kind: "mark", anchorId });
     editor.destroy();
   });
 });

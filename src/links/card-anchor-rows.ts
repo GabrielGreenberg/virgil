@@ -138,11 +138,13 @@ export interface CardAnchorPass {
    * resolution the rows above are drawn from, so a Jump can never land
    * somewhere no marker is drawn.
    *
-   * `rowPid` is the asking ROW's own paragraph (a multi-anchor omni row's
-   * `@<pid>`): when live it wins outright — the row IS that anchor. Otherwise
-   * the authority's winner. `anchorId` names a live `linkedAnchor` mark of
-   * this card's on that paragraph, so a Mode-B card lands on its words, not
-   * the bare block. `null` when the card is not anchored, or in the mount gap.
+   * It lands on a ROW of `resolve(card)` (task 1409): `rowPid` names the
+   * asking row (a multi-anchor omni row's `@<pid>`) — when it is still one of
+   * the card's live rows it wins outright, the row IS that anchor; otherwise
+   * the authority's seed row. `anchorId` is that row's OWN `anchorId` — set
+   * iff the row is drawn at a span — so the Jump aligns to exactly the line
+   * the card and its marker sit on. `null` when the card is not anchored, or
+   * in the mount gap.
    */
   jumpTarget: (card: CardWithLinks, rowPid?: string | null) => CardJumpTarget | null;
   /**
@@ -159,7 +161,8 @@ export interface CardJumpTarget {
   paragraphId: string;
   /** Doc position of `paragraphId` from the pass's index. */
   pos: number | null;
-  /** A live mark of the card's on `paragraphId`, preferred over the block. */
+  /** The span the row is drawn at (`CardAnchorRow.anchorId`), else null —
+   *  the row sits at its block top, and so does the Jump. */
   anchorId: string | null;
 }
 
@@ -186,55 +189,48 @@ export function buildCardAnchorPass(editor: Editor | null): CardAnchorPass {
   // hooks' arrays) and scoped to this pass, which is itself rebuilt whenever
   // the index can have changed, so a memo can never outlive its index.
   const memo = new WeakMap<CardWithLinks, CardAnchorRows>();
+  const resolve: CardAnchorResolver = (card) => {
+    const hit = memo.get(card);
+    if (hit) return hit;
+    const out = resolveCardAnchorRows(card, editor, bound);
+    memo.set(card, out);
+    return out;
+  };
   return {
-    resolve: (card) => {
-      const hit = memo.get(card);
-      if (hit) return hit;
-      const out = resolveCardAnchorRows(card, editor, bound);
-      memo.set(card, out);
-      return out;
-    },
+    resolve,
     posOf: (uuid) => (uuid ? index?.uuidToPos.get(uuid) ?? null : null),
     jumpTarget: (card, rowPid) =>
-      bound ? resolveCardJumpTarget(card, editor, bound, rowPid ?? null) : null,
+      bound ? jumpTargetOfRows(resolve(card), bound, rowPid ?? null) : null,
     anchorPidsOf: (link) => anchorPidsOfLink(link, bound),
   };
 }
 
-/** `CardAnchorPass.jumpTarget`'s rule, against a READY index. */
-function resolveCardJumpTarget(
-  card: CardWithLinks,
-  editor: Editor | null,
+/**
+ * `CardAnchorPass.jumpTarget`'s rule: a Jump lands on a ROW — exactly where
+ * that row is drawn (task 1409). The asking row when its pid is still one of
+ * this card's live rows, else the authority's seed row (`rows[0]`, the
+ * resolved paragraph). Its span is the row's own `anchorId` (task 1334's
+ * `placeRowAtSpan`), never re-derived: a second reading ("the first Mode-B
+ * mark in link order on this paragraph") sent a two-span card's Jump to the
+ * later span while the card sat at the earlier one, and sent a card ALSO
+ * bound to the whole paragraph to its words while it sat at the block top.
+ */
+function jumpTargetOfRows(
+  resolved: CardAnchorRows,
   index: ResolveIndex,
   rowPid: string | null,
 ): CardJumpTarget | null {
-  const links = card.links ?? [];
-  const target = (paragraphId: string, anchorId: string | null): CardJumpTarget => ({
-    paragraphId,
-    pos: index.uuidToPos.get(paragraphId) ?? null,
-    anchorId: anchorId ?? markOn(paragraphId),
-  });
-  const markOn = (pid: string): string | null => {
-    for (const link of links) {
-      if (!isModeB(link)) continue;
-      const anchorId = link.anchor.textRange?.anchorId;
-      if (anchorId && index.anchorIdToParagraph.get(anchorId) === pid) return anchorId;
-    }
-    return null;
+  if (!resolved.anchored) return null;
+  const { rows } = resolved;
+  // A row pid that died (or left this card) since the row was built falls
+  // through to the authority's row rather than jumping nowhere.
+  const row = (rowPid != null && rows.find((r) => r.pid === rowPid)) || rows[0];
+  if (!row || !index.uuidToParagraph.has(row.pid)) return null;
+  return {
+    paragraphId: row.pid,
+    pos: index.uuidToPos.get(row.pid) ?? null,
+    anchorId: row.anchorId ?? null,
   };
-
-  // A row pid that died since the row was built falls through to the
-  // authority rather than jumping nowhere.
-  if (rowPid && index.uuidToParagraph.has(rowPid)) return target(rowPid, null);
-
-  const res = resolveCardAnchor(card, editor, index);
-  if (res.paragraphId == null || res.linkIndex == null) return null;
-  const winner = links[res.linkIndex]?.anchor;
-  const winnerMark =
-    res.source === "mark" && winner?.type === "textObject"
-      ? winner.textRange?.anchorId ?? null
-      : null;
-  return target(res.paragraphId, winnerMark);
 }
 
 /**
