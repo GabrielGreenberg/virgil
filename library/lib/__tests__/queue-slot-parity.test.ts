@@ -22,6 +22,7 @@ import {
   QUEUE_PENDING_STATUS,
   QUEUE_RUNNING_TTL_MS,
   QUEUE_SLOT_SUFFIX,
+  queueFilename,
   queueSlotKinds,
   withPendingReview,
   withoutPendingReview,
@@ -105,7 +106,29 @@ describe("queue population — TS ↔ Python parity (task 794)", () => {
 
   it("every Python-slotted kind is a TS QueueKind (triage has no citekey slot)", () => {
     const pyKinds = py("sorted(queue_slot.SLOT_SUFFIX)");
-    expect([...pyKinds, "triage"].sort()).toEqual([...QUEUE_KINDS].sort());
+    expect([...pyKinds, py("queue_slot.TRIAGE_KIND")].sort()).toEqual([...QUEUE_KINDS].sort());
+  });
+
+  it("triage_slot_filename and queueFilename name a triage request alike (task 1431)", () => {
+    const names = [
+      "Smith 2020.pdf",
+      "a.DOCX",
+      "notes.pdf.bib",
+      "../../etc/passwd",
+      "Tich\u00fd – Über.pdf",
+      "x".repeat(200) + ".pdf",
+      "already_safe-name.tex",
+    ];
+    const pyNames = py(
+      `[queue_slot.triage_slot_filename(n) for n in ${JSON.stringify(names)}]`,
+    );
+    const tsNames = names.map((filename) =>
+      queueFilename({ kind: "triage", status: "requested", filename, requestedAt: "", attempts: 0 }),
+    );
+    expect(tsNames).toEqual(pyNames);
+    expect(py("queue_slot.triage_slot_filename(None)")).toBe(
+      queueFilename({ kind: "triage", status: "requested", requestedAt: "", attempts: 0 }),
+    );
   });
 });
 

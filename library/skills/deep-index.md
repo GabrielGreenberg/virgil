@@ -122,6 +122,22 @@ per §Step 0.
 
 ## Steps
 
+### Claim
+
+**Claim the request first** through the queue door, so a racing run (or
+the app) won't take it and a request the user re-files while you work is
+not retired unworked (task 1431):
+```bash
+python3 .virgil/scripts/library/queue_slot.py claim --kind deepIndex --citekey $ARGUMENTS
+```
+It prints `{"result": "claimed", "requestedAt": …}` — keep that
+`requestedAt` for §7 — or `{"result": "nothing-claimable"}` (run
+directly with nothing queued, or another worker holds it: carry on, and
+pass `""` there, which retires nothing).
+If a coexisting `paper-review` request will be incorporated in this pass
+(§2), claim it the same way (`--kind paper-review`) and keep its
+`requestedAt` too.
+
 ### Preflight: Resume vs. fresh
 
 **Default is resume.** Before doing anything else, check the catalog
@@ -586,15 +602,17 @@ Retire the request through the queue-slot door (task 618) — never delete
 the queue file by hand:
 
 ```bash
-python3 .virgil/scripts/library/queue_slot.py retire --kind deepIndex --citekey $ARGUMENTS
+python3 .virgil/scripts/library/queue_slot.py retire --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>"
 ```
 
 It finds the request in `<citekey>-deepindex.json` or the legacy
 `<citekey>-richindex.json`, leaves a `<slot>.done` marker and removes the
-entry. If a coexisting `paper-review` request was also processed in this
-pass, retire it the same way (`--kind paper-review`). `{"result":
-"nothing-queued"}` is fine — a deep index run directly, not from the queue,
-has nothing to retire.
+entry — only if it is still the request you claimed (one re-filed mid-run
+stays queued: `"superseded"`). If a coexisting `paper-review` request was
+also claimed and processed in this pass, retire it the same way
+(`--kind paper-review --requested-at` its own claim). `{"result":
+"nothing-queued"}` / `"not-claimed"` is fine — a deep index run directly,
+not from the queue, has nothing to retire.
 
 ### 8. Log
 

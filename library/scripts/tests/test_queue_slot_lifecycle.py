@@ -711,6 +711,92 @@ def test_concurrent_add_under_the_lock_survives_a_removal(tmp_path):
     assert [x["citekey"] for x in _review_rows(tmp_path)] == ["b"]
 
 
+# ── task 1431: every request has a door — triage included ────────────────
+
+def test_triage_slot_filename_mirrors_queue_ts():
+    f = queue_slot.triage_slot_filename
+    assert f("Smith 2020.PDF") == "_triage-Smith-2020.json"
+    assert f("a.docx") == "_triage-a.json"
+    assert f("notes.pdf.bib") == "_triage-notes-pdf-bib.json"
+    assert f("../../etc/passwd") == "_triage--etc-passwd.json"
+    assert f(None) == "_triage-unknown.json"
+    assert f("x" * 200 + ".pdf") == "_triage-" + "x" * 80 + ".json"
+
+
+def _triage_stub(q: Path, name: str, requested_at: str = "2026-09-01T00:00:00Z") -> Path:
+    path = q / queue_slot.triage_slot_filename(name)
+    _put(path, kind="triage", status="requested", filename=name,
+         requestedAt=requested_at, attempts=0)
+    return path
+
+
+def test_triage_claim_retire_touches_only_its_own_request(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    mine = _triage_stub(q, "Smith 2020.pdf")
+    other = _triage_stub(q, "Jones 2018.pdf")
+    assert _cli(["claim", "--kind", "triage", "--file", "Smith 2020.pdf",
+                 "--library", str(tmp_path)]) == 0
+    claimed = json.loads(capsys.readouterr().out)
+    assert claimed["result"] == "claimed" and claimed["file"] == mine.name
+    assert _read(mine)["status"] == "running"
+    assert _cli(["retire", "--kind", "triage", "--file", "Smith 2020.pdf",
+                 "--requested-at", claimed["requestedAt"],
+                 "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["result"] == "retired"
+    assert not mine.exists() and mine.with_suffix(".done").exists()
+    # The OTHER dropped file's triage request is untouched.
+    assert _read(other)["status"] == "requested"
+
+
+def test_triage_retire_leaves_a_superseding_drop(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    path = _triage_stub(q, "a.pdf")
+    assert _cli(["claim", "--kind", "triage", "--file", "a.pdf",
+                 "--library", str(tmp_path)]) == 0
+    claimed = json.loads(capsys.readouterr().out)
+    _triage_stub(q, "a.pdf", requested_at="2099-01-01T00:00:00Z")  # re-dropped mid-run
+    assert _cli(["retire", "--kind", "triage", "--file", "a.pdf",
+                 "--requested-at", claimed["requestedAt"],
+                 "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["result"] == "superseded"
+    assert _read(path)["requestedAt"] == "2099-01-01T00:00:00Z"
+
+
+def test_triage_needs_file_and_citekey_kinds_need_citekey(tmp_path, capsys):
+    for argv in (["claim", "--kind", "triage", "--citekey", "a"],
+                 ["retire", "--kind", "index", "--file", "a.pdf", "--requested-at", ""]):
+        try:
+            _cli([*argv, "--library", str(tmp_path)])
+        except SystemExit as e:
+            assert e.code == 2
+        else:
+            raise AssertionError(f"{argv} accepted")
+    capsys.readouterr()
+
+
+def test_retire_with_nothing_claimed_retires_nothing(tmp_path, capsys):
+    """A skill whose claim said `nothing-claimable` retires with
+    `--requested-at ""`: a request it finds is someone else's (queued after
+    the skill started, or another worker's) and stays live — and its
+    review-manifest row with it."""
+    q = _qdir(tmp_path)
+    _put(q / "pending-reviews.json", pendingReviews=[{"citekey": "a", "requestedAt": "x"}])
+    _put(q / "a-auth.json", kind="authenticate", status="requested",
+         citekey="a", requestedAt="x", attempts=0)
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--requested-at", "", "--library", str(tmp_path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"result": "not-claimed", "file": "a-auth.json"}
+    assert _read(q / "a-auth.json")["status"] == "requested"
+    assert _review_rows(tmp_path) == [{"citekey": "a", "requestedAt": "x"}]
+    # With nothing queued, the stale manifest row is still cleaned up.
+    (q / "a-auth.json").unlink()
+    assert _cli(["retire", "--kind", "authenticate", "--citekey", "a",
+                 "--requested-at", "", "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "result": "nothing-queued", "manifest": "removed"}
+
+
 if __name__ == "__main__":
     from _standalone import main
 

@@ -68,12 +68,26 @@ The contract, stated once:
    `LIVE_STATUSES` over `slot_kinds` (`index` ≈ `reindex`), pinned by
    `queue-slot-parity.test.ts`.
 
+10. **Every request has a door — triage included** (task 1431). A `triage`
+   request has no citekey: the app files it as `_triage-<slug>.json`, the
+   slug derived from the dropped file's name (`triage_slot_filename`,
+   mirroring queue.ts `queueFilename`, pinned by `queue-slot-parity.test.ts`).
+   `claim`/`retire --kind triage --file <unsorted filename>` address it, so a
+   triage run touches only ITS request — never a glob over every pending
+   drop. And a skill that claimed NOTHING (`nothing-claimable`: invoked
+   directly, or the request is another worker's) passes `--requested-at ""`,
+   which retires no request at all. No skill deletes a queue file by hand;
+   `queue-door-skill-census.test.ts` pins that every skill `retire` names
+   the request it claimed.
+
 CLI (the door for skill prompts that enqueue work)::
 
     python3 queue_slot.py write --kind index --citekey smith2020 [--library .]
     python3 queue_slot.py write --kind deepIndex --citekey smith2020 [--note "…"]
     python3 queue_slot.py claim --kind index --citekey smith2020
-    python3 queue_slot.py retire --kind index --citekey smith2020 [--requested-at <claimed>]
+    python3 queue_slot.py retire --kind index --citekey smith2020 --requested-at <claimed>
+    python3 queue_slot.py claim  --kind triage --file "Smith 2020.pdf"
+    python3 queue_slot.py retire --kind triage --file "Smith 2020.pdf" --requested-at <claimed>
     python3 queue_slot.py pending [--native] [--count]
 
 `pending` prints the pending requests as JSON lines (`{"kind", "citekey",
@@ -91,6 +105,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,6 +140,11 @@ SLOT_SUFFIX: dict[str, Optional[str]] = {
 
 # Kinds whose requests were written to the bare slot before per-kind slots.
 LEGACY_BARE_SLOT_KINDS = ("authenticate",)
+
+# The one request kind with no citekey slot: a dropped file awaiting triage,
+# filed as `_triage-<slug>.json` (contract item 10). Mirrored by queue.ts.
+TRIAGE_KIND = "triage"
+TRIAGE_PREFIX = "_triage-"
 
 # Legacy kind spellings → the current kind. Read paths normalize through it.
 LEGACY_KIND_ALIASES: dict[str, str] = {"richIndex": "deepIndex"}
@@ -244,6 +264,36 @@ def slot_filename(kind: str, citekey: str) -> str:
     if kind not in SLOT_SUFFIX:
         raise ValueError(f"unknown queue kind {kind!r}")
     return f"{citekey}{SLOT_SUFFIX[kind] or ''}.json"
+
+
+def triage_slot_filename(filename: Optional[str]) -> str:
+    """The queue filename of the triage request for the dropped file
+    `filename` (its name in `unsorted/`) — byte-for-byte queue.ts
+    `queueFilename({kind: "triage", filename})`: strip a `.pdf`/`.docx`
+    extension, collapse every run outside `[A-Za-z0-9_-]` to `-`, cap at 80.
+    The result can never escape the queue folder (no `/`, no `..`)."""
+    slug = re.sub(r"\.(pdf|docx)\Z", "", filename or "unknown", flags=re.IGNORECASE)
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", slug)[:80]
+    return f"{TRIAGE_PREFIX}{slug}.json"
+
+
+def request_path(
+    library: Path, kind: str, *, citekey: Optional[str] = None, filename: Optional[str] = None,
+) -> Optional[Path]:
+    """The file holding the LIVE request a skill addresses: by `filename`
+    for a triage request (contract item 10), by `citekey` for every other
+    kind (`find_request`). None when nothing live is there."""
+    if normalize_kind(kind) == TRIAGE_KIND:
+        if not filename:
+            raise ValueError("a triage request is addressed by --file <unsorted filename>")
+        path = queue_dir(library) / triage_slot_filename(filename)
+        cur = _read(path) if path.exists() else None
+        if cur and cur.get("kind") == TRIAGE_KIND and cur.get("status") in LIVE_STATUSES:
+            return path
+        return None
+    if not citekey:
+        raise ValueError(f"a {kind!r} request is addressed by --citekey")
+    return find_request(library, kind, citekey)
 
 
 def slot_suffixes() -> tuple[str, ...]:
@@ -658,14 +708,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                    help="the user's own words, carried on the request")
     c = sub.add_parser("claim", help="claim a queued request before working it")
     c.add_argument("--kind", required=True)
-    c.add_argument("--citekey", required=True)
+    c.add_argument("--citekey", default=None)
+    c.add_argument("--file", default=None,
+                   help="triage only: the dropped file's name in unsorted/")
     c.add_argument("--library", default=None)
     r = sub.add_parser("retire", help="mark a finished request done")
     r.add_argument("--kind", required=True)
-    r.add_argument("--citekey", required=True)
+    r.add_argument("--citekey", default=None)
+    r.add_argument("--file", default=None,
+                   help="triage only: the dropped file's name in unsorted/")
     r.add_argument("--library", default=None)
     r.add_argument("--requested-at", default=None,
-                   help="retire only the request `claim` returned (its requestedAt)")
+                   help="retire only the request `claim` returned (its requestedAt); "
+                        "\"\" = this run claimed nothing, so retire nothing")
     q = sub.add_parser("pending", help="list (or count) the pending requests")
     q.add_argument("--native", action="store_true",
                    help="only the kinds drain_queue.py processes itself")
@@ -706,20 +761,24 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(out))
         return 3 if result in REFUSED_RESULTS else 0
 
+    try:
+        path = request_path(library, args.kind, citekey=args.citekey, filename=args.file)
+    except ValueError as e:
+        ap.error(str(e))
     if args.cmd == "claim":
-        return claim(library, args.kind, args.citekey)
+        return claim(path)
 
-    return retire(library, args.kind, args.citekey, requested_at=args.requested_at)
+    return retire(library, args.kind, args.citekey, path, requested_at=args.requested_at)
 
 
-def claim(library: Path, kind: str, citekey: str) -> int:
-    """CLI half of `claim_request`: claim the live `kind` request for
-    `citekey` before working it. Prints `{"result": "claimed", "file",
-    "requestedAt"}` — the `requestedAt` a skill hands back to `retire
-    --requested-at` — or `{"result": "nothing-claimable"}` (no request
-    queued: the skill was invoked directly; or it is already in flight).
-    Always exits 0: a skill run with nothing queued still does its work."""
-    path = find_request(library, kind, citekey)
+def claim(path: Optional[Path]) -> int:
+    """CLI half of `claim_request`: claim the live request at `path`
+    (`request_path`) before working it. Prints `{"result": "claimed",
+    "file", "requestedAt"}` — the `requestedAt` a skill hands back to
+    `retire --requested-at` — or `{"result": "nothing-claimable"}` (no
+    request queued: the skill was invoked directly; or it is already in
+    flight) — the skill then retires with `--requested-at ""`. Always
+    exits 0: a skill run with nothing queued still does its work."""
     claimed = claim_request(path) if path is not None else None
     if claimed is None:
         out: dict[str, Any] = {"result": "nothing-claimable"}
@@ -733,20 +792,30 @@ def claim(library: Path, kind: str, citekey: str) -> int:
 
 
 def retire(
-    library: Path, kind: str, citekey: str, *, requested_at: Optional[str] = None,
+    library: Path,
+    kind: str,
+    citekey: Optional[str],
+    path: Optional[Path],
+    *,
+    requested_at: Optional[str] = None,
 ) -> int:
-    """Mark the live `kind` request for `citekey` done. With `requested_at`
-    (what `claim` printed) only THAT request is retired: a newer one written
-    into the slot while the skill worked is left queued (`"superseded"`) —
-    the identity check `retire_claimed` makes (task 1291). Retiring an
-    `authenticate` request also drops its review-manifest row — even when no
-    request is queued, so a stale row left by an older run is cleaned up
-    (but not when a newer request superseded the claim: its row is live)."""
-    path = find_request(library, kind, citekey)
+    """Mark the live request at `path` (`request_path`) done. With
+    `requested_at` (what `claim` printed) only THAT request is retired: a
+    newer one written into the slot while the skill worked is left queued
+    (`"superseded"`) — the identity check `retire_claimed` makes (task 1291).
+    `requested_at == ""` says the run claimed NOTHING: a request found
+    there is someone else's and is left queued (`"not-claimed"`, task 1431).
+    Retiring an `authenticate` request also drops its review-manifest row —
+    even when no request is queued, so a stale row left by an older run is
+    cleaned up (but not when a live request is left queued: its row is
+    live)."""
     out: dict[str, Any]
-    superseded = False
+    left_live = False
     if path is None:
         out = {"result": "nothing-queued"}
+    elif requested_at == "":
+        left_live = True
+        out = {"result": "not-claimed", "file": path.name}
     else:
         cur = _read(path) or {}
         claimed = dict(cur) if requested_at is None else {
@@ -755,9 +824,9 @@ def retire(
         if retire_claimed(path, claimed):
             out = {"result": "retired", "file": path.with_suffix(".done").name}
         else:
-            superseded = True
+            left_live = True
             out = {"result": "superseded", "file": path.name}
-    if normalize_kind(kind) == REVIEW_KIND and not superseded:
+    if normalize_kind(kind) == REVIEW_KIND and citekey and not left_live:
         out["manifest"] = remove_pending_review(library, citekey)
     print(json.dumps(out))
     return 0
