@@ -229,9 +229,18 @@ function indexScripts(): Map<string, string> {
   for (const dir of SCRIPT_DIRS) {
     for (const rel of listFiles(dir, ".py")) {
       const name = path.basename(rel);
-      // A basename in both silos would make "which script?" ambiguous. There
-      // are none today; assert rather than silently pick one.
-      expect(idx.has(name), `script basename collides across silos: ${name}`).toBe(false);
+      // A basename in both silos would make "which script?" ambiguous —
+      // unless the two are byte-identical MIRRORS (`_silo_path.py`, task
+      // 1428: each silo imports the cross-silo door from its own dir), where
+      // either answer is the same file. Assert rather than silently pick one.
+      const prior = idx.get(name);
+      if (prior !== undefined) {
+        const same =
+          readFileSync(path.join(REPO_ROOT, prior), "utf8") ===
+          readFileSync(path.join(REPO_ROOT, rel), "utf8");
+        expect(same, `script basename collides across silos: ${name}`).toBe(true);
+        continue;
+      }
       idx.set(name, rel);
     }
   }

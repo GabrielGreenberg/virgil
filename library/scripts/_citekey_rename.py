@@ -41,27 +41,22 @@ from pathlib import Path
 
 from _bib_parse import rename_entry_text
 
-_HERE = Path(__file__).resolve().parent
-_EDITOR_DIRS = (_HERE.parent.parent / "editor" / "scripts", _HERE.parent / "editor")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _silo_path import import_path_for  # noqa: E402  (the cross-silo door, task 1428)
 
 
 def _editor_modules():
     """`(rename_citekey, citekey_sidecars)` from the editor silo, or raise."""
-    for d in _EDITOR_DIRS:
-        if (d / "rename_citekey.py").exists() and (d / "citekey_sidecars.py").exists():
-            if str(d) not in sys.path:
-                # Appended, not prepended: the editor modules import siblings
-                # (`cite_commands`) by bare name, and a library module must
-                # never be shadowed by an editor one.
-                sys.path.append(str(d))
-            import citekey_sidecars  # noqa: PLC0415
-            import rename_citekey  # noqa: PLC0415
-            return rename_citekey, citekey_sidecars
-    raise RuntimeError(
-        "citekey rename needs the editor skill scripts (rename_citekey.py, "
-        f"citekey_sidecars.py) and found them in none of: "
-        f"{', '.join(str(d) for d in _EDITOR_DIRS)} — refusing a partial rename"
-    )
+    try:
+        # Appended, not prepended (the door's rule): the editor modules import
+        # siblings (`cite_commands`) by bare name, and a library module must
+        # never be shadowed by an editor one.
+        import_path_for("editor", needs=("rename_citekey.py", "citekey_sidecars.py"))
+    except RuntimeError as e:
+        raise RuntimeError(f"citekey rename: {e} — refusing a partial rename") from None
+    import citekey_sidecars  # noqa: PLC0415
+    import rename_citekey  # noqa: PLC0415
+    return rename_citekey, citekey_sidecars
 
 
 def rewrite_cite_keys(tex: str, old: str, new: str) -> tuple[str, int]:

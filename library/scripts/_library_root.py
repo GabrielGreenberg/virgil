@@ -40,8 +40,8 @@ from typing import Optional, Union
 
 PathLike = Union[str, Path, None]
 
-_HERE = Path(__file__).resolve().parent
-_SSOT_DIRS = (_HERE.parent.parent / "editor" / "scripts", _HERE.parent / "editor")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _silo_path import sibling_silo_dir  # noqa: E402  (the cross-silo door, task 1428)
 
 _ENV = "VIRGIL_LIBRARY_ROOT"
 _DEFAULT = Path.home() / "Virgil-Library"
@@ -53,22 +53,16 @@ class LibraryNotFound(RuntimeError):
 
 def _load_ssot():
     """Return the editor silo's `library_path` module, or None."""
-    for d in _SSOT_DIRS:
-        mod_path = d / "library_path.py"
-        if not mod_path.exists():
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location(
-                "_virgil_library_path", mod_path
-            )
-            if spec is None or spec.loader is None:
-                continue
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-        except Exception:
-            continue
-    return None
+    try:
+        mod_path = sibling_silo_dir("editor", needs=("library_path.py",)) / "library_path.py"
+        spec = importlib.util.spec_from_file_location("_virgil_library_path", mod_path)
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
 
 
 def looks_like_library(p: Path) -> bool:
