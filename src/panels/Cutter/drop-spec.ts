@@ -10,11 +10,9 @@
 import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
 export const cutterCommentDropSpec = textObjectSideReanchorSpec({
-  kindLabel: "comment",
   getApi: (ctx) => ctx.cutterCards,
 });
 
 export const cutterSuggestionDropSpec = textObjectSideReanchorSpec({
-  kindLabel: "suggestion",
   getApi: (ctx) => ctx.cutterCards,
 });

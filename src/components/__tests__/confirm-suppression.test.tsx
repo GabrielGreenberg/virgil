@@ -2,26 +2,25 @@
 /**
  * Task 492 — **"Don't show this again" is a capability of the confirm DOOR.**
  *
- * Gabriel, from a real paper: *"Give 'do not show again' option for prompt that
- * comes up when deliberately dragging/reanchoring margin items."* The gesture
- * that raises that prompt is a full drag onto one paragraph's margin — the most
- * deliberate thing the app asks for — and its outcome is reversible, so once
- * read the question is pure friction.
- *
- * The capability could have been a `localStorage` check inside
- * `textObjectSideReanchorSpec`. It is not, because the app already had ONE
- * suppressible confirm and it had grown THREE hand-rolled copies of the idea in
+ * The app had ONE suppressible confirm (archiving a footnote/citation card
+ * removes its marker), and it had grown THREE hand-rolled copies of the idea in
  * a single caller: a `suppressArchiveAtomWarning` field on `ViewPrefs`, a
  * hand-authored `<input type="checkbox">` inside the dialog's own `message`, and
- * a hand-written `if (suppressed) { …; return; }` at the call site. A second
- * bespoke copy would have made two.
+ * a hand-written `if (suppressed) { …; return; }` at the call site. So the door
+ * owns it, and a confirm declares one `suppressId`.
  *
- * So the door owns it, and BOTH confirms declare one `suppressId`. The legs with
- * TEETH are the census ones at the bottom: the door was never the part that can
- * misbehave — a caller that re-forks the checkbox, or one that renders a
- * CONTROLLED `<ConfirmDialog suppressId>` (which can show the checkbox but can
- * never SHORT-CIRCUIT, i.e. a control that appears to work and doesn't), is.
- * Neither is visible to any behavioural test of the door.
+ * Task 1423 RETIRED the capability's first customer: the drag re-anchor
+ * prompt (`reanchor-margin-item`). Suppression had papered over the real
+ * fault — a reversible move should never have asked — so the dialog is gone
+ * (a drop may confirm only a `tone: "danger"` drop, which the door refuses to
+ * suppress; `drop-confirm-policy-census.test.ts`) and the id with it. The legs
+ * below drive the door directly with the surviving id.
+ *
+ * The legs with TEETH are the census ones at the bottom: the door was never the
+ * part that can misbehave — a caller that re-forks the checkbox, or one that
+ * renders a CONTROLLED `<ConfirmDialog suppressId>` (which can show the checkbox
+ * but can never SHORT-CIRCUIT, i.e. a control that appears to work and
+ * doesn't), is. Neither is visible to any behavioural test of the door.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,30 +36,9 @@ vi.mock("@/lib/storage", () => {
   );
 });
 
-let mockPlacement: Placement | null = null;
-vi.mock("../drop-mode/hit-test", () => ({
-  hitTest: () => mockPlacement,
-  isUnmintedParagraphId: () => false,
-  mintPlacementUuid: (_e: unknown, id: string) => id,
-}));
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Schema, type Node as PMNode } from "@tiptap/pm/model";
-import { EditorState } from "@tiptap/pm/state";
-import type { Editor } from "@tiptap/react";
-import {
-  beginDropSession,
-  cancelDropSession,
-  commitDropSession,
-  setDropCtx,
-} from "../drop-mode/controller";
-import type {
-  DropCtx,
-  ParagraphAnchorApi,
-  Placement,
-} from "../drop-mode/types";
 import { useConfirmDialog } from "../ConfirmDialog";
 import { __resetDialogStack } from "../dialog-stack";
 import {
@@ -79,30 +57,6 @@ import {
   REPO_ROOT,
 } from "@/lib/__tests__/_source-scan";
 
-/* ── fixture ─────────────────────────────────────────────────────── */
-
-const schema = new Schema({
-  nodes: {
-    doc: { content: "block+" },
-    paragraph: {
-      group: "block",
-      content: "inline*",
-      attrs: { uuid: { default: null } },
-      toDOM: () => ["p", 0],
-    },
-    text: { group: "inline" },
-  },
-});
-
-function buildDoc(): PMNode {
-  return schema.nodes.doc.create(null, [
-    schema.nodes.paragraph.create({ uuid: "OLD" }, schema.text("first")),
-    schema.nodes.paragraph.create({ uuid: "NEW" }, schema.text("second")),
-  ]);
-}
-
-const CARD_KEY = "note:N1";
-
 /* ── the rAF pump (jsdom has no frame clock worth trusting) ──────── */
 const rafs: FrameRequestCallback[] = [];
 let realRaf: typeof window.requestAnimationFrame;
@@ -116,7 +70,6 @@ function flushFrames() {
 }
 
 beforeEach(() => {
-  mockPlacement = null;
   __resetConfirmSuppressionsForTest();
   realRaf = window.requestAnimationFrame;
   realCaf = window.cancelAnimationFrame;
@@ -128,8 +81,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cancelDropSession();
-  setDropCtx(null);
   cleanup();
   rafs.length = 0;
   window.requestAnimationFrame = realRaf;
@@ -140,85 +91,46 @@ afterEach(() => {
 });
 
 interface Harness {
-  editor: Editor;
-  anchoredTo: string[];
-  removed: string[];
+  results: boolean[];
   /** How many times a dialog has actually MOUNTED. The measure with teeth: a
    *  suppressed confirm must cost ZERO. */
   mounts: () => number;
 }
 
-/** The REAL confirm door the `DropModeProvider` mounts, handed to the REAL
- *  drop controller. */
+/** The REAL imperative door, asked the archive-atom question by a button. */
 function harness(): Harness {
-  const doc = buildDoc();
-  const editor = {
-    state: EditorState.create({ schema, doc }),
-    schema,
-    view: { dispatch: () => {}, focus: () => {} },
-  } as unknown as Editor;
-
-  const anchoredTo: string[] = [];
-  const removed: string[] = [];
-  const notes: ParagraphAnchorApi = {
-    exists: () => true,
-    getAnchorTextObjectIds: () =>
-      anchoredTo.length ? [...anchoredTo] : ["OLD"],
-    addTextObjectLink: (_id, pid) => anchoredTo.push(pid),
-    removeTextObjectLink: (_id, pid) => removed.push(pid),
-    modeB: { policy: "release", release: () => null },
-  };
-
-  let confirmFn: DropCtx["confirm"] | null = null;
+  const results: boolean[] = [];
   let mounts = 0;
   function Host() {
     const { confirm, dialog } = useConfirmDialog();
-    confirmFn = confirm as DropCtx["confirm"];
     if (dialog) mounts += 1;
-    return <>{dialog}</>;
+    return (
+      <>
+        <button
+          onClick={() =>
+            void confirm({
+              title: "Archive this footnote?",
+              message: "Its marker is removed from your document.",
+              confirmLabel: "Archive",
+              suppressId: "archive-atom-marker",
+            }).then((v) => results.push(v))
+          }
+        >
+          open
+        </button>
+        {dialog}
+      </>
+    );
   }
   render(<Host />);
-
-  const ctx: DropCtx = {
-    mainEditor: editor,
-    notes,
-    confirm: (opts: Parameters<NonNullable<DropCtx["confirm"]>>[0]) =>
-      confirmFn!(opts),
-  } as unknown as DropCtx;
-  setDropCtx(ctx);
-  return { editor, anchoredTo, removed, mounts: () => mounts };
+  return { results, mounts: () => mounts };
 }
 
-function sidePlacement(editor: Editor): Placement {
-  return {
-    kind: "paragraph-side",
-    editor,
-    paragraphId: "NEW",
-    side: "right",
-    rect: { x: 0, y: 0, width: 4, height: 20 },
-  };
-}
-
-async function startAndMove(placement: Placement): Promise<void> {
-  mockPlacement = placement;
-  beginDropSession({
-    cardKey: CARD_KEY,
-    origin: { x: 10, y: 10 },
-    externalCommit: true,
-  });
-  window.dispatchEvent(
-    new MouseEvent("mousemove", { clientX: 20, clientY: 20, buttons: 1 }),
-  );
-  await new Promise((r) => setTimeout(r, 30));
-}
-
-/** Drive one full re-anchor gesture. Returns once the commit has settled. */
-async function dragAndRelease(
-  h: Harness,
+/** Ask once and answer. Returns once the promise has settled. */
+async function ask(
   answer: (opts: { tickBox: () => void }) => void,
 ): Promise<void> {
-  await startAndMove(sidePlacement(h.editor));
-  const commit = commitDropSession();
+  clickButton("open");
   await act(async () => {});
   flushFrames();
   answer({
@@ -236,7 +148,6 @@ async function dragAndRelease(
       if (!box.checked) throw new Error("the checkbox did not tick");
     },
   });
-  await commit;
   await act(async () => {});
 }
 
@@ -256,77 +167,73 @@ function pressKey(key: string) {
   });
 }
 
-/* ── the gesture, end to end ─────────────────────────────────────── */
+/* ── the door, end to end ────────────────────────────────────────── */
 
-describe("the re-anchor confirm is suppressible", () => {
+describe("a suppressible confirm", () => {
   it("unsuppressed: the dialog asks, and confirming persists NOTHING on its own", async () => {
     const h = harness();
-    await dragAndRelease(h, () => clickButton("Re-anchor"));
+    await ask(() => clickButton("Archive"));
 
     expect(h.mounts()).toBeGreaterThan(0);
-    expect(h.anchoredTo).toEqual(["NEW"]);
+    expect(h.results).toEqual([true]);
     // Confirming WITHOUT the box is not a suppression.
     expect(getSuppressedConfirms()).toEqual([]);
   });
 
-  it("DEFECT: ticking the box and confirming remembers the answer", async () => {
+  it("ticking the box and confirming remembers the answer", async () => {
     const h = harness();
-    await dragAndRelease(h, ({ tickBox }) => {
+    await ask(({ tickBox }) => {
       tickBox();
-      clickButton("Re-anchor");
+      clickButton("Archive");
     });
 
-    expect(h.anchoredTo).toEqual(["NEW"]);
-    expect(isConfirmSuppressed("reanchor-margin-item")).toBe(true);
+    expect(h.results).toEqual([true]);
+    expect(isConfirmSuppressed("archive-atom-marker")).toBe(true);
   });
 
-  it("DEFECT: a suppressed re-anchor lands with ZERO dialog mounts", async () => {
-    suppressConfirm("reanchor-margin-item");
+  it("a suppressed confirm resolves true with ZERO dialog mounts", async () => {
+    suppressConfirm("archive-atom-marker");
     const h = harness();
     const before = h.mounts();
 
-    await startAndMove(sidePlacement(h.editor));
-    await commitDropSession();
+    clickButton("open");
     await act(async () => {});
 
-    // The spec still ran BOTH doors — only the QUESTION was skipped.
-    expect(h.anchoredTo).toEqual(["NEW"]);
-    expect(h.removed).toEqual(["OLD"]);
+    expect(h.results).toEqual([true]);
     expect(h.mounts()).toBe(before);
     expect(document.querySelector('input[type="checkbox"]')).toBeNull();
   });
 
-  it("Cancel with the box ticked persists NOTHING — the next drop still asks", async () => {
+  it("Cancel with the box ticked persists NOTHING — the next ask still asks", async () => {
     const h = harness();
-    await dragAndRelease(h, ({ tickBox }) => {
+    await ask(({ tickBox }) => {
       tickBox();
       clickButton("Cancel");
     });
 
-    expect(h.anchoredTo).toEqual([]);
+    expect(h.results).toEqual([false]);
     expect(getSuppressedConfirms()).toEqual([]);
 
     const mountsAfterFirst = h.mounts();
-    await dragAndRelease(h, () => clickButton("Re-anchor"));
+    await ask(() => clickButton("Archive"));
     expect(h.mounts()).toBeGreaterThan(mountsAfterFirst);
-    expect(h.anchoredTo).toEqual(["NEW"]);
+    expect(h.results).toEqual([false, true]);
   });
 
   it("restoring brings the question back", async () => {
-    suppressConfirm("reanchor-margin-item");
+    suppressConfirm("archive-atom-marker");
     restoreAllConfirms();
-    expect(isConfirmSuppressed("reanchor-margin-item")).toBe(false);
+    expect(isConfirmSuppressed("archive-atom-marker")).toBe(false);
 
     const h = harness();
-    await dragAndRelease(h, () => clickButton("Re-anchor"));
+    await ask(() => clickButton("Archive"));
     expect(h.mounts()).toBeGreaterThan(0);
-    expect(h.anchoredTo).toEqual(["NEW"]);
+    expect(h.results).toEqual([true]);
   });
 
   it("the checkbox does not steal the cue — Return still confirms (task 389)", async () => {
     const h = harness();
-    await startAndMove(sidePlacement(h.editor));
-    const commit = commitDropSession();
+    clickButton("open");
     await act(async () => {});
     flushFrames();
 
@@ -338,8 +245,8 @@ describe("the re-anchor confirm is suppressible", () => {
     expect(document.activeElement).not.toBe(box);
 
     pressKey("Enter");
-    await commit;
-    expect(h.anchoredTo).toEqual(["NEW"]);
+    await act(async () => {});
+    expect(h.results).toEqual([true]);
     // Enter is not a tick.
     expect(getSuppressedConfirms()).toEqual([]);
   });
@@ -423,7 +330,9 @@ describe("the suppression store", () => {
   it("drops an id this build does not know (a retired confirm cannot gate)", () => {
     localStorage.setItem(
       "virgil:suppressed-confirms",
-      JSON.stringify(["archive-atom-marker", "some-retired-confirm"]),
+      // `reanchor-margin-item` is the REAL retired id (task 1423): a user who
+      // ticked it before the dialog was deleted carries it in storage.
+      JSON.stringify(["archive-atom-marker", "reanchor-margin-item"]),
     );
     window.dispatchEvent(
       new StorageEvent("storage", {

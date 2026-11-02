@@ -816,10 +816,9 @@ export async function commitDropSession(): Promise<void> {
       message: decision.message,
       confirmLabel: decision.confirmLabel,
       cancelLabel: decision.cancelLabel,
-      // A suppressed confirm resolves `true` inside the door with no dialog
-      // mounted; the gesture then lands through this SAME `finishApply`, so
-      // suppression skips the QUESTION and never the spec.
-      suppressId: decision.suppressId,
+      // Only a destructive drop confirms (task 1423 — `DropDecision`); the
+      // tone reaches the door so the dialog wears the destructive register.
+      tone: decision.tone,
     });
     // The await is an async gap the session may not survive (task 1025): a
     // pane unmount disposes its DropCtx and cancels the session while the

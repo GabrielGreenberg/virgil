@@ -17,7 +17,8 @@
  *   classifyDrop:
  *     (a) unanchored card (getAnchorTextObjectIds → [])        → { kind: "apply" }
  *     (b) already on the target paragraph                       → { kind: "no-op" }
- *     (c) anchored to a DIFFERENT paragraph                     → { kind: "confirm" }
+ *     (c) anchored to a DIFFERENT paragraph                     → { kind: "apply" }
+ *         (task 1423: a reversible move asks nothing — no confirm)
  *
  *   applyDrop:
  *     (d) MULTI-anchor card ({P1,P2}, drop target P3) collapses to the target —
@@ -117,7 +118,6 @@ const CARD_KEY = buildFloatKey({
 /** The spec exactly as the Revisions panel registers it. */
 function makeSpec() {
   return textObjectSideReanchorSpec({
-    kindLabel: "revision",
     getApi: (ctx) => ctx.revisions,
   });
 }
@@ -137,11 +137,18 @@ describe("textObjectSideReanchorSpec — classifyDrop", () => {
     expect(decision).toEqual({ kind: "no-op" });
   });
 
-  it("(c) anchored to a different paragraph → { kind: 'confirm' }", () => {
+  it("(c) anchored to a different paragraph → { kind: 'apply' } — no dialog (task 1423)", () => {
     const spec = makeSpec();
     const { api } = makeApi(["P1"]); // anchored elsewhere
     const decision = spec.classifyDrop(paragraphSide("P3"), CARD_KEY, ctxWith(api));
-    expect(decision.kind).toBe("confirm");
+    expect(decision).toEqual({ kind: "apply" });
+  });
+
+  it("(c') a multi-anchor card dropped elsewhere also applies without asking", () => {
+    const spec = makeSpec();
+    const { api } = makeApi(["P1", "P2"]);
+    const decision = spec.classifyDrop(paragraphSide("P3"), CARD_KEY, ctxWith(api));
+    expect(decision).toEqual({ kind: "apply" });
   });
 });
 
@@ -197,13 +204,11 @@ describe("textObjectSideReanchorSpec — Mode-B → Mode-A conversion (CHIP-A)",
 
   function noteSpec() {
     return textObjectSideReanchorSpec({
-      kindLabel: "note",
       getApi: (ctx) => ctx.notes,
     });
   }
   function highlightSpec() {
     return textObjectSideReanchorSpec({
-      kindLabel: "highlight",
       getApi: (ctx) => ctx.highlights,
     });
   }

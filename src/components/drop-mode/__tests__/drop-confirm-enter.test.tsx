@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 /**
- * Task 389, end to end through the REAL drop controller: **the "Re-anchor this
- * snippet?" answer resolves on `Return` alone.**
+ * Task 389, end to end through the REAL drop controller: **a drop's confirm
+ * resolves on `Return` alone.**
  *
- * This is Gabriel's own gesture. `textObjectSideReanchorSpec` is the repo's only
- * `confirm`-classifying spec, so the dialog it raises always opens at the END of
- * a POINTER drag — and pre-389 that was the whole problem. The producers
+ * Reported on the "Re-anchor this snippet?" dialog. Task 1423 deleted that
+ * dialog (a reversible move asks nothing; a drop may confirm only a
+ * `tone: "danger"` drop — `drop-confirm-policy-census.test.ts`), so the leg now
+ * drives a stub DANGER spec through the same controller branch. Any drop's
+ * dialog opens at the END of a POINTER drag — and pre-389 that was the whole
+ * problem. The producers
  * `preventDefault()` their mousedown to suppress native focus, so DOM focus never
  * leaves the editor; the dialog's only claim on it is a deferred one-shot rAF
  * scheduled from a commit where the dialog renders `null`; and Enter-to-confirm
@@ -38,6 +41,28 @@ vi.mock("../hit-test", () => ({
   mintPlacementUuid: (_e: unknown, id: string) => id,
 }));
 
+/** The one shape a drop confirm may take (task 1423): a destructive drop. */
+const applied: string[] = [];
+const dangerSpec = {
+  allowedPlacements: ["paragraph-side"],
+  targetScope: "main-only",
+  classifyDrop: () => ({
+    kind: "confirm",
+    tone: "danger",
+    title: "Replace this paragraph?",
+    message: "Its text is deleted.",
+    confirmLabel: "Replace",
+  }),
+  applyDrop: (p: Placement) => {
+    if (p.kind === "paragraph-side") applied.push(p.paragraphId);
+    return true;
+  },
+} as unknown as DropSpec;
+vi.mock("../registry", () => ({
+  lookupSpec: () => dangerSpec,
+  MODULE_DROP_SPECS: [],
+}));
+
 import { act, cleanup, render } from "@testing-library/react";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
@@ -48,7 +73,7 @@ import {
   commitDropSession,
   setDropCtx,
 } from "../controller";
-import type { DropCtx, ParagraphAnchorApi, Placement } from "../types";
+import type { DropCtx, DropSpec, Placement } from "../types";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { __resetDialogStack } from "@/components/dialog-stack";
 
@@ -87,6 +112,7 @@ function flushFrames() {
 }
 
 beforeEach(() => {
+  applied.length = 0;
   mockPlacement = null;
   realRaf = window.requestAnimationFrame;
   realCaf = window.cancelAnimationFrame;
@@ -110,8 +136,6 @@ afterEach(() => {
 
 interface Harness {
   editor: Editor;
-  anchoredTo: string[];
-  removed: string[];
 }
 
 /** Mounts the REAL confirm dialog the DropModeProvider mounts, and hands the
@@ -124,17 +148,6 @@ function harness(): Harness {
     view: { dispatch: () => {}, focus: () => {} },
   } as unknown as Editor;
 
-  const anchoredTo: string[] = [];
-  const removed: string[] = [];
-  const notes: ParagraphAnchorApi = {
-    exists: () => true,
-    getAnchorTextObjectIds: () =>
-      anchoredTo.length ? [...anchoredTo] : ["OLD"],
-    addTextObjectLink: (_id, pid) => anchoredTo.push(pid),
-    removeTextObjectLink: (_id, pid) => removed.push(pid),
-    modeB: { policy: "release", release: () => null },
-  };
-
   let confirmFn: DropCtx["confirm"] | null = null;
   function Host() {
     const { confirm, dialog } = useConfirmDialog();
@@ -145,12 +158,11 @@ function harness(): Harness {
 
   const ctx: DropCtx = {
     mainEditor: editor,
-    notes,
     confirm: (opts: Parameters<NonNullable<DropCtx["confirm"]>>[0]) =>
       confirmFn!(opts),
   } as unknown as DropCtx;
   setDropCtx(ctx);
-  return { editor, anchoredTo, removed };
+  return { editor };
 }
 
 function sidePlacement(editor: Editor): Placement {
@@ -185,8 +197,8 @@ function pressKey(key: string) {
   });
 }
 
-describe("the re-anchor confirm answers to Return", () => {
-  it("DEFECT: focus never left the editor — Enter alone re-anchors the note", async () => {
+describe("a drop confirm answers to Return", () => {
+  it("DEFECT: focus never left the editor — Enter alone answers the cued default", async () => {
     const h = harness();
     expect(await startAndMove(sidePlacement(h.editor))).toBe(true);
 
@@ -202,13 +214,39 @@ describe("the re-anchor confirm answers to Return", () => {
     expect(document.activeElement).toBe(document.body);
 
     pressKey("Enter");
+    // Pre-389 Enter did nothing and this await never settled. A danger
+    // confirm cues CANCEL (task 386: a destruction is never one stray Enter
+    // away), so the answer Return gives is "no".
     await commit;
 
-    expect(h.anchoredTo).toEqual(["NEW"]);
-    expect(h.removed).toEqual(["OLD"]);
+    expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).toBeNull();
+    expect(applied).toEqual([]);
   });
 
-  it("Escape still declines the re-anchor and changes nothing", async () => {
+  it("the destructive button stays keyboard-reachable — Enter on it applies the drop", async () => {
+    const h = harness();
+    expect(await startAndMove(sidePlacement(h.editor))).toBe(true);
+
+    const commit = commitDropSession();
+    await act(async () => {});
+    flushFrames();
+
+    const replace = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Replace",
+    );
+    expect(replace).toBeTruthy();
+    act(() => replace!.focus());
+    act(() => {
+      replace!.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    await commit;
+
+    expect(applied).toEqual(["NEW"]);
+  });
+
+  it("Escape still declines the drop and changes nothing", async () => {
     const h = harness();
     expect(await startAndMove(sidePlacement(h.editor))).toBe(true);
 
@@ -219,7 +257,6 @@ describe("the re-anchor confirm answers to Return", () => {
     pressKey("Escape");
     await commit;
 
-    expect(h.anchoredTo).toEqual([]);
-    expect(h.removed).toEqual([]);
+    expect(applied).toEqual([]);
   });
 });

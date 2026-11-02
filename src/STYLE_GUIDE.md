@@ -2800,9 +2800,12 @@ external-change badge earned.
 
 **A confirm may be SUPPRESSIBLE — and which ones may be is a rule, not a
 per-caller choice** (task 492). A confirm that guards a *deliberate* and
-*reversible* gesture is pure friction once read: the re-anchor prompt raised at
-the end of a full margin-card drag, the "archiving removes this footnote's
-marker" notice. Those declare `suppressId` on the IMPERATIVE door
+*reversible* gesture is pure friction once read: the "archiving removes this
+footnote's marker" notice. (The first such prompt — "Re-anchor this note?" at
+the end of a margin-card drag — was DELETED rather than suppressed, task 1423:
+a reversible DROP asks nothing at all, and a drop may confirm only a
+`tone: "danger"` outcome, which is never suppressible. Before reaching for
+`suppressId`, ask whether the confirm should exist.) Those declare `suppressId` on the IMPERATIVE door
 (`useConfirmDialog().confirm({ … , suppressId })`), which renders one shared
 "Don't show this again" checkbox, persists the answer in
 `components/confirm-suppression.ts`, and — the half only the door can do —

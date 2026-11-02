@@ -149,7 +149,6 @@ function ctxWithNotes(api: ParagraphAnchorApi, editor: Editor): DropCtx {
 
 function noteSpec() {
   return textObjectSideReanchorSpec({
-    kindLabel: "note",
     getApi: (ctx) => ctx.notes,
   });
 }
@@ -345,7 +344,7 @@ describe("task 698 — a dragged cutter card releases its old Mode-B anchor; a h
     );
     expect(editor.getHTML()).toContain(anchorId);
 
-    textObjectSideReanchorSpec({ kindLabel: "comment", getApi: (ctx) => ctx.cutterCards })
+    textObjectSideReanchorSpec({ getApi: (ctx) => ctx.cutterCards })
       .applyDrop(
         paragraphSide("pnew"),
         buildFloatKey({ domain: "card", kind: "cutter-comment", id: "cc1" }),
@@ -381,7 +380,7 @@ describe("task 698 — a dragged cutter card releases its old Mode-B anchor; a h
       why: "a highlight IS its text range",
     });
 
-    textObjectSideReanchorSpec({ kindLabel: "highlight", getApi: (ctx) => ctx.highlights })
+    textObjectSideReanchorSpec({ getApi: (ctx) => ctx.highlights })
       .applyDrop(
         paragraphSide("pnew"),
         buildFloatKey({ domain: "card", kind: "highlight", id: "hl1" }),

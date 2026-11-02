@@ -14,7 +14,10 @@
  * Cancel leaves the doc untouched.
  *
  * Drives the REAL controller with `hit-test` mocked to a fixed placement and
- * the real notes re-anchor spec (the registry resolves it from the key).
+ * the real notes re-anchor spec (the registry resolves it from the key). Since
+ * task 1423 a re-anchor asks nothing, so the CONFIRM legs wrap that spec in the
+ * one confirm a drop may raise — a `tone: "danger"` one — leaving its real
+ * `applyDrop` behind the dialog (`withDangerConfirm`).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +46,29 @@ vi.mock("../hit-test", () => ({
     return id.startsWith("unminted@") ? "MINTED" : id;
   },
 }));
+
+/** When set, the registry's spec raises a danger confirm where it would
+ *  apply — the controller's confirm branch, with the real mutation behind it. */
+let withDangerConfirm = false;
+vi.mock("../registry", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../registry")>();
+  return {
+    ...real,
+    lookupSpec: (key: string) => {
+      const spec = real.lookupSpec(key);
+      if (!spec || !withDangerConfirm) return spec;
+      return {
+        ...spec,
+        classifyDrop: (...args: Parameters<typeof spec.classifyDrop>) => {
+          const d = spec.classifyDrop(...args);
+          return d.kind === "apply"
+            ? { kind: "confirm", tone: "danger", message: "Destroy it?" }
+            : d;
+        },
+      };
+    },
+  };
+});
 
 import type { Editor } from "@tiptap/react";
 import {
@@ -128,6 +154,7 @@ async function dragTo(editor: Editor, paragraphId: string) {
 beforeEach(() => {
   mockPlacement = null;
   mintCalls.length = 0;
+  withDangerConfirm = false;
 });
 afterEach(() => {
   cancelDropSession();
@@ -135,7 +162,8 @@ afterEach(() => {
 });
 
 describe("finishApply asks editability AT the commit (task 1402)", () => {
-  it("the pen flips while the re-anchor confirm is open → links unchanged, no flush", async () => {
+  it("the pen flips while a drop's confirm is open → links unchanged, no flush", async () => {
+    withDangerConfirm = true;
     const { editor, view } = makeEditor(true);
     const { added, removed, requestAnchorFlush } = setup({
       anchors: ["P_old"],
@@ -178,6 +206,7 @@ describe("finishApply asks editability AT the commit (task 1402)", () => {
 
 describe("mint-at-commit writes only once the drop will land (task 1402)", () => {
   it("Cancel on the confirm → nothing minted", async () => {
+    withDangerConfirm = true;
     const { editor } = makeEditor(true);
     const { added } = setup({
       anchors: ["P_old"],

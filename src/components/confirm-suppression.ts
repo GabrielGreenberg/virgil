@@ -9,10 +9,12 @@
  *
  *  - **archive-atom-marker** — "archiving this footnote removes its marker from
  *    your document". Reversible (unarchive returns the card).
- *  - **reanchor-margin-item** — "this note is anchored to a different paragraph.
- *    Re-anchor to this one?" raised at the end of a full drag, i.e. after the
- *    single most deliberate gesture in the app (Gabriel's report,
- *    2026-08-26).
+ *  - **reanchor-margin-item** (RETIRED, task 1423) — "this note is anchored to
+ *    a different paragraph. Re-anchor to this one?" raised at the end of a full
+ *    drag. Suppression papered over the real fault: a reversible MOVE should
+ *    never have asked. The dialog is gone (a drop spec may confirm only a
+ *    `tone: "danger"` drop — `drop-confirm-policy-census.test.ts`), so the id
+ *    is gone too; a stored copy is dropped on read (`readFromStorage`).
  *
  * The first grew its OWN answer: a `suppressArchiveAtomWarning` field on
  * `ViewPrefs`, a hand-authored `<input type="checkbox">` inside one dialog's
@@ -54,15 +56,12 @@ import { subscribeToStorageKey } from "@/lib/cross-window-storage";
  * Every confirm that may be suppressed. A CLOSED union — adding one is a
  * declaration here plus a `suppressId` at the producer, and nothing else.
  */
-export type SuppressibleConfirmId =
-  | "reanchor-margin-item"
-  | "archive-atom-marker";
+export type SuppressibleConfirmId = "archive-atom-marker";
 
 /** Human names for the restore row. A `Record` over the union, so a new id
  *  cannot ship without one. */
 export const SUPPRESSIBLE_CONFIRM_LABELS: Record<SuppressibleConfirmId, string> =
   {
-    "reanchor-margin-item": "Re-anchor a margin item to a different paragraph",
     "archive-atom-marker": "Archive a footnote or citation card",
   };
 

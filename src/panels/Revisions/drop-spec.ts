@@ -10,6 +10,5 @@
 import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
 export const revisionDropSpec = textObjectSideReanchorSpec({
-  kindLabel: "revision",
   getApi: (ctx) => ctx.revisions,
 });

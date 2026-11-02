@@ -6,6 +6,5 @@
 import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
 export const archiveDropSpec = textObjectSideReanchorSpec({
-  kindLabel: "archive snippet",
   getApi: (ctx) => ctx.archive,
 });
