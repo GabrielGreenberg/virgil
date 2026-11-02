@@ -85,6 +85,7 @@ from _common import (
     is_virtual_request_id,
     DevHomeUnresolved,
     atomic_write,
+    canonical_skill_name,
     dev_mode_enabled,
     die,
     is_sync_conflict_name,
@@ -93,6 +94,7 @@ from _common import (
     resolve_doc,
     sidecar,
     source_repo_root,
+    unknown_skill_reason,
 )
 
 
@@ -666,6 +668,14 @@ def main(argv: list[str]) -> int:
     if not dev_mode_enabled():
         print("reflect: DEV mode off (no VIRGIL_DEV, no <repo>/editor/dev/dev-mode marker) — no memo written.")
         return 0
+
+    # One spelling for every reader below — the sha lookups, the memo path,
+    # `_DECISION_EXECUTOR_SKILLS`, `_find_existing` (task 1427). A name that is
+    # no skill refuses here rather than filing a memo nothing can attribute.
+    a.skill = canonical_skill_name(a.skill)
+    reason = unknown_skill_reason(a.skill)
+    if reason:
+        die(reason)
 
     doc = resolve_doc(a.doc)
     memo = _load_memo_json(a.memo_json)

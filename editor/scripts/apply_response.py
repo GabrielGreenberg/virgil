@@ -2149,6 +2149,10 @@ _KIND_SKILL = {
     "report": "answer-report-request", "report-request": "answer-report-request",
     "suggestion": "draft-suggestion", "revision-suggestion": "draft-suggestion",
     "bib-review": "answer-bib-review",
+    # A highlight Task is answered by the note responder (task 1427): every
+    # value here must be a real `editor/skills/<name>.md`, or the reflection
+    # name door refuses the memo.
+    "highlight": "answer-note-request", "style-merge": "style-merge",
 }
 # Source-card panel → responder skill. Names the answer-* skill for a card-flag
 # reply (a `virtual:<panel>:<cardId>` id carries no kind) and disambiguates a

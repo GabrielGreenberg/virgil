@@ -118,12 +118,19 @@ with `/loop /editor/review`.
    bounded. Pass through the request's full row from the JSONL as
    context to the subagent prompt.
 
-   **Reflection (DEV mode) — enforced here.** If `VIRGIL_DEV=1`, then after
-   each dispatched subskill returns (success *or* failure), reflect on it:
+   **Reflection (DEV mode) — enforced here.** After each dispatched subskill
+   returns (success *or* failure), reflect on it — always; do not pre-check
+   an environment variable yourself (the script owns the DEV gate):
 
    ```bash
    python3 editor/scripts/reflect.py <docPath> <subskill> <taskId>
    ```
+
+   `<subskill>` is the skill's bare name — `draft-footnote`, not the
+   `/editor/draft-footnote` route spelling in the table above (the script
+   folds either spelling to the bare name, and refuses a name with no
+   `editor/skills/<name>.md`). One call per request id; a style-merge run
+   that handled several pending requests reflects once per id.
 
    This is the umbrella **enforcing** the one editor/AGENTS.md reflection
    convention for every subskill it dispatches — it makes "every skill reflects"
@@ -131,8 +138,9 @@ with `/loop /editor/review`.
    the subagent surfaced concrete friction or a `Done:` line, pass it through
    `--memo-json` (see `/editor/reflect`, a maintainer-only skill that ships
    nowhere but the repo); a bare call still writes a
-   correctly-classified memo from the Task's `result`. The script no-ops when
-   `VIRGIL_DEV` is unset, so this line is inert in a normal or end-user session
+   correctly-classified memo from the Task's `result`. The script no-ops
+   unless DEV mode is on — `VIRGIL_DEV=1`, OR the `<repo>/editor/dev/dev-mode`
+   marker file exists — so this line is inert in a normal or end-user session
    — leave it in unconditionally.
 
    **Safety level + outcome.** A Task may carry a `safetyLevel` (1/2/3). The
