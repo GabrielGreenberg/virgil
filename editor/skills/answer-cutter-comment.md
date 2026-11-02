@@ -154,5 +154,11 @@ writer's `noop: true` is the belt — never a `status` test of your own.
   paraphrase.
 - Empty `suggested_text` means "cut entirely" — fine if the comment
   asks for a cut, otherwise propose a replacement (accept deletes the span).
+- **Markers are conserved** (task 1426, [_latex-allowlist.md](_latex-allowlist.md)):
+  a replacement carries every `\vcid{…}` / `\vfid{…}` / `\vlid{…}`…`\vlidend{…}`
+  in `original_text` through verbatim and adds none. A whole cut may take a
+  citation (with its atom) or a range lying wholly inside it, but **never a
+  footnote** — a cut over `\vfid{…}\footnote{…}` is refused (it would delete
+  the footnote's prose); end the cut before it, or ask the user.
 - Never edit the source comment in place, and never edit the `.tex` here — the
   document changes only when the user accepts the proposal.

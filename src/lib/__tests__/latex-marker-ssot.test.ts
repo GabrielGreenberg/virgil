@@ -28,8 +28,8 @@
 //   2. CANARY      — the needle demonstrably fires, on a synthetic source and
 //                    on the pre-fix form; plus a stripper swallow self-check.
 //   3. SHIM WIRING — every marker has a preamble `\providecommand`, in order.
-//   4. INLINE SET  — the serializer's reparse guard is the inline-tex subset,
-//                    facet-derived, and refuses/admits exactly those.
+//   4. CONSERVATION — the suggestion-splice predicate (task 1426) sees every
+//                    marker the vocabulary declares.
 //   5. ROUND TRIP  — per marker, through the REAL parser + serializer, keyed
 //                    on the id union so a new marker is a COMPILE error until
 //                    someone states how it survives a save/reload.
@@ -39,21 +39,16 @@ import path from "node:path";
 import { commentsStripped, trackedFiles } from "./_source-scan";
 import {
   ALL_VIRGIL_MARKERS,
-  BLOCK_TEX_MARKERS,
   emitMarker,
-  INLINE_TEX_MARKERS,
   markerArgStart,
+  markerConservationViolation,
   markerOpensAt,
   VIRGIL_MARKER_COMMANDS,
   VIRGIL_MARKERS,
   type VirgilMarkerId,
 } from "@/lib/latex-markers";
 import { buildPreamble, SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
-import {
-  containsInternalMarker,
-  INTERNAL_MARKER_COMMANDS,
-  serializeBodyOnly,
-} from "@/lib/latex-serializer";
+import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { parseLatex } from "@/lib/latex-parser";
 import type { JSONContent } from "@tiptap/react";
 import {
@@ -273,33 +268,25 @@ describe("marker vocabulary — shim wiring (leg 3)", () => {
   });
 });
 
-describe("marker vocabulary — inline reparse guard (leg 4)", () => {
-  it("the guard set is the inline-tex subset, derived from the facets", () => {
-    expect([...INTERNAL_MARKER_COMMANDS]).toEqual(INLINE_TEX_MARKERS.map((m) => m.command));
-    expect(INTERNAL_MARKER_COMMANDS).toContain("vlid");
-    expect(INTERNAL_MARKER_COMMANDS).toContain("vfid");
-  });
-
-  it("longest-first, so `\\vlidend` can never be matched as `\\vlid`", () => {
-    const lens = INLINE_TEX_MARKERS.map((m) => m.command.length);
-    expect([...lens].sort((a, b) => b - a)).toEqual(lens);
-  });
-
-  it("refuses text carrying any inline marker", () => {
-    for (const m of INLINE_TEX_MARKERS) {
-      expect(containsInternalMarker(`before ${emitMarker(m, "ab12")} after`), m.command).toBe(
-        true,
-      );
+describe("marker vocabulary — conservation reads the whole vocabulary (leg 4)", () => {
+  // Task 1426 retired `containsInternalMarker` (refuse ANY inline marker in a
+  // suggestion's replacement) for marker CONSERVATION. Its shared golden
+  // corpus lives in marker-conservation-parity.test.ts; this leg pins only
+  // that the predicate sees every marker the vocabulary declares.
+  it("a replacement adding any marker the match lacks is refused as introduced", () => {
+    for (const m of ALL_VIRGIL_MARKERS) {
+      expect(
+        markerConservationViolation("plain", `plain ${emitMarker(m, "ab12")}`, { wholeCut: false }),
+        m.command,
+      ).toEqual({ rule: "introduced", command: m.command, id: "ab12" });
     }
   });
 
-  it("admits block/bib markers — deliberately, and this pins that choice", () => {
-    // The guard protects a splice into INLINE content, which is the only place
-    // these could mint a phantom atom. A `\vexid` in a suggestion body is inert
-    // text. Stated here so a future reader sees a decision, not an omission.
-    for (const m of [...BLOCK_TEX_MARKERS, VIRGIL_MARKERS.bibEntry]) {
-      expect(containsInternalMarker(emitMarker(m, "ab12")), m.command).toBe(false);
-    }
+  it("`\\vlidend{x}` is never read as `\\vlid`", () => {
+    const close = emitMarker(VIRGIL_MARKERS.linkedRangeClose, "x");
+    expect(markerConservationViolation(close, close, { wholeCut: false })).toBeNull();
+    expect(markerConservationViolation(close, emitMarker(VIRGIL_MARKERS.linkedRangeOpen, "x"), { wholeCut: false }))
+      .toMatchObject({ rule: "introduced", command: "vlid" });
   });
 });
 

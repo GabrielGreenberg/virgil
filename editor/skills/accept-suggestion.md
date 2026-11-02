@@ -115,8 +115,14 @@ transaction — never hand-assemble a `texEdit` here.
   into "Your text" — accepting it untyped would DELETE the passage, so the op
   refuses with "No replacement text yet — this suggestion has nothing to put in
   the paper." (the app's own Apply/Accept wording; the family rule is
-  `card_tables.json` → `suggestionLanding`). The op refuses these with a clear
-  reason and writes nothing — `.tex`, card and Task untouched.
+  `card_tables.json` → `suggestionLanding`); and a replacement that does not
+  **conserve the span's identity markers** (task 1426): every `\vcid{…}` /
+  `\vfid{…}` / `\vlid{…}`…`\vlidend{…}` in `original_text` must reappear in
+  the replacement, verbatim, and none may be added — else accepting would
+  detach a citation card or delete a footnote's prose. A whole Cutter cut may
+  drop a citation (with its atom) or another card's range lying wholly inside
+  it, never a footnote. The refusal names the marker. The op refuses these with
+  a clear reason and writes nothing — `.tex`, card and Task untouched.
 
 > **This skill OWNS the `status` transition.** `edit-card` refuses
 > `--field status=…` on a suggestion by name (`apply_response.OP_OWNED_FIELDS`),

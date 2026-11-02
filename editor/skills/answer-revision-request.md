@@ -128,7 +128,9 @@ source request in place.
    # /editor/accept-suggestion (a --range anchor still lands —
    # _safety-levels.md). `original_text` must be verbatim from the
    # anchored paragraph (never the %!v: marker) or NOTHING lands — the same
-   # question accept's stale guard asks; an empty replacement is refused too.
+   # question accept's stale guard asks; an empty replacement is refused too,
+   # and so is one that does not carry every \vcid/\vfid/\vlid marker of
+   # `original_text` through verbatim (task 1426, _latex-allowlist.md).
    cat > "$t/original" <<'TXT'
    <the span, verbatim from the .tex>
    TXT

@@ -340,7 +340,11 @@ describe("applyPendingChange — replace mode", () => {
         anchorId: ANCHOR_ID,
         family: "revision-suggestion",
       });
-      expect(res).toEqual({ ok: false, reason: "stale" });
+      expect(res).toEqual({
+        ok: false,
+        reason: "stale",
+        markerViolation: { rule: "introduced", command: "vlid", id: ANCHOR_ID },
+      });
       // Doc byte-unchanged: no splice happened.
       expect(paraInline(editor, PARA_UUID)).toBe(before);
       // No linkedAnchor mark (phantom or otherwise) was produced.
@@ -368,11 +372,116 @@ describe("applyPendingChange — replace mode", () => {
         anchorId: ANCHOR_ID,
         family: "revision-suggestion",
       });
-      expect(res).toEqual({ ok: false, reason: "stale" });
+      expect(res).toEqual({
+        ok: false,
+        reason: "stale",
+        markerViolation: { rule: "introduced", command: "vcid", id: "c1" },
+      });
       expect(paraInline(editor, PARA_UUID)).toBe(before);
       expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
       // No new citation atom materialized in the doc.
       expect(countNodeType(editor, "citation")).toBe(citesBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("APPLIES a rewrite that carries the matched span's \\vcid through (task 1426, 3e)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      // The doctrine case `_latex-allowlist.md` prescribes: the AI rewrites a
+      // cited sentence and carries `\vcid{c1}` verbatim. The same atom
+      // re-lands — no phantom — so it applies instead of landing stale.
+      const citesBefore = countNodeType(editor, "citation");
+      const res = applyPendingChange(editor, {
+        anchorUuid: CITE_PARA_UUID,
+        originalText: "See also \\vcid{c1}\\citet{foo} for details.",
+        replacement: "For details, see \\vcid{c1}\\citet{foo}.",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+      });
+      expect(res.ok).toBe(true);
+      expect(countNodeType(editor, "citation")).toBe(citesBefore);
+      const after = paraInline(editor, CITE_PARA_UUID);
+      expect(after).toContain("\\vcid{c1}\\citet{foo}");
+      expect(after.split("\\vcid{c1}").length - 1).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a rewrite that DROPS the matched span's \\vcid → stale, untouched (3f)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const before = paraInline(editor, CITE_PARA_UUID);
+      const res = applyPendingChange(editor, {
+        anchorUuid: CITE_PARA_UUID,
+        originalText: "See also \\vcid{c1}\\citet{foo} for details.",
+        replacement: "See also \\citet{foo} for details.",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+      });
+      expect(res).toEqual({
+        ok: false,
+        reason: "stale",
+        markerViolation: { rule: "dropped", command: "vcid", id: "c1" },
+      });
+      expect(paraInline(editor, CITE_PARA_UUID)).toBe(before);
+      expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a HUMAN's own replacement may leave the citation out (task 1426's human half, 3h)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const res = applyPendingChange(editor, {
+        anchorUuid: CITE_PARA_UUID,
+        originalText: "See also \\vcid{c1}\\citet{foo} for details.",
+        replacement: "See the details.",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+        replacementAuthor: "human",
+      });
+      expect(res.ok).toBe(true);
+      expect(countNodeType(editor, "citation")).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a whole cut may take the citation with it, but not leave its atom behind (3g)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const before = paraInline(editor, CITE_PARA_UUID);
+      const left = applyPendingChange(editor, {
+        anchorUuid: CITE_PARA_UUID,
+        originalText: "See also \\vcid{c1}",
+        replacement: "",
+        mode: "delete",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "cutter-suggestion",
+      });
+      expect(left).toMatchObject({ ok: false, markerViolation: { rule: "atom-left" } });
+      expect(paraInline(editor, CITE_PARA_UUID)).toBe(before);
+      const whole = applyPendingChange(editor, {
+        anchorUuid: CITE_PARA_UUID,
+        originalText: "See also \\vcid{c1}\\citet{foo} for",
+        replacement: "",
+        mode: "delete",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "cutter-suggestion",
+      });
+      expect(whole.ok).toBe(true);
     } finally {
       cleanup();
     }

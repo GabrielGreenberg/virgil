@@ -25,13 +25,18 @@
  * `\vlid{…}` markers, an `originalText` that was clipped mid-marker can't match
  * verbatim — so the stale guard ALSO naturally refuses a marker-straddling span.
  *
- * That protects the READ span. The WRITE span is guarded symmetrically: a
- * `replacement` is refused (same `{ ok:false, reason:"stale" }`, doc untouched)
- * when it CONTAINS any internal marker token (`containsInternalMarker`), because
- * concatenating one into the paragraph serialization and reparsing it would mint
- * a phantom `linkedAnchor` / citation / footnote atom that no card owns. Both
- * sides of the splice thus refuse suspicious marker text — the applicator only
- * ever reparses marker text it emitted itself.
+ * That protects the READ span. The WRITE span is guarded by MARKER
+ * CONSERVATION (task 1426, `markerConservationViolation` in latex-markers.ts —
+ * the same predicate the script's propose and accept doors ask): the
+ * replacement must carry exactly the marker calls the MATCHED span held. A
+ * rewrite of a cited sentence carries its `\vcid{…}` through verbatim (the
+ * skill doctrine) and so re-lands the SAME atom it removed — no phantom. A
+ * marker the match did not hold (a new id, or one more copy of an id) would mint
+ * a `linkedAnchor` / citation / footnote no card owns, and a marker the
+ * replacement drops would detach the card it anchors; both are refused (same
+ * `{ ok:false, reason:"stale" }`, doc untouched, plus the violation). Until 1426
+ * this side refused ANY marker, so every doctrine-compliant rewrite of a cited
+ * sentence landed `stale` on arrival.
  *
  * REUSE, don't reinvent: `findNodeByUuid` + `editStructuredNodeByUuid`
  * (structural-edit.ts) address + replace the paragraph by uuid;
@@ -46,10 +51,12 @@ import {
   findNodeByUuid,
   editStructuredNodeByUuid,
 } from "@/lib/tiptap/structural-edit";
+import { serializeParagraphInline } from "@/lib/latex-serializer";
 import {
-  serializeParagraphInline,
-  containsInternalMarker,
-} from "@/lib/latex-serializer";
+  markerConservationViolation,
+  describeMarkerViolation,
+  type MarkerConservationViolation,
+} from "@/lib/latex-markers";
 import {
   parseInlineContent,
   applyLinkedAnchorBoundaries,
@@ -95,6 +102,10 @@ export interface ApplyArgs {
    *  so a cutter pending mark tokens `cutter-suggestion:<id>`, not the
    *  kind-folded `revision-suggestion:<id>`. */
   family: PendingChangeFamily;
+  /** Who wrote `replacement` (`replacementAuthor`, task 1426). A human's own
+   *  text is held only to adding no marker; an AI's must also carry every
+   *  marker of the matched span through. Omitted = `"ai"`, the strict rule. */
+  replacementAuthor?: "human" | "ai";
 }
 
 export type ApplyResult =
@@ -109,7 +120,14 @@ export type ApplyResult =
        *  would put different bytes back than the ones taken out. */
       originalText: string;
     }
-  | { ok: false; reason: "stale" };
+  | {
+      ok: false;
+      reason: "stale";
+      /** Set when the span was found but the replacement fails marker
+       *  conservation (task 1426) — what to tell the user instead of a bare
+       *  "stale". Absent on a verbatim miss. */
+      markerViolation?: MarkerConservationViolation;
+    };
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change. */
 const PENDING_KIND = PENDING_AI_CHANGE_KIND;
@@ -434,26 +452,30 @@ export function insertParagraphAfter(
  *
  * Returns `{ ok:false, reason:"stale" }` WITHOUT touching the doc when
  * `originalText` isn't present verbatim (also covers a marker-straddling span),
- * or when `replacement` carries an internal marker token (the write-side mirror
- * of that guard — it would reparse into a phantom anchor / atom).
+ * or — with `markerViolation` set — when `replacement` does not conserve the
+ * matched span's identity markers (task 1426; see the module header).
  */
 export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult {
   const { anchorUuid, originalText, replacement, mode, cardId, anchorId, family } =
     args;
 
-  // Write-side mirror of the `originalText` verbatim guard: refuse a
-  // `replacement` that embeds any internal Virgil marker (`\vlid` / `\vlidend`
-  // / `\vcid` / `\vfid`). Splicing it into the serialized paragraph and
-  // reparsing would mint a phantom `linkedAnchor` / citation / footnote atom no
-  // card owns (a `\vlid{id}` reusing a colocated anchor's id even splits its
-  // range into two marks Keep/Revert can't fully unset). A well-behaved
-  // suggestion never emits these — so a marker-bearing one lands as `stale`,
-  // the correct non-destructive outcome. Trivially passes for a delete
-  // (replacement === ""), but guarded unconditionally so both verbs are safe.
-  if (containsInternalMarker(replacement)) return { ok: false, reason: "stale" };
-
   const located = locateSpan(editor, anchorUuid, originalText);
   if (!located) return { ok: false, reason: "stale" };
+
+  // Marker conservation, asked of the bytes ACTUALLY being replaced
+  // (`located.match` — on the repair rung that is the re-cut LaTeX, not the
+  // card's flattened string). A delete is a whole cut: the caller chose
+  // `delete` only for a family where an empty replacement means one.
+  const markerViolation = markerConservationViolation(located.match, replacement, {
+    wholeCut: mode === "delete",
+    humanAuthored: args.replacementAuthor === "human",
+  });
+  if (markerViolation) {
+    console.warn(
+      `[apply-suggestion] refused card ${cardId}: ${describeMarkerViolation(markerViolation)}`,
+    );
+    return { ok: false, reason: "stale", markerViolation };
+  }
 
   if (mode === "delete") {
     // No text mutation — stamp the blue mark over the ORIGINAL region so the

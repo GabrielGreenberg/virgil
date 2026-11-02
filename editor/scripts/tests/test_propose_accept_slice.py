@@ -110,6 +110,11 @@ def live_first_sentence(doc, anchor):
     excluded (draft-suggestion.md step 2)."""
     para = json.loads(run(GETPARA, str(doc), anchor).stdout)["paragraph"]
     para = re.sub(r"\s*%!v:[0-9a-f]{4}\s*$", "", para).strip()
+    # The anchored region runs back to the previous %!v: marker, so it can open
+    # with an unanchored block (5505's is the whole \vexid{ee03} example) —
+    # take the paragraph proper. Before task 1426 this fixture's "first
+    # sentence" swallowed that example and accept silently deleted it.
+    para = para.split("\n\n")[-1].strip()
     m = re.search(r"^.*?\.(?=\s|$)", para, re.S)
     return (m.group(0) if m else para).strip()
 

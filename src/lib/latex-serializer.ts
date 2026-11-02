@@ -14,11 +14,7 @@ import {
   COLLAPSIBLE_NODE_TYPES,
   deferringParent,
 } from "@/lib/node-attr-sets";
-import {
-  emitMarker,
-  INLINE_TEX_MARKERS,
-  VIRGIL_MARKERS,
-} from "@/lib/latex-markers";
+import { emitMarker, VIRGIL_MARKERS } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
 import { commentBodyForEmit } from "@/lib/latex-comment-body";
 import { graphicsCommandEnd } from "@/lib/figures/parse-attrs";
@@ -1461,43 +1457,6 @@ function serializeExampleGloss(node: JSONContent): string {
     }
   }
   return `\\begingl${optStr}\n${preambleStr}${lines.join("\n")}\n\\endgl\n`;
-}
-
-/**
- * The internal Virgil marker commands the serializer emits inline to round-trip
- * structure that has no LaTeX of its own: linked-anchor range boundaries
- * (`\vlid` / `\vlidend`, {@link serializeInlineSequence}), citation ids
- * (`\vcid`) and footnote ids (`\vfid`) (the atom emit sites at :360/:376 and
- * :665/:671). These are NOT real LaTeX — they are private sentinels the parser
- * (`parseInlineContent` / `applyLinkedAnchorBoundaries`) reads back to
- * re-materialize anchors + atoms.
- *
- * DERIVED, not listed: the set is every marker in the vocabulary SSOT
- * ([latex-markers.ts](latex-markers.ts)) whose `file` is the `.tex` and whose
- * `position` is `inline` — the two facets that decide the question, so a
- * future inline marker joins this guard by declaring itself rather than by
- * someone remembering this file. (`\vexid`/`\vxid` are block-position and
- * `\vbid` lives in the `.bib`, so none of them is emitted into the inline
- * stream this guard protects.) Longest-first so the regex alternation matches
- * `\vlidend` before its `\vlid` prefix.
- */
-export const INTERNAL_MARKER_COMMANDS: readonly string[] =
-  INLINE_TEX_MARKERS.map((m) => m.command);
-
-const INTERNAL_MARKER_REGEX = new RegExp(
-  `\\\\(?:${INTERNAL_MARKER_COMMANDS.join("|")})\\b`,
-);
-
-/**
- * True if `text` contains any internal Virgil marker command
- * (`\vlid` / `\vlidend` / `\vcid` / `\vfid`). Used to refuse REPARSING
- * untrusted text (e.g. a suggestion's `replacement`): concatenating a marker
- * into a paragraph's serialized inline LaTeX and reparsing it would mint a
- * phantom `linkedAnchor` / citation / footnote atom that no card owns — the
- * write-side mirror of the applicator's `originalText` verbatim guard.
- */
-export function containsInternalMarker(text: string): boolean {
-  return INTERNAL_MARKER_REGEX.test(text);
 }
 
 /**
