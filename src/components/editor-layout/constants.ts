@@ -14,8 +14,32 @@ export const FLOATING_PANEL_VIEWPORT_MARGIN = 40;
 /** Per-panel diagonal offset so stacked floats don't overlap exactly. */
 export const FLOATING_PANEL_STACK_OFFSET = 24;
 
-/** Base z-index for floating panels; each subsequent panel adds 1. */
+/** Base z-index for FLOATING (undocked) panels; each subsequent panel adds 1.
+ *  A DOCKED pod never carries it — see the band-frame ladder below. */
 export const FLOATING_PANEL_Z_BASE = 1000;
+
+// ───────────────────────────────────────────────────────────────────────────
+// The band-frame z ladder (task 1416)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Inside the column's sticky band frame (`panel-column.tsx`, itself `z: 30` ⇒
+// its own stacking context — the outer rung of the omni-bin-slot.ts ladder),
+// every child is ordered by THESE rungs, stated once:
+//
+//   docked pod  0  <  bin slot  20  <  resize grips (BandDivider, bottom seam)  25
+//
+// A docked pod used to carry the floating-window rung (1000+i) into this local
+// ladder, where it outranked every chrome element the frame states — so both
+// pods painted over the BandDivider's --gutter-grab overhang and the reachable
+// grab was the divider's painted 10px gap, not its 18px grab. A pod still
+// takes a rung (0, not auto) so it stays its own stacking context: its sticky
+// caps' local z's cannot leak out over a grip. The grips sit above the bin
+// slot too, so the bottom seam's grab-end overhang wins the bins' top edge.
+// "A gutter PAINTS at its own thickness but GRABS at no less than
+// --gutter-grab" (task 1241) is then true at every seam the frame holds.
+export const DOCKED_POD_Z = 0;
+export const OMNI_BIN_SLOT_Z = 20;
+export const BAND_GRIP_Z = 25;
 
 // ───────────────────────────────────────────────────────────────────────────
 // Right-margin geometry SSOT (backlog #8)

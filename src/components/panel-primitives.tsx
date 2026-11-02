@@ -24,6 +24,7 @@
 import { type ReactNode, type RefObject, type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
+import { BAND_GRIP_Z } from "@/components/editor-layout/constants";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize/layout-gesture-park";
 import { LAYOUT_SITE_CARD_HEADER } from "@/lib/layout-gesture-probe";
 import {
@@ -3745,12 +3746,14 @@ export function BandDivider({
   return (
     <div
       data-band-divider={side}
-      className="relative shrink-0 z-10"
+      className="relative shrink-0"
       // pointer-events:auto — the stack frame sits inside the column's
       // pointer-events:none pass-through overlay (Layer B); re-enable it
       // here or a real mouse can't grab the divider (only synthetic
       // dispatch, which bypasses hit-testing, could).
-      style={{ height: 'var(--pod-gap)', pointerEvents: 'auto' }}
+      // zIndex: the band-frame ladder's GRIP rung, above both pods it sits
+      // between, so its --gutter-grab overhang is reachable (task 1416).
+      style={{ height: 'var(--pod-gap)', pointerEvents: 'auto', zIndex: BAND_GRIP_Z }}
     >
       {/* Drag gap — the shared grip pill (band-grip): hidden at rest,
           `--drag-highlight` on hover/drag (STYLE_GUIDE "Resize gutters"). */}

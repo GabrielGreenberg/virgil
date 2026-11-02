@@ -30,7 +30,10 @@
  * The z ladder, stated once: a pinned cascade card is `10`; the bin slot is
  * `20` (above any card anchored to the first paragraph, as before); a docked
  * band frame is `30` — and the bins sit INSIDE that frame when one is docked,
- * so the ladder never has to decide between them.
+ * so the ladder never has to decide between them. Inside the frame a second,
+ * local ladder orders its children (stated in `constants.ts`, task 1416):
+ * docked pod 0 < bin slot 20 < resize grips 25 — a docked pod never carries
+ * the floating-window rung.
  *
  * The context is `null` where no column hosts the omni view (unit fixtures,
  * any future bare mount). `OmniViewPanel` then keeps the bins inside the pod,
