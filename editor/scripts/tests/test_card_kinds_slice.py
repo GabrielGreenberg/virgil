@@ -367,8 +367,20 @@ check("aiOriginRequestId" not in new, "virtual-id note carries NO aiOriginReques
 check(len(load(sb, "ai-requests.json")["requests"]) == n_reqs_before, "ai-requests.json untouched (no Task row for a virtual id)")
 check(out_of(r).get("requestId") == f"virtual:notes:{src_id}", "result echoes the virtual requestId")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped on the virtual create")
-check(run(CREATE, str(sb), f"virtual:notes:{src_id}", "--kind=note", "--body", "x").returncode != 0,
-      "virtual id with no --anchor is refused (anchor comes from the source card)")
+# Task 1418: a virtual id with no --anchor inherits the SOURCE card's own
+# paragraph (CardLocator) — and the flag is already down here, so the re-run is
+# the idempotent no-op (task 1234), not a second sibling.
+r = run(CREATE, str(sb), f"virtual:notes:{src_id}", "--kind=note", "--body", "x")
+check(r.returncode == 0 and out_of(r).get("noop") is True,
+      f"re-run on an answered virtual id with no --anchor is the no-op (stderr={r.stderr.strip()[:140]})")
+# A flagged source card that names NO live paragraph still refuses rather than guessing.
+ns = json.loads(notes_path.read_text())
+orphan = dict(ns["cards"][0], id="orph", aiRequest=True, links=[])
+ns["cards"].append(orphan)
+notes_path.write_text(json.dumps(ns, indent=2) + "\n")
+r = run(CREATE, str(sb), "virtual:notes:orph", "--kind=note", "--body", "x")
+check(r.returncode != 0 and "--anchor" in r.stderr,
+      "virtual id whose source card names no paragraph, with no --anchor, is refused")
 
 
 # ---------------------------------------------------------------- cross-kind answer: todo Task → note (chip 11)

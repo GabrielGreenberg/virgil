@@ -47,7 +47,7 @@ import json
 import sys
 
 from _common import (
-    card_paragraph_ids,
+    CardLocator,
     card_text_anchor,
     die,
     is_request_open,
@@ -227,12 +227,12 @@ _STORAGE_ROWS: dict[str, dict] = {
         "match": ("kind", ("report-request",), False), "summary": (("text", False),),
     },
     # #55b: footnotes' flag lives in footnotes.json (FootnoteRef.aiRequest); the
-    # body is rich JSONContent and they carry no `links` array, so the anchor
-    # can't come from card_paragraph_ids (it lives in the .tex `\footnote`
-    # position). A footnote AI request is ALWAYS bridged on toggle WITH
-    # paragraphIds; this fallback exists ONLY for the bridge-write-failure case,
-    # so the request still surfaces (paragraphIds may be empty in that degraded
-    # case — the skill then re-derives an anchor rather than losing the request).
+    # body is rich JSONContent and they carry no `links` array — the paragraph
+    # is the one holding the `\vfid{}` marker, which `_CardIndex.locator`
+    # (`_common.CardLocator`, task 1418) reads. A footnote AI request is
+    # normally bridged on toggle WITH paragraphIds; this fallback covers the
+    # bridge-write-failure case, so the request still surfaces at its marker's
+    # paragraph.
     "footnote": {
         "panel": "footnotes",
         "match": None, "summary": (("content", True),),
@@ -297,6 +297,9 @@ class _CardIndex:
     def __init__(self, doc):
         self.doc = doc
         self._files: dict[str, dict | None] = {}
+        # "Which paragraph?" for every card the drain reads — links, or the
+        # .tex marker for a footnote (one .tex read per drain; task 1418).
+        self.locator = CardLocator(doc)
 
     def state(self, filename: str):
         if filename not in self._files:
@@ -358,7 +361,8 @@ def project_task_row(index: "_CardIndex", row: dict) -> dict:
     flag toggle / morph) — never when the user MOVES the card to another
     paragraph or re-pins its span. The linked card is the SSOT for all three,
     read exactly as the unbridged fallback reads a virtual row
-    (`card_paragraph_ids`, live links only; `selectedText` or the Mode-B
+    (`CardLocator.paragraph_ids` — live links, or a footnote's .tex marker, so
+    a footnote moved to another paragraph refreshes too; `selectedText` or the Mode-B
     snapshot). The stored values are the fallback only when the link does not
     resolve (the card is gone) — or, for `paragraphIds`, when the card holds no
     live anchor."""
@@ -370,8 +374,9 @@ def project_task_row(index: "_CardIndex", row: dict) -> dict:
     }
     hit = index.linked_card(row.get("kind"), row.get("linkedTo"))
     if hit is not None:
-        card = hit[0]
-        out["paragraphIds"] = card_paragraph_ids(card) or out["paragraphIds"]
+        card, adapter = hit
+        out["paragraphIds"] = (index.locator.paragraph_ids(card, adapter["panel"])
+                               or out["paragraphIds"])
         out["selectedText"] = card.get("selectedText") or card_text_anchor(card)
     return out
 
@@ -422,7 +427,7 @@ def list_unbridged_card_flags(
                     "kind": wire_kind,
                     "id": f"virtual:{panel}:{cid}",
                     "text": summary or f"<{panel} card>",
-                    "paragraphIds": card_paragraph_ids(c),
+                    "paragraphIds": index.locator.paragraph_ids(c, adapter["panel"]),
                     "selectedText": c.get("selectedText") or card_text_anchor(c),
                     "linkedTo": {"panel": panel, "cardId": cid},
                     "extra": {"createdAt": c.get("createdAt")},

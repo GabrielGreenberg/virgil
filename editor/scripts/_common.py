@@ -450,6 +450,58 @@ def marker_paragraph_ids(text: str, command: str) -> dict[str, str]:
     return out
 
 
+# Panels whose cards are anchored by an atom MARKER in the .tex rather than a
+# `links` array: the card id equals the marker id, and the card sits in whatever
+# paragraph holds the marker (`marker_paragraph_ids`). Every other card panel is
+# link-anchored (`card_paragraph_ids`). Re-exported by card_by_id;
+# test_cards_for_paragraph.py pins it against ALL_CARD_SIDECARS,
+# ATOM_BEARING_PANELS and VIRGIL_MARKER_COMMANDS.
+MARKER_ANCHORED_PANELS = {
+    "footnotes": "vfid",
+    "citations": "vcid",
+    "examples": "vexid",
+}
+
+
+class CardLocator:
+    """"Which paragraph does this card live in?" — the ONE answer for every
+    script (task 1418). A link-anchored card names its paragraph in `links`
+    (`card_paragraph_ids`); a marker-anchored card (MARKER_ANCHORED_PANELS —
+    footnote / citation / example) carries no `links`, so its paragraph is the
+    one holding its `\\vfid{}` / `\\vcid{}` / `\\vexid{}` marker in the .tex
+    (`marker_paragraph_ids`). Asking only the links half returned `[]` for
+    every footnote — the drain's virtual rows, a bridged row's live refresh,
+    and the create door's source-card inheritance all went blind.
+
+    The .tex is read lazily, at most once per locator (a drain or a create
+    holds one). A paper with no .tex locates no marker."""
+
+    def __init__(self, doc: Path):
+        self.doc = doc
+        self._markers: dict[str, dict[str, str]] | None = None
+
+    def markers(self, panel: str) -> dict[str, str]:
+        """{marker id: paragraph uuid} for one marker-anchored panel."""
+        if self._markers is None:
+            if any(f.suffix == ".tex" for f in self.doc.iterdir()):
+                text = find_tex_file(self.doc).read_text(encoding="utf-8")
+            else:
+                text = ""
+            self._markers = {p: marker_paragraph_ids(text, cmd)
+                             for p, cmd in MARKER_ANCHORED_PANELS.items()}
+        return self._markers.get(panel, {})
+
+    def paragraph_ids(self, card: dict, panel: str | None) -> list[str]:
+        """The card's live paragraph(s): its links' paragraphs, then — for a
+        marker-anchored panel — the paragraph holding its marker."""
+        paras = card_paragraph_ids(card)
+        if panel in MARKER_ANCHORED_PANELS:
+            p = self.markers(panel).get(card.get("id"))
+            if p and p not in paras:
+                paras.append(p)
+        return paras
+
+
 def rich_json_to_text(value) -> str:
     """Flatten a TipTap JSONContent body (or a plain string) into plain text.
     Mirrors `richJsonToPlainText` in src/lib/footnote-content.ts just enough to
