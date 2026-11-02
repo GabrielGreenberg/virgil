@@ -44,10 +44,14 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-# Make `library/scripts/` importable (`_bib_parse`, `work_identity`). The
-# editor scripts run from the repo root, so we anchor on this file's parents.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_REPO_ROOT / "library" / "scripts"))
+# Make the library silo importable (`_bib_parse`, `work_identity`) through the
+# ONE cross-silo door, which knows both layouts — repo `library/scripts/` and a
+# synced folder's `.virgil/scripts/library/` (task 1428: the repo-only anchor
+# that lived here died with ModuleNotFoundError in every paper folder).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _silo_path import import_path_for  # noqa: E402
+
+import_path_for("library", needs=("_bib_parse.py", "work_identity.py"))
 
 from _bib_parse import parse_bib_text  # noqa: E402
 
@@ -60,8 +64,6 @@ from work_identity import (  # noqa: E402
     norm_year,
     normalize_doi,
 )
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import die, find_bib_file, resolve_doc  # noqa: E402
 
