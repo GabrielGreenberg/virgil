@@ -73,6 +73,7 @@ from bib_family import (
     resolve_bib_family,
 )
 from _common import (
+    CardLocator,
     is_dormant_link,
     is_virtual_request_id,
     parse_virtual_request_id,
@@ -634,8 +635,9 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     # A virtual card-flag id (virtual:<panel>:<cardId>) — a pre-bridge flag with
     # no ai-requests.json Task to read (list_requests.py emits these for papers
     # created before the bridge landed). It's a create against the source card's
-    # own paragraph: the anchor comes from --anchor (the responder resolves it
-    # from the source card). Without --synthesize the virtual id flows to
+    # own paragraph: --anchor if given, else the source card's own paragraph
+    # (`_source_anchor` — its live link, or a footnote's .tex marker; task 1418),
+    # so the carded and proposal paths inherit alike. Without --synthesize the virtual id flows to
     # apply_response, which splits it into {panel, cardId} to clear the source
     # card's aiRequest flag (no Task row is mutated). With --synthesize a fresh
     # Task is minted and LINKED to the source card, which lowers the same flag.
@@ -643,8 +645,11 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
         linked = parse_virtual_request_id(request_id)  # dies on a malformed / unknown-panel id
         _refuse_create_on_flagged_card(a.kind, request_id, linked)
         if not anchor and not unanchored:
-            die("--anchor <uuid> is required for a virtual (card-flag) request id "
-                "(resolve it from the source card)")
+            src_anchor = _source_anchor(doc, linked)
+            anchor = src_anchor["textObjectIds"][0] if src_anchor else None
+        if not anchor and not unanchored:
+            die("--anchor <uuid> is required for this virtual (card-flag) request id: "
+                "its source card names no live paragraph")
         # Question 2 for a virtual id: its ONLY state is the source card's
         # `aiRequest` flag — the drain emits the id exactly while it is UP. A
         # flag already down means an earlier landing answered it (a re-run, or a
@@ -778,7 +783,9 @@ def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_ancho
          span marked while ANY live card holds its id), so nothing is wrapped and
          the .tex is byte-unchanged. A Mode-B anchor degrades to Mode A at the
          same paragraph when this kind cannot hold a span (`RANGE_KINDS`). A
-         dormant (archived) link is never inherited (`_first_anchor`).
+         dormant (archived) link is never inherited (`_first_anchor`). A
+         marker-anchored source (footnote / citation / example — no `links`)
+         lends Mode A at its marker's paragraph (`_source_anchor`, task 1418).
       3. Else Mode A at the resolved paragraph.
 
     A suggestion's span must contain its `--original` (`_span_holds_original`,
@@ -786,7 +793,7 @@ def _resolve_anchor(doc: Path, a: argparse.Namespace, ctx: "Ctx", explicit_ancho
     those words); an inherited span that does not DEGRADES to Mode A at the same
     paragraph and records `ctx.anchor_degraded` (the caller did not choose it —
     the proposal is about other words in the paragraph)."""
-    src_anchor = _first_anchor(_source_card(doc, ctx.linked))
+    src_anchor = _source_anchor(doc, ctx.linked)
     src_para = src_anchor["textObjectIds"][0] if src_anchor else None
     # "Did the caller aim elsewhere?" — not when `--anchor` names the Task's OWN
     # paragraph: the source card's live one, or the row's stored snapshot of it
@@ -1007,6 +1014,21 @@ def _first_anchor(card: dict | None) -> dict | None:
     return None
 
 
+def _source_anchor(doc: Path, linked: dict | None) -> dict | None:
+    """The anchor a Task's source card lends its answer: the card's first live
+    link anchor (`_first_anchor`), else — for a marker-anchored card (a
+    footnote / citation / example carries no `links`) — Mode A at the
+    paragraph holding its .tex marker (`CardLocator`, task 1418). None when
+    the source card is gone or names no live paragraph."""
+    card = _source_card(doc, linked)
+    anchor = _first_anchor(card)
+    if anchor is None and card is not None:
+        paras = CardLocator(doc).paragraph_ids(card, linked.get("panel"))
+        if paras:
+            anchor = {"type": "textObject", "targetKind": "paragraph", "textObjectIds": [paras[0]]}
+    return anchor
+
+
 def _plain_text(card: dict | None) -> str:
     """A source card's plain text: its `text` mirror, else its rich content's
     text nodes."""
@@ -1035,13 +1057,6 @@ def _create_proposal(doc: Path, a: argparse.Namespace) -> dict:
                 "(both @<path>; --suggested may be empty only for a Cutter cut)")
     elif not a.body:
         die("--kind=comment requires --body <reply> (@<path>)")
-
-    if is_virtual_request_id(a.request) and not a.anchor:
-        # the virtual path needs an anchor; the source card names its own
-        # paragraph — and `_resolve_anchor` then inherits its anchor whole
-        src_anchor = _first_anchor(_source_card(doc, parse_virtual_request_id(a.request)))
-        if src_anchor:
-            a.anchor = src_anchor["textObjectIds"][0]
 
     accept = set(RESPONDER_TASK_KINDS[kind]) | set(a.accept_task_kind or [])
     ctx = _resolve_context(doc, a, accept_task_kinds=accept)

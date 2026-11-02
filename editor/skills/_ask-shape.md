@@ -93,10 +93,13 @@ documents a call that dies. Three tiers:
   `ai-requests.json` — a pre-bridge paper, or a bridge write that failed
   — reaches you as `virtual:<panel>:<cardId>`, and that row has **no
   Task** for `create_card.py` to read an anchor off: its virtual branch
-  refuses outright with *"--anchor \<uuid\> is required for a virtual
-  (card-flag) request id"*. So a re-route documented without the flag is
-  a call that dies on precisely the ids a responder gets handed most
-  often. For a REAL id the flag is a no-op — `create_card.py` reads the
+  falls back to the SOURCE CARD's own paragraph (its live link, or a
+  footnote's `\vfid{}` marker — `_common.CardLocator`, task 1418), and
+  refuses with *"--anchor \<uuid\> is required for this virtual
+  (card-flag) request id"* when the card names none. The row's
+  `paragraphIds[0]` is that same paragraph, so passing it states the
+  answer's place explicitly rather than leaning on the fallback. For a
+  REAL id the flag is a no-op — `create_card.py` reads the
   Task through the SAME live projection the drain emits
   (`list_requests.project_task_row`, task 1232), so it would have applied
   that `paragraphIds[0]` itself, and an answer still inherits a moved

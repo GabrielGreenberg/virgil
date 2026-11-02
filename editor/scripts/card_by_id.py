@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from _common import card_archived_with, die, read_json, resolve_doc, sidecar
+from _common import MARKER_ANCHORED_PANELS, card_archived_with, die, read_json, resolve_doc, sidecar  # noqa: F401
 
 # Import the single source of truth for the writeback panels. apply_response
 # does NOT import this module at load time (its mutation handlers import
@@ -88,17 +88,8 @@ class CardHit:
         return self.panel == "archive"
 
 
-# Panels whose cards are anchored by an atom MARKER in the .tex rather than a
-# `links` array: the card id equals the marker id, and the card sits in whatever
-# paragraph holds the marker (`_common.marker_paragraph_ids`). Every other panel
-# in ALL_CARD_SIDECARS is link-anchored (`_common.card_paragraph_ids`).
-# test_cards_for_paragraph.py pins this against ALL_CARD_SIDECARS,
-# ATOM_BEARING_PANELS and VIRGIL_MARKER_COMMANDS.
-MARKER_ANCHORED_PANELS = {
-    "footnotes": "vfid",
-    "citations": "vcid",
-    "examples": "vexid",
-}
+# The marker-anchored panel table lives beside its one reader,
+# `_common.CardLocator` (task 1418); re-exported here for existing importers.
 
 
 def iter_cards(doc: Path) -> Iterator[CardHit]:

@@ -103,11 +103,13 @@ card:
      `--accept-task-kind footnote` is what lets it drain a `footnote` Task —
      `WORKFLOW_A_KINDS` maps `report → {report}` by default, and the flag is a
      set union over it, so without the flag the call refuses the Task outright.
-     `--anchor <uuid>` is the row's `paragraphIds[0]`, and it is **not
-     optional**: the act-on-existing branch is exactly where a
-     `virtual:footnotes:<cardId>` id arrives, and a virtual row has no Task for
-     `create_card.py` to read an anchor off. If the row carries no
-     `paragraphIds` at all, halt (step 4) rather than guessing.
+     `--anchor <uuid>` is the row's `paragraphIds[0]` — for a footnote, the
+     paragraph holding its `\vfid{}` marker, which the drain carries for a
+     bridged row and a `virtual:footnotes:<cardId>` row alike, and refreshes
+     when the footnote moves. Pass it every time ([_ask-shape.md](_ask-shape.md)
+     §4's one call shape). An empty `paragraphIds` now means the footnote's
+     marker sits in no paragraph (it was deleted) — halt (step 4) rather than
+     guessing.
 
      That one call drains the Task, so emit the report **instead of** a
      footnote, never alongside one ([_ask-shape.md](_ask-shape.md) §4), and name both kinds in the `Done:`
@@ -151,9 +153,9 @@ E2. **Load context + compose the revision.** Read the existing footnote body, th
    ```bash
    python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=1
    ```
-   (`<uuid>` from `paragraphIds`, or — if the fallback delivered an empty
-   `paragraphIds` because the bridge write failed — from the resolved card's
-   anchor / the doc.) Compose the **revised** footnote body in the same plain-LaTeX
+   (`<uuid>` from `paragraphIds` — the paragraph holding the footnote's
+   `\vfid{}` marker, for a bridged row and a virtual row alike.) Compose the
+   **revised** footnote body in the same plain-LaTeX
    style as step 2 below (same citation rules apply). Build on the existing
    content; don't discard the user's text unless they asked for a rewrite.
 

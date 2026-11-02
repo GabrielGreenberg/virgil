@@ -15,7 +15,8 @@ panel is covered without touching this script.
 A card is on the paragraph when:
   - its `links` anchor names the paragraph (link-anchored panels), or
   - its `.tex` atom marker (`\\vfid` / `\\vcid` / `\\vexid`) sits inside the
-    paragraph (marker-anchored panels — `card_by_id.MARKER_ANCHORED_PANELS`).
+    paragraph (marker-anchored panels — `_common.MARKER_ANCHORED_PANELS`).
+Both halves are asked through the ONE locator, `_common.CardLocator`.
 
 Usage:  python3 cards_for_paragraph.py <docPath> <uuid>   [filters]
         python3 cards_for_paragraph.py <docPath> --doc     [filters]
@@ -54,15 +55,13 @@ import json
 import sys
 
 from _common import (
-    card_paragraph_ids,
+    CardLocator,
     card_text_anchor,
     die,
-    find_tex_file,
-    marker_paragraph_ids,
     resolve_doc,
     rich_json_to_text,
 )
-from card_by_id import MARKER_ANCHORED_PANELS, _SINGLE_KIND_PANEL, card_kind, iter_cards
+from card_by_id import _SINGLE_KIND_PANEL, card_kind, iter_cards
 
 # Body fields to summarize from, in preference order. `content` is a rich
 # TipTap body (footnotes, archive snippets) and is flattened.
@@ -84,28 +83,15 @@ def summarize(card: dict) -> str:
     return (card_text_anchor(card) or "")[:140]
 
 
-def _marker_maps(doc) -> dict[str, dict[str, str]]:
-    """{panel: {marker id: paragraph uuid}} for every marker-anchored panel,
-    from ONE read of the .tex. A paper with no .tex maps nothing."""
-    if not any(f.suffix == ".tex" for f in doc.iterdir()):
-        return {panel: {} for panel in MARKER_ANCHORED_PANELS}
-    text = find_tex_file(doc).read_text(encoding="utf-8")
-    return {panel: marker_paragraph_ids(text, cmd) for panel, cmd in MARKER_ANCHORED_PANELS.items()}
-
-
 def walk(doc, uuid: str | None, kind: str | None = None, status: str | None = None,
          archived: bool | None = None) -> int:
     """Emit every matching card. `uuid=None` is the doc-wide mode: no
     paragraph filter, and each row names the paragraph(s) it sits on."""
     matched = 0
-    markers = _marker_maps(doc)
+    locator = CardLocator(doc)
     for hit in iter_cards(doc):
         card = hit.card
-        paras = list(card_paragraph_ids(card))
-        if hit.panel in markers:
-            marker_para = markers[hit.panel].get(card.get("id"))
-            if marker_para and marker_para not in paras:
-                paras.append(marker_para)
+        paras = locator.paragraph_ids(card, hit.panel)
         if uuid is not None and uuid not in paras:
             continue
         if archived is not None and hit.archived != archived:
