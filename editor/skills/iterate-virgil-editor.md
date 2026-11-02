@@ -49,10 +49,14 @@ acts-on-branch / propose-via-worktree machinery — see
 ```
 
 `<skill-name>` ∈ `{review, draft-footnote, find-citation,
-answer-note-request, answer-todo-request,
+answer-note-request, answer-report-request, answer-todo-request,
 answer-cutter-comment, answer-revision-request, draft-suggestion,
-answer-bib-review, style-merge}`. Anything else: abort with a one-line
-error.
+answer-bib-review, style-merge}` — the umbrella `review` plus **every skill
+its step-3 dispatch table routes to** (that table is pinned to
+`editor/scripts/ai_request_routing.json` by `dispatch-coverage.test.ts`, and
+this set is pinned to the table by `iterate-skill-set-census.test.ts`, so a
+newly routed skill cannot fall out of it). Anything else: abort with a
+one-line error.
 
 `<max-attempts>` defaults to **12** per skill (enough for ~4 test
 cases × 3 attempts). Hard ceiling **20**. When the cap is hit,
@@ -89,13 +93,14 @@ exercise already-stabilized subskills:
 1. `draft-footnote`
 2. `find-citation`
 3. `answer-note-request`
-4. `answer-todo-request`
-5. `answer-cutter-comment`
-6. `answer-revision-request`
-7. `draft-suggestion`
-8. `answer-bib-review`
-9. `style-merge`
-10. `review` (umbrella — exercises dispatch, not per-kind logic)
+4. `answer-report-request`
+5. `answer-todo-request`
+6. `answer-cutter-comment`
+7. `answer-revision-request`
+8. `draft-suggestion`
+9. `answer-bib-review`
+10. `style-merge`
+11. `review` (umbrella — exercises dispatch, not per-kind logic)
 
 After every 3 skills stabilize, run the **survey pass** (see below)
 before moving to the next skill.
@@ -156,7 +161,7 @@ cp -R samples/annotation-history "$SBOX"
 
 Write the request directly into the appropriate sandbox sidecar:
 
-- `ai-requests.json`: kinds `footnote` / `note` / `quotation` / `citation` / `todo` / `suggestion` / `style-merge`.
+- `ai-requests.json`: kinds `footnote` / `citation` / `report` / `note` / `highlight` / `todo` / `suggestion` / `style-merge` — every kind `/editor/review`'s step-3 table routes, bar `bib-review` (census-pinned with the skill set above).
 - `bib-review-requests.json`: kind `bib-review`.
 - For Mode B / `linkedTo` variants targeting answer-note-request /
   answer-todo-request / answer-cutter-comment /
@@ -285,17 +290,25 @@ change object and classify it:
 ```bash
 # edits.json: a list of change objects you're about to make to skill markdown
 # [{ "summary": "...", "paths": ["editor/skills/<skill>.md"],
-#    "intent": "tighten-wording|add-example|fix-typo|expand-guidance|clarify",
+#    "intent": "<one intent — see below>",
 #    "oldText": "<exact text to replace>", "newText": "<replacement>" }]
 python3 editor/scripts/dev_loop.py route-edits --edits @edits.json
 # → { "acts": [...], "surface": [...], "blocked": [...], "counts": {...} }
 ```
 
+`intent` is one of `dream_land.py`'s two sets (the owner — read them there if
+these drift): a **prose** intent (`PROSE_INTENTS`: `tighten-wording`,
+`add-example`, `fix-typo`, `expand-guidance`, `clarify`) on a lone skill prompt
+is `acts`-eligible; a **structural** one (`STRUCTURAL_INTENTS`: `cross-skill`,
+`script-change`, `manifest-change`, `rename`, `merge-skill`, `split-skill`,
+`contract-change`, `new-helper`, `behavior-change`) always lands in `surface`.
+Name the honest one — an omitted or unknown intent also falls to `surface`.
+
 Then act on the partition (you stay **synchronous + inline** — no worktree, no commit):
 
 - **`acts`** (single-skill prose polish) → apply the edit to `editor/skills/<skill>.md` directly. The suggestion is advisory; the goal is to make the skill unambiguous to a fresh agent.
-- **`surface`** (`proposes`-class: cross-skill / `.py` / manifest / contract-adjacent / structural) → still apply it inline (the maintainer is watching the diff), **but flag it** in your scratch log + the final summary as *"needs extra scrutiny — consider a separate pass."* Do **not** spin up a worktree; that is `dream`'s job, not iterate's.
-- **`blocked`** (`refused`: an `editor/AGENTS.md` Don't-rule, the `apply_response.py` contract shape, or the `VIRGIL_DEV` gate) → **do NOT apply it.** Record the refusal (its `boundary` + `reason`) in scratch + the final summary. A `[block]` whose only fix is a refused edit cannot be resolved here — surface it to the maintainer instead of working around the boundary.
+- **`surface`** (`proposes`-class: cross-skill / `.py` / manifest / contract-adjacent / structural) → still apply it inline (the maintainer is watching the diff), **but flag it** in your scratch log + the final summary as *"needs extra scrutiny — consider a separate pass."* Do **not** spin up a worktree — iterate stays inline (and no dev-loop skill opens one: since task 522 the dream only files tasks; the task worker owns worktrees).
+- **`blocked`** (`refused`: an `editor/AGENTS.md` Don't-rule, the `apply_response.py` contract shape, or the DEV-mode gate) → **do NOT apply it.** Record the refusal (its `boundary` + `reason`) in scratch + the final summary. A `[block]` whose only fix is a refused edit cannot be resolved here — surface it to the maintainer instead of working around the boundary.
 
 #### 2e. Re-run or advance
 
@@ -345,10 +358,14 @@ complete):
 
 1. **Rebuild the bundle.** From the repo root:
    ```bash
-   npm run build:editor-bundle
+   npm run build:skill-bundles
    ```
-   This regenerates `.claude/commands/editor/<skill>.md` for every
-   skill so the user's next invocation picks up the edits.
+   The WHOLE rebuild — every silo's bundle, the meta bundle, and the
+   local-mirror sync (`.claude/commands/editor/<skill>.md`, the managed
+   library mirror, …) — so the user's next invocation picks up the edits.
+   Never the per-silo `build:editor-bundle`: it skips `build-meta-bundle` and
+   `sync-local-mirrors`, leaving a mirror running the pre-iteration skill
+   (the task-374 stale-mirror class).
 
 2. **Print a summary** in your reply, ≤15 lines:
    - Skills iterated, total test cases run, total attempts, total `flagged` (`[block]`) memos raised vs. addressed.
@@ -394,8 +411,10 @@ calls → `alignment`. iterate-specific facts (the synthetic `result`, `case`,
 `attempt`, `sandbox`, the per-attempt actions log) ride extra frontmatter +
 trailing body sections the shared reader tolerates.
 
-`editor/dev/iterations/` and `editor/dev/memos/` are **two labeled streams, one
-shape**: iterate's synthesized stress-test runs vs reflect's real ambient
+`editor/dev/iterations/` (`iterations_root`) and the dev memo sink
+(`memos_root` — the synced `Virgil-Inbox/dev-loop/memos`, else
+`editor/dev/memos/`; [editor/dev/README.md](../dev/README.md) § "The dev-loop
+sink") are **two labeled streams, one shape**: iterate's synthesized stress-test runs vs reflect's real ambient
 captures. The dream consumes only `memos/`; iterate consumes only `iterations/`
 (inline, this loop) — but both read through the one reader, and both route edits
 through the one guard. See [editor/dev/README.md](../dev/README.md).
