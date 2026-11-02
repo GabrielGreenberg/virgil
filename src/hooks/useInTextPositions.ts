@@ -7,6 +7,7 @@ import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { getSpanLines } from "@/lib/editor-geometry/span-line";
 import { resolveVisiblePosBand } from "@/lib/editor-geometry/viewport-probe";
 import { readingLineY } from "@/lib/editor-geometry/reading-line";
 import { holdWithinEpsilon, HEIGHT_EPSILON_PX } from "@/lib/reposition-policy";
@@ -1278,6 +1279,15 @@ export function useInTextPositions(
         })()
       : null;
 
+    // A span's words rewrapped onto another line WITHOUT a height change
+    // (task 1420): no RO, no structural event — but the span-line service,
+    // which the margin marker reads, re-read it on its keyed content clock and
+    // says so ONLY when a line moved. Re-measure on the same signal, so the
+    // card and its icon settle together (card-anchor-rows.ts). Not an
+    // editor/bus subscriber of ours: a plain keystroke that moves no span's
+    // line fires nothing.
+    const unsubSpanLines = getSpanLines(editor).subscribe(onStructural);
+
     // The in-text deck re-measures every tracked marker position — parked for
     // the duration of a continuous layout gesture and settled once at the end
     // (task 317). Both geometry triggers go through it; the structural-bus and
@@ -1317,6 +1327,7 @@ export function useInTextPositions(
       fontReadyActiveRef.current = false;
       disposeFontReady();
       unsubBlocks?.();
+      unsubSpanLines();
       window.removeEventListener("resize", onWindowResize);
       geometryPark.dispose();
       editorObs?.disconnect();

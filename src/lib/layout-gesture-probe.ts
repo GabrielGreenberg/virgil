@@ -54,6 +54,7 @@ export const LAYOUT_SITE_IN_TEXT_CARDS = "in-text-card-heights";
 export const LAYOUT_SITE_GRAB_HANDLE = "grab-handle";
 export const LAYOUT_SITE_FLOATING_MENU = "floating-menu";
 export const LAYOUT_SITE_SCROLL_PERSIST = "editor-scroll-persist";
+export const LAYOUT_SITE_SPAN_LINE = "span-line";
 
 /** Per-site public stats shape. */
 export interface LayoutGestureSiteStat {
