@@ -251,7 +251,9 @@ Three modes:
      together-or-not-at-all (a crash can't leave the bib
      swapped but the cites dangling). This is a *writes-only* op (no `requestId`
      — library-sync isn't bib-review-driven), so the contract also writes the
-     notification + version bump. Never hand-edit the `.bib`, the `.tex`, or
+     notification + version bump — unless no byte changed (an
+     already-synced entry), in which case it writes nothing and returns
+     `"unchanged": true`. Never hand-edit the `.bib`, the `.tex`, or
      `citations.json`:
      The `entry` is a BibTeX block full of braces, so this op goes through an
      `@` scratch file — see [`_op-json.md`](_op-json.md) for the rule and why:

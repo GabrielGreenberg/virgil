@@ -164,7 +164,7 @@ import re
 import sys
 import uuid
 from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 from _common import (
     AI_REQUEST_KINDS,
@@ -2254,6 +2254,7 @@ def cmd_write(
 
     txn = _Txn(doc)
     reflect_kind: str | None = None  # the Task kind → names the dev-dream memo's skill
+    writes_only = False  # set below: paper edits only, no Task and no card
 
     # 1. The card itself → its panel sidecar. A suggestion proposal is first
     #    held to the questions its own accept will ask (task 1044).
@@ -2357,7 +2358,8 @@ def cmd_write(
                 die("ai-requests.json missing or malformed")
             die(f"request id not found: {request_id}")
     elif _has_paper_writes(op):
-        pass  # writes-only: a deliberate paper edit that completes no Task
+        # writes-only: a deliberate paper edit that completes no Task
+        writes_only = card is None and not comment
     else:
         die("op missing requestId (or pass --synthesize-task to create the Task)")
 
@@ -2391,16 +2393,31 @@ def cmd_write(
         _apply_paper_writes(doc, txn, op)
 
     # 6. Notification + version (version last → trails a consistent state).
+    #    A writes-only op (no Task, no card) whose every edit resolves, INSIDE
+    #    the pen, to the bytes already on disk is a NO-OP (task 1429): nothing
+    #    finished, so nothing is announced — no notification, no version bump.
+    #    A library-sync re-run over N already-synced entries used to write N
+    #    notifications and N version bumps for zero changed bytes. Decided in
+    #    the pen, not on the T0 read, because a rule (a citekey re-key) may
+    #    still catch a record the app wrote in the window. An op that completes
+    #    a Task always announces: the status flip IS its change.
+    writes = txn.writes()
+    landed: list[Path] = []
+    if writes_only:
+        writes = [(p, _noting_change(p, c, landed)) for p, c in writes]
     notif_path, notif_content = notification_deferred(
         doc,
         {"kind": "ai-request-complete", "at": now_iso(), "summary": summary, "requestId": request_id},
     )
-    txn.add_raw(notif_path, notif_content)
     vbump = DeferredVersionBump(doc)
-    txn.add_raw(vbump.path, vbump)
+    writes += [(notif_path, _unless_nothing_landed(notif_content, writes_only, landed)),
+               (vbump.path, _unless_nothing_landed(vbump, writes_only, landed))]
 
-    commit_under_pen(doc, txn.writes())
+    commit_under_pen(doc, writes)
     vnum = vbump.n
+    if writes_only and not landed:
+        return {"ok": True, "version": None, "requestId": None,
+                "status": status, "result": result, "unchanged": True}
     # Dev-dream day-capture floor: reflect on THIS writeback (the one chokepoint
     # BOTH the CLI and create_card.py's in-process run_write_subcommand pass
     # through). The skill is named from the Task kind + the source-card panel
@@ -2409,6 +2426,30 @@ def cmd_write(
     # (skill, taskId) memo. DEV-gated + best-effort inside.
     _reflect_tail(doc, _write_skill(reflect_kind, (linked or {}).get("panel")), request_id)
     return {"ok": True, "version": vnum, "requestId": request_id, "status": status, "result": result}
+
+
+def _noting_change(path: Path, content, landed: list) -> Callable[[], object]:
+    """Wrap one write-set content so resolving it records whether it changes
+    `path`'s bytes (task 1429). A resolved value equal to the file as it is in
+    the pen counts as unchanged and is dropped like UNCHANGED."""
+    def resolve():
+        v = content() if callable(content) else content
+        if v is UNCHANGED or (isinstance(v, str) and v == read_text_or_empty(path)):
+            return UNCHANGED
+        landed.append(path)
+        return v
+    return resolve
+
+
+def _unless_nothing_landed(content, gated: bool, landed: list) -> Callable[[], object]:
+    """The run's announcement (notification / version bump), resolved AFTER the
+    paper writes: when `gated` and none of them changed a byte, it is UNCHANGED
+    too, so an all-no-op writes-only op commits nothing at all (task 1429)."""
+    def resolve():
+        if gated and not landed:
+            return UNCHANGED
+        return content() if callable(content) else content
+    return resolve
 
 
 def cmd_complete_only(

@@ -429,7 +429,8 @@ check(r.returncode == 0, f"absent-key rename exited 0 — a no-op, not a failure
 check(hashlib.sha256(next(sb.glob("*.tex")).read_bytes()).hexdigest() == tex_h0, ".tex byte-identical (no-op)")
 check(hashlib.sha256((sb / "references.bib").read_bytes()).hexdigest() == bib_h0, "references.bib byte-identical (no-op)")
 check(hashlib.sha256((sb / "virgil/citations.json").read_bytes()).hexdigest() == cit_h0, "citations.json byte-identical (no-op)")
-check((sb / "virgil/version.txt").read_text().strip() == "1", "writes-only op still ran (version bumped), it just changed no paper text")
+check(not (sb / "virgil/version.txt").exists() and '"unchanged": true' in r.stdout,
+      "a writes-only op that changed no byte announces nothing — no version bump (task 1429)")
 
 # ----- COMPOSE: texEdit + renameCitekey in one op land as ONE .tex write
 # (task 1108). Both are TRANSFORMS queued on the txn's one text entry for the

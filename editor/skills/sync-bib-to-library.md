@@ -20,7 +20,9 @@ Virgil Library:
 - **Matched entries** (citekey, DOI, or title+author hit on
   `master.bib`) → replace the paper's entry block with the library's
   authoritative form; rename citekeys throughout `document.tex` and
-  `virgil/citations.json` if the library uses a different key.
+  every citekey-keyed sidecar (the list is
+  `editor/scripts/citekey_keyed_sidecars.json` → `rekey`) if the library
+  uses a different key.
 - **Missing entries** → fan-out into the library's bib-only triage
   pipeline (`triage_apply.py`), then authenticate each via
   `/library/authenticate-bib`, then loop back and swap them in.
@@ -41,9 +43,9 @@ Virgil Library:
 > [_find-or-surface.md](_find-or-surface.md). The **missing-entries**
 > step above authenticates each new entry through the library pipeline —
 > so this skill can mint a `master.bib` row. Never fake one: if a
-> missing entry won't authenticate, let its terminal state
-> (`unverified` / `failed`) stand as the surfaced gap and leave it for a
-> human, rather than swapping in a guessed entry.
+> missing entry won't authenticate, let the state it is left in (anything
+> short of a terminal one — see **Safety**) stand as the surfaced gap and
+> leave it for a human, rather than swapping in a guessed entry.
 
 This skill is safe to run from the editor session — the library's
 locked CLI shims (`master.bib.lock`, `catalog.json.lock`,
@@ -144,8 +146,11 @@ top of step 1.
 
 4. **Apply matches (pass 1).** For each `matched` row:
    - If `paper_citekey == library_citekey`, the entry may already be
-     identical — still delegate; `answer-bib-review` no-ops cheaply
-     when the swap doesn't change bytes.
+     identical — still delegate. A swap that changes no byte is a true
+     no-op at the write door: `apply_response.py` decides inside the pen
+     that nothing changed and writes nothing — no `.bib` rewrite, no
+     notification, no version bump (its result carries
+     `"unchanged": true`).
    - Invoke per-entry:
      ```bash
      /editor/answer-bib-review "<docPath>" "<paper_citekey>" \
@@ -156,8 +161,9 @@ top of step 1.
      bundles the citekey rename **into the same atomic contract op as the
      `.bib` swap** — `bibEdit` `replace` + `renameCitekey` in one
      pen-protected `apply_response` commit, so `document.tex`'s `\cite*{}`
-     commands and `virgil/citations.json` are retargeted together with the
-     `references.bib` body: the entry's bib, cites, and cards land
+     commands and every citekey-keyed sidecar (the
+     `citekey_keyed_sidecars.json` `rekey` list) are retargeted together with
+     the `references.bib` body: the entry's bib, cites, and cards land
      together-or-not-at-all. (No standalone `rename_citekey.py` write path
      any more — its pure rewriters ride the contract.)
    - Collect a short status line per entry (`Done: library-sync …`)
@@ -211,14 +217,17 @@ top of step 1.
          --library .)
       ```
       This upserts each entry into `master.bib`, creates
-      `papers/<citekey>/`, inserts a bib-only catalog row, and queues
-      `kind: "authenticate"` per citekey.
+      `papers/<citekey>/`, and queues `kind: "authenticate"` per citekey
+      (not for a `manuscript`). It mints **no** catalog row: a source-less
+      entry is reference-only, and the bib-only path only refreshes a
+      holdings row that already exists (`triage_apply.py`, the F#4
+      holdings gate).
 
-   d. **Delete the bundle** from `unsorted/` once `triage_apply.py`
-      finishes — it's transient:
-      ```bash
-      rm -f "$bundle"
-      ```
+   d. **Leave the bundle alone.** `triage_apply.py` owns its
+      disposition: it deletes the bundle from `unsorted/` when every row
+      applied, and deliberately KEEPS it — reporting to the library inbox —
+      when any row failed, so the failed entries are not lost. Never `rm`
+      it yourself; a kept bundle is the evidence for that report.
 
    e. **Authenticate each new citekey.** For every citekey produced
       by step (c), invoke `/library/authenticate-bib <citekey>` from
@@ -270,14 +279,17 @@ top of step 1.
    ```
    Reply (single line):
    ```
-   Done: synced <total> entries (<M> swapped, <K> added, <P> flagged). Output: references.bib, document.tex, virgil/citations.json[, virgil/notes/sync-bib-review-…md].
+   Done: synced <total> entries (<M> swapped, <K> added, <P> flagged). Output: references.bib, document.tex, <citekey-keyed sidecars a rename changed>[, virgil/notes/sync-bib-review-…md].
    ```
 
 ## Idempotence
 
-Re-running on a paper whose bib already mirrors the library is a
-no-op: pass 1 reports 100% matched, pass 2 has nothing to do,
-no missing entries to triage, no ambiguous note written.
+Re-running on a paper whose bib already mirrors the library writes
+nothing to the paper: pass 1 reports 100% matched and every per-entry
+swap is an `"unchanged": true` no-op at the write door (no `.bib`
+rewrite, no notification, no version bump), pass 2 has nothing to do,
+no missing entries to triage, no ambiguous note written. The one write
+is step 8's single run-closing notification.
 
 ## Safety
 
@@ -288,10 +300,13 @@ no missing entries to triage, no ambiguous note written.
 - **Don't fall back to `~/Virgil-Library/` silently.** The library
   path *must* resolve through `library_path.py`. If the chain fails,
   surface the error and exit — never guess.
-- **Trust library terminal states.** `bib.state ∈ {failed,
-  unverified, manuscript, canonical}` are still authoritative for the
-  paper. Mention any non-`authenticated` state in the report so the
-  user knows to follow up in the library.
+- **Trust library states; know which are terminal.** The terminal set is
+  `TERMINAL_BIB_STATES` in `library/scripts/_tools.py` — today
+  `{authenticated, manuscript, canonical}`. Any other state (`unverified`,
+  `failed`, `needs-reauth`, …) means the library still owes work on that
+  entry; the library's version is still the one to swap in, but name every
+  non-`authenticated` state in the report so the user knows to follow up
+  in the library.
 - **Don't delete entries from `references.bib` that aren't in
   `paper.tex`.** Some users keep an extended bibliography. Reconcile
   fields, but don't prune.
@@ -301,7 +316,7 @@ no missing entries to triage, no ambiguous note written.
 One line. Examples:
 
 ```
-Done: synced 23 entries (18 swapped, 4 added, 1 flagged). Output: references.bib, document.tex, virgil/citations.json, virgil/notes/sync-bib-review-20260513T142500Z.md.
+Done: synced 23 entries (18 swapped, 4 added, 1 flagged). Output: references.bib, document.tex, virgil/citations.json, virgil/annotations.json, virgil/notes/sync-bib-review-20260513T142500Z.md.
 ```
 
 ```
