@@ -1,16 +1,15 @@
 // @vitest-environment jsdom
 //
-// Wave-2b C5 — out-of-zone anchors are APPROXIMATED, not measured.
+// Wave-2b C5 — out-of-zone anchors are not READ every pass.
 //
 // Pre-C5, `measure()` ran `coordsAtPos` (a forced-layout read) for EVERY item
 // on every pass — only the card-rect read was near-zone-culled. The contract
-// now: items whose retained pod-relative top puts them outside the scroll
-// band are interpolated over the pass's exact knots (`approxTopForPos`, pure
-// arithmetic), and the scroll-idle refinement re-runs the pass — exact-reading
-// what has scrolled into the band — only while approximated items exist.
-//
-// Also pins the pure interpolation: exact endpoints, clamping, monotone
-// ordering (a cascade fed inverted tops would z-fight the deck).
+// now: an already-measured item whose anchor is outside the scroll band is
+// HELD, and carried by the shift measured at its neighbouring exact reads
+// (`resolveHeldTops`, task 1425). Zero reads where the document moved rigidly;
+// a bisected exact read where it did not. Nothing is interpolated, so a scroll
+// triggers no pass and moves no card (task 1425 retired C5's scroll-idle
+// refinement, whose re-interpolation lumped the deck).
 //
 // Task 327: band membership is now decided on the item's document POSITION
 // against the band's pos range, so the harness must mock `posAtCoords` as the
@@ -32,9 +31,10 @@ import {
 } from "@/lib/editor-extensions";
 import {
   useInTextPositions,
-  approxTopForPos,
+  resolveHeldTops,
   type PositionItem,
-  type TopKnot,
+  type HeldItem,
+  type ShiftAnchor,
 } from "@/hooks/useInTextPositions";
 import { KeepAliveVisibilityProvider } from "@/lib/keep-alive/visibility-context";
 
@@ -110,37 +110,54 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("approxTopForPos", () => {
-  const knots: TopKnot[] = [
-    { pos: 0, top: 0 },
-    { pos: 100, top: 1000 },
-    { pos: 200, top: 1500 },
+describe("resolveHeldTops — the scroll-invariant carry (task 1425)", () => {
+  const edges = (top: number, bottom: number): ShiftAnchor[] => [
+    { pos: -Infinity, delta: top },
+    { pos: Infinity, delta: bottom },
   ];
-  it("interpolates linearly between surrounding knots", () => {
-    expect(approxTopForPos(50, knots)).toBe(500);
-    expect(approxTopForPos(150, knots)).toBe(1250);
+  const held: HeldItem[] = [
+    { id: "a", pos: 10, prevTop: 100 },
+    { id: "b", pos: 20, prevTop: 200 },
+    { id: "c", pos: 30, prevTop: 300 },
+    { id: "d", pos: 40, prevTop: 400 },
+  ];
+
+  it("no geometry change ⇒ every top unchanged, ZERO reads", () => {
+    const read = vi.fn(() => 0);
+    const out = resolveHeldTops(held, edges(0, 0), read);
+    expect(read).not.toHaveBeenCalled();
+    for (const h of held) expect(out.get(h.id)).toBe(h.prevTop);
   });
-  it("clamps outside the knot range and hits knots exactly", () => {
-    expect(approxTopForPos(-5, knots)).toBe(0);
-    expect(approxTopForPos(300, knots)).toBe(1500);
-    expect(approxTopForPos(100, knots)).toBe(1000);
+
+  it("an edit ABOVE the held run shifts it rigidly when the doc end agrees — zero reads", () => {
+    const read = vi.fn(() => 0);
+    const anchors = [
+      { pos: -Infinity, delta: 0 },
+      { pos: 5, delta: 50 }, // an in-band exact read that moved by 50
+      { pos: Infinity, delta: 50 },
+    ];
+    const out = resolveHeldTops(held, anchors, read);
+    expect(read).not.toHaveBeenCalled();
+    for (const h of held) expect(out.get(h.id)).toBe(h.prevTop + 50);
   });
-  it("is monotone in pos over monotone knots", () => {
-    let prev = -Infinity;
-    for (let p = 0; p <= 200; p += 7) {
-      const t = approxTopForPos(p, knots);
-      expect(t).toBeGreaterThanOrEqual(prev);
-      prev = t;
-    }
+
+  it("an unexplained change inside the run is BISECTED to exact reads, not estimated", () => {
+    // Truth: everything at pos ≥ 30 moved by +80 (a fold below "b").
+    const truth = (h: HeldItem) => h.prevTop + (h.pos >= 30 ? 80 : 0);
+    const read = vi.fn(truth);
+    const out = resolveHeldTops(held, edges(0, 80), read);
+    for (const h of held) expect(out.get(h.id)).toBe(truth(h));
+    expect(read.mock.calls.length).toBeLessThan(held.length);
   });
-  it("degenerates safely on empty/single knots", () => {
-    expect(approxTopForPos(10, [])).toBe(0);
-    expect(approxTopForPos(10, [{ pos: 5, top: 42 }])).toBe(42);
+
+  it("a failed read rides its left neighbour rather than vanishing", () => {
+    const out = resolveHeldTops(held, edges(0, 10), () => null);
+    for (const h of held) expect(out.has(h.id)).toBe(true);
   });
 });
 
 describe("useInTextPositions — out-of-zone approximation (wave-2b C5)", () => {
-  it("second pass reads coordsAtPos ONLY for in-band items; out-of-band get interpolated tops; scroll-idle refines", async () => {
+  it("second pass reads coordsAtPos ONLY for in-band items; out-of-band are carried; a scroll runs no pass", async () => {
     vi.useFakeTimers();
     // Band [0, 100] + NEAR_ZONE 600 → viewport gate admits tops in [-600, 700].
     mountRowScroll(0, 100);
@@ -213,25 +230,28 @@ describe("useInTextPositions — out-of-zone approximation (wave-2b C5)", () => 
     expect(readPositions.length).toBeGreaterThan(0); // in-band item re-read
     // The far item's pos (near doc end) was never exact-read this pass.
     for (const p of readPositions) expect(p).toBeLessThan(10);
-    // …but it still has a committed (interpolated) position, between the
-    // in-band knot and the doc-end endpoint.
+    // …but it still has a committed (carried) position.
     const farTop = sink.current!.positions.get("far");
     expect(farTop).toBeGreaterThan(10);
     expect(farTop).toBeLessThanOrEqual(6000);
 
-    // Scroll-idle refinement: with approximated items present, a scroll on
-    // the row container schedules ONE full pass at idle (which re-classifies
-    // per the CURRENT band; here the far item is still out, so it stays
-    // approximated — the contract is that the pass RAN).
+    // …and it is EXACTLY where it was: nothing above or below it moved (the
+    // mocked geometry is static), so the carry is rigid with delta 0 — no
+    // interpolation toward the in-band knot (task 1425).
+    expect(farTop).toBe(firstFar);
+
+    // A scroll schedules NO pass (task 1425 retired the scroll-idle
+    // refinement): no anchor is read and no card moves.
     coordsSpy.mockClear();
     const rowScroll = document.querySelector("[data-virgil-row-scroll]")!;
     act(() => {
       rowScroll.dispatchEvent(new Event("scroll"));
     });
     await act(async () => {
-      vi.advanceTimersByTime(200); // debounce (150ms) + RAF
+      vi.advanceTimersByTime(200);
     });
-    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(coordsSpy).not.toHaveBeenCalled();
+    expect(sink.current!.positions.get("far")).toBe(firstFar);
 
     r.unmount();
     editor.destroy();

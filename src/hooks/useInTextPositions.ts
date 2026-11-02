@@ -16,10 +16,7 @@ import {
   type MeasureOutcome,
 } from "@/lib/editor-geometry/settle-convergence";
 import { onFontReady } from "@/lib/text-metrics";
-import {
-  isLayoutGestureActive,
-  parkDuringLayoutGesture,
-} from "@/lib/pane-resize";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import {
   LAYOUT_SITE_IN_TEXT_CARDS,
   LAYOUT_SITE_IN_TEXT_POSITIONS,
@@ -190,56 +187,85 @@ export function isDegenerateMeasure(
   return maxPos > minPos;
 }
 
-/** A (doc pos → pod-relative top) reference point for the out-of-zone
- *  approximation. Knots are this pass's EXACT reads (in-band items) plus two
- *  exact endpoints: (0, editor-top-in-pod) and (docSize, editor-top +
- *  scrollHeight). Sorted by pos, tops monotone non-decreasing. */
-export interface TopKnot {
+/** A point whose pod-relative top was READ this pass AND has a previous
+ *  committed value, so it knows how far the document moved there since the
+ *  last pass. The two document edges are always anchors (pos −∞ / +∞). */
+export interface ShiftAnchor {
   pos: number;
-  top: number;
+  delta: number;
 }
 
+/** An already-measured item outside this pass's exact band: its anchor pos
+ *  now, and its last committed RAW top (exact, or provably-exact by shift). */
+export interface HeldItem {
+  id: string;
+  pos: number;
+  prevTop: number;
+}
+
+/** Two deltas agree when they differ by at most this — sub-pixel layout
+ *  rounding, not a geometry change. */
+const SHIFT_AGREE_EPSILON_PX = 0.5;
+
 /**
- * Approximate the pod-relative top for an OUT-OF-ZONE item by linear
- * interpolation between the surrounding knots (wave-2b C5). Pure arithmetic —
- * this is what replaces the per-item `coordsAtPos` forced-layout read for
- * items far outside the scroll band, where block-height variance between
- * knots is invisible anyway. Both endpoints are exact (O(1) reads), so the
- * approximation is anchored at the document's real extent; the common
- * single-edit case shifts everything below the edit uniformly, which linear
- * interpolation between an exact in-band knot and the exact doc-end knot
- * reproduces closely. Items the user can SEE are never approximated — since
- * task 327 that is a structural guarantee rather than an assumption: band
- * membership is decided on the item's `pos` against the band's document
- * position range (`resolveVisiblePosBand`), so an approximation can never
- * disqualify itself from the exact read that would correct it. The
- * scroll-idle refinement re-runs the pass while approximated items exist, so
- * a jump-to-far-card settles exact.
+ * THE SCROLL-INVARIANT CARRY (task 1425). Resolve every held (out-of-band,
+ * already-measured) item's top this pass from GEOMETRY ONLY — never from where
+ * the viewport happens to be.
  *
- * `knots` must be sorted by pos with ≥1 entry; out-of-range positions clamp
- * to the outermost knots.
+ * Between two anchors the document either moved RIGIDLY (both anchors moved by
+ * the same delta: nothing between them changed height, so every held item
+ * between them moved by exactly that delta too) or it did not (something
+ * between them grew or shrank). The rigid case costs zero DOM reads and is the
+ * overwhelmingly common one: no change at all (a scroll, a card-body edit — every
+ * delta 0), or an edit in the band the user is looking at (everything below it
+ * shifts by the band's last delta, which the doc-end edge confirms). The
+ * non-rigid case is BISECTED: read the middle held item exactly, which splits
+ * the run into two runs with known end deltas, and recurse — O(log run) reads
+ * per changed region, and a run that agrees stops costing anything.
+ *
+ * What this replaced (wave-2b C5): every out-of-band item was re-INTERPOLATED
+ * every pass from knots that assumed height ∝ position, and only an
+ * estimate-within-epsilon kept its exact history. Under `display:none` runs
+ * (focus view, folded sections) that assumption collapses, the estimates
+ * compressed toward the last exact knot, and the cascade packed them into one
+ * column — and because the band follows the scroll, it happened on scroll:
+ * cards lumped as their passage left the viewport and jumped back when it
+ * returned (task 1425). No estimate is made here at all.
+ *
+ * `held` and `anchors` must be sorted by pos; `anchors` must start at −∞ and
+ * end at +∞. `read` returns the item's exact raw top, or null if it cannot be
+ * read (that item then rides its left anchor's delta).
  */
-export function approxTopForPos(
-  pos: number,
-  knots: ReadonlyArray<TopKnot>,
-): number {
-  if (knots.length === 0) return 0;
-  if (pos <= knots[0].pos) return knots[0].top;
-  const last = knots[knots.length - 1];
-  if (pos >= last.pos) return last.top;
-  // Binary search for the upper surrounding knot.
-  let lo = 0;
-  let hi = knots.length - 1;
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >> 1;
-    if (knots[mid].pos <= pos) lo = mid;
-    else hi = mid;
+export function resolveHeldTops(
+  held: ReadonlyArray<HeldItem>,
+  anchors: ReadonlyArray<ShiftAnchor>,
+  read: (item: HeldItem) => number | null,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const run = (i: number, j: number, left: number, right: number) => {
+    if (j <= i) return;
+    if (Math.abs(left - right) <= SHIFT_AGREE_EPSILON_PX) {
+      for (let k = i; k < j; k++) out.set(held[k].id, held[k].prevTop + left);
+      return;
+    }
+    const mid = (i + j) >> 1;
+    const exact = read(held[mid]);
+    const d = exact === null ? left : exact - held[mid].prevTop;
+    out.set(held[mid].id, held[mid].prevTop + d);
+    run(i, mid, left, d);
+    run(mid + 1, j, d, right);
+  };
+  let a = 0;
+  let i = 0;
+  while (i < held.length) {
+    while (a + 1 < anchors.length - 1 && anchors[a + 1].pos <= held[i].pos) a++;
+    const upper = anchors[a + 1].pos;
+    let j = i;
+    while (j < held.length && held[j].pos < upper) j++;
+    run(i, j, anchors[a].delta, anchors[a + 1].delta);
+    i = j;
   }
-  const a = knots[lo];
-  const b = knots[hi];
-  if (b.pos === a.pos) return a.top;
-  const t = (pos - a.pos) / (b.pos - a.pos);
-  return a.top + t * (b.top - a.top);
+  return out;
 }
 
 const DEFAULT_ENTRY = (id: string) => linkCardIdSelector(id);
@@ -419,9 +445,11 @@ export function resolveCascade(
  * Architecture: measurement and resolution are split.
  *
  *   1. **Measurement** (DOM-touching, slow): `coordsAtPos` per IN-BAND item
- *      and `getBoundingClientRect` per in-band card; out-of-band items are
- *      interpolated (`approxTopForPos`, zero DOM reads — wave-2b C5) and
- *      refined to exact on scroll idle. "In-band" is decided on the item's
+ *      and `getBoundingClientRect` per in-band card; out-of-band items that
+ *      were measured before are CARRIED by the measured shift of their
+ *      neighbourhood (`resolveHeldTops`, task 1425 — zero DOM reads when the
+ *      document moved rigidly there, a bisected exact read where it did not).
+ *      Nothing is estimated, so scrolling changes no top. "In-band" is decided on the item's
  *      document POSITION against the band's pos range (task 327), never on
  *      the item's own previously-committed top. Writes a ref and bumps a
  *      version counter. Runs on editor content change, card-size change
@@ -531,16 +559,23 @@ export function useInTextPositions(
   // wobble in the bin stack's height commits nothing, and read by the
   // resolution memo through `measureVersion` exactly as the naturals are.
   const floorRef = useRef(0);
-  // Ids whose committed naturalTop is an APPROXIMATION (out-of-zone item,
-  // wave-2b C5) rather than an exact coordsAtPos read. Rebuilt per measure
-  // pass; consumed by the scroll-idle refinement, which re-runs the pass
-  // only while this is non-empty (a deck with everything exact costs a
-  // scroll exactly one Set-size check).
-  const approxIdsRef = useRef<Set<string>>(new Set());
+  // Each item's last committed RAW (pre-clamp, pre-hysteresis) pod-relative
+  // top — an exact read, or a provably-exact rigid carry (`resolveHeldTops`).
+  // Never an estimate (task 1425): this is what makes the deck a function of
+  // document geometry rather than of where the viewport was at the last pass.
+  // Committed with the naturals, cleared with them.
+  const rawTopRef = useRef<Map<string, number>>(new Map());
+  // The document's pod-relative top/bottom edges at the last committed pass —
+  // the outermost shift anchors. `null` ⇒ no baseline, so the next pass reads
+  // every item exactly.
+  const prevEdgesRef = useRef<{ top: number; bottom: number } | null>(null);
+  // Set by font-ready: the next pass reads every item exactly (a glyph-metric
+  // swap moves every line by a different amount — no region to shift).
+  const fullPassPendingRef = useRef(false);
   const [measureVersion, setMeasureVersion] = useState(0);
   // The ONE settle door (task 370). Every "the world may have moved" trigger —
-  // cold mount, font-ready, the editor RO, the structural bus, the scroll-idle
-  // refinement, a dirty keep-alive re-show — enters `request()`, and each gets
+  // cold mount, font-ready, the editor RO, the structural bus, a dirty
+  // keep-alive re-show — enters `request()`, and each gets
   // the SAME answer: keep measuring until two consecutive passes agree within
   // the task-328 hysteresis, or the wall-clock budget runs out. Created lazily
   // by the wiring effect (it needs `measureRef`), torn down with it.
@@ -673,8 +708,7 @@ export function useInTextPositions(
    *
    *  • `"chain"` — the convergence controller's closure, i.e. every
    *    "the world may have moved" trigger (cold mount, font-ready, the editor
-   *    RO, the per-card RO, the structural bus, the scroll-idle refinement, a
-   *    re-show). These are SPECULATIVE: nothing has told the hook that the deck
+   *    RO, the per-card RO, the structural bus, a re-show). These are SPECULATIVE: nothing has told the hook that the deck
    *    it already published is wrong, so a pass that would commit per-keystroke
    *    sub-pixel jitter is pure cost, and TYPING holds it.
    *  • `"rebuild"` — the companion one-shot, which fires because `items` /
@@ -753,6 +787,8 @@ export function useInTextPositions(
       // retained heights alongside the naturals so a later re-enable measures
       // from truth rather than reusing stale geometry.
       realHeightRef.current.clear();
+      rawTopRef.current.clear();
+      prevEdgesRef.current = null;
       setEditorContentHeight(0);
       // INERT: there is no deck to converge on. The controller terminates
       // rather than burning its deadline; a later item arrival re-arms through
@@ -773,6 +809,7 @@ export function useInTextPositions(
     // A width change while hidden (window resize / panel toggle) re-wraps text and
     // moves anchors, so the re-show effect compares against this to decide dirty.
     // clientWidth reads layout without forcing a reflow beyond what follows.
+    const widthAtPassStart = lastWidthRef.current;
     lastWidthRef.current = editorDom.clientWidth;
     const nextContentHeight = editorDom.scrollHeight;
     setEditorContentHeight((prev) =>
@@ -831,10 +868,12 @@ export function useInTextPositions(
     // every pass (only the card-rect read was culled) — O(items) layout reads
     // per RO fire on a doc whose card deck is mostly off-screen. Items are
     // CLASSIFIED against the band first: in-band (or never measured) → exact
-    // read; out-of-band → deferred to an `approxTopForPos` interpolation over
-    // this pass's exact knots. The scroll-idle refinement re-runs the pass
-    // when approximated items exist, so an item scrolled into view settles to
-    // exact.
+    // read; out-of-band → HELD, and carried by `resolveHeldTops` (task 1425):
+    // the shift measured at the exact reads either side of it, confirmed by
+    // both, or bisected to an exact read where they disagree. Pre-1425 these
+    // were re-INTERPOLATED every pass and a scroll-idle refinement re-read
+    // them as they entered the band — which made the deck a function of the
+    // scroll position (cards lumped leaving the viewport, jumped returning).
     //
     // The classification is by POS, not by retained px (task 327). C5 shipped
     // it the other way — each already-measured item was judged by its own
@@ -877,11 +916,9 @@ export function useInTextPositions(
     // `changed` stays false, `measureVersion` doesn't bump, and the deck
     // doesn't re-render at all.
     //
-    // This is what kills the per-scroll-pause "reset" (task 328, example 1):
-    // the C5 scroll-idle refinement re-runs the pass on every 150ms scroll
-    // pause while approximated items exist, and post-327 its corrections are
-    // small — but small and visible are different things, and each one used
-    // to commit. Height gets the tighter epsilon because it feeds the
+    // This is what killed the per-scroll-pause "reset" (task 328, example 1):
+    // the C5 scroll-idle refinement (retired by task 1425) re-ran the pass on
+    // every 150ms scroll pause, and its small corrections each used to commit. Height gets the tighter epsilon because it feeds the
     // cascade: every card packed below an unchanged card inherits its wobble.
     //
     // Comparing against the COMMITTED value (never the last measured one) is
@@ -907,30 +944,32 @@ export function useInTextPositions(
       NEAR_ZONE_PX,
       editorRect,
     );
-    const next = new Map<string, NaturalEntry>();
-    const raws: RawMeasure[] = [];
-    const nextApprox = new Set<string>();
-    type Resolved = { id: string; pos: number };
-    const exactItems: Resolved[] = [];
-    const deferredItems: Resolved[] = [];
-    for (const item of items) {
-      // Prefer the live snapshot pos (re-mapped every transaction) so cards
-      // track their anchor as plain typing shifts content; fall back to the
-      // captured pos for kinds the resolver doesn't cover.
-      const livePos = resolvePos?.(item.id);
-      const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
-      if (
-        naturalRef.current.has(item.id) &&
-        (pos < band.start || pos > band.end)
-      ) {
-        deferredItems.push({ id: item.id, pos });
-        continue;
-      }
-      exactItems.push({ id: item.id, pos });
-    }
+    // The document's two edges, pod-relative — exact O(1) reads off the rect
+    // already taken. They are the outermost shift anchors: an edit anywhere
+    // moves the bottom edge, so a held run that ends at the document's end can
+    // only ride rigidly if the end moved with it.
+    const edges = {
+      top: editorRect.top - podRect.top,
+      bottom: editorRect.bottom - podRect.top,
+    };
+    const prevEdges = prevEdgesRef.current;
+    // A width change re-wraps every line, and a font swap re-measures every
+    // glyph: neither is a "region" a shift can describe, so the pass reads
+    // everything. So does a pass with no edge baseline (cold, or post-disable).
+    const fullPass =
+      fullPassPendingRef.current ||
+      prevEdges === null ||
+      widthAtPassStart !== editorDom.clientWidth;
 
-    const knots: TopKnot[] = [];
-    for (const { id, pos } of exactItems) {
+    const next = new Map<string, NaturalEntry>();
+    const nextRaw = new Map<string, number>();
+    const raws: RawMeasure[] = [];
+    // Anchors carry the measured shift since the last pass at an exact read.
+    const anchors: ShiftAnchor[] = [];
+    const held: HeldItem[] = [];
+
+    /** The ONE exact read (anchor `coordsAtPos` + the in-zone card rect). */
+    const readExact = (id: string, pos: number): number | null => {
       let preClampTop: number;
       let coordsTop: number;
       try {
@@ -938,7 +977,7 @@ export function useInTextPositions(
         coordsTop = coords.top;
         preClampTop = coords.top - podRect.top;
       } catch {
-        continue; // skip items with invalid positions
+        return null; // invalid position
       }
 
       // Read the live height ONLY when in-zone (the perf gate: out-of-zone
@@ -961,7 +1000,7 @@ export function useInTextPositions(
       );
 
       raws.push({ preClampTop, height, pos });
-      knots.push({ pos, top: preClampTop });
+      nextRaw.set(id, preClampTop);
       // The committed natural retains the historical ≥0 clamp (negative
       // values legitimately appear when an unanchored block sits just above
       // the pod). The degeneracy guard below — which reads the *pre-clamp*
@@ -969,44 +1008,59 @@ export function useInTextPositions(
       // an un-laid-out editor.
       //
       // …and then HYSTERESIS (task 328): a pass that would move this card by
-      // less than the epsilon keeps the committed value. The knots above are
-      // deliberately fed the RAW read — the interpolation is arithmetic about
-      // the document, not about what the deck currently shows.
+      // less than the epsilon keeps the committed value. The raw map above is
+      // deliberately fed the RAW read — the shift arithmetic is about the
+      // document, not about what the deck currently shows.
       next.set(id, committed(id, preClampTop < 0 ? 0 : preClampTop, height));
+      return preClampTop;
+    };
+
+    for (const item of items) {
+      // Prefer the live snapshot pos (re-mapped every transaction) so cards
+      // track their anchor as plain typing shifts content; fall back to the
+      // captured pos for kinds the resolver doesn't cover.
+      const livePos = resolvePos?.(item.id);
+      const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
+      const prevTop = rawTopRef.current.get(item.id);
+      if (
+        !fullPass &&
+        prevTop !== undefined &&
+        (pos < band.start || pos > band.end)
+      ) {
+        held.push({ id: item.id, pos, prevTop });
+        continue;
+      }
+      const top = readExact(item.id, pos);
+      if (top !== null && prevTop !== undefined)
+        anchors.push({ pos, delta: top - prevTop });
     }
 
-    // Approximate the deferred (out-of-band) items — zero DOM reads. The two
-    // endpoint knots are EXACT O(1) reads: the editor's top edge in pod
-    // coordinates, and that edge plus the content height already read above.
-    if (deferredItems.length > 0) {
-      const editorTopInPod = editorRect.top - podRect.top;
-      knots.push({ pos: 0, top: editorTopInPod });
-      knots.push({
-        pos: editor.state.doc.content.size,
-        top: editorTopInPod + nextContentHeight,
+    if (held.length > 0 && prevEdges !== null) {
+      anchors.push({ pos: -Infinity, delta: edges.top - prevEdges.top });
+      anchors.push({ pos: Infinity, delta: edges.bottom - prevEdges.bottom });
+      anchors.sort((a, b) => a.pos - b.pos);
+      held.sort((a, b) => a.pos - b.pos);
+      const carried = resolveHeldTops(held, anchors, (h) => {
+        const top = readExact(h.id, h.pos);
+        // `readExact` committed it; a failed read rides its neighbours.
+        return top;
       });
-      knots.sort((a, b) => a.pos - b.pos);
-      // Monotone tops: interpolation must never invert document order (a
-      // footnote atom's line box can read above its neighbor's).
-      for (let i = 1; i < knots.length; i++) {
-        if (knots[i].top < knots[i - 1].top) knots[i].top = knots[i - 1].top;
-      }
-      for (const { id, pos } of deferredItems) {
-        const approx = approxTopForPos(pos, knots);
-        nextApprox.add(id);
+      for (const h of held) {
+        if (next.has(h.id)) continue; // bisection read it exactly
+        const top = carried.get(h.id) ?? h.prevTop;
+        nextRaw.set(h.id, top);
         next.set(
-          id,
+          h.id,
           committed(
-            id,
-            approx < 0 ? 0 : approx,
+            h.id,
+            top < 0 ? 0 : top,
             // Out-of-band by construction — the retained real height (or the
             // placeholder for a never-measured card), exactly as before.
-            retainedEntryHeight(undefined, realHeightRef.current.get(id)),
+            retainedEntryHeight(undefined, realHeightRef.current.get(h.id)),
           ),
         );
       }
     }
-    approxIdsRef.current = nextApprox;
 
     // Self-validation (Part B): if this measure is degenerate — many
     // distinct anchors reporting strongly above the pod, the signature of
@@ -1053,6 +1107,9 @@ export function useInTextPositions(
     // The ONE commit: naturals and floor together, under the same verdict.
     naturalRef.current = next;
     floorRef.current = nextFloor;
+    rawTopRef.current = nextRaw;
+    prevEdgesRef.current = edges;
+    fullPassPendingRef.current = false;
     if (changed) setMeasureVersion((v) => v + 1);
     // THE CONVERGENCE OBSERVATION. `changed` is already the task-328 epsilon
     // comparison (every value above went through `committed()`, which holds a
@@ -1093,6 +1150,8 @@ export function useInTextPositions(
         setMeasureVersion((v) => v + 1);
       }
       realHeightRef.current.clear();
+      rawTopRef.current.clear();
+      prevEdgesRef.current = null;
       return;
     }
 
@@ -1183,7 +1242,9 @@ export function useInTextPositions(
     // against the L2 paper↔Library bounce.)
     fontReadyActiveRef.current = true;
     const disposeFontReady = onFontReady(() => {
-      if (fontReadyActiveRef.current) schedule();
+      if (!fontReadyActiveRef.current) return;
+      fullPassPendingRef.current = true;
+      schedule();
     });
     // Card positions are anchored to PM coords. Subscribe to the
     // DocStructureObserver: structural changes (block add/remove) are
@@ -1242,27 +1303,13 @@ export function useInTextPositions(
       // ignore
     }
 
-    // Scroll-idle refinement (wave-2b C5): approximated (out-of-band) tops are
-    // good enough while off-screen, but a jump-to-far-card must SETTLE to
-    // exact once the scroll lands — and nothing else re-measures on scroll
-    // (pod-relative tops are scroll-invariant, so the hook deliberately has no
-    // per-frame scroll path). Debounced to scroll IDLE, and a no-op unless
-    // approximated items exist — a fully-exact deck pays one Set-size check
-    // per idle edge, never a measure. Skipped while a layout gesture is live
-    // (drag auto-scroll); the gesture's own end-edge settle re-measures.
-    const scrollEl = findEditorScrollFor(editor.view?.dom as HTMLElement | undefined);
-    let scrollIdleTimer: number | null = null;
-    const SCROLL_REFINE_IDLE_MS = 150;
-    const onScrollForRefine = () => {
-      if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
-      scrollIdleTimer = window.setTimeout(() => {
-        scrollIdleTimer = null;
-        if (approxIdsRef.current.size === 0) return;
-        if (isLayoutGestureActive()) return;
-        schedule();
-      }, SCROLL_REFINE_IDLE_MS);
-    };
-    scrollEl?.addEventListener("scroll", onScrollForRefine, { passive: true });
+    // NO scroll path (task 1425). Wave-2b C5 had a scroll-idle refinement that
+    // re-ran the pass on every 150 ms scroll pause while interpolated tops
+    // existed; each run re-classified against the moved band, so cards
+    // re-approximated as their passage left the viewport (lumping) and
+    // exact-read as it returned (jumping back). Nothing is interpolated any
+    // more — a held top is exact or a provably-exact carry — so a scroll has
+    // nothing to refine, and the deck is a function of geometry alone.
 
     return () => {
       converge.stop();
@@ -1273,8 +1320,6 @@ export function useInTextPositions(
       window.removeEventListener("resize", onWindowResize);
       geometryPark.dispose();
       editorObs?.disconnect();
-      if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
-      scrollEl?.removeEventListener("scroll", onScrollForRefine);
     };
   }, [editor, enabledProp, passGate, requestSettle]);
 
