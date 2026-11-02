@@ -26,7 +26,7 @@
  * > decides everything else.** The palette AND the role/aria-live pairing are
  * > read off the leaf's tables (`paletteForTone`, `announcementForTone` — the
  * > same pairing the in-document band uses), the glyph is inked by the tone's
- * > edge, the label truncates under ONE width cap (the menu has ONE width
+ * > glyph ink (`glyphInk`: its own `glyph`, else its edge), the label truncates under ONE width cap (the menu has ONE width
  * > spec too, and a badge cannot pass its own), actions render as SIBLINGS
  * > of the labelled span in ONE button style (`.topbarbtn`), and the kebab and
  * > its rows are ONE implementation.
@@ -79,6 +79,7 @@ import {
 } from "react";
 import {
   announcementForTone,
+  glyphInk,
   paletteForTone,
   type InterruptionTone,
   type TonePalette,
@@ -134,12 +135,15 @@ const PRESENCE_PALETTE: TonePalette = Object.freeze({
 /** `mode` (task 1353): a mode the USER turned on (Focus view, Helper mode) —
  *  the selected-toggle tint every pressed bar control wears
  *  (`.topbarbtn[aria-pressed="true"]`), so the chip reads as it did when it
- *  was a pressed tool. The edge is the selected INK, because the pill inks its
- *  glyph with the edge (a tint-coloured edge would erase the Helper glyph). */
+ *  was a pressed tool. Like a pressed `.topbarbtn` it wears NO visible edge
+ *  (task 1422 — transparent, so the `border` class still holds the pill's
+ *  height level with its siblings); the glyph keeps the selected ink through
+ *  its own `glyph` field rather than borrowing the edge. */
 const MODE_PALETTE: TonePalette = Object.freeze({
   bg: "var(--control-selected-tint)",
-  edge: "var(--control-selected-ink)",
+  edge: "transparent",
   ink: "var(--control-selected-ink)",
+  glyph: "var(--control-selected-ink)",
 });
 
 export interface BarStatusAnnouncement {
@@ -360,7 +364,7 @@ export function BarStatusAction({
 
 export interface BarStatusPillProps {
   tone: BarStatusTone;
-  /** A 14–16px stroke glyph; the pill inks it with the tone's edge. Optional
+  /** A 14–16px stroke glyph; the pill inks it with the tone's glyph ink. Optional
    *  only for a `widget` pill, whose controls lead. */
   glyph?: ReactNode;
   /** An IDENTITY colour (a collaborator's) replacing the register's edge on
@@ -457,7 +461,7 @@ export function BarStatusPill({
     <span
       aria-hidden
       className={glyphClassName}
-      style={{ color: palette.edge, display: "inline-flex" }}
+      style={{ color: glyphInk(palette), display: "inline-flex" }}
       data-bar-status-glyph
     >
       {glyph}
