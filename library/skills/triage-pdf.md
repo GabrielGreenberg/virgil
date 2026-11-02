@@ -86,9 +86,9 @@ Supported source kinds:
   - **No source document on disk** (the normal `.bib` case — a *reference-only* entry, cited but not held): the gate answers **no**, and under F#4 **no row is minted**. Before answering it discharges the state to the `% bib.state` comment and REFRESHES an already-existing row for that citekey without minting one. Such rows are real and common — a pre-F#4 library still carries them (the reporting library: 3 722 rows against 24 082 master entries) and **nothing in the shipped flow prunes them** (`prune_catalog_present_false --apply` has no caller). So do not assume the row is absent either: assume only that a `.bib` import never CREATES one.
   - **The citekey names a paper that IS held on disk**: the gate answers **yes** and touches nothing; `_upsert_catalog_row_bib_only` then writes a real holdings row — refreshing an existing one in place (preserving `addedAt`/`tags`/`pdf`/`indexed`, appending `fieldChanges`), or appending a new one with `pdf.present: true`.
 
-  **The other three per-entry outcomes**, none of which produces (1)–(3): `bib-ignored` — the existing entry's state is settled (`TERMINAL_BIB_STATES`), so the drop is discarded and master.bib is left byte-unchanged; `bib-folded` — the work-identity guard matched the work under a DIFFERENT citekey, so an alias is recorded in `.virgil/aliases.json` and nothing else is written; `bib-skipped-no-citekey` — the row carried no citekey and nothing is written.
+  **Every other per-entry outcome produces none of (1)–(3).** The ones you will meet: `bib-ignored` — the existing entry's state is settled (`TERMINAL_BIB_STATES`), so the drop is discarded and master.bib is left byte-unchanged; `bib-folded` — the work-identity guard matched the work under a DIFFERENT citekey, so an alias is recorded in `.virgil/aliases.json` and nothing else is written; `bib-skipped-no-citekey` — the row carried no citekey; `bib-parse-failed` — the whole file failed to parse; `bib-master-unreadable` — master.bib could not be read, so the row is not applied rather than merged against nothing; `error` — the row raised. Do not treat that list as closed: the statuses are whatever `apply_row` in `triage_apply.py` returns, and the apply output prints each row's `[<status>]`.
 
-  **The source `.bib`** is deleted from `unsorted/` only when EVERY row came back `bib-imported` or `bib-ignored`; any other status parks the whole file under `_pending/` with a `triage-bib-parse-failed` notification. That includes `bib-folded` and `bib-skipped-no-citekey`, so a file that imported cleanly apart from one duplicate is quarantined under a parse-failure notice.
+  **The source `.bib`** is deleted from `unsorted/` only when EVERY row's status is in `triage_apply.BIB_SOURCE_CLEAN_STATUSES` (`bib-imported`, `bib-ignored`); any other status parks the whole file under `_pending/` with a `triage-bib-parse-failed` notification. That includes `bib-folded` and `bib-skipped-no-citekey`, so a file that imported cleanly apart from one duplicate is quarantined under a parse-failure notice.
 
   **Where the entry appears.** In the library list, as a **synthetic row projected from `bib-index.json`** — but only when the catalog does not already name the citekey: `LibraryView` suppresses the synthetic row for any citekey the catalog holds, so a stale pre-F#4 row SHADOWS the live projection (which is why the gate refreshes it). PDF view shows "No PDF on disk"; text view stays dormant.
 
@@ -128,7 +128,7 @@ directory).
    For `.docx` (Word documents have explicit core properties + paragraph
    styles, so we read both):
    ```bash
-   python3 -c "import sys; sys.path.insert(0, 'scripts'); from extract_docx import core_properties; import json; print(json.dumps(core_properties('unsorted/<filename>'), indent=2))"
+   python3 -c "import sys; sys.path.insert(0, '.virgil/scripts/library'); from extract_docx import core_properties; import json; print(json.dumps(core_properties('unsorted/<filename>'), indent=2))"
    ```
    This returns `{title, author, created, modified, first_paragraphs}`. Use
    the core properties first; fall back to scanning the first paragraphs if
@@ -169,7 +169,7 @@ directory).
      year, use the in-PDF year for the citekey.
    - **DOI.** On the same pages 1–4 text, search for
      `\b10\.\d{4,9}/[^\s'"<>]+`. If found, store it — prefill it in
-     the bib stub at step 5. A DOI here is strong evidence for the
+     the bib stub at step 7. A DOI here is strong evidence for the
      correct year and journal; prefer DOI-derived metadata over
      filename guesses.
 
@@ -253,11 +253,11 @@ directory).
    Otherwise, there are four cases:
 
    a. **No bib entry, no on-disk source** → standard new-paper flow.
-      Add the bib entry (step 5), move the file (step 7), enqueue
-      `kind: "index"` (step 8).
+      Add the bib entry (step 7), move the file (step 8), enqueue
+      `kind: "index"` (step 9).
 
    b. **Bib entry exists, no on-disk source** ("fill the source gap") →
-      skip step 5, move the file, enqueue `kind: "index"`.
+      skip step 7, move the file, enqueue `kind: "index"`.
 
    c. **Bib entry exists AND a same-format source exists at
       `papers/<citekey>/<citekey>.<ext>`** → genuine collision. Append `a`/`b`/...
@@ -268,10 +268,10 @@ directory).
       priority is `docx > pdf` (DOCX carries explicit structure that
       beats the PDF heuristics). Decide which to do:
       - If the new file is *higher* priority than the existing one
-        (e.g., new=docx, existing=pdf) → skip step 5, place the new
+        (e.g., new=docx, existing=pdf) → skip step 7, place the new
         file at `papers/<citekey>/<citekey>.<new-ext>` *alongside* the existing
         one (don't delete the old source), and enqueue **`kind:
-        "reindex"`** instead of `"index"` in step 8. The existing
+        "reindex"`** instead of `"index"` in step 9. The existing
         lower-priority source is preserved as an archive — the indexer
         will record it as `pdf.alternates` in the catalog.
       - If the new file is *lower* priority (e.g., new=pdf,
@@ -285,7 +285,64 @@ directory).
    prefixes, etc.) — prefer the existing citekey rather than minting a
    new one for what is plausibly the same paper.
 
-5. **Add a `master.bib` entry** if no matching one exists. Use the
+5. **Whole-handbook check — refuse to mint a stub when the file is a
+   whole edited volume, not a single chapter.** Trigger if first-page
+   text contains BOTH:
+
+   - A handbook signal: "Cambridge Handbook", "Oxford Handbook",
+     "Routledge Handbook", "Edited by" (with multiple editors), "Series
+     Editor", "General Editor", or a TOC listing chapters by different
+     authors
+   - The filename's proposed author surname does NOT appear on the
+     title page
+
+   When triggered, the file is the whole book — minting a stub for
+   `<filename-author>2024` would produce a wrong-bib entry. Instead:
+
+   1. Move file to `unsorted/_pending/<filename>` (mkdir if
+      needed) so it's not re-triaged on the next scan.
+   2. Append a notification:
+      ```json
+      {
+        "kind": "triage-needs-chapter-info",
+        "filename": "<filename>",
+        "candidateAuthor": "<lastname from filename>",
+        "handbookTitle": "<from page 1>",
+        "at": "<ISO>"
+      }
+      ```
+   3. Skip steps 6–9 — nothing has been written to `master.bib`, which
+      is why this check runs BEFORE the stub (as `triage_apply.py` checks
+      `whole-handbook` before any write) — then run step 10 (retire this
+      triage request).
+   4. Say so in your reply: name the parked file and ask the user for the
+      chapter title, chapter author(s) and page range, then to re-run
+      `/library/triage-pdf <filename>` with that context (move the file
+      back from `_pending/` first). Nothing in the app prompts for this
+      yet — the `triage-needs-chapter-info` notification is a record, not
+      a form — so your reply is the only place the user learns what to
+      supply. The re-run files a NEW request, which a retired old one
+      cannot shadow.
+
+   This is the one failure mode that legitimately needs human input —
+   the skill should not guess.
+
+6. **Flag preprints / forthcoming.** If page 1 contains any of:
+   "Manuscript", "Penultimate Draft", "Pre-print", "Preprint",
+   "Forthcoming", "Draft — please do not cite", "Under review", or a
+   lingbuzz ID (`lingbuzz/\d+`), change the entry type to
+   `@unpublished` and set:
+   - `note = {Preprint}` (or `Forthcoming`, `Penultimate draft`, etc.
+     — match the document's own phrasing)
+   - If a lingbuzz ID was found: `url = {https://ling.auf.net/lingbuzz/<id>}`
+
+   This DECIDES the entry type step 7 writes — decide it here, before the
+   one write, rather than correcting a stub afterwards (there is no step
+   that rewrites one). A preprint with a DOI keeps
+   its DOI field — the DOI may point to the published version, which
+   `/library/authenticate-bib` will reconcile later.
+
+7. **Add a `master.bib` entry** if no matching one exists. Use the
    locked CLI shim — do **not** Read/Write `master.bib` directly:
 
    ```bash
@@ -313,7 +370,9 @@ directory).
    else — nothing was written: report stderr verbatim and stop before
    queueing the paper.
 
-   First, determine the entry type from the source content:
+   First, determine the entry type from the source content. If step 6
+   flagged a preprint, its verdict wins: `@unpublished` with its `note`
+   (and `url`, for lingbuzz) goes into THIS write. Otherwise:
 
    - **Journal article** → `@article` (default). Fields: `author`,
      `title`, `journal`, `year`, `volume`, `number`, `pages`, `doi`.
@@ -352,54 +411,10 @@ directory).
 
    Use the title + authors + year you read (as corrected by step 3).
    Include any DOI extracted in step 3. Mark `bib.state = "unverified"`
-   so `/library/index-paper` will authenticate it.
-
-6. **Whole-handbook check — refuse to mint a stub when the file is a
-   whole edited volume, not a single chapter.** Trigger if first-page
-   text contains BOTH:
-
-   - A handbook signal: "Cambridge Handbook", "Oxford Handbook",
-     "Routledge Handbook", "Edited by" (with multiple editors), "Series
-     Editor", "General Editor", or a TOC listing chapters by different
-     authors
-   - The filename's proposed author surname does NOT appear on the
-     title page
-
-   When triggered, the file is the whole book — minting a stub for
-   `<filename-author>2024` would produce a wrong-bib entry. Instead:
-
-   1. Move file to `unsorted/_pending/<filename>` (mkdir if
-      needed) so it's not re-triaged on the next scan.
-   2. Append a notification:
-      ```json
-      {
-        "kind": "triage-needs-chapter-info",
-        "filename": "<filename>",
-        "candidateAuthor": "<lastname from filename>",
-        "handbookTitle": "<from page 1>",
-        "at": "<ISO>"
-      }
-      ```
-   3. Skip steps 7–9, then run step 10 (retire this triage request).
-      The frontend toast will prompt the user for the chapter title and
-      page range, then re-enqueue triage with the additional context —
-      a NEW request, which a retired old one cannot shadow.
-
-   This is the one failure mode that legitimately needs human input —
-   the skill should not guess.
-
-7. **Flag preprints / forthcoming.** If page 1 contains any of:
-   "Manuscript", "Penultimate Draft", "Pre-print", "Preprint",
-   "Forthcoming", "Draft — please do not cite", "Under review", or a
-   lingbuzz ID (`lingbuzz/\d+`), change the entry type to
-   `@unpublished` and set:
-   - `note = {Preprint}` (or `Forthcoming`, `Penultimate draft`, etc.
-     — match the document's own phrasing)
-   - If a lingbuzz ID was found: `url = {https://ling.auf.net/lingbuzz/<id>}`
-
-   This overrides any type set in step 5. A preprint with a DOI keeps
-   its DOI field — the DOI may point to the published version, which
-   `/library/authenticate-bib` will reconcile later.
+   so `/library/index-paper` will authenticate it. Every field you put in
+   `fields.json` must come from the file itself — a field it does not show
+   stays out rather than guessed; authentication fills it later. That is
+   the find-or-surface rule ([_find-or-surface.md](_find-or-surface.md)).
 
 8. **Move the source file** from `unsorted/<filename>` to
    `papers/<citekey>/<citekey>.<ext>` — preserve the original extension. Do *not*

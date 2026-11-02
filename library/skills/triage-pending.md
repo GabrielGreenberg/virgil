@@ -155,20 +155,71 @@ directory).
    Surface anything that looks wrong (a `proposedType=article` for a
    clearly-book filename; a SEP entry without `sep` flag; a citekey
    collision with `master.bib`). Edit the JSONL in place when you find
-   issues — the apply script reads whatever you give it.
+   issues — the apply script reads whatever you give it, which is exactly
+   why an edit must never INVENT anything. For a `needs-metadata` row (or
+   any row with no `proposedCitekey`), fill a citekey / year / field only
+   from what the file itself shows; if it does not show it, leave the row
+   as it is — apply quarantines it to `unsorted/_needs-metadata/` with a
+   `triage-needs-metadata` notification, which is the honest outcome.
+   That is the find-or-surface rule
+   ([_find-or-surface.md](_find-or-surface.md)), the same one the
+   `--llm-rescue` prompt carries.
 
    **Skip review when `$ARGUMENTS == "auto"`.** Use this only after a
    prior batch has been reviewed and the input is known-good (e.g.,
    re-running after a partial failure).
 
-3. **Apply.** Pipe the (possibly edited) JSONL into the apply script:
+   **Optional: `--llm-rescue` for the residual — run it HERE, before
+   step 3.** It rewrites the JSONL, so it is only worth anything if
+   apply then reads its output.
+
+   After `--marker-rescue` runs, some rows (typically 5-15% of a
+   placeholder-named backlog) still have no usable citekey — the title
+   page is missing, OCR garbled the byline beyond recovery, or the year
+   sits buried somewhere marker didn't reach. For these, dispatch a
+   final LLM-rescue pass:
+
+   ```bash
+   # 1. Stage prompts for rows that need LLM rescue.
+   python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \
+       <runDir>/triage.jsonl --out-dir <runDir>/llm-rescue/
+
+   # 2. For each <runDir>/llm-rescue/prompts/row-NNNN.txt, dispatch a
+   #    Sonnet subagent via the Agent tool with that prompt as its
+   #    input and write the JSON response to
+   #    <runDir>/llm-rescue/responses/row-NNNN.json.
+
+   # 3. Merge responses back into the JSONL.
+   python3 .virgil/scripts/library/triage_llm_rescue.py merge-responses \
+       <runDir>/triage.jsonl --responses-dir <runDir>/llm-rescue/responses \
+       --output <runDir>/triage.llm.jsonl
+
+   # 4. Backfill years via Crossref for rows where the LLM found
+   #    title+author but no year.
+   python3 .virgil/scripts/library/triage_llm_rescue.py crossref-year-backfill \
+       <runDir>/triage.llm.jsonl --output <runDir>/triage.final.jsonl
+   ```
+
+   Token cost: ~$0.01-0.05 per row with Sonnet. Only run when the
+   backlog includes a substantial residual of placeholder-named PDFs
+   (>20% with `needs-metadata` after `--marker-rescue`).
+
+   When you ran it, **step 3 applies `<runDir>/triage.final.jsonl`**, not
+   `triage.jsonl` — review that file the same way first. Rows the LLM also
+   can't resolve keep their `needs-metadata` flag, and it is apply (step 3)
+   that quarantines them to `unsorted/_needs-metadata/`; nothing is moved
+   before apply runs.
+
+3. **Apply.** Pipe the (possibly edited) JSONL — `triage.final.jsonl` if
+   you ran `--llm-rescue` — into the apply script:
    ```bash
    python3 .virgil/scripts/library/triage_apply.py --input <runDir>/triage.jsonl
    ```
    For each row this:
    - **whole-handbook** → moves file to `unsorted/_pending/`,
-     emits a `triage-needs-chapter-info` notification (frontend will
-     prompt the user)
+     emits a `triage-needs-chapter-info` notification (a record only —
+     nothing in the app prompts for the chapter info, so list these files
+     in your reply and say what to supply; see `/library/triage-pdf` step 5)
    - **variant-copy** + `existingCitekey` → archives under
      `papers/<existingCitekey>/variants/<filename>`, no new bib entry
    - **bib-only** → upserts the entry into `master.bib` with its
@@ -222,43 +273,12 @@ directory).
    then remove the run's scratch: `rm -rf <runDir>` (keep it instead if
    apply failed — the fix is to edit that JSONL and re-run, below).
 
-4. **Drain the queue.** After triage, the queue has N pending `index`
-   entries. Run `/library/index-pending` (or `python3 .virgil/scripts/library/drain_queue.py`
-   directly) to actually index every paper and authenticate every bib.
-
-### Optional: `--llm-rescue` for the residual
-
-After `--marker-rescue` runs, some rows (typically 5-15% of a
-placeholder-named backlog) still have no usable citekey — the title
-page is missing, OCR garbled the byline beyond recovery, or the year
-sits buried somewhere marker didn't reach. For these, dispatch a
-final LLM-rescue pass:
-
-```bash
-# 1. Stage prompts for rows that need LLM rescue.
-python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \
-    <runDir>/triage.jsonl --out-dir <runDir>/llm-rescue/
-
-# 2. For each <runDir>/llm-rescue/prompts/row-NNNN.txt, dispatch a
-#    Sonnet subagent via the Agent tool with that prompt as its
-#    input and write the JSON response to
-#    <runDir>/llm-rescue/responses/row-NNNN.json.
-
-# 3. Merge responses back into the JSONL.
-python3 .virgil/scripts/library/triage_llm_rescue.py merge-responses \
-    <runDir>/triage.jsonl --responses-dir <runDir>/llm-rescue/responses \
-    --output <runDir>/triage.llm.jsonl
-
-# 4. Backfill years via Crossref for rows where the LLM found
-#    title+author but no year.
-python3 .virgil/scripts/library/triage_llm_rescue.py crossref-year-backfill \
-    <runDir>/triage.llm.jsonl --output <runDir>/triage.final.jsonl
-```
-
-Token cost: ~$0.01-0.05 per row with Sonnet. Only run when the
-backlog includes a substantial residual of placeholder-named PDFs
-(>20% with `needs-metadata` after `--marker-rescue`). Rows the LLM
-also can't resolve remain in `_needs-metadata/` quarantine.
+4. **Drain the queue.** After triage, the queue holds the pending
+   `index` requests apply wrote, plus an `authenticate` request per
+   imported `.bib` entry. Run `/library/index-pending` — it drains every
+   kind. `drain_queue.py` on its own is NOT a substitute: it processes
+   only `queue_slot.DRAIN_NATIVE_KINDS` (`index`/`reindex`) and skips
+   every other kind with a note, so it never authenticates a bib.
 
 ## Reply format
 

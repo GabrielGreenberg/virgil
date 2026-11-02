@@ -472,6 +472,60 @@ describe("skill markdown ↔ Python CLI contract", () => {
     ).toEqual([]);
   });
 
+  // The same WHERE question, asked of the other way a skill names a script
+  // directory: an inline `python3 -c "…sys.path.insert(0, '<dir>'); from <mod>
+  // import …"`. The invocation scanner above keys on `<name>.py`, so a path held
+  // in a `-c` string was invisible to it — which is how `/library/triage-pdf`'s
+  // DOCX step kept `sys.path.insert(0, 'scripts')`, a directory no library root
+  // has, after task 511 fixed the same file's `.bib` block (task 1432).
+  it("every sys.path entry a skill inlines resolves where the agent will stand", () => {
+    const scripts = indexScripts();
+    const SYS_PATH =
+      /sys\.path\.(?:insert\(\s*\d+\s*,|append\()\s*(['"])(.*?)\1\s*\)/g;
+    const IMPORT = /\bfrom\s+([A-Za-z_][A-Za-z0-9_]*)\s+import\b/g;
+    const findings: string[] = [];
+    let checked = 0;
+
+    for (const dir of SKILL_DIRS) {
+      const allowed = ALLOWED_SCRIPT_PREFIXES[dir]!;
+      for (const rel of listFiles(dir, ".md")) {
+        const src = readFileSync(path.join(REPO_ROOT, rel), "utf8");
+        if (isRepoOnlySkill(src)) continue;
+        src.split("\n").forEach((raw, i) => {
+          for (const m of raw.matchAll(SYS_PATH)) {
+            const entry = m[2];
+            // The resolver-loop idiom (`"$scripts_library"`) is the caller's.
+            if (entry.includes("$")) continue;
+            checked += 1;
+            const prefix = `${entry.replace(/\/+$/, "")}/`;
+            if (!allowed.includes(prefix) && !PERMITTED_FOREIGN_SCRIPT_PATHS.includes(rel)) {
+              findings.push(
+                `  ${rel}:${i + 1} — sys.path entry '${entry}': ${dir} may only ` +
+                  `spell ${allowed.join(", ")}`,
+              );
+            }
+          }
+          if (!SYS_PATH.test(raw)) return;
+          SYS_PATH.lastIndex = 0;
+          for (const m of raw.matchAll(IMPORT)) {
+            if (["os", "sys", "pathlib", "json"].includes(m[1])) continue;
+            if (!scripts.has(`${m[1]}.py`)) {
+              findings.push(`  ${rel}:${i + 1} — imports ${m[1]}, no such script`);
+            }
+          }
+        });
+      }
+    }
+
+    // Reached, not merely permitted: the triage-pdf DOCX step is one.
+    expect(checked).toBeGreaterThan(0);
+    expect(
+      findings,
+      `A skill puts a directory on sys.path that does not exist where it runs.\n` +
+        `${findings.join("\n")}`,
+    ).toEqual([]);
+  });
+
   it("a required-flag command has exactly the runnable spellings it declares", () => {
     // The failure this pins is the one that actually happened: the command was
     // spelled in two places, and the copy that ran every pass drifted. A

@@ -59,6 +59,13 @@ from _tools import (
 )
 
 
+# The per-row statuses after which a source `.bib` counts as fully applied:
+# only when EVERY row of a file lands in this set is the file deleted from
+# `unsorted/`; any other status (`bib-folded`, `bib-skipped-no-citekey`,
+# `bib-parse-failed`, `bib-master-unreadable`, `error`, …) parks it under
+# `_pending/`. `/library/triage-pdf` cites this set rather than counting it.
+BIB_SOURCE_CLEAN_STATUSES: frozenset[str] = frozenset({"bib-imported", "bib-ignored"})
+
 # ── The notification vocabulary ───────────────────────────────────────────
 #
 # Every `kind` this script can append to the inbox, DECLARED once. Like
@@ -853,10 +860,8 @@ def main() -> int:
         if (row.get("extension") or "").lower() == "bib":
             fn = row.get("filename") or ""
             stats = bib_files.setdefault(fn, {"ok": 0, "failed": 0})
-            if status in ("bib-imported",):
-                stats["ok"] += 1
-            elif status in ("bib-ignored",):
-                stats["ok"] += 1  # processed cleanly even if ignored
+            if status in BIB_SOURCE_CLEAN_STATUSES:
+                stats["ok"] += 1  # processed cleanly (an ignored row counts)
             else:
                 stats["failed"] += 1
 
