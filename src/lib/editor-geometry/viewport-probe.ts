@@ -132,8 +132,9 @@ export function posAtViewportY(
  * padded edge is by construction ~`padPx` outside the viewport, and probing
  * there is the doc-proportional fallback the header describes. The padding is
  * a comfort margin — under-estimating it only means a card that far off-screen
- * waits for the scroll-idle refinement that already exists, while the VISIBLE
- * range, the part that must never be wrong, comes from the exact probes.
+ * rides the shift carry (`resolveHeldTops`, task 1425) instead of an exact
+ * read, while the VISIBLE range, the part that must never be wrong, comes from
+ * the exact probes.
  *
  * The whole thing **fails OPEN**: anything unresolvable widens the band to the
  * document. That asymmetry is load-bearing. This band gates whether an anchor

@@ -92,8 +92,6 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
     "PARK + LIVE — the Reader's twin of EditorLayout's pair: the breadcrumb walk parks on both geometry paths (task 416, kept byte-for-byte in step with the main-pane copy), and the paragraph-nav `debouncedCheck` stays live for the same O(1)-timer-reset reason.",
   "src/hooks/useFloatingMenuPosition.ts":
     "PARK — the optional scroll re-anchor rides the SHARED RAF scheduler, which is itself `park.fire()`, so the scroll, resize and RO paths all settle once per gesture. The menu's anchor is chrome, which a gesture displaces sub-pixel, so parking cannot visibly detach it.",
-  "src/hooks/useInTextPositions.ts":
-    "LIVE but gesture-CHECKED — the scroll-idle refinement (wave-2b C5) is debounced to 150 ms of scroll IDLE, which a continuous auto-scroll never reaches, and its callback returns early on `isLayoutGestureActive()`. Pod-relative tops are scroll-invariant, so the deck deliberately has no per-frame scroll path at all.",
   "src/hooks/useScrollActivityTracker.ts":
     "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS.",
   "src/lib/scroll-reposition-probe.ts":

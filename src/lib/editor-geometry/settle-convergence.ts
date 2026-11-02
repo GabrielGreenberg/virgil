@@ -38,8 +38,8 @@
 // get. `MAX_MS` bounds the real thing being waited on.
 //
 // WHY EVERY TRIGGER ENTERS THE SAME DOOR. Cold mount, `document.fonts.ready`,
-// the editor ResizeObserver, the structural bus and the scroll-idle refinement
-// all mean one thing — "the world may have moved" — and all previously got
+// the editor ResizeObserver and the structural bus (and, until task 1425, a
+// scroll-idle refinement) all mean one thing — "the world may have moved" — and all previously got
 // DIFFERENT answers: the mount got a 30-frame proxy loop, everything else got a
 // single rAF-coalesced pass. A single pass is right only when one pass is
 // enough, which is exactly the assumption a cold load falsifies. `request()` is
