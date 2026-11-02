@@ -122,6 +122,14 @@ const SANCTIONED: Record<string, { count: number; why: string }> = {
       "(`<cardId>@<pid>`), and the legacy test-only `reconcileModeAAnchors` " +
       "rebinds index 0 the same way `relocateBySnapshot` does.",
   },
+  "links/dormant.ts": {
+    count: 4,
+    why:
+      "A dormant split MINTS each half's id from its first paragraph " +
+      "(`splitIds`, the `makeAnchorLink` convention), and `withAnchorIds` " +
+      "keeps the one `paragraphSnapshot` only while index 0 is still the pid " +
+      "it pins (task 1419).",
+  },
   "links/_shared/reapply-mode-b-anchors.ts": {
     count: 1,
     why:

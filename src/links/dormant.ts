@@ -151,7 +151,8 @@ function splitCarried(link: Link, keys: CarriedKeys): { carried: string[]; kept:
   const carried: string[] = [];
   const kept: string[] = [];
   for (const pid of link.anchor.textObjectIds) {
-    if (pid && keys.pids?.has(pid)) carried.push(pid);
+    if (!pid) continue; // a falsy pid names no paragraph — neither half keeps it
+    if (keys.pids?.has(pid)) carried.push(pid);
     else kept.push(pid);
   }
   return carried.length > 0 ? { carried, kept } : null;
@@ -161,6 +162,37 @@ function splitCarried(link: Link, keys: CarriedKeys): { carried: string[]; kept:
  *  shares with the writer — `some`, per pid (task 1270). */
 export function isCarriedLink(link: Link, keys: CarriedKeys): boolean {
   return splitCarried(link, keys) !== null;
+}
+
+type TextObjectAnchor = Extract<Link["anchor"], { type: "textObject" }>;
+
+/**
+ * THE ONE WAY these transforms give a textObject anchor a new id list (task
+ * 1419). `textObjectIds` is not the anchor's only per-pid field: the single
+ * `paragraphSnapshot` describes the id at index 0 (the load reconcile's
+ * step 2 re-finds THAT pid by it — `reconcileModeAAnchors`). So a rewrite
+ * keeps the snapshot only while index 0 is still the pid it was taken for —
+ * the original first pid, or (`remap`) that pid's fresh id — and drops it
+ * otherwise. Snapshot-less is the documented safe state while the uuid
+ * resolves (step 1 re-captures it from the live block on the next load);
+ * a WRONG snapshot instead rebinds the card onto another paragraph's text
+ * the first time its uuid fails to round-trip. Falsy pids are dropped.
+ */
+function withAnchorIds(
+  anchor: TextObjectAnchor,
+  ids: readonly string[],
+  remap?: ReadonlyMap<string, string>,
+): TextObjectAnchor {
+  const textObjectIds = ids.filter(Boolean);
+  const first = anchor.textObjectIds[0];
+  const head = textObjectIds[0];
+  const describesFirst = !!first && (head === first || remap?.get(first) === head);
+  if (describesFirst || anchor.paragraphSnapshot === undefined) {
+    return { ...anchor, textObjectIds };
+  }
+  const { paragraphSnapshot: _stale, ...rest } = anchor;
+  void _stale;
+  return { ...rest, textObjectIds };
 }
 
 /** A split's two halves keep the Mode-A id convention (`<cardId>@<pid>`, the
@@ -210,18 +242,22 @@ export function markDormant<T extends DormantCardShape>(
       next.push(l);
       continue;
     }
-    if (split.kept.length === 0 || l.anchor.type !== "textObject") {
+    if (l.anchor.type !== "textObject") {
       next.push({ ...l, archivedWith: snippetId });
+      continue;
+    }
+    if (split.kept.length === 0) {
+      next.push({ ...l, anchor: withAnchorIds(l.anchor, split.carried), archivedWith: snippetId });
       continue;
     }
     const { carriedId, keptId } = splitIds(card.id, l, split.carried, split.kept, taken);
     taken.add(carriedId).add(keptId);
     next.push(
-      { ...l, id: keptId, anchor: { ...l.anchor, textObjectIds: split.kept } },
+      { ...l, id: keptId, anchor: withAnchorIds(l.anchor, split.kept) },
       {
         ...l,
         id: carriedId,
-        anchor: { ...l.anchor, textObjectIds: split.carried },
+        anchor: withAnchorIds(l.anchor, split.carried),
         archivedWith: snippetId,
       },
     );
@@ -307,25 +343,21 @@ export function reviveRemapped<T extends DormantCardShape>(
   const next = links.map((l) => {
     if (l.archivedWith !== snippetId || l.anchor.type !== "textObject") return l;
     const ids = l.anchor.textObjectIds;
-    if (isModeB(l)) {
-      const range = l.anchor.textRange;
-      const fresh = range?.anchorId ? remap.anchorIds.get(range.anchorId) : undefined;
-      if (!fresh || !range) return l;
-      touched = true;
-      return {
-        ...l,
-        anchor: {
-          ...l.anchor,
-          textObjectIds: ids.map((u) => remap.uuids.get(u) ?? u),
-          textRange: { ...range, anchorId: fresh },
-        },
-      };
-    }
-    if (!ids.some((u) => remap.uuids.has(u))) return l;
+    // The two identity spaces move INDEPENDENTLY (task 1419): a Mode-B
+    // link's pids follow the uuid map whenever any of them collided, even
+    // when its mark kept its anchorId — else it revives (on the mark) still
+    // naming the SQUATTER's paragraph, which every fallback path then reads.
+    const pidsMoved = ids.some((u) => remap.uuids.has(u));
+    const range = isModeB(l) ? l.anchor.textRange : undefined;
+    const fresh = range?.anchorId ? remap.anchorIds.get(range.anchorId) : undefined;
+    if (!pidsMoved && !fresh) return l;
     touched = true;
+    const anchor = pidsMoved
+      ? withAnchorIds(l.anchor, ids.map((u) => remap.uuids.get(u) ?? u), remap.uuids)
+      : l.anchor;
     return {
       ...l,
-      anchor: { ...l.anchor, textObjectIds: ids.map((u) => remap.uuids.get(u) ?? u) },
+      anchor: fresh && range ? { ...anchor, textRange: { ...range, anchorId: fresh } } : anchor,
     };
   });
   if (!touched) return card;
