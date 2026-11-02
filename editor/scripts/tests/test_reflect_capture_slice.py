@@ -174,8 +174,8 @@ for table_name, table in (("_KIND_SKILL", _KIND_SKILL),
               f"{table_name}[{k!r}] = {v!r} is a skill or a declared writer")
 for k in AI_REQUEST_KINDS:
     check(k in _KIND_SKILL, f"wire kind {k!r} names its responder in _KIND_SKILL")
-check(MECHANICAL_WRITERS == {"revert", "apply", "card-op"},
-      "the non-skill writers are exactly the declared three")
+check(MECHANICAL_WRITERS == {"revert", "apply", "card-op", "session"},
+      "the non-skill writers are exactly the declared four (session: task 1430)")
 
 
 # ── every result → its tier floor (+ correct seed bucket) ───────────────────
@@ -453,6 +453,33 @@ check("REPLACES that bucket's prior body" in skill_flat,
       "reflect.md states it too — the agent reads the skill, not the script header")
 check("true of TAGS, not of buckets" in skill_flat and "true of TAGS, not of buckets" in flat,
       "…and both name the exact cross-reading that caused the loss")
+
+
+# ── task 1430: `session` is a capture cue, and task-less buckets ACCUMULATE ──
+print("\n=== session cue + task-less observations accumulate (task 1430) ===")
+sb = sandbox(); mem = Path(tempfile.mkdtemp(prefix="memos-"))
+r = run(mem, str(sb), "session", "-", "--memo-json",
+        json.dumps({"buckets": {"issues": "compile pane stalls on tikz"}}),
+        now="2026-06-06T10:00:00")
+check(r.returncode == 0 and len(memo_files(mem)) == 1,
+      "`session` (reflect.md's general-observation cue) writes a memo, not a refusal")
+r = run(mem, str(sb), "session", "-", "--memo-json",
+        json.dumps({"buckets": {"issues": "breadcrumb lags on long sections"}}),
+        now="2026-06-06T11:00:00")
+text = body_of(only_memo(mem)) if only_memo(mem) else ""
+check("compile pane stalls on tikz" in text and "breadcrumb lags on long sections" in text,
+      "a second unrelated task-less observation the same day KEEPS the first")
+run(mem, str(sb), "session", "-", "--memo-json",
+    json.dumps({"buckets": {"issues": "compile pane stalls on tikz\n\n"
+                                      "breadcrumb lags on long sections\n\nplus a late note"}}),
+    now="2026-06-06T12:00:00")
+text = body_of(only_memo(mem))
+check(text.count("compile pane stalls on tikz") == 1 and "plus a late note" in text,
+      "…while a read-back-and-re-send of the whole bucket still replaces (no duplication)")
+r = run(mem, str(sb), "not-a-skill", "-")
+check(r.returncode != 0, "a name that is neither a skill nor a mechanical writer still refuses")
+check("APPENDS" in flat and "_merge_task_less_bucket" in flat,
+      "reflect.py's header states the task-less exception")
 
 
 print(f"\n===== {PASS} passed, {FAIL} failed =====")

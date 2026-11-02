@@ -2,7 +2,7 @@
 description: |
   Developer-only — write a dev-dream reflection memo after an editor-skill
   invocation. This is the "day" capture layer of the self-improvement loop
-  (EDITOR_SKILLS_V1 §14). Triggers ONLY in a DEV-mode session (VIRGIL_DEV=1):
+  (EDITOR_SKILLS_V1 §14). Triggers ONLY in a DEV-mode session (VIRGIL_DEV=1 or the dev-mode marker):
   as the automatic follow-up the editor/AGENTS.md convention attaches to every
   completed skill, or on an explicit "log a dev reflection", "log this as a dev
   reflection", "dev reflection", "dev-dream reflection", "reflect on that",
@@ -12,9 +12,11 @@ description: |
   trigger — that term is retired and
   names nothing now (it used to label the per-paper channel). Reads the Task's
   already-classified status/result, derives the tier, and writes a 4-bucket
-  memo to editor/dev/memos/<date>/. NO-OP outside DEV mode. Does NOT trigger
+  memo to the dev memo sink (memos_root — the synced Virgil-Inbox/dev-loop/memos,
+  else <checkout>/editor/dev/memos). NO-OP outside DEV mode. Does NOT trigger
   for end-user requests ("review my doc" → /editor/review) and never edits a
-  paper file. Args: <docPath> <skill> <taskId> [--tag <note>] [--fix-now].
+  paper file. Args: <docPath> <skill> <taskId> [--memo-json <json|@file>]
+  [--tag <note>] [--fix-now] [--tier <tier>] [--summary <text>] [--kind <kind>].
 ---
 
 # /editor/reflect $ARGUMENTS
@@ -54,8 +56,9 @@ maps it to the memo's tier floor and the dream's filter key. Your job is the
 
 ## When this runs
 
-Only in **DEV mode** (`VIRGIL_DEV=1`, or the `<repo>/editor/dev/dev-mode`
-marker file). The single convention in
+Only in **DEV mode** — `_common.dev_mode_enabled`: `VIRGIL_DEV` truthy, or
+(env unset) the `<repo>/editor/dev/dev-mode` marker file. The one stated owner
+of that rule is [editor/dev/README.md](../dev/README.md) § "The toggle". The single convention in
 [editor/AGENTS.md](../AGENTS.md) ("Reflection (DEV mode)") attaches this as the
 follow-up to every completed skill, and `/editor/review` enforces it for each
 subskill it dispatches. The mechanical script is gated too: with DEV mode off
@@ -91,7 +94,7 @@ reports DEV mode off do you fall back to offering a paper-side note.
 **Memo routing rule — one decision rule, stated identically in
 [editor/AGENTS.md](../AGENTS.md) ("Memo routing rule") so either file
 disambiguates the same way.** Improving Virgil's *skills* → a **reflection** →
-`/editor/reflect` → `editor/dev/memos/`. A note about *this paper's* content →
+`/editor/reflect` → the dev memo sink (`memos_root`). A note about *this paper's* content →
 a **cowork memo** → `<docPath>/.virgil/memos/`. The words *reflect/reflection*
 always mean the former; **never file a reflection under `.virgil/memos/`.**
 
@@ -101,6 +104,7 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 /editor/reflect <docPath> <skill> <taskId>            # reflect on a completed invocation
 /editor/reflect <docPath> <skill> <taskId> --tag "…"  # after-the-fact "put this in the memo"
 /editor/reflect <docPath> <skill> <taskId> --fix-now  # mark the fast-path (flagged + fix-now)
+/editor/reflect <docPath> session - --memo-json '{…}' # a general observation no one skill owns
 ```
 
 - `<docPath>` — the paper folder the skill ran against (read-only here; we only
@@ -108,10 +112,16 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 - `<skill>` — the skill that just ran (e.g. `draft-suggestion`), bare name.
   `/editor/draft-suggestion`, `editor:draft-suggestion` and
   `draft-suggestion.md` fold to it; a name with no `editor/skills/<name>.md`
-  is refused (exit non-zero, nothing written).
+  that is not a declared mechanical writer (`_common.MECHANICAL_WRITERS`:
+  `revert`, `apply`, `card-op`, and `session` — the cue for a general
+  observation) is refused (exit non-zero, nothing written).
 - `<taskId>` — the `ai-requests.json` id, a `bib-review-requests.json` bibKey, a
   `virtual:<panel>:<cardId>` card-flag id, or `-` for a Task-less mechanical op
   (a card-op / writes-only edit that completed no Task).
+- `--memo-json <inline|@file>` — the structured reflection (step 3's schema:
+  `buckets`, `confidence`, `tier`, `fixNow`, `summary`).
+- `--tier <unremarkable|noted|flagged>` — raise the tier (never lowers the
+  result-derived floor).
 - `--summary "<one line>"` — overrides the memo's one-line summary (otherwise
   taken from `--memo-json`'s `summary`, then the prior memo's).
 - `--kind <kind>` — overrides the Task kind the memo is filed under (otherwise
@@ -167,7 +177,8 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
    you left the matching bucket blank, so the memo is never empty when the
    outcome itself is the signal.
 
-   **A supplied bucket REPLACES that bucket's prior body — it does not append.**
+   **A supplied bucket REPLACES that bucket's prior body — it does not append**
+   (on a task-bearing memo; a task-less `-` memo is the exception, below).
    Only `userTagged` (and `--tag`, step 4) accumulates. So to add a late finding
    to a memo you already wrote, read the memo back and re-send the WHOLE bucket;
    sending only the addition silently destroys what was there. (Attested
@@ -190,16 +201,22 @@ The call is **idempotent**: re-running the same `<skill>` for the same
 `<taskId>` updates that one memo (keyed on skill + Task, not the timestamped
 filename) — tier only ever rises, tags accumulate deduped. A *different* skill
 on the same Task (the propose→accept lifecycle — `draft-suggestion` then
-`accept-suggestion`/`reject-suggestion` share a taskId) gets its own memo.
+`accept-suggestion`/`reject-suggestion` share a taskId) gets its own memo. A
+**task-less** call (`-`) has no Task, so its key is **(skill, doc, day)** — and
+because a second task-less call that day is usually a second, unrelated
+observation, its buckets **append** to the memo's prior bodies instead of
+replacing them (a re-send that already contains the prior body still wins).
+Owner: [editor/dev/README.md](../dev/README.md) § "Idempotency".
 
 ## The memo schema (what the script writes)
 
 Memo → `<memo sink>/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md` — since task 521 the
 sink is normally the Dropbox-synced `Virgil-Inbox/dev-loop/memos`, so a memo
 written from the cowork machine reaches the loop; where no synced inbox is
-reachable it is the gitignored `<checkout>/editor/dev/memos`. Either way,
-repo-side — the sibling of `editor/dev/iterations/` (the `/editor/iterate-virgil-editor`
-memos). It is **distinct** from the per-paper cowork memo stream
+reachable it is the gitignored `<checkout>/editor/dev/memos` (the sibling of
+`editor/dev/iterations/`, the `/editor/iterate-virgil-editor` memos). The ladder's
+owner is `_common.memos_root` ([editor/dev/README.md](../dev/README.md) § "The
+dev-loop sink"). It is **distinct** from the per-paper cowork memo stream
 (`<docPath>/.virgil/memos/`) and the library memo stream
 (`~/Virgil-Library/.virgil/memos/`) — the dev-loop stream never mixes with
 either.
@@ -230,8 +247,11 @@ the floor, never lower it):
 | `silent-applied` / `auto-applied` / `direct-created` / `accepted` | `unremarkable` | the silent-edit audit reads the silent-applied ones |
 | `rejected` | `noted` | the rejection corpus |
 | `refused` / `impossible` | `noted` | the refusal patterns |
+| `withdrawn` | `noted` | the user retracted mid-run |
 | `errored` | `flagged` | something broke |
 | none (a Level-3 draft awaiting review, or a Task-less op) | `unremarkable` | the accept/reject reflection comes later |
+
+(The table mirrors `reflect.py`'s `RESULT_TIER`, which is the owner.)
 
 `fix-now` is the fast-path flag: a `flagged` memo that warrants an immediate
 single-memo dream pass rather than waiting for the overnight batch.
@@ -240,7 +260,7 @@ single-memo dream pass rather than waiting for the overnight batch.
 
 `iterate` is the **manual, synthesized-input, single-skill** precursor; its
 memos live in `editor/dev/iterations/`. `reflect` is the **ambient, real-input,
-every-skill** sibling; its memos live in `editor/dev/memos/`. As of **chip 19**
+every-skill** sibling; its memos live in the dev memo sink (`memos_root`). As of **chip 19**
 the two are **one engine**: both memo streams share this **one shape** and are
 read by the **one** reader (`reflect._parse_memo`); both route skill edits
 through the **one** boundary guard (`dream_land`). They stay two *labeled*
@@ -249,10 +269,10 @@ captures), not two shapes. See [editor/dev/README.md](../dev/README.md).
 
 ## Hard rules
 
-- **DEV mode only.** The script no-ops without `VIRGIL_DEV=1`. Never write a
-  memo by hand to dodge the gate.
+- **DEV mode only.** The script no-ops unless `dev_mode_enabled` (env or
+  marker — see "When this runs"). Never write a memo by hand to dodge the gate.
 - **Read-only on the paper.** Reflection reads the Task queue; it writes **only**
-  to `editor/dev/memos/`. It never touches a paper file, so it needs no pen and
+  to the dev memo sink. It never touches a paper file, so it needs no pen and
   no `apply_response` contract.
 - **One seam, no bolt-ons.** Reflection lives in this one skill + the one
   editor/AGENTS.md convention. Do not add "now write a memo" steps to other
@@ -260,7 +280,7 @@ captures), not two shapes. See [editor/dev/README.md](../dev/README.md).
 - **Never route to `<docPath>/.virgil/memos/`** — that channel is the **cowork
   memo / paper-note** stream (notes *about a paper*), not about Virgil's skill
   set. The decision rule: a reflection (about Virgil's *skills*) →
-  `/editor/reflect` → `editor/dev/memos/`; a cowork memo (about *this paper*) →
+  `/editor/reflect` → the dev memo sink; a cowork memo (about *this paper*) →
   `<docPath>/.virgil/memos/`. The words *reflect/reflection* always mean the
   former; never file a reflection under `.virgil/memos/`.
 

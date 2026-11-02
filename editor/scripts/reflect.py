@@ -14,8 +14,10 @@ It does NOT re-derive the outcome. The two-field status/result vocabulary
 lands; reflection CONSUMES `result` (rejected / silent-applied / refused / …)
 as the tier floor and the dream's filter key — see RESULT_TIER below.
 
-Gating: a no-op (writes nothing, exits 0) unless `VIRGIL_DEV` is truthy
-(_common.dev_mode_enabled). Never runs in an end-user session.
+Gating: a no-op (writes nothing, exits 0) unless DEV mode is on —
+`_common.dev_mode_enabled` is the one owner (`VIRGIL_DEV` env OR the
+`editor/dev/dev-mode` marker; stated in editor/skills/_dev-loop-principle.md).
+Never runs in an end-user session.
 
 Memos land at  <memo sink>/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md  — since task 521
 the sink is normally the Dropbox-synced Virgil-Inbox/dev-loop/memos (so cowork on
@@ -41,6 +43,10 @@ Options:
                               sending just the addition silently destroys what
                               was there (attested 2026-08-17, a dream appending
                               to its own memo — caught by a char count).
+                              EXCEPT a task-less memo (taskId "-"): its key is
+                              (skill, doc, day), so a supplied bucket APPENDS
+                              to the prior body unless it already contains it
+                              (`_merge_task_less_bucket`, task 1430).
   --tag <text>                append a user tag ("put this in the memo");
                               promotes tier → flagged. Repeatable. Additive
                               across runs (deduped) — the after-the-fact channel.
@@ -629,6 +635,20 @@ def _render(fm: dict, buckets: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _merge_task_less_bucket(prior: str, new: str, seed: str) -> str:
+    """A task-less memo's bucket ACCUMULATES (task 1430). Its identity is
+    (skill, doc, day), not one Task, so two calls are usually two unrelated
+    observations — replacing (the task-bearing rule) would silently lose the
+    first. A re-send that already CONTAINS the prior body (the read-back-and-
+    re-send-the-whole-bucket enrichment) still wins outright, a body already
+    present is not duplicated, and a canned seed is not worth keeping."""
+    if not prior or prior == seed.strip() or prior in new:
+        return new
+    if new in prior:
+        return prior
+    return f"{prior}\n\n{new}"
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="reflect.py")
     p.add_argument("doc")
@@ -728,11 +748,15 @@ def main(argv: list[str]) -> int:
     # (no buckets supplied) the prior bodies are preserved. Seed a canned note
     # for a signal-bearing outcome only where still empty.
     seed = _default_seed(result, status, a.skill)
+    task_less = _is_task_less(a.taskId)
     buckets: dict = {}
     for key in ("issues", "streamlining", "alignment"):
         body = (in_buckets.get(key) or "").strip()
+        prior = (prior_buckets.get(key) or "").strip()
+        if body and task_less:
+            body = _merge_task_less_bucket(prior, body, seed.get(key, ""))
         if not body:
-            body = (prior_buckets.get(key) or "").strip()
+            body = prior
         if not body:
             body = seed.get(key, "")
         buckets[key] = body

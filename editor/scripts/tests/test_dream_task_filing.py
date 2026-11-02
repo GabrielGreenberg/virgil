@@ -172,6 +172,23 @@ class Route(unittest.TestCase):
                         "change": RULEBOOK_CHANGE})
         self.assertEqual(r["queue"], QUEUE_INCOMING)
 
+    def test_a_whole_file_task_spec_routes_as_its_finding(self):
+        """Task 1430: dream.md step 6's `finding.json` nests the routing under
+        `"finding"`. `file-task` routed it; `dream_land.py --route` classified
+        `{}` and read every finding as blocked/. One unwrap (`finding_of`) is
+        read by `task_route` itself, so the CLI preview and the filing agree."""
+        spec = {"title": "t", "finding": {"kind": "change", "change": SKILL_CHANGE},
+                "sections": _sections()}
+        self.assertEqual(task_route(spec), task_route(spec["finding"]))
+        self.assertEqual(task_route(spec)["queue"], QUEUE_INCOMING)
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "finding.json"
+            f.write_text(json.dumps(spec))
+            r = subprocess.run([sys.executable, str(SCRIPTS / "dream_land.py"),
+                                "--route", f"@{f}"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["queue"], QUEUE_INCOMING)
+
 
 # ---------------------------------------------------------------------------
 # The filing harness

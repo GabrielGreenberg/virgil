@@ -1597,7 +1597,7 @@ def cmd_file_task(argv: list[str]) -> int:
 
     # WHERE it goes is never the night's call — one door answers it, the same
     # door whether the finding is a change or a red gate.
-    route = task_route(spec.get("finding") or spec)
+    route = task_route(spec)  # task_route unwraps `finding` (finding_of)
 
     sections = {str(k): str(v) for k, v in (spec.get("sections") or {}).items()}
     missing = [s for s in _REQUIRED_SECTIONS if not sections.get(s, "").strip()]

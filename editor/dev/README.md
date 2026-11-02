@@ -42,18 +42,25 @@ The day half is the **ambient, always-on** generalization of the manual
 `/editor/iterate-virgil-editor` stress-test: instead of synthesized test cases
 it captures *real* invocations passively.
 
-## The toggle — `VIRGIL_DEV`
+## The toggle — `VIRGIL_DEV` OR the `dev-mode` marker
 
-DEV mode is a **per-session env var**: `VIRGIL_DEV=1` (truthy = `1|true|yes|on`,
-case-insensitive). The single read is
+**This section is the ONE stated owner of the gate (task 1430); the dev-loop
+skills and `editor/AGENTS.md` cite it rather than restate it.** DEV mode is on
+when the `VIRGIL_DEV` env var is truthy (`1|true|yes|on`, case-insensitive),
+or — with the env entirely UNSET — when the checkout carries the
+`<repo>/editor/dev/dev-mode` marker file (gitignored). An explicit env value
+wins both ways (`VIRGIL_DEV=0` turns a marked checkout off). The single read is
 [`_common.dev_mode_enabled()`](../scripts/_common.py); every gate consults it,
-nothing re-implements the rule.
+nothing re-implements the rule. What is gated: `reflect.py` (a no-op when off),
+the `apply_response` tail-trigger, and every `dream.py` subcommand EXCEPT
+`paths` / `next-id` (`dream.py`'s `_UNGATED` — read-only location answers).
+`dream_land.py` is a pure classifier and has no gate.
 
 Why an env var and not a `document-settings.json` flag (the spec left it open):
 it has **no UI surface and no on-disk presence**, and so **cannot ship to an end
 user**. The `reflect` skill + script AND the `apply_response` tail-trigger ship
 to every paper folder via the normal bundle sync, but the runtime gate stays off
-unless `VIRGIL_DEV` is truthy — so **no memo is ever written outside a dev
+unless DEV mode is on (env or marker, above) — so **no memo is ever written outside a dev
 session.** OFF is the default and the safe failure mode (a typo'd export never
 silently turns capture on).
 
@@ -95,7 +102,7 @@ inherits reflection from a single edit, and any future skill inherits it free.
 - **[`/editor/reflect`](../skills/reflect.md)** — the memo-writer skill. The
   agent supplies the qualitative four-bucket reflection; the script does the
   mechanical work.
-- **[`reflect.py`](../scripts/reflect.py)** — gates on `VIRGIL_DEV`, reads the
+- **[`reflect.py`](../scripts/reflect.py)** — gates on DEV mode (`dev_mode_enabled`), reads the
   Task's already-stamped `result`, derives the tier, and writes/merges the memo.
   Read-only on the paper (it only reads the Task queue) — it writes **only** to
   the machine-global sink (below), so it needs no pen and no `apply_response`
@@ -141,7 +148,7 @@ finalizers, and every current and future skill inherits capture free.
   `(skill, taskId)` memo (idempotent — tier only rises, buckets fill,
   `reflectedAt` kept) rather than duplicating it.
 - **Two independent gates keep it inert for end users**: `spawn_reflection`
-  returns before spawning unless `VIRGIL_DEV` is on, and `reflect.py` itself
+  returns before spawning unless DEV mode is on, and `reflect.py` itself
   re-checks the gate. A shipped-but-inert trigger writes nothing for a user.
 
 > **Known granularity artifact.** A skill that makes *two* writebacks for one
@@ -307,6 +314,7 @@ only ever rises.
 | `silent-applied` · `auto-applied` · `direct-created` · `accepted` | `unremarkable` | silent-edit audit (the silent ones) |
 | `rejected` | `noted` | the rejection corpus |
 | `refused` · `impossible` | `noted` | the refusal patterns |
+| `withdrawn` | `noted` | the user retracted mid-run |
 | `errored` | `flagged` | something broke |
 | none (a Level-3 draft awaiting review, or a Task-less op) | `unremarkable` | the accept/reject reflection comes later |
 
@@ -322,8 +330,12 @@ run), user tags accumulate deduped, and the tier only rises. A *different* skill
 on the same Task gets its own memo — the propose→accept lifecycle
 (`draft-suggestion` then `accept-`/`reject-suggestion`) shares a taskId but
 yields one memo per skill, so the draft's reflection is never clobbered by the
-accept/reject one. A Task-less op (`taskId = -`) is never deduped — each gets a
-fresh file.
+accept/reject one. A Task-less op (`taskId = -`) is keyed on **(skill, doc,
+day)** instead — the day's floor for that pair, counting `runs` — and because
+two task-less calls are usually two unrelated observations, a supplied bucket
+there **appends** to the prior body rather than replacing it (unless it already
+contains it — the read-back-and-re-send enrichment; `_merge_task_less_bucket`,
+task 1430).
 
 ## The dream phase (night half)
 
@@ -334,7 +346,7 @@ made by a guard, not by feel.
 
 - **[`dream.py`](../scripts/dream.py)** — `select` (find + group the memos since
   the last dream) and `digest` (write the morning summary + the next marker).
-  Gated on `VIRGIL_DEV`; reuses `reflect._parse_memo` (no second parser).
+  Gated on DEV mode (`dev_mode_enabled`); reuses `reflect._parse_memo` (no second parser).
 - **[`dream_land.py`](../scripts/dream_land.py)** — `classify_change` →
   `acts` / `proposes` / `refused` (how big and how risky), and over it
   `task_route` → `incoming` / `blocked` (which queue the night's task goes in).

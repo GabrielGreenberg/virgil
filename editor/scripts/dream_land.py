@@ -525,6 +525,17 @@ def _route(queue: str, priority: str, reason: str, **extra) -> dict:
             **extra}
 
 
+def finding_of(spec: dict) -> dict:
+    """The routing object inside a spec: a `file-task` spec carries it under
+    `"finding"`; a bare finding IS it. The only unwrap (task 1430) — before it,
+    `file-task` unwrapped and `--route` did not, so a step-6 `finding.json`
+    piped to `--route` classified `{}` and read as blocked/ for every finding."""
+    inner = spec.get("finding") if isinstance(spec, dict) else None
+    if isinstance(inner, dict) and inner:
+        return inner
+    return spec if isinstance(spec, dict) else {}
+
+
 def task_route(finding: dict) -> dict:
     """Route ONE night's finding to a queue — the dream's only landing decision.
 
@@ -559,7 +570,13 @@ def task_route(finding: dict) -> dict:
       tree's own state, which is the measured 2026-08-25 defect (a markdown edit
       filed as the suspect for two guards a commit two hours older had broken).
       Attribution is the price of a work task; without it the honest artifact is
-      a question."""
+      a question.
+
+    ONE spec shape (task 1430): a whole `file-task` spec (dream.md step 6's
+    `finding.json`, which nests the routing under `"finding"`) routes exactly
+    as its bare `finding` does — `finding_of` is the one unwrap, read here, so
+    `--route @finding.json` and `dream.py file-task` cannot disagree."""
+    finding = finding_of(finding)
     kind = (finding.get("kind") or ROUTE_CHANGE).strip().lower()
 
     if kind == ROUTE_GATE:

@@ -160,10 +160,10 @@ editor/
 │   │                           manifest CI pins to SIDECAR_VALUE) + the ONE
 │   │                           annotations.json shape door (V1 flat / V2 byUid)
 │   ├── reflect.py              dev-loop memo writer (chip 17): gated on
-│   │                           VIRGIL_DEV; reads the Task result, derives the
-│   │                           tier, writes editor/dev/memos/ (no paper write)
+│   │                           dev_mode_enabled; reads the Task result, derives
+│   │                           the tier, writes the memos_root sink (no paper write)
 │   ├── dream.py                dev-loop night engine (chip 18): gated on
-│   │                           VIRGIL_DEV; select (memos since last dream, via
+│   │                           dev_mode_enabled (bar paths/next-id); select (memos since last dream, via
 │   │                           reflect._parse_memo) + digest (→ dream-digests/)
 │   │                           + file-task (mint a task into ~/virgil-tasks
 │   │                           under the 3-minter collision protocol — task 522)
@@ -385,7 +385,9 @@ absolute, both work.
   "ai"`, `status: "pending"` instead of editing in place.
 - Direct-create kinds (footnote, citation) insert without
   a suggestion wrapper — the user can delete if unwanted.
-- **Reflection (DEV mode) — the one shared seam.** When `VIRGIL_DEV=1`, a
+- **Reflection (DEV mode) — the one shared seam.** In DEV mode (`dev_mode_enabled`
+  — `VIRGIL_DEV` or the `editor/dev/dev-mode` marker; owner:
+  [editor/dev/README.md](dev/README.md) § "The toggle"), a
   tiered dev-dream memo is written for **every** skill (the "day" capture layer
   of the self-improvement loop — EDITOR_SKILLS_V1 §14; subsystem SSOT
   [editor/dev/README.md](dev/README.md)). The **floor is automatic and needs no
@@ -398,9 +400,8 @@ absolute, both work.
   does this for each subskill it dispatches. This is **one seam, not a per-skill
   step** — do not copy a "now write a memo" step into individual skill files.
   Reflection consumes the Task's already-stamped two-field `result` (it does not
-  re-derive the outcome), is read-only on the paper, and writes only to the
-  primary-checkout dev sink (`<repo>/editor/dev/memos`, `VIRGIL_DEV_MEMOS_DIR`
-  overrides). Outside DEV mode it is a no-op (both the tail-trigger and the
+  re-derive the outcome), is read-only on the paper, and writes only to
+  the dev memo sink (`memos_root` — [editor/dev/README.md](dev/README.md) § "The dev-loop sink"). Outside DEV mode it is a no-op (both the tail-trigger and the
   script gate on `_common.dev_mode_enabled`), so it never runs — and cannot be
   turned on — in an end-user session, even though the scripts ship to every
   paper folder. This is **distinct** from the per-paper "Memo discipline" below:
@@ -413,10 +414,10 @@ absolute, both work.
   This channel is **not** a dev-loop reflection — do not call it a "dev memo"
   (that label is retired; it is what caused reflections to misroute here). For a
   self-improvement note *about Virgil's skill set*, say "reflect" / use
-  [`/editor/reflect`](skills/reflect.md) (→ `editor/dev/memos/`).
+  [`/editor/reflect`](skills/reflect.md) (→ the dev memo sink).
 - **Memo routing rule (one decision, both channels point here).** Improving
   Virgil's *skills/tooling* → a **reflection** → `/editor/reflect` →
-  `editor/dev/memos/`. A note about *this paper's* content → a **cowork memo** →
+  the dev memo sink (`memos_root`). A note about *this paper's* content → a **cowork memo** →
   `<docPath>/.virgil/memos/`. The words *reflect/reflection* — and **"dream
   memo"**, in any phrasing — **always** mean the former;
   never file a reflection under `.virgil/memos/`.
@@ -728,22 +729,22 @@ gitignored. See [skills/iterate-virgil-editor.md](skills/iterate-virgil-editor.m
 
 The **dev-dream self-improvement loop** generalizes this from synthesized
 single-skill stress-tests to ambient capture over *real* invocations. Its **day
-half** (chip 17) is the capture layer: in DEV mode (`VIRGIL_DEV=1`) every skill
-reflects via [`/editor/reflect`](skills/reflect.md) (the one convention above),
-writing tiered memos to `editor/dev/memos/` (gitignored, the sibling of
-`iterations/`). The **night half** — [`/editor/dream`](skills/dream.md), chip 18
-— reads those memos and ripples improvements back into the skill set: it routes
-each change by scope (single-skill-prompt polish lands directly; cross-skill /
-script / manifest / contract changes propose via a worktree) through the
-`dream_land.py` landing-mode helper, which **is** the three-boundary guard (the
-dream cannot edit the Don't-rules below, change the `apply_response.py` contract
-shape, or disable DEV mode), and writes a morning digest to
+half** (chip 17) is the capture layer: in DEV mode (`dev_mode_enabled`, see
+above) every skill reflects via [`/editor/reflect`](skills/reflect.md) (the one
+convention above), writing tiered memos to the dev memo sink (`memos_root` — [editor/dev/README.md](dev/README.md) § "The dev-loop sink"). The **night half** —
+[`/editor/dream`](skills/dream.md), chip 18 — reads those memos and FILES each
+finding as a task in `~/virgil-tasks/` (task 522: the dream lands nothing; the
+worker is the one executor). `dream.py file-task` routes each through
+`dream_land.task_route` — which **is** the three-boundary guard (a change that
+would edit the Don't-rules below, change the `apply_response.py` contract shape,
+or disable DEV mode routes to `blocked/` with questions) — and writes a morning
+digest to
 `editor/dev/dream-digests/`. **Chip 19 put `iterate` and `dream` on one engine**
 — one critique-memo shape, one reader (`reflect._parse_memo`), one boundary
 guard (`dream_land`), composed by [`dev_loop.py`](scripts/dev_loop.py). `iterate`
 adopts `dream_land` as a **boundary guard only**: it honors `refused`, surfaces
-`proposes` for scrutiny, and lands non-refused edits **inline** — it does NOT
-take on `dream`'s propose-via-worktree autonomy (that stays `dream`-specific).
+`proposes` for scrutiny, and lands non-refused edits **inline** (the dream,
+by contrast, lands nothing — it files tasks).
 `iterations/` and `memos/` are two labeled streams of the **one** shape. The
 subsystem's single source of truth, including the memo schema, the dream's
 landing modes + boundaries, and the unified engine, is

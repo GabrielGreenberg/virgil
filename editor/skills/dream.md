@@ -2,7 +2,7 @@
 description: |
   Developer-only — the overnight "night" half of the dev-dream self-improvement
   loop (EDITOR_SKILLS_V1 §14; design MEMO_DEV_DREAM_DESIGN.md §4). Triggers ONLY
-  in a DEV-mode session (VIRGIL_DEV=1): on "run the dream", "dream over the
+  in a DEV-mode session (VIRGIL_DEV=1 or the dev-mode marker): on "run the dream", "dream over the
   memos", "do the overnight pass", or on a schedule (/loop or a scheduled task).
   Reads the reflection memos the chip-17 capture layer accumulated since the
   last dream, detects cross-memo patterns, and FILES each finding as a task in
@@ -53,19 +53,23 @@ your judgment on the patterns and on writing tasks worth working:
   since the last dream, reusing reflect.py's memo reader), `file-task` (mint a
   task into `~/virgil-tasks/` under the three-minter collision protocol), and
   `digest` (write the morning summary + the marker the next dream reads). Gated
-  on `VIRGIL_DEV`.
+  on DEV mode, bar the read-only `paths` / `next-id` (`_UNGATED`).
 - **[`dream_land.py`](../scripts/dream_land.py)** — `task_route` answers WHICH
   QUEUE a finding goes in, over `classify_change`'s **acts** / **proposes** /
-  **refused** verdict, and **is** the three-boundary guard. Pure and
-  dry-run-safe; you ask it for *every* finding before you file it.
+  **refused** verdict, and **is** the three-boundary guard. Pure, ungated and
+  dry-run-safe. `file-task` calls it for you — it is the routing authority —
+  so asking it yourself is an optional preview.
 
 Design: [MEMO_DEV_DREAM_DESIGN.md §4](../../MEMO_DEV_DREAM_DESIGN.md) · subsystem
 SSOT: [editor/dev/README.md](../dev/README.md).
 
 ## When this runs
 
-Only in **DEV mode** (`VIRGIL_DEV=1`). Both scripts no-op without it, so an
-accidental invocation in a non-dev (or end-user) session writes nothing. The
+Only in **DEV mode**. `dream.py` gates on `_common.dev_mode_enabled` — `VIRGIL_DEV` truthy, or (env
+unset) the `<repo>/editor/dev/dev-mode` marker; owner:
+[editor/dev/README.md](../dev/README.md) § "The toggle" — so an accidental invocation in a non-dev
+(or end-user) session writes nothing. `dream_land.py` is a pure classifier and
+writes nothing either way, so it needs no gate. The
 dream is itself a Virgil skill, so it runs in DEV mode like everything else —
 and it reflects on its **own** run (the bootstrap, step 8).
 
@@ -235,10 +239,10 @@ above the sink check.
 
 `false` is the strongest no-signal state there is, and it outranks every finding
 in the memos: the loop has no input, so every pattern you can detect is
-necessarily about the loop's OWN procedure — which is `neverSelfMerge`, cannot
-land unattended, and accrues to a queue only the human drains. Say so in the
-digest (the renderer emits the banner from the same flag) and prefer routing a
-ruling over authoring another self-edit. It does **not** mean capture is broken:
+necessarily about the loop's OWN procedure — which is `neverSelfMerge`, routes
+to `blocked/`, and accrues to a queue only the human drains. Say so in the
+digest (the renderer emits the banner from the same flag) and prefer filing one
+ruling over filing another own-procedure change. It does **not** mean capture is broken:
 the floor is automatic (`apply_response` fires `reflect.py` after every commit),
 so the ordinary cause is simply that no editor skill has been run on a real
 paper in DEV mode. Verify before you diagnose — one `create_card.py` write
@@ -338,8 +342,8 @@ one attention surface.
 the copy that actually runs is a built artifact — the skill BUNDLE that
 skill-sync writes into a paper's `.virgil/`, mirrored for dev convenience under
 `.claude/commands/editor/` — regenerated only by `npm run build:skill-bundles`
-(`predev`/`prebuild`). So a skill edit — including one a past dream authored and
-landed — is **not live until the bundle is rebuilt**, and the gap is invisible
+(`predev`/`prebuild`). So a skill edit — including one the worker landed from a
+past dream's task — is **not live until the bundle is rebuilt**, and the gap is invisible
 from inside the prompt.
 
 `select` already computed it for you: read its **`drift`** field, a list of repo
@@ -354,8 +358,9 @@ sitting behind seven stale skills from the same commit.
 
 **An empty `drift` is only an answer when `driftChecked` is true.** `[]` also
 means *"I could not look,"* byte-identical to `[]` meaning *"in sync."* Read
-`driftChecked` / `driftReason` (`unbuilt-bundle`, `no-source-repo`,
-`unparseable-rewrite-table`, `unreadable-manifest`), never the list alone — the
+`driftChecked` / `driftReason` (`no-source-repo`, `unbuilt-bundle`,
+`unreadable-manifest`, `no-source-digests` — `dream.py`'s
+`_detect_skill_drift_status` owns the set), never the list alone — the
 same rule `selfReferentialOnly` follows: the script computes the condition, you
 read the flag. If it could not run, say so in the digest rather than reporting a
 green preflight you never performed.
@@ -464,13 +469,18 @@ about urgency and not about who may decide it.
      immediately and record it ACTED". Nothing is applied here now, so the fast
      path is a PRIORITY, not a landing mode — which is all it ever really was. -->
 
-### 4. Route each finding to a QUEUE — ask the door, never decide by feel
+### 4. Route each finding to a QUEUE — the door decides, never feel
 
 The dream lands nothing, so the only landing decision left is **which queue the
-task goes in**. One door answers it, for a change and for a red gate alike:
+task goes in**. One door answers it, for a change and for a red gate alike —
+`dream_land.task_route` — and step 6's `file-task` calls it ITSELF and ignores
+any routing you supply, so you never route by hand. To PREVIEW the answer
+before you write the sections (e.g. to know whether `## Questions` is owed),
+pass the same step-6 `finding.json` — `task_route` unwraps its `"finding"`
+(`finding_of`), so the preview and the filing cannot disagree:
 
 ```bash
-python3 editor/scripts/dream_land.py --route @finding.json
+python3 editor/scripts/dream_land.py --route @finding.json   # optional preview
 # → { "queue": "incoming" | "blocked", "status", "priority",
 #     "questionsRequired": bool, "mode", "boundary", "neverSelfMerge", "reason" }
 ```
@@ -749,10 +759,10 @@ and it is now one call to `dream.py file-task`. See
 
 ## Hard rules
 
-- **DEV mode only.** Both scripts no-op without `VIRGIL_DEV=1`. Never hand-write
-  a memo or digest to dodge the gate.
-- **The guard is law.** Route *every* finding through `dream_land.task_route`
-  and honor the answer. Never work around a `refused`, and never file an
+- **DEV mode only.** `dream.py` no-ops outside DEV mode (see "When this
+  runs"). Never hand-write a memo or digest to dodge the gate.
+- **The guard is law.** Every finding is routed by `dream_land.task_route` —
+  `file-task` does it for you — and you honor the answer. Never work around a `refused`, and never file an
   own-rulebook change as ready work.
 - **You LAND NOTHING.** No branch, no commit, no merge, no patch, no edit to any
   file in the tree — including the skill prompts your findings are about. The
