@@ -330,6 +330,12 @@ the pill decides everything else:
   never a token. And `mode` (task 1353) — a mode the user turned on: the
   selected-toggle tint + ink every pressed bar control wears, rendered as a
   pressed (`aria-pressed`) `onActivate` control whose click turns the mode off.
+  Like a pressed `.topbarbtn`, a `mode` pill wears **no visible border** (task
+  1422): its edge is `transparent` (the `border` class stays, so its height
+  matches its siblings). **Glyph and edge are separate palette fields** — a
+  palette's optional `glyph` inks the glyph, falling back to `edge`
+  (`glyphInk`, read by the pill AND the in-document band) — so a register
+  that wants a strong glyph is never forced into a strong border.
 - **Announcement** — `announcementForTone`: `alert` + `assertive` for
   `danger`, `status` + `polite` otherwise. The same table the in-document
   interruption band reads, so a state is announced the same way in both places.

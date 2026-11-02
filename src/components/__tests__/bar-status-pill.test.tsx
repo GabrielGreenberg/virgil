@@ -34,7 +34,7 @@ import {
   barStatusPalette,
   type BarStatusTone,
 } from "../status/BarStatusPill";
-import { TONE_ANNOUNCEMENT, TONE_PALETTE } from "@/lib/interruption-tone";
+import { glyphInk, TONE_ANNOUNCEMENT, TONE_PALETTE } from "@/lib/interruption-tone";
 import { BAR_STATUS_ORDER } from "@/lib/bar-status-policy";
 
 const ROOT = join(__dirname, "..", "..", "..");
@@ -79,10 +79,11 @@ describe("BarStatusPill · the contract", () => {
     const assertive = container.querySelector('[data-bar-status-announcer="assertive"]')!;
     expect(polite.textContent).toBe(want.live === "polite" ? "Accessible label" : "");
     expect(assertive.textContent).toBe(want.live === "assertive" ? "Accessible label" : "");
-    // The glyph is inked by the tone's edge — the SPECIFIED value (jsdom
-    // resolves no CSS vars).
+    // The glyph is inked by the palette's glyph ink — its own `glyph`, else
+    // its edge — the SPECIFIED value (jsdom resolves no CSS vars).
     const glyph = container.querySelector("[data-bar-status-glyph]") as HTMLElement;
-    expect(glyph.style.color).toBe(barStatusPalette(tone as BarStatusTone).edge);
+    const pal = barStatusPalette(tone as BarStatusTone);
+    expect(glyph.style.color).toBe(pal.glyph ?? pal.edge);
     // ONE width cap.
     expect((span as HTMLElement).style.maxWidth).toBe(`${BAR_STATUS_PILL_MAX_WIDTH}px`);
   });
@@ -92,6 +93,31 @@ describe("BarStatusPill · the contract", () => {
       expect(barStatusPalette(tone)).toBe(TONE_PALETTE[tone]);
       expect(barStatusAnnouncement(tone)).toBe(TONE_ANNOUNCEMENT[tone]);
     }
+  });
+
+  it("a `mode` pill wears NO visible edge, but its glyph keeps the selected ink (task 1422)", () => {
+    const { container } = render(
+      <BarStatusPill
+        tone="mode"
+        glyph={<svg />}
+        label="Helper mode"
+        ariaLabel="Helper mode"
+        onActivate={() => {}}
+      />,
+    );
+    const body = container.querySelector("[data-bar-status-label]") as HTMLElement;
+    // Transparent, not absent: the `border` class keeps the pill's height
+    // level with its siblings.
+    expect(body.style.borderColor).toBe("transparent");
+    expect(body.className).toContain("border");
+    const glyph = container.querySelector("[data-bar-status-glyph]") as HTMLElement;
+    expect(glyph.style.color).toBe("var(--control-selected-ink)");
+    // Border and glyph are independent fields: a register with no `glyph`
+    // falls back to its edge (every alarm tone).
+    for (const tone of Object.keys(TONE_PALETTE) as (keyof typeof TONE_PALETTE)[]) {
+      expect(glyphInk(TONE_PALETTE[tone])).toBe(TONE_PALETTE[tone].edge);
+    }
+    expect(glyphInk(barStatusPalette("mode"))).toBe("var(--control-selected-ink)");
   });
 
   it("a `mode` pill is a PRESSED toggle — the mode's own off-switch (task 1353)", () => {

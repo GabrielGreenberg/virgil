@@ -65,7 +65,7 @@ import {
   type DocumentInterruption,
   type InterruptionAction,
 } from "@/lib/document-interruption";
-import { announcementForTone, paletteForTone } from "@/lib/interruption-tone";
+import { announcementForTone, glyphInk, paletteForTone } from "@/lib/interruption-tone";
 import { clearSidecarRefusal } from "@/lib/sidecar-refusal";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -247,7 +247,7 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
         color: palette.ink,
       }}
     >
-      <div className="doc-interruption-band__glyph" style={{ color: palette.edge }}>
+      <div className="doc-interruption-band__glyph" style={{ color: glyphInk(palette) }}>
         <span className={live ? "cowork-pen-pulse" : undefined} style={{ display: "inline-flex" }}>
           {glyphFor(view)}
         </span>

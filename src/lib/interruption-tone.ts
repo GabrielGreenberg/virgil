@@ -88,16 +88,27 @@ export function toneForInterruptionKind(kind: InterruptionKind): InterruptionTon
   return INTERRUPTION_TONE[kind];
 }
 
-/** The three tokens a pill or band paints from. All `var(--…)` — jsdom
+/** The tokens a pill or band paints from. All `var(--…)` — jsdom
  *  resolves no CSS vars, so a test asserts the SPECIFIED value. */
 export interface TonePalette {
   /** The ground. */
   bg: string;
-  /** The hairline / inset edge, and the glyph's ink. */
+  /** The hairline / inset edge. */
   edge: string;
   /** The text ink — legible on the soft ground (the `-500` rungs are too light
    *  to read at 11px, so the hue lives on the edge and the glyph). */
   ink: string;
+  /** The glyph's ink, when it is not the edge (task 1422). Border and glyph
+   *  are separate fields so a register that wants a strong glyph is not forced
+   *  into a strong border — the `mode` pill wears no visible edge but a
+   *  selected-ink glyph. Read through {@link glyphInk}, never directly. */
+  glyph?: string;
+}
+
+/** The ink a palette paints its glyph with: its own `glyph`, else its edge
+ *  (every alarm tone — the hue lives on the edge AND the glyph). */
+export function glyphInk(palette: TonePalette): string {
+  return palette.glyph ?? palette.edge;
 }
 
 /**
