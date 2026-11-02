@@ -649,16 +649,55 @@ describe("the census can see", () => {
  * every scoped re-declaration are VAR-FREE literals. A token defined through
  * another `var()` / `env()` can be invalid at computed-value time, and then its
  * fallback is LIVE — those reads are a different question and are not asked.
+ *
+ * "Its `:root` value" is the CASCADE WINNER (task 1417): the LAST declaration
+ * across the TOP-LEVEL `:root` rules. This leg used to keep the FIRST, which on
+ * the main `:root` was a hand-written "descriptive" value the PROMOTE-DEFAULTS
+ * block overrode — so for 13 tokens it checked fallbacks against a value that
+ * never paints, passed six that disagreed with what ships, and would have
+ * FAILED a correct one. A `:root` nested in an at-rule (the `@media print`
+ * pod reset) is conditional, not the token's value, and is not read.
  */
-const ROOT_VALUES = (() => {
-  const css = STYLESHEETS.map((f) => stripCssComments(read(f))).join("\n");
+
+/** The bodies of the TOP-LEVEL `:root` rules in comment-stripped `css`. */
+function topLevelRootBodies(css: string): string[] {
+  const bodies: string[] = [];
+  let depth = 0;
+  let selStart = 0;
+  for (let i = 0; i < css.length; i++) {
+    if (css[i] === "}") {
+      depth = Math.max(0, depth - 1);
+      selStart = i + 1;
+    } else if (css[i] === "{") {
+      const selector = css.slice(selStart, i).split(";").pop()!.trim();
+      if (depth === 0 && selector === ":root") {
+        let j = i + 1;
+        for (let d = 1; j < css.length && d > 0; j++) {
+          if (css[j] === "{") d++;
+          else if (css[j] === "}") d--;
+        }
+        bodies.push(css.slice(i + 1, j - 1));
+        i = j - 1;
+        selStart = j;
+      } else {
+        depth++;
+        selStart = i + 1;
+      }
+    }
+  }
+  return bodies;
+}
+
+/** Every `--tok: value;` declaration in a rule body, in source order. */
+const rootDeclarations = (body: string) =>
+  [...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((d) => ({ tok: d[1], value: d[2].trim() }));
+
+/** token → its cascade-winning `:root` literal, over comment-stripped `css`. */
+function rootLiteralValues(css: string): Map<string, string> {
   const volatile = (v: string) => /var\(|env\(|\b(?:inherit|initial|unset)\b/.test(v);
   const values = new Map<string, string>();
-  for (const m of css.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
-    if (m[1].split(";").pop()!.trim() !== ":root") continue;
-    for (const d of m[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g))
-      if (!values.has(d[1])) values.set(d[1], d[2].trim());
-  }
+  for (const body of topLevelRootBodies(css))
+    for (const d of rootDeclarations(body)) values.set(d.tok, d.value); // last wins
   const literal = new Map<string, string>();
   for (const [tok, v] of values) {
     if (volatile(v)) continue;
@@ -667,7 +706,10 @@ const ROOT_VALUES = (() => {
     literal.set(tok, v);
   }
   return literal;
-})();
+}
+
+const ROOT_CSS = STYLESHEETS.map((f) => stripCssComments(read(f))).join("\n");
+const ROOT_VALUES = rootLiteralValues(ROOT_CSS);
 
 /** Every `var(--tok, <fallback>)` in `text`, the fallback balanced on parens. */
 function fallbackReads(text: string): { tok: string; fallback: string; at: number }[] {
@@ -687,34 +729,95 @@ function fallbackReads(text: string): { tok: string; fallback: string; at: numbe
 const sameValue = (a: string, b: string) =>
   a.toLowerCase().replace(/\s+/g, "") === b.toLowerCase().replace(/\s+/g, "");
 
+/** Every fallback in `sources` that contradicts its token's `:root` literal. */
+function fallbackLies(
+  sources: readonly (readonly [string, string])[],
+  values: ReadonlyMap<string, string>,
+): string[] {
+  const lies: string[] = [];
+  for (const [file, text] of sources) {
+    for (const r of fallbackReads(text)) {
+      const v = values.get(r.tok);
+      if (v === undefined || /var\(/.test(r.fallback)) continue;
+      if (sameValue(v, r.fallback)) continue;
+      const line = text.slice(0, r.at).split("\n").length;
+      lies.push(`${file}:${line} — var(${r.tok}, ${r.fallback}) but ${r.tok} is ${v}`);
+    }
+  }
+  return lies;
+}
+
 describe("a fallback on a defined literal token agrees with it (task 1381)", () => {
   it("no dead fallback contradicts its token, in either silo", () => {
-    const lies: string[] = [];
-    for (const [file, text] of SOURCES) {
-      for (const r of fallbackReads(text)) {
-        const v = ROOT_VALUES.get(r.tok);
-        if (v === undefined || /var\(/.test(r.fallback)) continue;
-        if (sameValue(v, r.fallback)) continue;
-        const line = text.slice(0, r.at).split("\n").length;
-        lies.push(`${file}:${line} — var(${r.tok}, ${r.fallback}) but ${r.tok} is ${v}`);
-      }
-    }
     expect(
-      lies,
+      fallbackLies(SOURCES, ROOT_VALUES),
       "This fallback can never render (the token is a :root literal) and it names " +
         "a different value. DROP it — `var(--x)` — or make it agree.",
     ).toEqual([]);
   });
 
+  it("checks against the CASCADE WINNER, not the first declaration (task 1417)", () => {
+    const css = [
+      ":root { --t: #aaa; --u: #111; }",
+      "@media print { :root { --u: #999 !important; } }",
+      ":root { --t: #bbb; }",
+    ].join("\n");
+    const values = rootLiteralValues(css);
+    expect(values.get("--t")).toBe("#bbb");
+    expect(values.get("--u"), "an at-rule-nested :root is conditional, never the value").toBe(
+      "#111",
+    );
+    expect(fallbackLies([["dead.css", "a { color: var(--t, #aaa); }"]], values)).toHaveLength(1);
+    expect(fallbackLies([["live.css", "a { color: var(--t, #bbb); }"]], values)).toEqual([]);
+  });
+
   it("the population is real and the parser balances parens (non-vacuous)", () => {
     expect(ROOT_VALUES.get("--accent")).toBe("#7c5e3c");
-    expect(ROOT_VALUES.get("--border-light")).toBe("#c9c5c5");
+    // The SHIPPED promoted value — the old first-wins reader returned #c9c5c5.
+    expect(ROOT_VALUES.get("--border-light")).toBe("#c6cbcd");
     expect(ROOT_VALUES.size).toBeGreaterThan(100);
     expect(fallbackReads("a: var(--x, rgba(1, 2, 3, 0.4)); b: var(--y, var(--z, #fff))")).toEqual([
       { tok: "--x", fallback: "rgba(1, 2, 3, 0.4)", at: 3 },
       { tok: "--y", fallback: "var(--z, #fff)", at: 36 },
       { tok: "--z", fallback: "#fff", at: 45 },
     ]);
+  });
+});
+
+/**
+ * A `:root` token is declared ONCE (task 1417). Two unconditional `:root`
+ * declarations of one token leave the earlier one DEAD — it can never paint,
+ * yet it reads as the token's value to a human and to any scraper that keeps
+ * the first match. The main `:root` once carried 48: a "descriptive" value per
+ * promoted pref, 13 of them drifted from the PROMOTE-DEFAULTS row that ships.
+ * A promoted token's ONE declaration is its row in that generated block; its
+ * explanatory comment stays in its family. Conditional re-declarations (a
+ * `:root` inside `@media` / `@supports`, `[data-theme]` rules) are not
+ * duplicates. Allowlist EMPTY.
+ */
+describe("no :root token is declared twice (task 1417)", () => {
+  it("each top-level :root token has exactly one declaration, in either silo", () => {
+    const dups: string[] = [];
+    for (const f of STYLESHEETS) {
+      const seen = new Set<string>();
+      for (const body of topLevelRootBodies(stripCssComments(read(f))))
+        for (const d of rootDeclarations(body)) {
+          if (seen.has(d.tok)) dups.push(`${f}: ${d.tok} (again as ${d.value})`);
+          seen.add(d.tok);
+        }
+    }
+    expect(
+      dups,
+      "The earlier declaration can never paint. Delete it — for a promoted pref, " +
+        "keep only the PROMOTE-DEFAULTS row and retone via the prefs JSON sidecars.",
+    ).toEqual([]);
+  });
+
+  it("the top-level :root reader is non-vacuous and skips at-rule-nested :root", () => {
+    const bodies = topLevelRootBodies(stripCssComments(read("src/app/globals.css")));
+    expect(bodies.length).toBeGreaterThanOrEqual(2);
+    expect(bodies.some((b) => /--pod-border:\s*0 !important/.test(b))).toBe(false);
+    expect(bodies[0]).toMatch(/PROMOTE|--drag-highlight:\s*#3b82f6;/);
   });
 });
 

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { publicAssetUrl } from "@/lib/public-asset-url";
-import { DEFAULT_THEME_COLOR } from "@/lib/theme-color";
+import { DEFAULT_CANVAS_COLOR, DEFAULT_THEME_COLOR } from "@/lib/theme-color";
 
 // Manifest URLs (id, start_url, scope, icons) all have to be prefixed with the
 // deploy prefix, otherwise installing the PWA scopes the wrong directory.
@@ -29,7 +29,8 @@ export default function manifest(): MetadataRoute.Manifest {
     // launcher) creates a fresh window instead of focusing the
     // existing one. In-app "New Window" uses window.open separately.
     launch_handler: { client_mode: "navigate-new" },
-    background_color: "#f8f3ed",
+    // The shipped page canvas (task 1417), same derivation as theme_color.
+    background_color: DEFAULT_CANVAS_COLOR,
     // The shipped top-bar colour (task 1274). The manifest is static and shared
     // by every user, so it carries the DEFAULT; a customised colour reaches the
     // chrome through the theme-color meta (bootstrap replay + runtime writer).

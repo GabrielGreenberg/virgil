@@ -8,6 +8,7 @@ import { DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
 import { resolvePrefCssVars } from "@/lib/preferences-tree";
 import { prefCssBootstrapScript, recordPrefCssPaint } from "@/lib/pref-css-bootstrap";
 import {
+  DEFAULT_CANVAS_COLOR,
   DEFAULT_THEME_COLOR,
   THEME_COLOR_CSS_VAR,
   THEME_COLOR_META_SELECTOR,
@@ -39,6 +40,14 @@ describe("CENSUS: one default chain for the chrome colour", () => {
     expect(runtime).toBe(DEFAULT_THEME_COLOR);
     expect(manifest().theme_color).toBe(DEFAULT_THEME_COLOR);
     expect(seedValue(THEME_COLOR_CSS_VAR)).toBe(DEFAULT_THEME_COLOR);
+  });
+
+  it("manifest background_color === the shipped --background (task 1417)", () => {
+    const vars = resolvePrefCssVars(DEFAULT_PREFS, DEFAULT_TRANSFORMS);
+    expect(manifest().background_color).toBe(DEFAULT_CANVAS_COLOR);
+    expect(seedValue("--background")).toBe(DEFAULT_CANVAS_COLOR);
+    expect(vars.find(([k]) => k === "--background")?.[1]).toBe(DEFAULT_CANVAS_COLOR);
+    expect(read("src/app/manifest.ts")).toMatch(/background_color:\s*DEFAULT_CANVAS_COLOR\b/);
   });
 
   it("manifest.ts and layout.tsx spell no chrome-colour literal", () => {
