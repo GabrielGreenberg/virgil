@@ -132,6 +132,7 @@ export const STATIC_TWIN_NODE_TYPES: ReadonlySet<string> = new Set([
   ATOM_REGISTRY.footnote.nodeName, // same marker text
   ATOM_REGISTRY.ref.nodeName, // same display text
   ATOM_REGISTRY["inline-math"].nodeName, // KaTeX pass (StaticBorrowedText)
+  ATOM_REGISTRY.dynamic.nodeName, // dynamicAtomDisplay, shared with the view
   "displayMath", // KaTeX pass (StaticBorrowedText)
 ]);
 

@@ -99,6 +99,9 @@ const PARITY_FIXTURES: Record<string, object> = {
     para(text("Text"), { type: "footnote", attrs: { footnoteId: "f1", number: 3 } }, text(" more")),
   ),
   "label ref": doc(para(text("See "), { type: "labelRef", attrs: { displayText: "2.1" } }, text("."))),
+  "\\today dynamic atom": doc(
+    para(text("Dated "), { type: "latexDynamic", attrs: { command: "today", term: "{}" } }, text(".")),
+  ),
 };
 
 describe("static render parity (T1 ≡ live read-only body)", () => {
@@ -109,6 +112,24 @@ describe("static render parity (T1 ≡ live read-only body)", () => {
       });
     }
   }
+
+  it("\\today: the static chip carries the view's command + title, with the same default", () => {
+    for (const command of ["today", ""]) {
+      const body = doc(para({ type: "latexDynamic", attrs: { command, term: "" } }));
+      const host = document.createElement("div");
+      host.innerHTML = renderBorrowedHtml(body, "card")!;
+      const live = new Editor({ extensions: extensionsForScope("card"), content: body, editable: false });
+      editors.push(live);
+      const sel = 'span[data-type="latex-dynamic"]';
+      const s = host.querySelector(sel)!;
+      const l = live.view.dom.querySelector(sel)!;
+      expect(s.getAttribute("data-command")).toBe("today");
+      expect(s.getAttribute("data-command")).toBe(l.getAttribute("data-command"));
+      expect(s.getAttribute("title")).toBe("\\today");
+      expect(s.getAttribute("title")).toBe(l.getAttribute("title"));
+      expect(s.textContent).toBe(l.textContent);
+    }
+  });
 
   it("the citation's italics are real elements, and the empty pill is flagged", () => {
     const sig = staticSignature(PARITY_FIXTURES["citation with <i> display text"]!, "card");
@@ -157,6 +178,9 @@ describe("static-render census", () => {
     expect(bodyNeedsLiveRender(example, "excerpt")).toBe(true);
     expect(bodyNeedsLiveRender(PARITY_FIXTURES["plain citation"], "excerpt")).toBe(false);
     expect(bodyNeedsLiveRender(doc(para(text("\\% x"))), "card")).toBe(false);
+    // Task 1421: a body holding \today stays at T1 — its renderHTML is the twin.
+    expect(bodyNeedsLiveRender(PARITY_FIXTURES["\\today dynamic atom"], "excerpt")).toBe(false);
+    expect(bodyNeedsLiveRender(PARITY_FIXTURES["\\today dynamic atom"], "card")).toBe(false);
   });
 
   it("an unsafe body is promoted past T1: to T2 where allowed, else to the T0 summary", () => {

@@ -11,6 +11,20 @@ import {
 const DYNAMIC_ATOM = ATOM_REGISTRY.dynamic;
 
 /**
+ * What the chip shows for `command` — the ONE answer the NodeView's `paint`
+ * and the static `renderHTML` both read (task 1421), so the static card tier
+ * (T1, `STATIC_TWIN_NODE_TYPES`) paints exactly what the live view paints.
+ */
+export function dynamicAtomDisplay(command: unknown): {
+  command: string;
+  text: string;
+  title: string;
+} {
+  const name = (typeof command === "string" && command) || "today";
+  return { command: name, text: renderDynamicCommand(name), title: `\\${name}` };
+}
+
+/**
  * `\today` (and any future {@link DYNAMIC_COMMANDS} member) — an inline atom
  * that holds the command NAME and paints its computed value (task 1335).
  *
@@ -45,18 +59,21 @@ export const LatexDynamic = Node.create({
   },
 
   renderHTML({ HTMLAttributes, node }) {
+    const shown = dynamicAtomDisplay(node.attrs.command);
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": DYNAMIC_ATOM.domType,
         class: DYNAMIC_ATOM.domClass,
+        "data-command": shown.command,
+        title: shown.title,
       }),
-      renderDynamicCommand(node.attrs.command as string),
+      shown.text,
     ];
   },
 
   renderText({ node }) {
-    return renderDynamicCommand(node.attrs.command as string);
+    return dynamicAtomDisplay(node.attrs.command).text;
   },
 
   addNodeView() {
@@ -67,10 +84,10 @@ export const LatexDynamic = Node.create({
         className: DYNAMIC_ATOM.domClass,
         dataType: DYNAMIC_ATOM.domType,
         paint(dom, next) {
-          const command = (next.attrs.command as string) || "today";
-          setDataIfChanged(dom, "command", command);
-          setTextIfChanged(dom, renderDynamicCommand(command));
-          setTitleIfChanged(dom, `\\${command}`);
+          const shown = dynamicAtomDisplay(next.attrs.command);
+          setDataIfChanged(dom, "command", shown.command);
+          setTextIfChanged(dom, shown.text);
+          setTitleIfChanged(dom, shown.title);
         },
       });
   },
