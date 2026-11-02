@@ -35,7 +35,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -44,12 +43,14 @@ const ROOT = resolve(__dirname, "../..");
 const SILOS = ["editor", "library"] as const;
 const repoDir = (silo: string) => join(ROOT, silo, "scripts");
 
-const isModule = (name: string) => name.endsWith(".py") && !name.startsWith("test_");
-const modulesOf = (silo: string) =>
-  readdirSync(repoDir(silo))
-    .filter(isModule)
-    .filter((n) => statSync(join(repoDir(silo), n)).isFile())
+/** The top-level FILES of a silo's scripts dir (a Dirent listing — no stats). */
+const filesOf = (silo: string) =>
+  readdirSync(repoDir(silo), { withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => e.name)
     .sort();
+const modulesOf = (silo: string) =>
+  filesOf(silo).filter((n) => n.endsWith(".py") && !n.startsWith("test_"));
 
 // One interpreter per (silo, layout): import each module in turn, restoring
 // sys.path / sys.modules between them so one module's import cannot lend
@@ -93,10 +94,9 @@ beforeAll(() => {
   synced = mkdtempSync(join(tmpdir(), "virgil-silo-layout-"));
   for (const silo of SILOS) {
     mkdirSync(syncedDir(silo), { recursive: true });
-    for (const n of readdirSync(repoDir(silo))) {
-      const src = join(repoDir(silo), n);
-      if (statSync(src).isFile() && (n.endsWith(".py") || n.endsWith(".json"))) {
-        copyFileSync(src, join(syncedDir(silo), n));
+    for (const n of filesOf(silo)) {
+      if (n.endsWith(".py") || n.endsWith(".json")) {
+        copyFileSync(join(repoDir(silo), n), join(syncedDir(silo), n));
       }
     }
   }
