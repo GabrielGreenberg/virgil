@@ -131,6 +131,53 @@ check(r.returncode == 0, f"DEV-on exits 0 (stderr={r.stderr.strip()[:120]})")
 check(len(memo_files(mem)) == 1, "DEV-on wrote exactly one memo")
 
 
+# ── the skill-name door (task 1427) ─────────────────────────────────────────
+print("\n=== skill name: every copyable spelling folds to the bare name ===")
+for spelling in ("/editor/draft-footnote", "editor:draft-footnote",
+                 "draft-footnote.md"):
+    sbn = sandbox()
+    memn = tempfile.mkdtemp(prefix="chip17n-")
+    ridn = set_task(sbn, 0, status="complete", result="silent-applied")
+    r = run(memn, str(sbn), spelling, ridn)
+    files = memo_files(memn)
+    check(r.returncode == 0 and len(files) == 1,
+          f"{spelling!r} writes one memo (stderr={r.stderr.strip()[:120]})")
+    if len(files) == 1:
+        f = files[0]
+        check(f.name.endswith("-draft-footnote.md")
+              and f.parent.parent == Path(memn),
+              f"{spelling!r} → <date>/<time>-draft-footnote.md, not a nested dir")
+        fm = fm_of(f)
+        check(fm.get("skill") == "draft-footnote",
+              f"{spelling!r} → frontmatter skill is the bare name")
+        check(fm.get("skillSha") not in ("unknown", "uncommitted", None),
+              f"{spelling!r} → a real skillSha ({fm.get('skillSha')})")
+
+print("\n=== skill name: an unknown skill is refused, nothing written ===")
+for bad in ("no-such-skill", "_dev-loop-principle", "../draft-footnote"):
+    sbn = sandbox()
+    memn = tempfile.mkdtemp(prefix="chip17n-")
+    ridn = set_task(sbn, 0, status="complete", result="silent-applied")
+    r = run(memn, str(sbn), bad, ridn)
+    check(r.returncode != 0, f"{bad!r} exits non-zero")
+    check(len(memo_files(memn)) == 0, f"{bad!r} wrote NO memo")
+
+print("\n=== skill name: every apply_response writer name passes the door ===")
+from _common import MECHANICAL_WRITERS, unknown_skill_reason  # noqa: E402
+from apply_response import _KIND_SKILL, _OP_SKILL, _PANEL_SKILL  # noqa: E402
+from _common import AI_REQUEST_KINDS  # noqa: E402
+for table_name, table in (("_KIND_SKILL", _KIND_SKILL),
+                          ("_PANEL_SKILL", _PANEL_SKILL),
+                          ("_OP_SKILL", _OP_SKILL)):
+    for k, v in table.items():
+        check(unknown_skill_reason(v) is None,
+              f"{table_name}[{k!r}] = {v!r} is a skill or a declared writer")
+for k in AI_REQUEST_KINDS:
+    check(k in _KIND_SKILL, f"wire kind {k!r} names its responder in _KIND_SKILL")
+check(MECHANICAL_WRITERS == {"revert", "apply", "card-op"},
+      "the non-skill writers are exactly the declared three")
+
+
 # ── every result → its tier floor (+ correct seed bucket) ───────────────────
 print("\n=== result → tier floor ===")
 SEED_BUCKET = {  # signal-bearing outcomes seed this section

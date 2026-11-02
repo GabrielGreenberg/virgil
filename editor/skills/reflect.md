@@ -54,11 +54,12 @@ maps it to the memo's tier floor and the dream's filter key. Your job is the
 
 ## When this runs
 
-Only in **DEV mode** (`VIRGIL_DEV=1`). The single convention in
+Only in **DEV mode** (`VIRGIL_DEV=1`, or the `<repo>/editor/dev/dev-mode`
+marker file). The single convention in
 [editor/AGENTS.md](../AGENTS.md) ("Reflection (DEV mode)") attaches this as the
 follow-up to every completed skill, and `/editor/review` enforces it for each
-subskill it dispatches. The mechanical script is gated too: if `VIRGIL_DEV` is
-unset it writes nothing and exits 0, so an accidental invocation in a non-dev
+subskill it dispatches. The mechanical script is gated too: with DEV mode off
+(no `VIRGIL_DEV`, no marker) it writes nothing and exits 0, so an accidental invocation in a non-dev
 (or end-user) session is a safe no-op. **Never** turn this into a per-skill
 step copied into other skill files — the one convention is the whole seam.
 
@@ -105,6 +106,9 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 - `<docPath>` — the paper folder the skill ran against (read-only here; we only
   read its Task queue).
 - `<skill>` — the skill that just ran (e.g. `draft-suggestion`), bare name.
+  `/editor/draft-suggestion`, `editor:draft-suggestion` and
+  `draft-suggestion.md` fold to it; a name with no `editor/skills/<name>.md`
+  is refused (exit non-zero, nothing written).
 - `<taskId>` — the `ai-requests.json` id, a `bib-review-requests.json` bibKey, a
   `virtual:<panel>:<cardId>` card-flag id, or `-` for a Task-less mechanical op
   (a card-op / writes-only edit that completed no Task).

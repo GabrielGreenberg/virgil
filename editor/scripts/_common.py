@@ -1622,6 +1622,53 @@ def source_repo_root() -> Path | None:
     return None
 
 
+#: Writers that file a reflection floor without being a skill file (task 1427).
+#: `revert` is the app's own request-revert door; `apply` / `card-op` are the
+#: `apply_response` fallbacks for a write that names no responder. Their memos
+#: are still wanted — they just have no `editor/skills/<name>.md` to hash.
+MECHANICAL_WRITERS = frozenset({"revert", "apply", "card-op"})
+
+_SKILL_PREFIXES = ("/", "editor/", "editor:", "skills/")
+
+
+def canonical_skill_name(raw: str) -> str:
+    """The ONE spelling of a skill name the dev loop keys on (task 1427): the
+    bare file stem, e.g. `draft-footnote`. Every spelling an agent may copy —
+    `/editor/draft-footnote` (the route spelling review.md's table uses),
+    `editor:draft-footnote` (the plugin spelling), `draft-footnote.md` —
+    folds to it, so a memo never lands under a nested `<time>-/editor/…` path
+    the dream's `<date>/*.md` reader misses."""
+    name = (raw or "").strip()
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _SKILL_PREFIXES:
+            if name.startswith(prefix):
+                name = name[len(prefix):]
+                changed = True
+    if name.endswith(".md"):
+        name = name[:-3]
+    return name
+
+
+def unknown_skill_reason(name: str) -> str | None:
+    """None when `name` (already canonical) is a skill the memo can be filed
+    under; else the refusal text. Known = an `editor/skills/<name>.md` in the
+    source repo, or a declared `MECHANICAL_WRITERS` member. When the source
+    repo cannot be located nothing can be checked, so the name is admitted
+    (the sha lookups record 'unknown' in that case anyway)."""
+    if not name or "/" in name or name.startswith("_"):
+        return (f"not a skill name: {name!r} — pass the bare skill name, "
+                "e.g. `draft-footnote`")
+    if name in MECHANICAL_WRITERS:
+        return None
+    repo = source_repo_root()
+    if repo is None or (repo / "editor" / "skills" / f"{name}.md").is_file():
+        return None
+    return (f"unknown skill {name!r}: no editor/skills/{name}.md — pass the "
+            "bare name of the skill that ran, e.g. `draft-footnote`")
+
+
 def _is_throwaway_paper(doc: Path) -> bool:
     """True for a reflection about a paper that lives in the system temp dir
     while the memo sink is the machine-global DEFAULT — i.e. a test sandbox
@@ -1703,6 +1750,13 @@ def spawn_reflection(doc: Path, skill: str, task_id: str = "-", *, timeout: int 
         memos_root()
     except DevHomeUnresolved as e:
         print(f"reflect: no memo written — {e}", file=sys.stderr)
+        return
+    # Same name door reflect.py applies (task 1427) — checked HERE too, because
+    # the subprocess's refusal lands on a stderr this function drops.
+    skill = canonical_skill_name(skill)
+    reason = unknown_skill_reason(skill)
+    if reason:
+        print(f"reflect: no memo written — {reason}", file=sys.stderr)
         return
     try:
         script = Path(__file__).resolve().parent / "reflect.py"
