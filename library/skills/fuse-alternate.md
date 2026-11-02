@@ -4,8 +4,9 @@ description: |
   was originally indexed from a DOCX or TEX source (which carry no
   pagination). Triggers on: "fuse the PDF alternate for <citekey>",
   "add pgmarks from the PDF version of X", "Virgil, attach page
-  numbers from the PDF to this paper". Reads the PDF alternate from
-  `papers/<citekey>/variants/`, lines up the pagination, and inserts
+  numbers from the PDF to this paper". Reads the PDF alternate (the
+  sibling `papers/<citekey>/<citekey>.pdf` the catalog lists under
+  `pdf.alternates`), lines up the pagination, and inserts
   `\pgmark{N}` anchors into main.tex. Does NOT trigger for first-time
   indexing (use /library/index-paper). Args: <citekey>.
 ---
@@ -82,71 +83,69 @@ All paths are relative to the library root (the current working directory).
 - `papers/<citekey>/main.tex` must already exist (indexed or deepIndexed).
   If missing, tell the user to run `/library/index-pending` first and stop.
 - `master.bib` must contain an entry for `<citekey>`.
-- `.virgil/catalog.json` must record the paper with
-  `indexed.state in {"indexed", "deepIndexed"}` (legacy `richIndexed`
-  accepted on read).
+- The paper must have a catalog row (`indexed.state` `indexed` or
+  `deepIndexed`; legacy `richIndexed` accepted on read). You do not check
+  this by reading the catalog — the script does, and says
+  `fuse-alternate: … not in catalog` when there is none.
 
 ## Steps
 
-### 1. Decide which alternate to use
+The script is the executor and the reader: it reads the catalog row, picks
+the alternate, gates idempotency, aligns, validates, writes `main.tex`, and
+— on its normal path — updates the catalog, appends the notification, and
+writes the log. This skill runs it and reads its outcome. **Do not read
+`.virgil/catalog.json` yourself** (library/AGENTS.md: a skill never reads or
+writes it directly) and do not re-derive any decision below from it.
 
-Read `.virgil/catalog.json`. Find the entry for `<citekey>`.
-
-- If `pdf.format == "pdf"` (the primary IS the PDF), stop with the
-  message: `<citekey>'s primary source is already a PDF — pgmarks
-  should already be present from the original index. Run /library/index-paper
-  to re-derive if catalog disagrees.`
-- Otherwise filter `pdf.alternates` to entries ending in `.pdf`.
-  - If empty, stop with: `<citekey> has no PDF alternate. The
-    .docx/.tex source is the only available pagination evidence —
-    there's nothing to fuse.`
-  - If exactly one PDF alternate, use it.
-  - If multiple PDF alternates, pick the one with the largest page
-    count.
-
-### 2. Idempotency gate
-
-If the catalog row already has:
-
-- `indexed.pgmarkSource == <chosen-pdf>`, AND
-- `indexed.pgmarkCount > 0`, AND
-- in-file `\pgmark{N}` count matches `indexed.pgmarkCount`
-
-…stop with success exit code: `<citekey> already fused from <pdf>
-(pgmarkCount=<N>). No-op.` Do **not** re-run the script.
-
-### 3. Run the fuser
+### 1. Run the fuser
 
 From the library root:
 
 ```bash
-python3 .virgil/scripts/library/fuse_alternate.py <citekey> --alternate <pdf-filename>
+python3 .virgil/scripts/library/fuse_alternate.py <citekey>
+echo "exit=$?"
 ```
 
-The script orchestrates: read main.tex, extract anchors from PDF, align
-via `difflib.SequenceMatcher` (threshold 0.78, with a substring-match
-fallback for DOCX-joined paragraphs), inject at body scope (walked up
-via the canonical pgmark scope state machine), validate via
-`pgmark_validate.validate`, write atomically.
+Pass `--alternate <filename>` only when the user named a specific file
+(it must sit in `papers/<citekey>/`). Without it the script's
+`_resolve_alternate` chooses: it refuses a PDF primary, filters the row's
+`pdf.alternates` to `.pdf` names, and takes the one with the most pages.
+Its `_idempotency_skip` then decides "already fused" (the row's
+`indexed.pgmarkSource` names this alternate, `pgmarkCount > 0` equals the
+in-file body-scope `\pgmark{N}` count, and every in-file page is one the
+PDF yields).
 
-Capture per-page diagnostics — the script prints one line per PDF page:
-`page 7 → line 412 (sim 0.87)` or `page 12 SKIPPED (below-threshold)`.
+Alignment is `difflib.SequenceMatcher` at `PRIMARY_THRESHOLD`, with a
+substring-match fallback for DOCX-joined paragraphs; injection is at body
+scope (the canonical pgmark scope state machine); `pgmark_validate.validate`
+is a hard gate before the atomic write. The script prints one diagnostic
+line per PDF page — show them to the user as printed, don't reformat them.
 
-### 4. Validate output
+### 2. Read the outcome
 
-The script already calls `pgmark_validate` as a hard gate. Exit code
-non-zero means the output didn't pass — no `main.tex` write happened
-in that case. Print the validation report to the user and stop.
+The exit code and the line that accompanies it are the whole answer
+(`fuse_alternate.py` `main()`):
 
-### 5. Update catalog
+| Exit | Line | Meaning | `main.tex` |
+|---|---|---|---|
+| 0 | stderr `fuse-alternate: <reason>` | Nothing to fuse — `_resolve_alternate` refused (primary is already a PDF, no PDF alternate, citekey not in the catalog, or the named `--alternate` is missing). Relay `<reason>` verbatim and stop. | unchanged |
+| 0 | stdout `already fused from <pdf> — no-op (pgmarkCount=<N>)` | Idempotent no-op. | unchanged |
+| 0 | stdout `Fused <N>/<P> pgmarks from <pdf> (aligned <K>)` | Success. On the normal path the script has ALSO written the catalog row, the `fused` notification and the log (it prints `Log: <path>`). | written |
+| 1 | stderr `fusion FAILED: <aborted_reason>` | Refused — see **Failure modes** for each `<aborted_reason>`. | unchanged |
+| 2 | a traceback | A crash. Report it verbatim; it is a bug. | check — the crash may follow the write |
 
-On success, the script's standalone CLI updates the catalog itself
-(when invoked directly): sets `indexed.pgmarkSource`,
-`indexed.pgmarkCount`, `indexed.pgmarkPosition`, bumps timestamps, and
-appends a fused-kind notification.
+On success with the normal path you are done — go to step 4. Step 3's
+catalog patch and notification exist only for `--no-catalog`.
 
-If you invoked the underlying script with `--no-catalog`, do the
-catalog update via the locked CLI shim — do **not** Read/Write
+### 3. Only under `--no-catalog`: catalog row + notification
+
+`--no-catalog` writes `main.tex` and skips the script's catalog write,
+notification and log (`--dry-run` writes nothing at all). Use it only when
+something outside this skill owns the bookkeeping; then you do the two
+writes the script skipped. **On the normal path, do neither** — the script
+already did both, and repeating them toasts the user twice.
+
+Do the catalog update via the locked CLI shim — do **not** Read/Write
 `catalog.json` directly:
 
 ```bash
@@ -221,25 +220,17 @@ because the family's heads are DERIVED from
 under-drop the day a continuity kind is added. Never free-type a
 `pgmark-fusion-…` head into this file.
 
-If `RECOMPUTE_FLAGS` comes back empty (wrong working directory, missing
-`python3`), **stop and report it** — do not run the patch without the
-flags. Without them the array replaces rather than merges, which is the
-clobber this fence exists to avoid; the emitter itself is stdlib-only, so
-an empty result means the invocation was wrong, never that the family is
-empty.
-
-### 6. Notify
-
-Append a notification via the locked CLI shim. The shim OWNS the `kind`
-vocabulary (task 799): an undeclared kind is refused with exit 2 and nothing
-is written. `"indexed"` is the neutral member of the toast enum that fits a
-fuse; the specifics belong in `summary`.
+Then the notification — the script's `_append_fusion_notification`, by
+hand. The shim OWNS the `kind` vocabulary (task 799): an undeclared kind is
+refused with exit 2 and nothing is written. The kind is `fused` — the one
+the script itself writes (`LOG_TAG_FUSED`), declared in
+`_tools.NOTIFICATION_WRITER_SEVERITY`:
 
 ```bash
 t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-fuse-alternate.XXXXXX")
 cat > "$t/notify.json" <<'EOF'
 {
-  "kind": "indexed",
+  "kind": "fused",
   "citekey": "$ARGUMENTS",
   "at": "<ISO>",
   "summary": "Fused <N> pgmarks from <pdf>"
@@ -250,35 +241,40 @@ python3 .virgil/scripts/library/append_inbox_item.py \
 rm -rf "$t"
 ```
 
-### 7. Log
+No log file is written under `--no-catalog`; the printed diagnostics are
+the record.
 
-Write a summary log to `.virgil/logs/<citekey>/<ISO>-fuse.summary.md`
-with per-page alignment table (the script writes this when invoked
-directly).
+### 4. Report
+
+One line: the `Fused …` line (or the no-op / refusal line) plus, on the
+normal path, the `Log:` path — the script writes
+`.virgil/logs/<citekey>/<timestamp>-fuse.summary.md` with the per-page
+alignment table.
 
 ## Idempotency
 
 Running `/library/fuse-alternate` twice on the same paper with the same
-alternate is a strict no-op:
-
-- `indexed.pgmarkSource` already names this alternate, AND
-- `indexed.pgmarkCount > 0`, AND
-- in-file body-scope `\pgmark{N}` count matches
-
-…⇒ skip with no-op message and exit 0. `main.tex` mtime unchanged,
-`catalog.json` unchanged, `catalog-version.txt` unchanged.
+alternate is a strict no-op: the second run takes the `already fused` row of
+step 2's table — exit 0, `main.tex` mtime unchanged, `catalog.json`
+unchanged, `catalog-version.txt` unchanged, no notification.
 
 ## Failure modes
 
-| Reason | Message |
+Every exit-1 refusal names a `FuseResult.aborted_reason` from
+`fuse_pgmarks_into`. In every case `main.tex` is unchanged.
+
+| `aborted_reason` | What to tell the user |
 |---|---|
-| No `main.tex` | `<citekey> not yet indexed. Run /library/index-pending first.` |
-| Primary IS pdf | `<citekey>'s primary source is already a PDF — …` |
-| No PDF alternate | `<citekey> has no PDF alternate. …` |
-| Already fused | `<citekey> already fused from <pdf>. No-op.` |
-| Low alignment (<50%) | `Alignment failed: only <K>/<P> PDF pages matched body prose at threshold 0.78. The PDF and the indexed text may be different versions. main.tex unchanged.` |
-| Scope violation | `Validator rejected fusion result. main.tex unchanged. This is a bug — paste the report into a memo at .virgil/memos/.` |
-| Hand-authored pgmarks present | `<citekey> already has pgmarks in main.tex with no recorded source — refusing to overwrite hand-authored markers.` |
+| `main-tex-missing` | `<citekey>` is not yet indexed — run `/library/index-pending` first. |
+| `alternate-pdf-missing` | The alternate vanished between selection and read — re-run. |
+| `no-pages` | No page anchors could be extracted from the PDF (no text layer, or no detectable printed page numbers) — nothing to align. |
+| `already-has-pgmarks-no-source` | `main.tex` already carries body-scope `\pgmark{N}` with no recorded `pgmarkSource` — refusing to overwrite hand-authored markers. |
+| `low-alignment <K>/<P>` | Only `<K>` of `<P>` PDF pages matched body prose (below `MIN_ALIGNED_FRACTION`). The PDF and the indexed text may be different versions. |
+| `scope-violation` | The validator rejected the result; its report is on stderr. A bug — paste the report into a memo at `.virgil/memos/`. |
+
+The "nothing to fuse" cases (PDF primary, no PDF alternate, not in the
+catalog) are NOT failures: they exit 0 with a `fuse-alternate: …` line
+(step 2's first row).
 
 ## What this command does NOT do
 

@@ -287,7 +287,9 @@ user sees progress.
 >    and writes `<report_dir>/<citekey>.json`. It also writes
 >    a one-line summary to stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
 > 4. Read the report. If `manual_review[]` is non-empty, briefly look at
->    each item — reading the relevant master.bib entries when useful —
+>    each item — an entry's current master.bib block comes from the read
+>    door, `python3 .virgil/scripts/library/master_entry.py <key>` (exit 0
+>    found, 3 absent, 2 unreadable), never a `Read` of master.bib —
 >    and add a `manual_review_decisions` array to the report file with
 >    one entry per item shaped `{paper_entry, master_entry, decision,
 >    reason}` where `decision` ∈ `"accept_master"`, `"prefer_paper"`,

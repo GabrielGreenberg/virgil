@@ -84,7 +84,7 @@ directory).
 
    | Queue kind | Route |
    |---|---|
-   | `paper-review` | → `/library/ai-requests` (always carries a note) |
+   | `paper-review` | → `/library/ai-requests` (note optional — a note-less one is a whole-paper review; that skill states it) |
    | `authenticate` | → `/library/authenticate-bib <citekey>` (with `[note]`: → `/library/ai-requests`) |
    | `deepIndex` | → `/library/deep-index <citekey>`; legacy `richIndex` likewise (with `[note]`: → `/library/ai-requests`) |
    | `bib-edit` | → `/library/apply-bib-edit <citekey>` |

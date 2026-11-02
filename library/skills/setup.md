@@ -137,8 +137,11 @@ warning in your reply if you see it.
    download (~1 GB, depending on bandwidth). Subsequent runs are
    instant if nothing's missing.
 
-3. **Read the script output.** It logs four steps:
-   - Step 1: pip installs (marker-pdf, ocrmypdf)
+3. **Read the script output.** It logs four steps (Step 1 prints twice):
+   - Step 1: pip install, in two blocks — `(light deps)` then
+     `(heavy deps)` (`setup.py`'s `LIGHT_PIP` / `HEAVY_PIP`; marker-pdf is
+     heavy). Installed separately so a heavy-block failure (typically
+     marker-pdf on x86_64 macOS) does not take the light block down.
    - Step 2: system binary check (tesseract)
    - Step 3: marker model pre-download
    - Step 4: manifest write

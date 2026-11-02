@@ -68,8 +68,12 @@ directory).
 A queue entry is an AI request when **any** of these is true:
 
 1. `kind == "paper-review"` — produced by the AI request button in the
-   paper text view. File: `.virgil/queue/<citekey>-paperreview.json`.
-   Always has a `note`.
+   paper text view, or the **AI doc review** item on a catalog row. File:
+   `.virgil/queue/<citekey>-paperreview.json`. The `note` is OPTIONAL
+   (`queuePaperReview` in `library/lib/bib-edit.ts` omits it when the user
+   typed nothing — the catalog-row item never asks). A note-less request
+   is a whole-paper review with no narrower spec: see step 2's `paper`
+   scope.
 2. `kind == "authenticate"` and the entry has a non-empty `note` field
    — produced by the AI request button on the bib card when the user
    typed a note before submitting. File: `.virgil/queue/<citekey>-auth.json`
@@ -86,16 +90,12 @@ A queue entry is an AI request when **any** of these is true:
    Dispatch to `/library/deep-index <citekey>` (the skill reads the note from
    the queue file). `deepIndex` entries **without** a note are standard
    deep-index requests — leave them for `/library/index-pending` to handle.
-4. `kind == "import-bib"` — produced by the "Import bibliography" item
-   (paper header AI-requests menu / catalog row menu). File:
-   `.virgil/queue/<citekey>-importbib.json`. `note` is optional.
-   Dispatch to `/library/import-bib <citekey>` (the skill reads the note
-   from the queue file, folds `references.bib` into `master.bib`, marks
-   the paper imported *when it has a catalog row* — that skill's step 2
-   states the reference-only branch, where there is none and no blue
-   check appears — and retires its request through the queue door). These are also picked
-   up by `/library/index-pending` on the regular path — handle them here when the
-   user explicitly invoked `/library/ai-requests`, especially if a `note` is set.
+`import-bib` is **not** an AI request, note or no note: it has one owner,
+`/library/import-bib <citekey>`, which reads and echoes the request's
+`note` itself, and `/library/index-pending` routes every one there
+(its dispatch table). Skip it here. If the user invoked
+`/library/ai-requests` expecting an import, point them at
+`/library/import-bib`.
 
 ## Procedure
 
@@ -108,9 +108,8 @@ A queue entry is an AI request when **any** of these is true:
 
 2. **For each request — claim it, surface the note prominently, and act on it.**
 
-   A request routed onward (`deepIndex` → `/library/deep-index`,
-   `import-bib` → `/library/import-bib`) is that skill's to claim and
-   retire — don't claim it here. Every request you handle YOURSELF
+   A request routed onward (`deepIndex` → `/library/deep-index`) is that
+   skill's to claim and retire — don't claim it here. Every request you handle YOURSELF
    (`paper-review`, `authenticate` with a note) you CLAIM first, through
    the queue door, so a run racing yours (or the app) won't take it and a
    request the user re-files while you work is not retired unworked:
@@ -150,14 +149,70 @@ A queue entry is an AI request when **any** of these is true:
      field the user asked for and you could not source is a surfaced
      gap, which is the success mode; a plausible value from
      recollection is the failure mode, and it will outlive every check
-     in this pipeline. Stage the result via `/library/apply-bib-edit <citekey>`
-     (or write a `bib-edit` queue entry). Do **not** fall through to
+     in this pipeline. Do **not** fall through to
      the standard `/library/authenticate-bib` three-tier search unless the note
      specifically asks for it — that narrows the SEARCH, never the bar.
 
+     **Writing what you found.** There is no queue entry to stage it in:
+     a `bib-edit` request carries the app's Edit-modal diff (`bibEdit`),
+     and no CLI writes one. Land the fields through the SAME door
+     `/library/apply-bib-edit` uses — the locked master.bib writer — with a
+     change-set holding only the fields you sourced:
+
+     ```bash
+     t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-ai-requests.XXXXXX")
+     python3 .virgil/scripts/library/master_entry.py "<citekey>" > "$t/base.bib"
+     echo "read=$?"
+     ```
+
+     `read=` is `master_entry.py`'s own table (its docstring): **0** found —
+     continue; **3** absent or **2** unreadable — report its stderr
+     verbatim, write nothing (`rm -rf "$t"`), and do not retire the request.
+     On 0, write the change-set in the same `$t`:
+
+     ```bash
+     cat > "$t/set.json" <<'EOF'
+     { "doi": "...", "year": "..." }
+     EOF
+     python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
+       --entry-type "<the @type in base.bib>" \
+       --fields-file "$t/set.json" \
+       --merge-existing \
+       --base-raw-file "$t/base.bib" \
+       --base-type "<the @type in base.bib>"
+     rc=$?
+     rm -rf "$t"
+     echo "exit=$rc"
+     ```
+
+     `--merge-existing` keeps every field you did not name; the `--base-*`
+     pair holds any field that changed on disk since you read it. **Branch
+     on the exit code** — the ONE table is `update_master_bib_entry.py
+     --help` (task 796), the same one `/library/apply-bib-edit` step 2
+     walks:
+
+     - **0** — applied.
+     - **5** — applied EXCEPT the fields stderr lists as held (changed on
+       disk since you read the entry); report them in your reply.
+     - **6** — refused, nothing written (the entry is gone). Report stderr
+       verbatim; skip the resync and catalog steps below.
+     - **2** — bad invocation, nothing written. Report it and do **not**
+       retire the request — the user's ask is still unanswered.
+     - **7** — the entry has unbalanced braces, nothing written. Report
+       stderr verbatim and do **not** retire; it needs a human repair.
+
+     Do not pass `--bib-state` or `--allow-field-drop`. Then run that skill's step 3
+     (`resync_paper_bib.py`) and step 4 (catalog `fieldChanges`, with
+     `source` naming where each value came from) — its claim, notification
+     and retire steps belong to a `bib-edit` request, not to yours; your
+     request retires in step 3 below.
+
    - **`paper` scope (`kind=paper-review`):** the note is about the
      paper text in `papers/<citekey>/main.tex`. Read the file, find the
-     section/element the note refers to, and fix it. If the request
+     section/element the note refers to, and fix it. **With no note**,
+     there is no element to find: run `/library/di-validate <citekey>` for
+     the punch-list, fix only what it flags unambiguously, and report the
+     rest rather than guessing at what the user meant. If the request
      requires re-running the linearization pipeline (e.g. "re-extract
      section 3" or "this paper has a two-column layout"), invoke the
      relevant scripts (`.virgil/scripts/library/index_paper.py`, `.virgil/scripts/library/extract.py`)
@@ -188,7 +243,8 @@ A queue entry is an AI request when **any** of these is true:
 ## What this command does NOT do
 
 - Does **not** drain `kind=index` / `kind=reindex` / `kind=triage` /
-  `kind=bib-edit` entries.
+  `kind=bib-edit` / `kind=import-bib` entries (import-bib belongs to
+  `/library/import-bib`, note or no note).
 - Does **not** run vanilla `authenticate` entries (those without a
   note). They stay in the queue for `/library/index-pending` to pick up.
 - Does **not** invoke `.virgil/scripts/library/drain_queue.py` — that's the general
