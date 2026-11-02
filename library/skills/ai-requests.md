@@ -186,11 +186,22 @@ A queue entry is an AI request when **any** of these is true:
      ```
 
      `--merge-existing` keeps every field you did not name; the `--base-*`
-     pair holds any field that changed on disk since you read it. Branch on
-     the exit code exactly as `/library/apply-bib-edit` step 2 states the
-     table (0 applied · 5 applied except held fields — report them · 6/7
-     refused, nothing written · 2 bad invocation). Do not pass
-     `--bib-state` or `--allow-field-drop`. Then run that skill's step 3
+     pair holds any field that changed on disk since you read it. **Branch
+     on the exit code** — the ONE table is `update_master_bib_entry.py
+     --help` (task 796), the same one `/library/apply-bib-edit` step 2
+     walks:
+
+     - **0** — applied.
+     - **5** — applied EXCEPT the fields stderr lists as held (changed on
+       disk since you read the entry); report them in your reply.
+     - **6** — refused, nothing written (the entry is gone). Report stderr
+       verbatim; skip the resync and catalog steps below.
+     - **2** — bad invocation, nothing written. Report it and do **not**
+       retire the request — the user's ask is still unanswered.
+     - **7** — the entry has unbalanced braces, nothing written. Report
+       stderr verbatim and do **not** retire; it needs a human repair.
+
+     Do not pass `--bib-state` or `--allow-field-drop`. Then run that skill's step 3
      (`resync_paper_bib.py`) and step 4 (catalog `fieldChanges`, with
      `source` naming where each value came from) — its claim, notification
      and retire steps belong to a `bib-edit` request, not to yours; your
