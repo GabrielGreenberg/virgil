@@ -30,7 +30,7 @@ import {
   type PositionedMarker,
 } from "@/lib/marginalia";
 import { getOrCreateGeometry } from "@/lib/editor-geometry";
-import { getBus } from "@/lib/tiptap/doc-structure";
+import { getSpanLines } from "@/lib/editor-geometry/span-line";
 import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
@@ -206,31 +206,42 @@ function useLaneCols(editor: Editor | null): { left: number; right: number } {
 
 /**
  * Which line of its node a span-anchored marker's words start on (task 1334)
- * — the `lineOf` reader `computeMarkerPositions` takes. The span's LIVE `from`
- * comes off the DocStructure snapshot (remapped per transaction, so a marker
- * built before the last keystroke still reads where its words are now), and
- * the line is the line-box distance from the node's first line, in units of
- * the node's measured line pitch. Two `coordsAtPosCached` reads per span
- * marker on a MEASURED, multi-line node (the grid asks nothing else), and only
- * when this memo re-runs — a registry measure, a marker rebuild or a lane
- * change, never a keystroke or a scroll frame. `null` ⇒ row 0.
+ * — the `lineOf` reader `computeMarkerPositions` takes. The answer is owned by
+ * the per-editor span-line service (task 1420,
+ * `src/lib/editor-geometry/span-line.ts`): keyed on the span's live `from`,
+ * the node's measured metrics and the text width, so a memo re-run with
+ * unchanged inputs — a card-body keystroke rebuilding `markers` — costs zero
+ * layout reads, while doc typing that rewraps the words in place re-reads on
+ * the service's own clock (keyed content channel → one parked frame) and
+ * re-renders this memo through `useSpanLineVersion`. Only a MEASURED,
+ * multi-line, non-atom node is asked at all. `null` ⇒ row 0.
  */
 function spanLineOf(
   editor: Editor | null,
   m: MarginaliaMarker,
   node: AnchorNodeMetrics,
+  seen: Set<string>,
 ): number | null {
   if (!m.anchorId || node.isAtom || node.lineCount <= 1) return null;
   if (!editor || editor.isDestroyed) return null;
-  const s = getBus(editor)?.structure;
-  const a = s?.anchors.get(m.anchorId);
-  const b = s?.blocks.get(m.textObjectId);
-  if (!a || !b || a.from <= b.pos) return null;
-  const geo = getOrCreateGeometry(editor);
-  const first = geo.coordsAtPosCached(b.pos + 1);
-  const at = geo.coordsAtPosCached(a.from);
-  if (!first || !at || !(node.lineHeight > 0)) return null;
-  return Math.round((at.top - first.top) / node.lineHeight);
+  seen.add(m.anchorId);
+  return getSpanLines(editor).lineOf(m.anchorId, m.textObjectId, node);
+}
+
+/** Re-render when a span's words moved to another line (the service's clock). */
+function useSpanLineVersion(editor: Editor | null): number {
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      if (!editor || editor.isDestroyed) return () => {};
+      return getSpanLines(editor).subscribe(cb);
+    },
+    [editor],
+  );
+  const getSnapshot = useCallback(
+    () => (!editor || editor.isDestroyed ? 0 : getSpanLines(editor).version()),
+    [editor],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, () => 0);
 }
 
 /**
@@ -261,20 +272,25 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // the RC2 vanish is still closed, just by a surface outside this column.
   // Lane regime (tasks 214/325) — see `useLaneCols` below.
   const { left: colsLeft, right: colsRight } = useLaneCols(editor);
+  const spanLineVersion = useSpanLineVersion(editor);
 
-  const { positioned, overflowGroups } = useMemo(
-    () =>
-      computeMarkerPositions(
-        registry.getMetrics,
-        markers,
-        panelSides,
-        { left: colsLeft, right: colsRight },
-        (m, node) => spanLineOf(editor, m, node),
-      ),
-    // registryVersion is the re-render trigger; getMetrics itself is stable.
+  const { positioned, overflowGroups } = useMemo(() => {
+    const seen = new Set<string>();
+    const out = computeMarkerPositions(
+      registry.getMetrics,
+      markers,
+      panelSides,
+      { left: colsLeft, right: colsRight },
+      (m, node) => spanLineOf(editor, m, node, seen),
+    );
+    // Release the line watch on spans no longer asked about (off-zone,
+    // deleted, re-seated) — a later ask simply reads fresh.
+    if (editor && !editor.isDestroyed) getSpanLines(editor).sweep(seen);
+    return out;
+    // registryVersion / spanLineVersion are the re-render triggers;
+    // getMetrics itself is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registry, markers, panelSides, registryVersion, colsLeft, colsRight, editor],
-  );
+  }, [registry, markers, panelSides, registryVersion, spanLineVersion, colsLeft, colsRight, editor]);
 
   // The margin-pin re-anchor gesture is no longer native HTML5 DnD: grabbing
   // a marker pin now starts a unified drop-mode session (see `MarkerButton`'s

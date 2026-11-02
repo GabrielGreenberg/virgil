@@ -2048,3 +2048,18 @@ Task 665 gave the ACT (`jumpToCard`) the gate's RUNGS but not the gate's ORDER: 
 - **A row passes its pid.** Every omni builder calls `a.jumpToCard(card, sourceEl, row.anchorUuid)`; a row pid that died since the row was built falls back to the authority rather than jumping nowhere.
 
 CI: `jump-to-card-authority.test.tsx` (winner leg, snapshot leg, orphan leg, row-pid leg, dead-row fallback, and a census that every omni builder's jump passes `row.anchorUuid`); `gutter-stability-census.test.ts` counts one pin dispatch per jump door.
+
+### The span-line half (task 1420)
+
+"Which line of its block do a span's words start on?" has ONE owner per editor:
+[src/lib/editor-geometry/span-line.ts](../../../src/lib/editor-geometry/span-line.ts)
+(`getSpanLines`). The answer is cached on exactly its inputs — the span's live
+`from`, the block's pos + measured metrics, the text width — so a marker-memo
+re-run with equal inputs (a card-BODY keystroke rebuilding `markers`) reads no
+layout. The one input no key sees, the block's text rewrapping in place without a
+height change, is watched through the keyed, uncounted `onBlockContentChanged`
+for only the blocks that hold a read span → one gesture-parked frame
+(`LAYOUT_SITE_SPAN_LINE`) → subscribers notified only when a line MOVED. Both the
+margin marker (`Marginalia`) and the in-text card deck (`useInTextPositions`)
+subscribe, so a card and its icon settle on the same clock. Test:
+`marginalia-span-line.test.ts`.
