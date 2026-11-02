@@ -3322,7 +3322,7 @@ number. Full ladder, low → high:
 | content / editor prose | 0–99 | (local) |
 | in-scroll margin trigger (⚡ bolt, grab handle — under the pod caps 30/31) | 20 | `IN_SCROLL_MARGIN_TRIGGER_Z` |
 | below-panel chrome (dock-target outline; Stack icon + strip) | 999 | `DOCK_OUTLINE_Z`, `STACK_CHROME_Z` (= `FLOATING_PANEL_Z_BASE - 1`) |
-| docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
+| floating (undocked) panel — a DOCKED pod never carries it; inside the sticky band frame (z 30) the local ladder is pod 0 < bins 20 < resize grips 25 (task 1416) | 1000 | `FLOATING_PANEL_Z_BASE` (docked: `DOCKED_POD_Z` / `OMNI_BIN_SLOT_Z` / `BAND_GRIP_Z`, `editor-layout/constants.ts`) |
 | card-lift source outline | 1100 | `LIFT_OUTLINE_Z` (= `FLOAT_Z_BASE - 100`) |
 | resting margin trigger, fixed (pending-change pill) | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
 | float layer (popped cards, lift overlay) — BOUNDED band | 1200–1204 | `FLOAT_Z_BASE` … `FLOAT_Z_MAX` (via `cardFloatZ`) |

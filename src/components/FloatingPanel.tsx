@@ -38,6 +38,7 @@ import { canCaptureToStack } from "@/floats/stack-capture";
 import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/drag-blocklist";
 import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
+import { DOCKED_POD_Z } from "@/components/editor-layout/constants";
 import {
   paneDockSlot,
   usePaneRoot,
@@ -1346,7 +1347,11 @@ function FloatingPanelInner({
             ? "var(--panel-border)"
             : "var(--pod-border)",
           boxShadow: "var(--card-shadow-ambient)",
-          zIndex,
+          // The band-frame ladder's pod rung, never the floating rung
+          // (task 1416, constants.ts) — except on the body-portal fallback,
+          // where no frame states a ladder and the pod must still clear
+          // the page.
+          zIndex: target === document.body ? zIndex : DOCKED_POD_Z,
         }
       : {
           position: "fixed",

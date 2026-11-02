@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { OmniBinSlotContext, DATA_OMNI_BIN_SLOT, DATA_STACK_FRAME } from "./omni-bin-slot";
+import { BAND_GRIP_Z, OMNI_BIN_SLOT_Z } from "./constants";
 import { usePaneResizeHandle, onLayoutGestureSetChange } from "@/lib/pane-resize";
 import {
   PanelId,
@@ -183,8 +184,10 @@ function BottomEdgeHandle({
   return (
     <div
       data-bottom-edge={bottomId}
-      className="relative shrink-0 z-10"
-      style={{ height: 'var(--pod-seam)', pointerEvents: 'auto' }}
+      className="relative shrink-0"
+      // The band-frame ladder's GRIP rung (constants.ts, task 1416): above
+      // the bin slot, so the grab-end overhang wins the bins' top edge.
+      style={{ height: 'var(--pod-seam)', pointerEvents: 'auto', zIndex: BAND_GRIP_Z }}
     >
       {/* The grab is the shared `.band-grip::before` rule at --gutter-grab,
           BIASED downward (`drag-gap-grab-end`): only that half is reachable,
@@ -587,8 +590,10 @@ export function PanelColumn({
                   bins sit directly below the docked bands (or at the frame's
                   top when nothing is docked) and ride the frame's sticky
                   pin. `pointerEvents: auto` re-enables clicks that Layer B
-                  disabled; `zIndex: 20` is the bin rung of the ladder stated
-                  in omni-bin-slot.ts (pinned card 10 < bins 20 < frame 30).
+                  disabled; `OMNI_BIN_SLOT_Z` is the bin rung of the ladder
+                  stated in omni-bin-slot.ts (pinned card 10 < bins 20 < frame
+                  30) and of the in-frame ladder in constants.ts (pods 0 <
+                  bins 20 < grips 25).
                   `minHeight: 0` so an expanded bin list shrinks into what
                   the bands leave rather than overflowing the frame. */}
               <div
@@ -596,7 +601,7 @@ export function PanelColumn({
                 {...{ [DATA_OMNI_BIN_SLOT]: side }}
                 style={{
                   position: 'relative',
-                  zIndex: 20,
+                  zIndex: OMNI_BIN_SLOT_Z,
                   pointerEvents: 'auto',
                   minHeight: 0,
                   flex: '0 1 auto',

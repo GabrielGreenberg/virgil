@@ -98,7 +98,9 @@ export { FLOATING_PANEL_Z_BASE };
  *                                       their line inside the row scroll
  *                                       container: under the pod caps 30/31)
  *   below-panel chrome           999   (DOCK_OUTLINE_Z, STACK_CHROME_Z — task 793)
- *   panel band                  1000   (FLOATING_PANEL_Z_BASE — docked panels)
+ *   panel band                  1000   (FLOATING_PANEL_Z_BASE — floating panels;
+ *                                       a DOCKED pod rides the band frame's
+ *                                       local ladder instead — task 1416)
  *   card-lift source outline    1100   (LIFT_OUTLINE_Z — below the float it spawns)
  *   RESTING margin triggers     1199   (RESTING_MARGIN_TRIGGER_Z — a FIXED
  *                                       body-portaled margin trigger at rest,
