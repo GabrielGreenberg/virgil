@@ -13,12 +13,25 @@ const ROOT = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const css = read("src/app/globals.css");
 
+/** Every innermost `selector { body }` pair, found in ONE linear pass. (A
+ *  global `/([^{}]+)\{([^{}]*)\}/g` regex re-scans every run that precedes
+ *  a nested `{` from each of its characters — quadratic over the ~300 KB
+ *  stylesheet, which timed this suite out on CI and blocked v0.1.151.) */
+const BLOCKS: Array<[selector: string, body: string]> = (() => {
+  const out: Array<[string, string]> = [];
+  const parts = css.split(/([{}])/); // segment, delim, segment, delim, …
+  for (let i = 0; i + 3 < parts.length; i += 2) {
+    if (parts[i] && parts[i + 1] === "{" && parts[i + 3] === "}") {
+      out.push([parts[i], parts[i + 2]]);
+      i += 2; // the body is consumed; the next selector follows the "}"
+    }
+  }
+  return out;
+})();
+
 /** Every declaration block whose selector list mentions `cls`. */
 function blocksFor(cls: string): string[] {
-  const out: string[] = [];
-  const re = /([^{}]+)\{([^{}]*)\}/g;
-  for (let m; (m = re.exec(css)); ) if (m[1].includes(cls)) out.push(m[2]);
-  return out;
+  return BLOCKS.filter(([sel]) => sel.includes(cls)).map(([, body]) => body);
 }
 
 describe("fold-chevron contract (task 830)", () => {
