@@ -2126,11 +2126,8 @@ export function EditableCard({
         </div>
       ) : (
       <div
-        className={`relative ${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
+        className={`relative ${PANEL.cardBody} ${cardBodyScroll(isPoppedOut)}`}
         style={{
-          ...(isPoppedOut
-            ? null
-            : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }),
           ...(partnerClaim
             ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
             : null),
@@ -2250,6 +2247,15 @@ export function AiRequestRow({ checked, onToggle }: AiRequestSlot) {
   );
 }
 
+/** The scroll class for an EXPANDED card body (task 1424): docked/omni
+ *  bodies cap at half the visible pane and scroll internally
+ *  (`PANEL.cardBodyScroll`); a popped-out card fills its window instead.
+ *  Every expanded body takes its scroll behaviour here — the census
+ *  `card-body-scroll-census.test.ts` fails on one that hand-rolls a cap. */
+export function cardBodyScroll(isPoppedOut: boolean | undefined): string {
+  return isPoppedOut ? "flex-1 min-h-0 overflow-auto" : PANEL.cardBodyScroll;
+}
+
 /** Reusable class-string tokens. */
 export const PANEL = {
   /** Scrollable list container wrapping all cards. The leading
@@ -2269,6 +2275,11 @@ export const PANEL = {
    *  body (the multi-pod publication-details + BibTeX-fields + annotations
    *  layout reads better at the roomier `cardInner` px-4 py-3 — backlog #28). */
   cardBody: "px-3 pt-1.5 pb-2",
+  /** The ONE expanded-card-body height cap (task 1424) — half the pane's
+   *  scrollport, internal scroll (`.card-body-scroll`, globals.css). Read it
+   *  through `cardBodyScroll(isPoppedOut)`, which swaps in the popped-out
+   *  fill-the-window variant. */
+  cardBodyScroll: "card-body-scroll",
   /** Inner padding for card content. Used by BibEntryCard's expanded body
    *  (see the `cardBody` exemption note above). */
   cardInner: "px-4 py-3 relative min-w-0",

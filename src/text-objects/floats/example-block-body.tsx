@@ -28,6 +28,7 @@
  * compact static previews; the user edits the atoms in the main doc.
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
@@ -173,6 +174,8 @@ export function ExampleBlockBody({
     editable: mainEditable,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           FLOAT_PROSE_EDITOR_CLASS,

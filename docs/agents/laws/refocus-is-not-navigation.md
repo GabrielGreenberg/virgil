@@ -97,3 +97,29 @@ say so at the site.
 no disk), so the check is cheap and real — click into a paragraph mid-document,
 scroll somewhere else, add a label to a heading from its strip, and watch the
 scroll hold still.
+
+## The nested-editor half: a nested editor never scrolls an ancestor it doesn't own (task 1424)
+
+The same confusion one level down. ProseMirror answers `tr.scrollIntoView()` —
+dispatched by its own PASTE path, by Enter / arrows, and by `RichTextField`'s
+text-input door — with `scrollRectIntoView`, which walks EVERY scrollable
+ancestor until the caret is visible. A card body or float body sits inside the
+pane's row scroller (`[data-virgil-row-scroll]`), so pasting into a long note
+NAVIGATED the paper to the bottom of the note. Only the main `Editor.tsx` owns
+that scroller.
+
+**Rule:** every nested editor (every `useEditor(` outside `Editor.tsx`) mounts
+`editorProps.handleScrollToSelection: scrollWithinOwnBox`
+([src/lib/tiptap/contained-scroll.ts](../../../src/lib/tiptap/contained-scroll.ts)):
+it scrolls only the editor's NEAREST scroll box (its capped card body, its
+float's scroll body, its panel list) to the caret and returns `true`, so
+ProseMirror's ancestor walk never runs; if the first scroller up the tree is
+the row, nothing scrolls. O(DOM depth) + two rects — no doc walk. The companion
+seam is the expanded-body CAP (`cardBodyScroll()` / `.card-body-scroll`, half
+the measured scrollport): without it the "own box" was ~a full pane and the
+caret was below the fold anyway.
+
+CI: `card-body-scroll-census.test.ts` (containment on every nested editor; every
+expanded body takes `cardBodyScroll()`; no hand-rolled `--dock-slot-frame-h`
+cap), `contained-scroll.test.ts` (paste / typing move the body's `scrollTop`,
+never the row's).

@@ -38,6 +38,7 @@
  * place" holds across all three surfaces.
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import { useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
@@ -140,6 +141,8 @@ export function BorrowedMainText({
       ],
       content: resolved,
       editorProps: {
+        // A nested editor scrolls only its own box, never the document row (task 1424).
+        handleScrollToSelection: scrollWithinOwnBox,
         attributes: {
           // Share RichTextField's body CSS (font face / spacing) but flag this
           // as the read-only borrowed surface so styling can diverge if needed.

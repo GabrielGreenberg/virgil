@@ -10,6 +10,7 @@ import {
   CheckSquare,
   checkboxSemantics,
   usePanelCardTryDelete,
+  cardBodyScroll,
 } from "@/components/panel-primitives";
 import { useFieldDraft } from "@/components/field-draft";
 import { useFieldEditSession } from "@/lib/field-edit-session";
@@ -167,7 +168,7 @@ export function TodoRow({
       kind="todo"
       headerTrailing={<TodoDoneToggle item={item} onToggle={onToggle} />}
     >
-      <div className={`${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
+      <div className={`${PANEL.cardBody} ${cardBodyScroll(isPoppedOut)}${isPoppedOut ? " flex flex-col" : ""}`}>
         <CardTitleInput
           defaultValue={item.text}
           onChange={(t) => onUpdate(item.id, t)}

@@ -5,7 +5,7 @@ import type { BibEntry } from "@/lib/types";
 import type { SaveBibEntry } from "@/hooks/useCitations";
 import type { RequestBibReview } from "@/hooks/useBibReview";
 import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, PodDisclosure, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
+import { PanelCard, PANEL, PodDisclosure, Button, CardJumpTarget, cardTitleStyle, cardBodyScroll } from "./panel-primitives";
 import { Input } from "./field-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -838,7 +838,7 @@ export default function BibEntryCard({
            ratified `cardBody` (px-3): the title + library meta + multi-pod
            publication-details / BibTeX-fields / annotations layout reads
            better with the extra breathing room (backlog #28 exemption). */
-        <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+        <div className={`${PANEL.cardInner} ${cardBodyScroll(isPoppedOut)}`}>
           {titleLine}
           {/* Library membership chips + verification / processing-tier status
               row — a standard body meta row under the title (was header layers

@@ -55,6 +55,7 @@
  * holds a figure (matches paragraph-body, not list/example bodies).
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
@@ -298,6 +299,8 @@ export function SingleBlockBody({
     editable: config.editable,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           FLOAT_PROSE_EDITOR_CLASS,

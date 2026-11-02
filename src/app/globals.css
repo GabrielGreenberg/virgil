@@ -5554,6 +5554,22 @@ body.perf-contain .static-borrowed-text {
   scrollbar-gutter: stable;
 }
 
+/* The ONE expanded-card-body cap (task 1424). An expanded card body (note,
+   todo, highlight, suggestion, citation, footnote, archive, report …) opens
+   to at most HALF the pane's measured scrollport and scrolls the rest
+   internally — Gabriel's "a third to half of the available page". It used to
+   be ~a full pane (`--dock-slot-frame-h - 160px`, unbounded in a docked band
+   where that var is `100%`), applied to a card that starts mid-screen, so a
+   long note ran off the page. `overscroll-behavior: contain` keeps a wheel at
+   the body's end from chaining into the document scroll. Applied through
+   `cardBodyScroll()` (panel-primitives); card-body-scroll-census.test.ts
+   fails on an expanded body that hand-rolls or omits it. */
+.card-body-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: min(50vh, calc(var(--scroll-viewport-h, 100dvh) * 0.5));
+}
+
 /* RETIRED (task 525): `.toolbar-scroll` and `.hide-scrollbar` — two
    byte-identical hide-the-scrollbar utilities with zero producers in either
    silo. The surfaces that actually hide a scrollbar do it inline or through

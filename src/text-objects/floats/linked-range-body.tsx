@@ -41,6 +41,7 @@
  * drops the mark cleanly.
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
@@ -175,6 +176,8 @@ export function LinkedRangeBody({
     editable: true,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           FLOAT_PROSE_EDITOR_CLASS,

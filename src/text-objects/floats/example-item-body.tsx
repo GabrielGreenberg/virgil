@@ -47,6 +47,7 @@
  * round-trip lock in `__tests__/example-item-inner-writeback.test.ts`.
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
@@ -352,6 +353,8 @@ export function ExampleItemBody({
     editable: mainEditable,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           FLOAT_PROSE_EDITOR_CLASS,

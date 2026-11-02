@@ -12,6 +12,7 @@ import {
   PanelCard,
   compressedBodyStyle,
   usePanelCardTryDelete,
+  cardBodyScroll,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
@@ -277,7 +278,7 @@ export function SuggestionCard({
         />
       ) : (
         <div
-          className={`px-3 pt-2 pb-2 space-y-2.5${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
+          className={`px-3 pt-2 pb-2 space-y-2.5 ${cardBodyScroll(isPoppedOut)}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* This branch is HUMAN-authored only (AI cards render the minimal

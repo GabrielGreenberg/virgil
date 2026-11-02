@@ -27,6 +27,7 @@
  * straight to main and syncs back).
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import {
   type RefObject,
@@ -128,6 +129,8 @@ export function ParagraphBody({
     editable: chrome.showParagraphFloatTitleEdit,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           FLOAT_PROSE_EDITOR_CLASS,

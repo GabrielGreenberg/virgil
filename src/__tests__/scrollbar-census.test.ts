@@ -113,21 +113,11 @@ const SCOPE = [
 ];
 
 /** Bare vertical scrollers that deliberately do NOT reserve a gutter. */
-const ALLOW: { file: string; snippet: string; reason: string }[] = [
-  {
-    file: "src/components/panel-primitives.tsx",
-    snippet: '" overflow-y-auto"',
-    reason:
-      "a docked card BODY's max-height scroll: reserving a gutter would narrow the " +
-      "prose of every card, overflowing or not; its classic bar only takes width while " +
-      "the body actually overflows, and it carries no right-aligned row meta",
-  },
-  {
-    file: "src/panels/Citations/CitationCard.tsx",
-    snippet: 'className="ml-4 overflow-y-auto"',
-    reason: "the inline bib-entry form inside a citation card body — same card-body case",
-  },
-];
+// EMPTY since task 1424: the expanded card body's cap (the old two rows here —
+// EditableCard's body and the inline bib form) is now `.card-body-scroll`
+// (via `cardBodyScroll()`), which deliberately reserves no gutter: a reserved
+// gutter would narrow every card's prose, overflowing or not.
+const ALLOW: { file: string; snippet: string; reason: string }[] = [];
 
 const BARE = /overflow-y-auto|overflowY:\s*["']auto["']/;
 
