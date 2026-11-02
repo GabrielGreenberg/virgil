@@ -107,6 +107,11 @@ this skill.
      the paragraph has none), treat it as a *negative constraint* —
      don't introduce that pattern in the rewrite — but otherwise
      proceed with the rewrite the user actually wanted.
+     **Markers are conserved** (task 1426): carry every `\vcid{…}`,
+     `\vfid{…}` and `\vlid{…}`/`\vlidend{…}` in `original_text` through
+     verbatim, with its id, and add none ([_latex-allowlist.md](_latex-allowlist.md)).
+     Propose, `/editor/accept-suggestion` and the in-app Apply all refuse a
+     replacement that drops, duplicates or invents one, naming the marker.
    - `explanation`: one or two sentences on what changed and why.
    - `user_text`: empty (the user fills this when refining).
 

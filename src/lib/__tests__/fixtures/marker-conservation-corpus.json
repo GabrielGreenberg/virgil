@@ -1,0 +1,199 @@
+{
+  "about": "Task 1426 — marker conservation across a suggestion splice. Both markerConservationViolation (src/lib/latex-markers.ts) and marker_conservation_violation (editor/scripts/_common.py) must answer every case exactly as `expected` records. Readers: src/lib/__tests__/marker-conservation-parity.test.ts and editor/scripts/tests/test_marker_conservation.py.",
+  "cases": [
+    {
+      "name": "rewrite-carries-citation",
+      "why": "The doctrine case: an AI rewrite of a cited sentence carries its \\vcid through verbatim — this was refused as stale before task 1426.",
+      "matched": "See also \\vcid{c1}\\citet{foo} for details.",
+      "replacement": "For the details, see \\vcid{c1}\\citet{foo}.",
+      "wholeCut": false,
+      "expected": null
+    },
+    {
+      "name": "plain-rewrite-no-markers",
+      "why": "A span with no markers rewritten with none — the overwhelmingly common case stays free.",
+      "matched": "The quick brown fox",
+      "replacement": "A lazy grey cat",
+      "wholeCut": false,
+      "expected": null
+    },
+    {
+      "name": "rewrite-drops-citation",
+      "why": "A rewrite that loses the \\vcid would detach citation card c1 from its atom (a fresh id is minted on the next parse).",
+      "matched": "See also \\vcid{c1}\\citet{foo} for details.",
+      "replacement": "See also \\citet{foo} for details.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "dropped",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "rewrite-drops-footnote",
+      "why": "A rewrite whose span holds \\vfid{f002}\\footnote{…} and omits it would delete the user's footnote prose from the .tex.",
+      "matched": "polemical asides\\vfid{f002}\\footnote{The standard study.}. The gloss",
+      "replacement": "polemical asides. The gloss",
+      "wholeCut": false,
+      "expected": {
+        "rule": "dropped",
+        "command": "vfid",
+        "id": "f002"
+      }
+    },
+    {
+      "name": "rewrite-introduces-new-id",
+      "why": "A marker the match never held mints an atom no card owns — task 035's phantom, still refused.",
+      "matched": "quick brown fox",
+      "replacement": "lazy \\vcid{c1}\\citet{foo} cat",
+      "wholeCut": false,
+      "expected": {
+        "rule": "introduced",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "rewrite-duplicates-an-id",
+      "why": "Re-landing an id MORE often than the match held it would make two atoms claim one card.",
+      "matched": "See \\vcid{c1}\\citet{foo}.",
+      "replacement": "See \\vcid{c1}\\citet{foo} and \\vcid{c1}\\citet{foo}.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "introduced",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "rewrite-splits-range-pair",
+      "why": "A span straddling another card's range whose replacement keeps \\vlid but loses \\vlidend leaves an unpaired marker.",
+      "matched": "the \\vlid{r1}grey\\vlidend{r1} cat",
+      "replacement": "the \\vlid{r1}grey cat",
+      "wholeCut": false,
+      "expected": {
+        "rule": "dropped",
+        "command": "vlidend",
+        "id": "r1"
+      }
+    },
+    {
+      "name": "rewrite-carries-range-pair",
+      "why": "A range wholly inside the span, carried through, keeps its card's anchor.",
+      "matched": "the \\vlid{r1}grey\\vlidend{r1} cat",
+      "replacement": "a \\vlid{r1}silver\\vlidend{r1} cat",
+      "wholeCut": false,
+      "expected": null
+    },
+    {
+      "name": "vlidend-is-not-vlid",
+      "why": "Longest-first: \\vlidend{x} must never be read as \\vlid, or a swap would pass.",
+      "matched": "a\\vlidend{x}",
+      "replacement": "a\\vlid{x}",
+      "wholeCut": false,
+      "expected": {
+        "rule": "introduced",
+        "command": "vlid",
+        "id": "x"
+      }
+    },
+    {
+      "name": "introduced-reported-before-dropped",
+      "why": "Pins the report order: introduced (replacement order) before dropped (match order).",
+      "matched": "\\vcid{a}\\cite{x}",
+      "replacement": "\\vcid{b}\\cite{x}",
+      "wholeCut": false,
+      "expected": {
+        "rule": "introduced",
+        "command": "vcid",
+        "id": "b"
+      }
+    },
+    {
+      "name": "cut-takes-citation",
+      "why": "A whole cut may take a citation with it when the atom is inside the cut.",
+      "matched": "See also \\vcid{c1}\\citet{foo} for details.",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": null
+    },
+    {
+      "name": "cut-takes-whole-range",
+      "why": "Another card's range lying wholly inside the cut simply goes with it.",
+      "matched": "the \\vlid{r1}grey\\vlidend{r1} cat",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": null
+    },
+    {
+      "name": "cut-splits-range",
+      "why": "A cut that removes only the start of a range leaves its \\vlidend unpaired in the paragraph.",
+      "matched": "the \\vlid{r1}grey",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": {
+        "rule": "unpaired",
+        "command": "vlid",
+        "id": "r1"
+      }
+    },
+    {
+      "name": "cut-refuses-footnote",
+      "why": "Cutting a \\vfid deletes the footnote's prose and orphans its card — a cut may not remove a footnote.",
+      "matched": "asides\\vfid{f002}\\footnote{The standard study.}.",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": {
+        "rule": "dropped",
+        "command": "vfid",
+        "id": "f002"
+      }
+    },
+    {
+      "name": "cut-leaves-atom-behind",
+      "why": "A cut ending right after \\vcid strips the id but leaves the \\citet — the card detaches.",
+      "matched": "See also \\vcid{c1}",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": {
+        "rule": "atom-left",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "cutter-rewrite-is-strict",
+      "why": "A Cutter suggestion WITH a replacement is a rewrite, not a whole cut — it conserves exactly.",
+      "matched": "See also \\vcid{c1}\\citet{foo} for details.",
+      "replacement": "See also.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "dropped",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "human-text-may-leave-out-a-citation",
+      "why": "A person's own replacement (user_text) is typed where markers are invisible; leaving a citation out is their edit, not a dropped marker.",
+      "matched": "See also \\vcid{c1}\\citet{foo} for details.",
+      "replacement": "See the details.",
+      "wholeCut": false,
+      "humanAuthored": true,
+      "expected": null
+    },
+    {
+      "name": "human-text-still-may-not-mint",
+      "why": "A marker a person did type must still not mint a phantom atom no card owns.",
+      "matched": "quick brown fox",
+      "replacement": "lazy \\vcid{c9}\\citet{foo} cat",
+      "wholeCut": false,
+      "humanAuthored": true,
+      "expected": {
+        "rule": "introduced",
+        "command": "vcid",
+        "id": "c9"
+      }
+    }
+  ]
+}

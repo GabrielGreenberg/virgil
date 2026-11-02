@@ -99,6 +99,20 @@ export function suggestionReplacement(card: SuggestionReplacementSource): string
   return card.user_text || card.suggested_text;
 }
 
+/**
+ * **Who wrote the replacement {@link suggestionReplacement} returns?** The
+ * human when they typed `user_text` (it wins), else the card's author. Asked by
+ * the marker-conservation gate (task 1426): an AI replacement must carry the
+ * span's `\vcid`/`\vfid`/`\vlid` markers through verbatim; a person's own text
+ * — typed where those markers are invisible — is held only to adding none.
+ * Mirrored by `_refuse_unconserved_markers` in `editor/scripts/apply_response.py`.
+ */
+export function replacementAuthor(
+  card: SuggestionReplacementSource & { author: "human" | "ai" },
+): "human" | "ai" {
+  return card.user_text ? "human" : card.author;
+}
+
 /** Does this card have a replacement to PUT IN the paper? The trimmed question
  *  behind both landing verbs' refusals: Apply's `no-replacement` (for a family
  *  that does not mean deletion) and Insert-below's. Whitespace is not a

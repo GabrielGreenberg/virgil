@@ -2144,6 +2144,77 @@ _MARKER_COMMAND_RE = re.compile(
     r"\\(?:" + "|".join(VIRGIL_MARKER_COMMANDS) + r")\{[^}]*\}"
 )
 _MARKER_COMMENT_RE = re.compile(r"%!v(?:tex)?:[^\s]*")
+
+# ---------------------------------------------------------------------------
+# Marker conservation across a proposal splice (task 1426) — the PYTHON twin of
+# `markerConservationViolation` in src/lib/latex-markers.ts. Asked by
+# apply_response.py's propose guard and its accept splice; the browser
+# applicator asks the TS original. Both answer the shared golden corpus
+# src/lib/__tests__/fixtures/marker-conservation-corpus.json
+# (marker-conservation-parity.test.ts + tests/test_marker_conservation.py).
+#
+# The rule: the multiset of marker calls (command + id) in the replacement
+# equals the multiset in the MATCHED span. A rewrite carries every marker
+# through verbatim and adds none; a WHOLE CUT (deletion family, empty
+# replacement) may drop only CUT_MAY_DROP_MARKERS — a \vcid whose atom goes
+# with it, a \vlid/\vlidend only as a pair — and never a \vfid (that would
+# delete the footnote's prose and orphan its card).
+# ---------------------------------------------------------------------------
+
+CUT_MAY_DROP_MARKERS = ("vcid", "vlid", "vlidend")
+_RANGE_PARTNER = {"vlid": "vlidend", "vlidend": "vlid"}
+_MARKER_CALL_RE = re.compile(
+    r"\\(" + "|".join(sorted(VIRGIL_MARKER_COMMANDS, key=len, reverse=True)) + r")\{([^}]*)\}"
+)
+
+
+def marker_conservation_violation(matched: str, replacement: str, whole_cut: bool,
+                                  human_authored: bool = False):
+    """The first violation as {"rule", "command", "id"} (rule ∈ introduced /
+    dropped / unpaired / atom-left), or None when the splice conserves. A
+    HUMAN-authored replacement (`user_text`) is held to the `introduced` half
+    only — a person types words, never the invisible markers (see the TS
+    original's docstring)."""
+    have = [(m.group(1), m.group(2), m.end()) for m in _MARKER_CALL_RE.finditer(matched)]
+    budget: dict = {}
+    for cmd, mid, _ in have:
+        budget[(cmd, mid)] = budget.get((cmd, mid), 0) + 1
+    for m in _MARKER_CALL_RE.finditer(replacement):
+        k = (m.group(1), m.group(2))
+        if budget.get(k, 0) == 0:
+            return {"rule": "introduced", "command": k[0], "id": k[1]}
+        budget[k] -= 1
+    if human_authored:
+        return None
+    for cmd, mid, end in have:
+        k = (cmd, mid)
+        if budget.get(k, 0) == 0:
+            continue  # carried through
+        budget[k] -= 1
+        if not whole_cut or cmd not in CUT_MAY_DROP_MARKERS:
+            return {"rule": "dropped", "command": cmd, "id": mid}
+        partner = _RANGE_PARTNER.get(cmd)
+        if partner and not any(c == partner and i == mid for c, i, _ in have):
+            return {"rule": "unpaired", "command": cmd, "id": mid}
+        if not partner and not matched.startswith("\\", end):
+            return {"rule": "atom-left", "command": cmd, "id": mid}
+    return None
+
+
+def describe_marker_violation(v: dict) -> str:
+    """The refusal sentence — the same words as `describeMarkerViolation`."""
+    call = "\\" + v["command"] + "{" + v["id"] + "}"
+    return {
+        "introduced": f"the replacement adds {call}, which the replaced text does not hold "
+                      f"— it would mint an atom or range no card owns",
+        "dropped": f"the replacement drops {call} — the citation, footnote or range it "
+                   f"identifies would lose its card (a rewrite carries every marker through "
+                   f"verbatim; a cut may not remove a footnote)",
+        "unpaired": f"the cut removes {call} but not its partner — the range it delimits "
+                    f"would be left unpaired",
+        "atom-left": f"the cut removes {call} but not the atom it identifies — extend the "
+                     f"cut over the whole citation",
+    }[v["rule"]]
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 DOCUMENT_MARKER = "\\begin{document}"

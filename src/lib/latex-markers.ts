@@ -71,10 +71,12 @@ export interface VirgilMarker {
   readonly file: "tex" | "bib";
   /**
    * Where the marker sits in the stream. `"inline"` markers are emitted
-   * INSIDE a paragraph's inline content, which is what makes them dangerous
-   * in untrusted text a caller may reparse (see `containsInternalMarker` in
-   * the serializer — its set is derived from this facet). `"block"` markers
-   * are emitted in block context, on the line of the construct they precede.
+   * INSIDE a paragraph's inline content; `"block"` markers are emitted in
+   * block context, on the line of the construct they precede — which the
+   * parser reads as a paragraph boundary ({@link BLOCK_TEX_MARKERS}). (Task
+   * 1426 retired the inline-only reparse refusal this facet once also fed:
+   * a suggestion's replacement is now held to marker CONSERVATION over every
+   * marker, {@link markerConservationViolation}.)
    */
   readonly position: "inline" | "block";
 }
@@ -124,18 +126,8 @@ export const VIRGIL_MARKER_COMMANDS: readonly string[] =
   ALL_VIRGIL_MARKERS.map((m) => m.command);
 
 /**
- * The `.tex` markers emitted INSIDE inline content, longest command first so
- * a regex alternation matches `\vlidend` before its `\vlid` prefix. The
- * serializer's `INTERNAL_MARKER_COMMANDS` is this list.
- */
-export const INLINE_TEX_MARKERS: readonly VirgilMarker[] = ALL_VIRGIL_MARKERS
-  .filter((m) => m.file === "tex" && m.position === "inline")
-  .slice()
-  .sort((a, b) => b.command.length - a.command.length);
-
-/**
  * The `.tex` markers emitted in BLOCK context, longest command first (same
- * prefix-safety rule as {@link INLINE_TEX_MARKERS}). A block-position marker
+ * prefix-safety rule as `MARKER_CALL_RE` below). A block-position marker
  * sitting at the head of a line is a paragraph boundary for the parser: absorb
  * one into the preceding paragraph and the next save re-emits it as literal
  * text, accumulating one stray marker per round trip.
@@ -203,5 +195,156 @@ export class PendingMarkerId {
     this.id = null;
     this.at = -1;
     return id;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Marker conservation across a proposal splice (task 1426)
+// ---------------------------------------------------------------------------
+
+/**
+ * The markers a WHOLE CUT may remove — a deletion-family suggestion (Cutter)
+ * whose replacement is empty. Everything else a cut may not drop:
+ *
+ *  - `\vcid` — yes: the citation goes with the passage it sat in; the cut card
+ *    captures the bytes. (Only if the atom itself is inside the cut — see
+ *    `"atom-left"` below.)
+ *  - `\vlid` / `\vlidend` — yes, but only as a PAIR: another card's range that
+ *    lies wholly inside the cut simply goes with it; a range that only STARTS
+ *    or only ENDS inside it would be left with one unpaired token.
+ *  - `\vfid` — NO. A footnote marker is followed by the footnote's whole prose;
+ *    cutting it deletes the user's footnote text from the `.tex` and orphans
+ *    its card in `footnotes.json`. Move or delete the footnote first.
+ *  - the block markers (`\vexid`, `\vxid`) and `\vbid` never sit in a
+ *    paragraph span; one that does is not a span a cut should guess about.
+ *
+ * Mirrored by `CUT_MAY_DROP_MARKERS` in `editor/scripts/_common.py`, pinned by
+ * the shared corpus `__tests__/fixtures/marker-conservation-corpus.json`.
+ */
+export const CUT_MAY_DROP_MARKERS: readonly string[] = [
+  VIRGIL_MARKERS.citation.command,
+  VIRGIL_MARKERS.linkedRangeOpen.command,
+  VIRGIL_MARKERS.linkedRangeClose.command,
+];
+
+/**
+ * Why a proposal's replacement fails marker conservation.
+ *  - `introduced` — the replacement holds a marker (or one more copy of a
+ *    marker) the replaced span did not: a phantom atom/range no card owns.
+ *  - `dropped`    — the replaced span held a marker the replacement does not
+ *    carry through: its card loses the atom/range it is anchored to.
+ *  - `unpaired`   — a whole cut removes one half of a `\vlid`/`\vlidend` pair.
+ *  - `atom-left`  — a whole cut removes an atom's id marker but not the atom
+ *    after it (the span ends right after the marker).
+ */
+export interface MarkerConservationViolation {
+  readonly rule: "introduced" | "dropped" | "unpaired" | "atom-left";
+  /** Command name without the backslash — `"vcid"`. */
+  readonly command: string;
+  readonly id: string;
+}
+
+/** Every marker call in source order, longest command first in the
+ *  alternation so `\vlidend{` never reads as `\vlid`. */
+const MARKER_CALL_RE = new RegExp(
+  `\\\\(${ALL_VIRGIL_MARKERS.map((m) => m.command)
+    .sort((a, b) => b.length - a.length)
+    .join("|")})\\{([^}]*)\\}`,
+  "g",
+);
+
+interface MarkerCall {
+  command: string;
+  id: string;
+  end: number;
+}
+
+function markerCalls(text: string): MarkerCall[] {
+  const out: MarkerCall[] = [];
+  for (const m of text.matchAll(MARKER_CALL_RE)) {
+    out.push({ command: m[1], id: m[2], end: (m.index ?? 0) + m[0].length });
+  }
+  return out;
+}
+
+const RANGE_PARTNER: Readonly<Record<string, string>> = {
+  [VIRGIL_MARKERS.linkedRangeOpen.command]: VIRGIL_MARKERS.linkedRangeClose.command,
+  [VIRGIL_MARKERS.linkedRangeClose.command]: VIRGIL_MARKERS.linkedRangeOpen.command,
+};
+
+/**
+ * **May this replacement stand in for these matched bytes?** — the ONE answer
+ * to "is a proposal's identity-marker set conserved across its splice", asked
+ * by every door that lands a suggestion: the browser applicator
+ * (`applyPendingChange`), and — through its Python twin
+ * `marker_conservation_violation` in `editor/scripts/_common.py` — the
+ * script's propose guard and its accept splice.
+ *
+ * `matched` is the span actually being replaced (the bytes located in the
+ * paragraph, markers included); `wholeCut` is true only for a deletion-family
+ * suggestion with an empty replacement; `humanAuthored` is true when the
+ * replacement is a person's own text (`user_text`, or a human-authored card).
+ *
+ * The rule: the multiset of marker calls (command + id) in the replacement
+ * equals the multiset in the match. A rewrite carries every marker through
+ * verbatim (`editor/skills/_latex-allowlist.md`, the doctrine source) and adds
+ * none. A whole cut may instead drop markers, per {@link CUT_MAY_DROP_MARKERS}.
+ *
+ * A HUMAN-authored replacement is held to the `introduced` half only. A person
+ * types words, not `\vcid{…}`: the markers are invisible in every surface they
+ * write from, so "carry them through" is a demand they cannot meet, and a
+ * replacement of theirs that leaves out a citation is the edit they made
+ * (pre-1426 behaviour, kept deliberately — the carry-through doctrine is
+ * addressed to the AI that reads the `.tex`). A marker they DID type still must
+ * not mint a phantom.
+ *
+ * Returns the FIRST violation (introduced, in replacement order; then dropped,
+ * in match order), or `null` when the splice conserves.
+ */
+export function markerConservationViolation(
+  matched: string,
+  replacement: string,
+  opts: { wholeCut: boolean; humanAuthored?: boolean },
+): MarkerConservationViolation | null {
+  const { wholeCut, humanAuthored = false } = opts;
+  const have = markerCalls(matched);
+  const key = (c: { command: string; id: string }) => `${c.command}\u0000${c.id}`;
+  const budget = new Map<string, number>();
+  for (const c of have) budget.set(key(c), (budget.get(key(c)) ?? 0) + 1);
+
+  for (const c of markerCalls(replacement)) {
+    const left = budget.get(key(c)) ?? 0;
+    if (left === 0) return { rule: "introduced", command: c.command, id: c.id };
+    budget.set(key(c), left - 1);
+  }
+
+  if (humanAuthored) return null;
+  for (const c of have) {
+    const left = budget.get(key(c)) ?? 0;
+    if (left === 0) continue; // carried through
+    budget.set(key(c), left - 1);
+    if (!wholeCut || !CUT_MAY_DROP_MARKERS.includes(c.command))
+      return { rule: "dropped", command: c.command, id: c.id };
+    const partner = RANGE_PARTNER[c.command];
+    if (partner && !have.some((p) => p.command === partner && p.id === c.id))
+      return { rule: "unpaired", command: c.command, id: c.id };
+    if (!partner && !matched.startsWith("\\", c.end))
+      return { rule: "atom-left", command: c.command, id: c.id };
+  }
+  return null;
+}
+
+/** The refusal sentence for a violation, the same words in both languages. */
+export function describeMarkerViolation(v: MarkerConservationViolation): string {
+  const call = `\\${v.command}{${v.id}}`;
+  switch (v.rule) {
+    case "introduced":
+      return `the replacement adds ${call}, which the replaced text does not hold — it would mint an atom or range no card owns`;
+    case "dropped":
+      return `the replacement drops ${call} — the citation, footnote or range it identifies would lose its card (a rewrite carries every marker through verbatim; a cut may not remove a footnote)`;
+    case "unpaired":
+      return `the cut removes ${call} but not its partner — the range it delimits would be left unpaired`;
+    case "atom-left":
+      return `the cut removes ${call} but not the atom it identifies — extend the cut over the whole citation`;
   }
 }

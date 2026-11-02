@@ -175,7 +175,9 @@ from _common import (
     project_structural_latex,
     check_tex_preservation,
     commit_under_pen,
+    describe_marker_violation,
     die,
+    marker_conservation_violation,
     find_bib_file,
     find_tex_file,
     is_ai_request_kind,
@@ -1735,6 +1737,22 @@ def _range_ids_held_elsewhere(doc: Path, filename: str, card_id: str) -> set[str
     return out
 
 
+def _refuse_unconserved_markers(kind: str, card: dict, original: str, replacement: str,
+                                lead: str) -> None:
+    r"""Die — before any byte lands — when a suggestion's replacement does not
+    conserve the identity markers (`\vcid`/`\vfid`/`\vlid`…) of the span it
+    replaces (task 1426). `original` IS the matched span: both doors splice it
+    verbatim. A whole cut is a deletion-family card with an empty replacement —
+    the same family table the empty-replacement refusal reads. A human's own
+    text (`user_text`, or a human card) is held to the no-phantom half only —
+    `replacementAuthor` in the app, the same rule."""
+    whole_cut = _SUGGESTION_LANDING["familyMeansDeletion"].get(kind, False) and replacement == ""
+    human = bool(card.get("user_text")) or card.get("author") != "ai"
+    v = marker_conservation_violation(original, replacement, whole_cut, human)
+    if v:
+        die(f"{lead}: {describe_marker_violation(v)} — nothing was written")
+
+
 def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
     """Refuse — before any byte lands — a suggestion proposal its own accept
     would refuse (task 1044). The write door asks the accept-time questions at
@@ -1746,7 +1764,10 @@ def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
         SAME locator replace-span splices through);
       - its replacement is non-empty unless the family means deletion (a Cutter
         cut may be empty; a revision draft may not — task 957, the same table
-        and sentence cmd_accept reads).
+        and sentence cmd_accept reads);
+      - its replacement CONSERVES the identity markers of the span it replaces
+        (task 1426, `_refuse_unconserved_markers` — the same predicate accept
+        and the browser applicator ask).
 
     Non-suggestion cards pass untouched."""
     from card_by_id import spine_card_kind
@@ -1767,6 +1788,8 @@ def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
     if not _SUGGESTION_LANDING["familyMeansDeletion"].get(kind, False) and not replacement.strip():
         die(f"refusing to propose {kind} {card_id}: {_SUGGESTION_LANDING['noReplacementText']} "
             f"(an empty replacement is a deletion only in Cutter) — nothing was written")
+    _refuse_unconserved_markers(kind, card, original, replacement,
+                                f"refusing to propose {kind} {card_id}")
     text = find_tex_file(doc).read_text(encoding="utf-8")
     idx = _locate_proposal_span(text, anchor, original)
     if idx == _NO_ANCHOR:
@@ -3261,6 +3284,11 @@ def cmd_accept(doc: Path, op: dict) -> dict:
         die(f"cannot accept {card_id}: {_SUGGESTION_LANDING['noReplacementText']} "
             f"(a {kind} with an empty replacement is an unfinished draft, not a "
             f"deletion — nothing was written)")
+
+    # Marker conservation (task 1426): a replacement that drops a `\vfid` would
+    # delete the footnote's prose, one that drops a `\vcid` would detach its
+    # citation card — refused here exactly as at propose and in the browser.
+    _refuse_unconserved_markers(kind, card, original, replacement, f"cannot accept {card_id}")
 
     txn = _Txn(doc)
     live = txn.card_ref(hit.filename, hit.list_key, card_id)

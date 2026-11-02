@@ -48,6 +48,7 @@ import {
   type PendingChangeFamily,
 } from "@/links/apply-suggestion";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
+import type { MarkerConservationViolation } from "@/lib/latex-markers";
 import {
   getLinkedTextObjectIds,
   removeLinkedAnchor,
@@ -61,6 +62,7 @@ import {
 import {
   hasSuggestionReplacement,
   suggestionReplacement,
+  replacementAuthor,
   type SuggestionReplacementSource,
 } from "@/panels/_shared/suggestion-field-vocabulary";
 
@@ -602,8 +604,10 @@ export function suggestionInsertability(
 /** What `applySuggestion` did, so the caller (the auto-apply driver) can branch:
  *  - `applied`  — the splice landed; the card is now `applied` + carries an
  *                 `appliedChange` (returned so the driver can track it).
- *  - `stale`    — `applyPendingChange` refused (span not verbatim); the card is
- *                 now `stale`. NEVER retried.
+ *  - `stale`    — `applyPendingChange` refused (span not verbatim, or — with
+ *                 `markerViolation` — the replacement does not conserve the
+ *                 span's identity markers, task 1426); the card is now
+ *                 `stale`. NEVER retried.
  *  - `skipped`  — the card cannot answer Apply at all ({@link
  *                 suggestionApplicability}); the doc + card are untouched. The
  *                 `reason` travels with it so no caller has to re-derive why —
@@ -611,7 +615,7 @@ export function suggestionInsertability(
  *                 to say something. */
 export type ApplySuggestionResult =
   | { outcome: "applied"; anchorUuid: string; appliedChange: AppliedChangeDescriptor }
-  | { outcome: "stale" }
+  | { outcome: "stale"; markerViolation?: MarkerConservationViolation }
   | { outcome: "skipped"; reason: SuggestionBlockReason };
 
 /**
@@ -652,12 +656,15 @@ export function applySuggestion<TStatus extends string>(
     cardId: card.id,
     anchorId,
     family: deps.family,
+    replacementAuthor: replacementAuthor(card),
   });
 
   if (!result.ok) {
     // result.reason === "stale" — no doc mutation happened. Mark + never retry.
     deps.setSuggestionStatus(card.id, deps.staleStatus);
-    return { outcome: "stale" };
+    return result.markerViolation
+      ? { outcome: "stale", markerViolation: result.markerViolation }
+      : { outcome: "stale" };
   }
 
   const appliedChange: AppliedChangeDescriptor = {

@@ -271,6 +271,9 @@ describe("the apply path repairs a FLATTENED original_text (task 696)", () => {
       cardId: CARD_ID,
       anchorId: ANCHOR_ID,
       family: "cutter-suggestion",
+      // A flattened capture is a USER's card, and "REPLACED" is their own
+      // text: held only to minting no marker (task 1426's human half).
+      replacementAuthor: "human",
     });
 
     expect(res.ok).toBe(true);
