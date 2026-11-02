@@ -96,13 +96,24 @@ qfile=".virgil/queue/${CK}-importbib.json"
 [ -f "$qfile" ] && python3 -c "import json; d=json.load(open('$qfile')); n=d.get('note'); print('NOTE:', n) if n else None"
 ```
 
+Then **claim** the request through the queue door before working it, so
+a racing run (or the app) won't take it and a request the user re-files
+while you work is not retired unworked. `REQ` is the claimed request's
+`requestedAt` — empty when nothing was claimable (invoked directly with
+nothing queued, or another worker holds it); step 4 hands it back:
+
+```bash
+REQ="$(python3 .virgil/scripts/library/queue_slot.py claim --kind import-bib --citekey "$CK" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("requestedAt") or "")')"
+```
+
 ## Steps
 
 1. **Confirm there is something to import.**
    ```bash
    test -f "papers/${CK}/references.bib" || { echo "no references.bib for ${CK} — nothing to import"; }
    ```
-   If absent, delete the queue file (step 4) and stop with that message.
+   If absent, retire the request (step 4) and stop with that message.
 
 2. **Run the merge engine for this paper.** It does the dedup →
    authenticate → transient-skip work, writes
@@ -157,9 +168,11 @@ qfile=".virgil/queue/${CK}-importbib.json"
    is marked imported regardless, so the user needs to know. For `split_paper_unauthenticatable` /
    `split_citekey_collision` items, default to deferring to the user.
 
-4. **Mark the request done.** If a queue file exists, delete it:
+4. **Mark the request done** — through the queue door, never by deleting
+   the file. It retires only the request you claimed (a re-filed one stays
+   queued as `"superseded"`); with `REQ` empty it retires nothing:
    ```bash
-   rm -f ".virgil/queue/${CK}-importbib.json"
+   python3 .virgil/scripts/library/queue_slot.py retire --kind import-bib --citekey "$CK" --requested-at "$REQ"
    ```
 
 5. **Report.** One line:

@@ -76,7 +76,18 @@ All paths below are relative to the library root.
 
 ## Steps
 
-1. **Read the queue entry** at `.virgil/queue/<citekey>-bibedit.json`. It has
+1. **Claim, then read the queue entry.** Claim it first through the queue door, so a racing run (or
+   the app) won't take it and a request the user re-files while you work is
+   not retired unworked (task 1431):
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py claim --kind bib-edit --citekey <citekey>
+   ```
+   It prints `{"result": "claimed", "requestedAt": …}` — keep that
+   `requestedAt` for step 7 — or `{"result": "nothing-claimable"}` (run
+   directly with nothing queued, or another worker holds it: carry on, and
+   pass `""` there, which retires nothing).
+
+   Then read the entry at `.virgil/queue/<citekey>-bibedit.json`. It has
    shape:
    ```json
    {
@@ -289,10 +300,12 @@ All paths below are relative to the library root.
 
 7. **Mark the queue entry done** through the queue-slot door:
    ```bash
-   python3 .virgil/scripts/library/queue_slot.py retire --kind bib-edit --citekey <citekey>
+   python3 .virgil/scripts/library/queue_slot.py retire --kind bib-edit --citekey <citekey> --requested-at "<requestedAt from step 1>"
    ```
    (It moves `<citekey>-bibedit.json` → `<citekey>-bibedit.done`, rotating an
-   older `.done` out of the way first. Deleting the `.json` is also fine.)
+   older `.done` out of the way first — only if it is still the request you
+   claimed. Never delete the `.json` by hand: that would also drop an edit
+   the user re-filed mid-run.)
 
 ## Reply format
 

@@ -125,6 +125,17 @@ you to disambiguate something.
 
 ## Steps
 
+**Claim the request first** through the queue door, so a racing run (or
+the app) won't take it and a request the user re-files while you work is
+not retired unworked (task 1431):
+```bash
+python3 .virgil/scripts/library/queue_slot.py claim --kind index --citekey <citekey>
+```
+It prints `{"result": "claimed", "requestedAt": …}` — keep that
+`requestedAt` for §Queue-file lifecycle — or `{"result": "nothing-claimable"}` (run
+directly with nothing queued, or another worker holds it: carry on, and
+pass `""` there, which retires nothing).
+
 1. **Confirm setup.** Check that:
    - `papers/<citekey>/<citekey>.pdf` **or** `papers/<citekey>/<citekey>.docx` (or `.tex`) exists relative to the library root
    - `<citekey>` appears in `master.bib`
@@ -533,11 +544,13 @@ queue when invoked directly (that's `drain_queue.py`'s job), but this skill
 is often invoked outside that path:
 
 ```bash
-python3 .virgil/scripts/library/queue_slot.py retire --kind index --citekey <citekey>
+python3 .virgil/scripts/library/queue_slot.py retire --kind index --citekey <citekey> --requested-at "<requestedAt from the claim, or empty>"
 ```
 
 It moves `.virgil/queue/<citekey>.json` to `<citekey>.done`, first rotating
-any older `.done` out of the way, and is a no-op when nothing is queued.
+any older `.done` out of the way — only if it is still the request you
+claimed — and is a no-op when nothing is queued or you claimed nothing
+(e.g. the drain holds the claim: it retires its own).
 
 ## Reply format
 

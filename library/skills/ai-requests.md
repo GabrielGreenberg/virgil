@@ -93,7 +93,7 @@ A queue entry is an AI request when **any** of these is true:
    from the queue file, folds `references.bib` into `master.bib`, marks
    the paper imported *when it has a catalog row* — that skill's step 2
    states the reference-only branch, where there is none and no blue
-   check appears — and deletes the queue file). These are also picked
+   check appears — and retires its request through the queue door). These are also picked
    up by `/library/index-pending` on the regular path — handle them here when the
    user explicitly invoked `/library/ai-requests`, especially if a `note` is set.
 
@@ -106,7 +106,20 @@ A queue entry is an AI request when **any** of these is true:
    matching the criteria above. Build a working list with
    citekey, kind, scope (`bib` or `paper`), and note.
 
-2. **For each request — surface the note prominently and act on it.**
+2. **For each request — claim it, surface the note prominently, and act on it.**
+
+   A request routed onward (`deepIndex` → `/library/deep-index`,
+   `import-bib` → `/library/import-bib`) is that skill's to claim and
+   retire — don't claim it here. Every request you handle YOURSELF
+   (`paper-review`, `authenticate` with a note) you CLAIM first, through
+   the queue door, so a run racing yours (or the app) won't take it and a
+   request the user re-files while you work is not retired unworked:
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py claim --kind <kind> --citekey <citekey>
+   ```
+   It prints `{"result": "claimed", "requestedAt": …}` — keep that
+   `requestedAt` for step 3 — or `{"result": "nothing-claimable"}`
+   (another worker holds it: skip this request).
 
    Print a clearly-delimited block before doing anything else:
 
@@ -154,12 +167,14 @@ A queue entry is an AI request when **any** of these is true:
      python3 .virgil/scripts/library/bump_catalog_version.py
      ```
 
-3. **Mark done.** Once the request is handled, delete its queue file.
-   For `authenticate` entries, retire it through the queue door instead —
-   which also drops the matching row from `.virgil/queue/pending-reviews.json`
-   (never edit that manifest by hand):
+3. **Mark done.** Once a request you claimed is handled, retire THAT
+   request through the queue door — never delete a queue file by hand.
+   The door writes the `.done` marker, leaves a request the user re-filed
+   mid-run queued (`"superseded"`), and for `authenticate` also drops the
+   matching row from `.virgil/queue/pending-reviews.json` (never edit that
+   manifest by hand):
    ```bash
-   python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey>
+   python3 .virgil/scripts/library/queue_slot.py retire --kind <kind> --citekey <citekey> --requested-at "<requestedAt from the step-2 claim>"
    ```
 
 4. **Report.** Print a final summary of what you did per request:

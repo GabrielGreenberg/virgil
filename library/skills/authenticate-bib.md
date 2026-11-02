@@ -84,6 +84,17 @@ Run the bib authentication subprocess for ONE citekey. Useful when:
 All paths below are relative to the library root (the current working
 directory).
 
+**Claim the request first** through the queue door, so a racing run (or
+the app) won't take it and a request the user re-files while you work is
+not retired unworked (task 1431):
+```bash
+python3 .virgil/scripts/library/queue_slot.py claim --kind authenticate --citekey <citekey>
+```
+It prints `{"result": "claimed", "requestedAt": …}` — keep that
+`requestedAt` for step 9 — or `{"result": "nothing-claimable"}` (run
+directly with nothing queued, or another worker holds it: carry on, and
+pass `""` there, which retires nothing).
+
 1. **Read the citekey's current fields** from `master.bib`, and keep the
    block you read as the **base** for step 5's write. The lookups below take
    minutes; a manual bib edit (`/library/apply-bib-edit`) can land in that
@@ -667,10 +678,12 @@ directory).
    or in an older shared `<citekey>.json`). The same call drops this
    citekey's row from `.virgil/queue/pending-reviews.json` — under a lock,
    written atomically, even when no request was queued — so subsequent skill
-   runs don't re-process it. Never edit that manifest by hand; this door is
-   the only writer on the skill side (task 1041):
+   runs don't re-process it. It retires only the request you claimed: one
+   the user re-filed mid-run stays queued (`"superseded"`) with its row.
+   Never edit that manifest by hand; this door is the only writer on the
+   skill side (task 1041):
    ```bash
-   python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey>
+   python3 .virgil/scripts/library/queue_slot.py retire --kind authenticate --citekey <citekey> --requested-at "<requestedAt from the claim, or empty>"
    rm -rf <runDir>
    ```
 

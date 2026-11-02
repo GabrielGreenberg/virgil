@@ -104,6 +104,18 @@ Supported source kinds:
 All paths below are relative to the library root (the current working
 directory).
 
+0. **Claim this file's triage request** through the queue door, before
+   anything else. The app filed it as `.virgil/queue/_triage-<slug>.json`
+   (one per dropped file); the door finds it by the file's name, so you
+   touch only THIS file's request — never another drop's:
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py claim --kind triage --file "<filename>"
+   ```
+   It prints `{"result": "claimed", "requestedAt": …}` — keep that
+   `requestedAt` for step 10 — or `{"result": "nothing-claimable"}`
+   (invoked directly with nothing queued: carry on, and pass `""` in
+   step 10).
+
 1. **Read metadata.** Branch on extension:
 
    For `.pdf`:
@@ -216,7 +228,8 @@ directory).
       "<base>.<ext>"` (or whose alternates list contains it).
    2. If found, the variant belongs to that citekey. Move the file to
       `papers/<existing-citekey>/variants/<filename>` (mkdir variants/
-      if needed). Skip steps 5–10 — no new bib entry, no queue write.
+      if needed). Skip steps 5–9 — no new bib entry, no index request — but
+      still run step 10 to retire this file's triage request.
       Append a notification via the locked CLI shim:
       ```bash
       t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
@@ -367,9 +380,10 @@ directory).
         "at": "<ISO>"
       }
       ```
-   3. Skip steps 7–10. The frontend toast will prompt the user for
-      the chapter title and page range, then re-enqueue triage with
-      the additional context.
+   3. Skip steps 7–9, then run step 10 (retire this triage request).
+      The frontend toast will prompt the user for the chapter title and
+      page range, then re-enqueue triage with the additional context —
+      a NEW request, which a retired old one cannot shadow.
 
    This is the one failure mode that legitimately needs human input —
    the skill should not guess.
@@ -405,7 +419,17 @@ directory).
    `{"result": ..., "file": ...}`; exit code **3** means the request was
    **not** queued — say so in your reply instead of reporting success.
 
-10. **Delete** the old triage queue entry (`.virgil/queue/_triage-*.json`).
+10. **Retire this file's triage request** through the queue door — never
+    by deleting a queue file, and never by a glob over the triage requests (that is
+    every OTHER pending drop too). **Every path through this skill ends
+    here** — the variant (4) and whole-handbook (6) branches, the `.tex`
+    passthrough and the `.bib` fan-out below included; a request left
+    behind is re-triaged on every drain. The door retires only the request
+    step 0 claimed (a file re-dropped mid-run stays queued as
+    `"superseded"`); with `""` it retires nothing:
+    ```bash
+    python3 .virgil/scripts/library/queue_slot.py retire --kind triage --file "<filename>" --requested-at "<requestedAt from step 0, or empty>"
+    ```
 
 11. **Append a `triaged` notification and bump the catalog version**
     via the locked CLI shims:
