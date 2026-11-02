@@ -1047,7 +1047,7 @@ Same gesture, last step (task 321) — and the half where every guard above was 
 - **No `decide` hook.** A refinement from a resolved plan to `{kind:"confirm"}` would be an option nothing reads — the dead-field class (task 227). Add it with its first real caller, and with the two obligations the header names: a real applied-report for `applyDrop`, and the re-plan rule above becoming load-bearing rather than precautionary.
 - **A planner that THROWS is a refusal.** The construction this moved into `planDrop` used to live only in `applyDrop`, inside `finishApply`'s `try`; `classifyDrop`'s caller has no catch and is `async`, so an escaped throw would become a rejected promise that never reaches `endDropSession()` — leaking the window listeners, the `data-drop-mode-active` body attr and the lift overlay past mouseup. The factory restores that boundary on the door that lacks one. No such throw is reachable today, which is exactly what would make it a latent trap.
 
-Converted: `textobject.ts`, `text-range-move.ts`, `util/block-move.ts`, `stack-pull.ts`. The two factories whose doors were already symmetric by construction stay hand-written and are allowlisted with that reason — `inlineAtomMoveSpec` (one shared `resolve` closure, and the create branch decided by the same pure `buildCreateNode` probe on both sides — the model this fix generalizes) and `textObjectSideReanchorSpec` (guard-for-guard twins off the same `getApi(ctx)`; also the repo's only `confirm` producer).
+Converted: `textobject.ts`, `text-range-move.ts`, `util/block-move.ts`, `stack-pull.ts`. The two factories whose doors were already symmetric by construction stay hand-written and are allowlisted with that reason — `inlineAtomMoveSpec` (one shared `resolve` closure, and the create branch decided by the same pure `buildCreateNode` probe on both sides — the model this fix generalizes) and `textObjectSideReanchorSpec` (guard-for-guard twins off the same `getApi(ctx)`; it was the repo's only `confirm` producer until task 1423 made a reversible re-anchor apply without asking).
 
 Three adjacent silent-failure doors closed with it, each the same shape one field over: stack-pull's text branch had **no empty-slice guard** where both its `text-range-move` siblings do, and failed in the WRONG direction at each geometry (in a gap `rangeSliceToBlocks` falls back to a fresh paragraph, so it landed a BLANK block and reported success; at a caret it dispatched an effect-less transaction); its heading branch **swallowed a per-node rehydrate failure** and landed a partial section, the one non-atomic door in a file whose every other refusal is all-or-nothing (a pull is a copy, so refusing costs nothing — the item stays on the Stack); and `finishApply` closed the float without reading `applied`.
 
@@ -2725,7 +2725,7 @@ has focus. A modal always has a way out.
 
 CI: [dialog-enter-contract.test.tsx](../../../src/components/__tests__/dialog-enter-contract.test.tsx)
 drives the REAL components and dispatches a REAL keydown at a REAL target;
-[reanchor-confirm-enter.test.tsx](../../../src/components/drop-mode/__tests__/reanchor-confirm-enter.test.tsx)
+[drop-confirm-enter.test.tsx](../../../src/components/drop-mode/__tests__/drop-confirm-enter.test.tsx)
 drives Gabriel's own gesture end to end through the REAL controller, the REAL
 `confirm` door and the REAL dialog, and presses exactly one key. The leg with
 teeth is the CENSUS

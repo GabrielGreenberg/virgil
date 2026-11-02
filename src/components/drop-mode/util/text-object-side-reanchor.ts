@@ -4,12 +4,12 @@
  * All attachment-card kinds (note, todo, report, archive, cutter
  * comment, cutter suggestion, revision, revision suggestion) share the
  * same drop-mode shape: a vertical margin bar alongside the target
- * paragraph; on release, re-anchor the card to that paragraph; if it
- * was already anchored to a different one, confirm first.
+ * paragraph; on release, re-anchor the card to that paragraph — moving
+ * it from any paragraph it was anchored to before, without a confirm
+ * (task 1423: a reversible move asks nothing).
  *
- * Each panel calls this factory with its kind label (used in the modal
- * copy) and a getter that pulls its `ParagraphAnchorApi` sub-bag off
- * the `DropCtx`. The resulting spec is registered in
+ * Each panel calls this factory with a getter that pulls its
+ * `ParagraphAnchorApi` sub-bag off the `DropCtx`. The resulting spec is registered in
  * `drop-mode/registry.ts`.
  */
 
@@ -18,8 +18,6 @@ import { parseAnyKey } from "@/floats/float-key";
 import type { DropCtx, DropSpec, ParagraphAnchorApi } from "../types";
 
 export interface ParagraphSideSpecOptions {
-  /** Human label shown in the confirm modal ("note", "todo", …). */
-  kindLabel: string;
   /** Pulls the relevant sub-bag off the per-doc DropCtx. Returning
    *  undefined → spec silently no-ops (e.g. Reader mode). */
   getApi: (ctx: DropCtx) => ParagraphAnchorApi | undefined;
@@ -41,24 +39,14 @@ export function textObjectSideReanchorSpec(
       if (current.length === 1 && current[0] === placement.paragraphId) {
         return { kind: "no-op" };
       }
-      if (current.length === 0) {
-        return { kind: "apply" };
-      }
-      return {
-        kind: "confirm",
-        title: `Re-anchor this ${opts.kindLabel}?`,
-        message: `This ${opts.kindLabel} is currently anchored to a different paragraph. Re-anchor to this paragraph instead?`,
-        confirmLabel: "Re-anchor",
-        // SUPPRESSIBLE. The gesture that raises this dialog is a full drag onto
-        // a specific paragraph's margin — the most deliberate thing the user can
-        // do — and the outcome is reversible (drag it back). Once read, the
-        // question is pure friction, so the confirm DOOR offers "Don't show
-        // this again" and remembers the answer
-        // (`components/confirm-suppression.ts`). Declaring the id is the whole
-        // of the spec's part: the checkbox, the persistence and the
-        // short-circuit are the door's.
-        suppressId: "reanchor-margin-item",
-      };
+      // A card anchored elsewhere MOVES — no confirm (task 1423). The move is
+      // reversible (drag it back) and destroys nothing: a Mode-B range anchor
+      // is converted, not lost (`applyDrop` below keeps the captured passage
+      // and snapshots `originalAnchor`). A drop spec may `confirm` only a drop
+      // that destroys content, and only with `tone: "danger"` — the policy
+      // `drop-confirm-policy-census.test.ts` pins. Gabriel: "Don't prompt with
+      // a dialogue box on moving an anchor."
+      return { kind: "apply" };
     },
     applyDrop(placement, cardKey, ctx) {
       if (placement.kind !== "paragraph-side") return false;

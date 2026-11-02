@@ -90,7 +90,6 @@ function makeApi(initial: string[]): {
 
 /** The notes re-anchor spec, exactly as the Notes panel registers it. */
 const spec = textObjectSideReanchorSpec({
-  kindLabel: "note",
   getApi: (ctx) => ctx.notes,
 });
 
@@ -112,6 +111,7 @@ function paragraphSide(pid: string): Placement {
 function setup(initialAnchors: string[]) {
   const { api, added, removed } = makeApi(initialAnchors);
   const requestAnchorFlush = vi.fn<(pid: string) => void>();
+  const confirm = vi.fn(async () => true);
   // mainEditor=null: `captureParagraphSnapshot(null, …)` degrades gracefully to
   // a null snapshot (UUID-only durability) — the re-anchor mutation + the
   // commit-flush still land. The real editor's snapshot capture is proven
@@ -121,11 +121,11 @@ function setup(initialAnchors: string[]) {
     mainEditor: null,
     closePopout: () => {},
     requestAnchorFlush,
-    confirm: async () => true,
+    confirm,
     notes: api,
   } as unknown as DropCtx;
   setDropCtx(ctx);
-  return { requestAnchorFlush, added, removed };
+  return { requestAnchorFlush, confirm, added, removed };
 }
 
 /** Drive a session to the mousemove placement. Returns whether begin took.
@@ -170,13 +170,15 @@ describe("CHIP-C — controller commit-flush", () => {
 
   it("fires requestAnchorFlush ONCE with the target paragraphId on a re-anchor commit", async () => {
     // Card currently anchored to P_old; re-anchor onto P_new. classifyDrop →
-    // 'confirm' (different paragraph); our ctx.confirm resolves true.
-    const { requestAnchorFlush, added, removed } = setup(["P_old"]);
+    // 'apply' — a reversible move asks nothing (task 1423).
+    const { requestAnchorFlush, confirm, added, removed } = setup(["P_old"]);
     expect(await startAndMove("P_new")).toBe(true);
     expect(getDropSession()?.placement?.kind).toBe("paragraph-side");
 
     await commitDropSession();
 
+    // No dialog: the move of an anchored card is not confirmed (task 1423).
+    expect(confirm).not.toHaveBeenCalled();
     // The mutation landed (proves applyDrop ran, so the flush is post-success).
     expect(added).toEqual(["P_new"]);
     expect(removed).toEqual(["P_old"]);

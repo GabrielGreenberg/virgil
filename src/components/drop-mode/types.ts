@@ -31,7 +31,6 @@ import type { PullSeed } from "@/lib/stack/pull-seed";
 import type { InlineDropPayload } from "./inline-host";
 import type { BlockDropPayload } from "./block-payload";
 import type { DropSourceRange } from "./self-drop";
-import type { SuppressibleConfirmId } from "@/components/confirm-suppression";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -112,20 +111,31 @@ export type DropPlanner = (
   ctx: DropCtx,
 ) => DropPlan | null;
 
-/** Decision returned by `DropSpec.classifyDrop`. */
+/**
+ * Decision returned by `DropSpec.classifyDrop`.
+ *
+ * **A drop confirms only what it destroys (task 1423).** A drop is the most
+ * deliberate gesture in the app, so a REVERSIBLE outcome — a card moved to
+ * another paragraph, an atom moved, a block relocated — applies immediately
+ * (`apply`); the undo is to drag it back. `confirm` is reserved for a drop
+ * that destroys content without a net, which is what `tone: "danger"` means
+ * (STYLE_GUIDE, the destructive family). So the tone is REQUIRED and fixed,
+ * and there is no `suppressId`: a danger confirm may never be suppressed
+ * (`confirm-suppression.ts`), and a confirm that wants suppressing is a
+ * confirm that should not exist. The retired shape was the re-anchor dialog
+ * with a "Don't show this again" box. `drop-confirm-policy-census.test.ts`
+ * pins the rule against casts the type cannot see.
+ */
 export type DropDecision =
   | { kind: "no-op" }
   | { kind: "apply" }
   | {
       kind: "confirm";
+      tone: "danger";
       title?: string;
       message: ReactNode;
       confirmLabel?: string;
       cancelLabel?: string;
-      /** Offer "Don't show this again", and skip the dialog entirely once the
-       *  user has. The capability is the confirm DOOR's
-       *  (`components/confirm-suppression.ts`); a spec only DECLARES the id. */
-      suppressId?: SuppressibleConfirmId;
     };
 
 /**
@@ -233,16 +243,14 @@ export interface DropCtx {
    * a commit that ALSO minted coalesces to one write (no double-flush). Absent
    * means the doc isn't wired for commit-flush (Reader mode) → silently no-op. */
   requestAnchorFlush?: (paragraphId: string) => void;
-  /** Imperative confirm — opens the modal and awaits the user's choice.
-   *  A `suppressId` makes the confirm suppressible: the dialog grows a "Don't
-   *  show this again" checkbox and, once ticked-and-confirmed, later calls
-   *  resolve `true` with no dialog at all. */
+  /** Imperative confirm — opens the modal and awaits the user's choice. Only
+   *  a destructive drop reaches it (see {@link DropDecision}). */
   confirm: (opts: {
     title?: string;
     message: ReactNode;
     confirmLabel?: string;
     cancelLabel?: string;
-    suppressId?: SuppressibleConfirmId;
+    tone: "danger";
   }) => Promise<boolean>;
   /** Per-kind hook APIs. Each spec needs its own; absent means the
    *  feature isn't wired in this doc (silently no-op). One sub-bag

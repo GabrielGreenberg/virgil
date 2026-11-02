@@ -8,11 +8,9 @@
 import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
 export const reportDropSpec = textObjectSideReanchorSpec({
-  kindLabel: "report",
   getApi: (ctx) => ctx.reports,
 });
 
 export const reportRequestDropSpec = textObjectSideReanchorSpec({
-  kindLabel: "report request",
   getApi: (ctx) => ctx.reports,
 });

@@ -71,7 +71,7 @@ const fakeSpec = {
   classifyDrop: () =>
     decisionKind === "apply"
       ? { kind: "apply" }
-      : { kind: "confirm", title: "t", message: "m", confirmLabel: "ok" },
+      : { kind: "confirm", tone: "danger", title: "t", message: "m", confirmLabel: "ok" },
   applyDrop: (p: Placement) => {
     applied.push(p);
     return true;

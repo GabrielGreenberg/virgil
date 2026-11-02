@@ -28,7 +28,7 @@ const fakeSpec = {
   allowedPlacements: ["paragraph-side"],
   targetScope: "main-only",
   postDrop: "close",
-  classifyDrop: () => ({ kind: "confirm", title: "Re-anchor?", message: "?" }),
+  classifyDrop: () => ({ kind: "confirm", tone: "danger", title: "Delete?", message: "?" }),
   applyDrop: (_p: Placement, key: string) => {
     applyCalls.push(key);
     return true;
