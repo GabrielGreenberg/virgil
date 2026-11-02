@@ -43,7 +43,9 @@ A request — a drain row ([_request-load.md](_request-load.md)) —
 qualifies if **all** of the following are true:
 
 - `kind == "style-merge"`
-- `extra.status == "submitted"`
+- the drain emits it — the drain alone decides whether a request is open
+  ([_request-load.md](_request-load.md) rule 1); never test `status`
+  yourself (the app's `submitted` and the canonical `pending` are both open)
 - `payload` (the row's `extra.payload`) has `kind == "style-merge"` and the four payload fields
   (`targetStyleId`, `targetStyleName`, `targetPreamble`,
   `currentPreamble`) are present.
@@ -91,8 +93,13 @@ Skip everything else.
 
    **Don't carry over:**
 
-   - `\providecommand{\vfid}` / `\vcid` / `\vexid` — auto-injected by
-     the Virgil serializer; redundant.
+   - Virgil's marker shims — any `\providecommand` whose command is one
+     of the marker commands the serializer auto-injects. Don't work from
+     memory: the list is `VIRGIL_MARKER_COMMANDS` in
+     `src/lib/latex-markers.ts` (mirrored as `VIRGIL_MARKER_COMMANDS` in
+     `editor/scripts/_common.py`), and every one of them is redundant here.
+     Carrying one over as a "user macro" duplicates the shim block and
+     inflates the merge counts.
    - `\title`, `\author`, `\date` — these are stripped from the
      preamble at parse time and re-injected from the doc tree at
      serialize time. Adding them here causes duplicate emission.
