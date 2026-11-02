@@ -1730,6 +1730,18 @@ pins that no card body re-spells it (task 969).
 Hover (not selected): only the border changes (`edge-hover` →
 `edge-strong`). The header and body don't react.
 
+### Expanded card body: half-pane cap, own scroll (task 1424)
+
+An EXPANDED card body opens to at most **half the pane's visible scrollport**
+(`min(50vh, var(--scroll-viewport-h) × 0.5)`) and scrolls the rest internally,
+with `overscroll-behavior: contain` so a wheel at its end doesn't chain into the
+document. One token: `cardBodyScroll(isPoppedOut)` in `panel-primitives.tsx`
+(`.card-body-scroll` in globals.css; popped-out cards fill their window
+instead). Every expanded body — EditableCard (note, report, footnote, archive,
+…), Todo, Highlight, Suggestion, Citation, BibEntryCard — takes it; never
+hand-roll a `maxHeight`. The editor inside never scrolls the document
+(`scrollWithinOwnBox`, see the refocus-is-not-navigation law).
+
 ### Card header interaction (ratified 2026-06-11)
 
 The docked unified header is a two-gesture surface — **click = toggle

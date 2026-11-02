@@ -36,6 +36,7 @@ import {
   cardTitleStyle,
   usePanelCardTryDelete,
   usePanelCardTryEmptyContent,
+  cardBodyScroll,
 } from "@/components/panel-primitives";
 import { Input, Select } from "@/components/field-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
@@ -1166,9 +1167,7 @@ export function CitationCard({
       ) : (
         <>
           <div
-            className={`${PANEL.cardBody} relative min-w-0${
-              isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""
-            }`}
+            className={`${PANEL.cardBody} relative min-w-0 ${cardBodyScroll(isPoppedOut)}`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Entry rows are BODY CONTENT — the per-panel font picker
@@ -1392,12 +1391,9 @@ export function CitationCard({
 
   const bibInline = canRenderBib ? (
     <div
-      className="ml-4 overflow-y-auto"
-      style={
-        isPoppedOut
-          ? undefined
-          : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }
-      }
+      // No cap here: the inline BibEntryCard caps its OWN expanded body
+      // (cardBodyScroll, task 1424) — a second cap would nest two scrollers.
+      className="ml-4"
       onClick={(e) => e.stopPropagation()}
     >
       <BibEntryCard

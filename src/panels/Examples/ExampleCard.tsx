@@ -1,5 +1,6 @@
 "use client";
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
@@ -293,6 +294,8 @@ function ExampleCardEditor({
     editable: effectiveEditable,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           `tiptap ProseMirror example-card-editor max-w-none focus:outline-none${clampLines ? " example-card-editor-collapsed" : ""}`,

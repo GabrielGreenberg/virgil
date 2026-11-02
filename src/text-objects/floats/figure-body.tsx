@@ -34,6 +34,7 @@
  * uses for `sectionNumber`).
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import { type RefObject, useCallback, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -153,6 +154,8 @@ export function FigureBody({
     editable: true,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class:
           FLOAT_PROSE_EDITOR_CLASS,

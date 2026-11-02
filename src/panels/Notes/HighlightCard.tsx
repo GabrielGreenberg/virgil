@@ -10,6 +10,7 @@ import {
   clampCompressedText,
   compressedBodyStyle,
   usePanelCardTryDelete,
+  cardBodyScroll,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getTextAnchor, type CardWithLinks } from "@/links/links";
@@ -134,7 +135,7 @@ export function HighlightCard({
           </div>
         </div>
       ) : (
-        <div className={`${PANEL.cardBody} space-y-2`} onClick={(e) => e.stopPropagation()}>
+        <div className={`${PANEL.cardBody} ${cardBodyScroll(isPoppedOut)} space-y-2`} onClick={(e) => e.stopPropagation()}>
           {/* The highlighted words ARE a quote of the paper, so they render
               through the one door every quoting card uses (task 825) — the
               borrowed main-text treatment, not a hand-set serif line. */}

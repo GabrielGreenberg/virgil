@@ -13,6 +13,7 @@
  * caret while the user is typing.
  */
 
+import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import { useContext, Fragment, useEffect, useRef, useState, useCallback, memo, type CSSProperties, type ReactNode } from "react";
 import { useEditor, useEditorState, EditorContent, JSONContent } from "@tiptap/react";
 import { VirgilStarterKit } from "@/lib/tiptap/virgil-starter-kit";
@@ -465,6 +466,8 @@ function RichTextFieldImpl({
     editable,
     immediatelyRender: false,
     editorProps: {
+      // A nested editor scrolls only its own box, never the document row (task 1424).
+      handleScrollToSelection: scrollWithinOwnBox,
       attributes: {
         class: `rtf-content rtf-content-${variant} focus:outline-none ${
           selected ? "rtf-selected" : ""
