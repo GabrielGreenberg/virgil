@@ -82,18 +82,6 @@ const PERMITTED_NON_SOURCING_SKILLS: Record<string, string> = {
     "its single database name is prose: `arXiv` appears in a list of " +
     "brand-name CamelCase words (`bioRxiv`, `ImageNet`, `ChatGPT`) that a " +
     "heading-capitalization pass must not down-case. It sources nothing.",
-  "library/skills/triage-pdf.md":
-    "names Crossref/OpenLibrary only to say which seed fields (`isbn`, " +
-    "`editor`) make the AUTH PIPELINE's fast paths available downstream; " +
-    "the values it writes reach the row through a script's own output, " +
-    "never hand-marshalled by the agent — the same claim the sibling " +
-    "LaTeX guard already makes for `authenticate-bib`.",
-  "library/skills/triage-pending.md":
-    "the batch form of the same: its one Crossref reference is a " +
-    "`triage_llm_rescue.py crossref-year-backfill` invocation, so the " +
-    "values reach the row through the script, never through the agent. " +
-    "(If either triage skill ever instructs the agent to fill a field " +
-    "itself, this exact-set discipline forces the re-litigation.)",
 };
 
 type Skill = { rel: string; body: string; flat: string };
