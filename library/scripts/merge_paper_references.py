@@ -520,6 +520,18 @@ class Report:
             "notes": self.notes,
         }
 
+    def summary_line(self) -> str:
+        """The ONE stdout summary, `+A ~D ⇄U ⤬T ⚠F ?M` — every exit path
+        prints it, so a caller (import-bib step 5) parses one shape."""
+        return (
+            f"+{len(self.added)} "
+            f"~{len(self.deferred_dup)} "
+            f"⇄{len(self.unauth_dup_handled)} "
+            f"⤬{len(self.skipped_transient)} "
+            f"⚠{len(self.auth_failed)} "
+            f"?{len(self.manual_review)}"
+        )
+
 
 # ── per-entry merge logic ─────────────────────────────────────────────
 
@@ -826,7 +838,7 @@ def main(argv: list[str] | None = None) -> int:
     if not refs_path.exists():
         report.notes.append(f"no references.bib at {refs_path}")
         _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
-        print(f"+0 ~0 ⤬0 ⚠0 ?0  (no references.bib)")
+        print(f"{report.summary_line()}  (no references.bib)")
         return 0
 
     paper_entries = read_bib_file(refs_path)
@@ -839,7 +851,7 @@ def main(argv: list[str] | None = None) -> int:
             except KeyError:
                 report.notes.append("no catalog row to mark imported")
         _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
-        print(f"+0 ~0 ⤬0 ⚠0 ?0  (empty references.bib)")
+        print(f"{report.summary_line()}  (empty references.bib)")
         return 0
 
     # Index catalog rows by NFC citekey so dedup can read bib state.
@@ -926,14 +938,7 @@ def main(argv: list[str] | None = None) -> int:
 
     _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
 
-    print(
-        f"+{len(report.added)} "
-        f"~{len(report.deferred_dup)} "
-        f"⇄{len(report.unauth_dup_handled)} "
-        f"⤬{len(report.skipped_transient)} "
-        f"⚠{len(report.auth_failed)} "
-        f"?{len(report.manual_review)}"
-    )
+    print(report.summary_line())
     return 0
 
 

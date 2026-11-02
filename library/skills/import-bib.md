@@ -118,15 +118,20 @@ REQ="$(python3 .virgil/scripts/library/queue_slot.py claim --kind import-bib --c
 2. **Run the merge engine for this paper.** It does the dedup →
    authenticate → transient-skip work, writes
    `.virgil/merge-reports/<citekey>.json`, and — when the paper has a
-   catalog row (see the branch below) — marks it imported and bumps
-   `catalog-version.txt`. Both halves are conditional together: the
-   version bump rides `write_catalog`, so a run that writes no row bumps
-   nothing. One-line summary on stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
+   catalog row (see the branch below) — marks it imported. Every catalog
+   write bumps `catalog-version.txt` (the bump rides `write_catalog`), and
+   marking the paper is not the only one: a cited entry that is itself a
+   HOLDING gets its own row's auth state written (`_upsert_catalog_row`),
+   so even a reference-only paper's run can bump. Whether it did is not
+   yours to track. One-line summary on stdout, the same six fields on
+   every path (`Report.summary_line`: `+A ~D ⇄U ⤬T ⚠F ?M`, with
+   `(no references.bib)` / `(empty references.bib)` appended on the two
+   early exits).
    ```bash
    python3 .virgil/scripts/library/merge_paper_references.py "${CK}"
    ```
-   Where a bump does happen the frontend's catalog-version poll handles
-   the UI refresh within ~6s — no extra bump needed from you.
+   Where a bump happens the frontend's catalog-version poll handles the
+   UI refresh within ~6s — no extra bump needed from you, ever.
 
    **The imported flag, and when it is withheld — this is the one
    statement of that branch; everything else in this file points here.**
@@ -161,8 +166,10 @@ REQ="$(python3 .virgil/scripts/library/queue_slot.py claim --kind import-bib --c
    step 5 rather than announcing a check the user will not see.
 
 3. **Surface manual review, if any.** Read the report. If
-   `manual_review[]` is non-empty, briefly look at each item (reading the
-   relevant `master.bib` entries when useful) and tell the user what
+   `manual_review[]` is non-empty, briefly look at each item (an entry's
+   current `master.bib` block comes from the read door,
+   `python3 .virgil/scripts/library/master_entry.py <key>` — exit 0 found,
+   3 absent, 2 unreadable; never `Read` master.bib itself) and tell the user what
    needs a human decision. Do NOT silently drop them — a re-run won't
    help these specific entries, and where the paper HAS a catalog row it
    is marked imported regardless, so the user needs to know. For `split_paper_unauthenticatable` /
