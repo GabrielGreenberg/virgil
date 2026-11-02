@@ -37,6 +37,20 @@ export const DEFAULT_THEME_COLOR: string = applyTransforms(
   DEFAULT_TRANSFORMS,
 );
 
+/**
+ * The page canvas at the shipped defaults — what the prefs paint into
+ * `--background` — for the manifest's `background_color` (the installed app's
+ * launch splash, shown before any CSS exists). Derived the same way as
+ * `DEFAULT_THEME_COLOR`, for the same reason: the manifest used to spell a
+ * hand-copied `#f8f3ed`, the dead descriptive `--background` that the
+ * PROMOTE-DEFAULTS row overrode, so the splash never matched the canvas it
+ * opens onto (task 1417).
+ */
+export const DEFAULT_CANVAS_COLOR: string = applyTransforms(
+  DEFAULT_PREFS.backgroundColor,
+  DEFAULT_TRANSFORMS,
+);
+
 /** The chrome colour within a resolved paint, or null if it carries none. */
 export function themeColorFromVars(
   vars: ReadonlyArray<readonly [string, string]>,

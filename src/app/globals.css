@@ -5,15 +5,20 @@
 @import "katex/dist/katex.min.css";
 
 :root {
-  /* Canvas & Layout */
-  --background: #f8f3ed;
-  --foreground: #1a1a1a;
-  --surface: #ffffff;
-  --border: #e5e2dd;
-  --border-light: #c9c5c5;
-  --muted: #8a8580;
-  --muted-light: #b5b0aa;
-  --accent: #7c5e3c;
+  /* ONE declaration per token (task 1417). Every PREFERENCE-backed token —
+     --background, --accent, --border-light, --topbar-bg, --editor-font-size,
+     --citation-color, … — is declared ONLY in the PROMOTE-DEFAULTS block at
+     the end of this rule, which tools/promote-defaults.mjs regenerates from
+     the prefs JSON sidecars. Do not re-declare one here: a second value on
+     the same :root can never paint (last wins), so it only misleads — 13
+     such "descriptive" values had drifted from what ships. Retone a promoted
+     token via the sidecars. phantom-css-var.test.ts fails a :root token
+     declared twice in one rule. The comments below still describe those
+     tokens where they sit in their family. */
+
+  /* Canvas & Layout
+     --background, --foreground, --surface, --border, --border-light,
+     --muted, --muted-light, --accent: promoted (see above). */
   --accent-light: #f5f0ea;
   /* Selected-fill for segmented controls / toggle "on" states. A warm
      taupe — the manila's own deeper tone (lower chroma, slightly higher
@@ -66,10 +71,9 @@
      theme_color) follows --topbar-bg's PAINTED value; src/lib/theme-color.ts
      owns it in every phase (task 1274).
      --main-tab-bg is locked to --background so the active tab and the page
-     canvas it joins always share a color. */
-  --topbar-bg: #dcdbd7;
-  --topbar-bg-bottom: var(--topbar-bg); /* default: no gradient; pref overrides this */
-  --topbar-border: #cbc3b8;
+     canvas it joins always share a color.
+     --topbar-bg, --topbar-bg-bottom (the gradient's lower stop),
+     --topbar-border, --tab-bg, --library-bg, --virgil-bar-text: promoted. */
   /* Virgil-bar seam lift (task 821): the ONE off-grid spacing value the bar
      row shares. Every 24px-tall seam-anchored group (tabs, the "+", the
      StatusCluster icons) is `self-end mb-[var(--bar-seam-lift)]`, which lands
@@ -82,20 +86,16 @@
      segment `gap` + trailing margin); no occupant carries its own margin.
      6px = Tailwind v4 `1.5` (--spacing 0.25rem × 1.5). */
   --bar-occupant-gap: 6px;
-  --tab-bg: #dcdbd7;
   --main-tab-bg: var(--background);
-  --library-bg: #eae7e2;
   /* Library page-edge chrome (tab silhouettes, panel/body frame, NavPod).
      DERIVED from --library-bg by construction — a low-contrast darker tint —
      so it can never drift into a warm-on-cool clash the way the top-bar token
      --topbar-border did (task 048). Defined ONCE here: because it references
      var(--library-bg), it resolves against whichever --library-bg is live
-     (the PROMOTE-DEFAULTS block's cool #ddeaee overrides the descriptive value
-     above on the same :root), so it auto-tracks both blocks and every future
+     (the promoted pref's value, or a user retone), so it auto-tracks every
      retone with NO second definition to keep in sync. Library-surface edges
      must consume THIS token, never --topbar-border. */
   --library-edge: color-mix(in oklab, var(--library-bg) 82%, #000);
-  --virgil-bar-text: #78716c;
 
   /* Window insets — the app's single window-edge inset model (SSOT)
      ==============================================================
@@ -131,14 +131,10 @@
 
   /* Pod system
      --pod-editor is locked to --surface so the editor pod and all
-     "paper" surfaces (cards, popovers, inputs) stay identical. */
+     "paper" surfaces (cards, popovers, inputs) stay identical.
+     --pod-panel, --pod-toolbar, --pod-dark, --header-bg,
+     --panel-admin-text-color, --panel-admin-text-font: promoted. */
   --pod-editor: var(--surface);
-  --pod-panel: #fdfaf5;
-  --pod-toolbar: #f5f3ef;
-  --pod-dark: #eae6df;
-  --header-bg: #e8e5de;
-  --panel-admin-text-color: #44403c;
-  --panel-admin-text-font: "Inter";
   --header-h: 26px;
   /* ── Radius scale (SSOT) ──────────────────────────────────────────────
      Six steps, the single source of truth for every corner in the app.
@@ -324,14 +320,11 @@
 
   /* Editor colors
      --h1-color and --h2h3-color are locked to the primary text tokens
-     (H1 = --foreground, H2/H3 = --editor-text-color). */
-  --editor-font-size: 1.05rem;
-  --editor-line-height: 1.6;
-  --editor-text-color: #000000;
+     (H1 = --foreground, H2/H3 = --editor-text-color).
+     --editor-font-size, --editor-line-height, --editor-text-color,
+     --par-title-size, --par-title-color: promoted. */
   --h1-color: var(--foreground);
   --h2h3-color: var(--editor-text-color);
-  --par-title-size: 0.78rem;
-  --par-title-color: #c45a5a;
   /* The DENSE rung of --par-title-color (task 2026-08-18-361).
      Every ordinary consumer of the preference (.par-title-annotation,
      .card-title-input, .card-title-collapsed, .par-title-input, the Search
@@ -424,14 +417,10 @@
      clearance above the preceding block's edge (matters for blocks
      with hard borders like code/math/comments). */
   --editor-block-gap: 1.2em;
-  --heading-annotation-color: #6b9ac4;
-  --heading-annotation-border: #a8c4de;
-  --blockquote-border: #d4cfc8;
-  --blockquote-text: #6b6560;
-  --code-bg: #f0eeeb;
-  --code-block-bg: #f5f3f0;
+  /* --heading-annotation-color/-border, --blockquote-border/-text, --code-bg,
+     --code-block-bg, --math-color (described below): promoted. */
   --code-block-bg-hover: #ece8e3; /* one step deeper: a code block's hover */
-  /* Rendered-math ink. KaTeX's own stylesheet sets `color` on NOTHING, and
+  /* --math-color (promoted): rendered-math ink. KaTeX's own stylesheet sets `color` on NOTHING, and
      draws its two non-glyph marks from `currentColor` by two different
      mechanisms — `border-color: currentColor` on `.katex *` (the fraction bar
      is a `.frac-line` border-bottom) and `fill/stroke: currentColor` on
@@ -442,7 +431,6 @@
      Its retired sibling `--math-prefix-color` ("$ delimiters and prefixes")
      had no element to paint: `renderMath` runs KaTeX with `output: "html"`,
      so no delimiter survives into the DOM (task 326). */
-  --math-color: #6b4fa0;
 
   /* ── Warm amber scale ─────────────────────────────────────────────
      Citation, bibliography, and quote backgrounds consolidate here.
@@ -498,15 +486,15 @@
   --footnote-500: #b45757;
 
   /* Inline element colors — alias into the amber/footnote scales above
-     so callers don't break and there's one source of truth per family. */
-  --comment-color: #93c5fd;
+     so callers don't break and there's one source of truth per family.
+     The inks and borders — --comment-color, --latex-comment-color,
+     --citation-color, --citation-border-color, --label-ref-color,
+     --label-ref-border-color, --footnote-color, --note-color,
+     --note-marker-border — are promoted prefs; the fills below are not. */
   --comment-bg: rgba(147, 197, 253, 0.25);
   --comment-border: rgba(96, 165, 250, 0.5);
-  --latex-comment-color: #7191b0;
   --latex-comment-bg: #f0f5fa;
-  --citation-color: #555;
   --citation-bg: #ffffff;
-  --citation-border-color: #a8c4de;
   /* Cream fill of the citation drag-ghost card (CitationCard / BibEntryCard).
      Distinct from --citation-bg (the in-text cite pill fill, #ffffff): the
      dragged card reads on a warmer cream. Border + ink reuse
@@ -524,10 +512,7 @@
      no `bucket.key` source, so promote-defaults CANNOT regenerate this seed —
      if a promoted labelRefColor moves, update it by hand;
      src/__tests__/atom-chrome-tokens.test.ts fails with the value to write. */
-  --label-ref-color: #555555;
   --label-ref-bg: #f0f0f0;
-  --label-ref-border-color: #d5d3ce;
-  --footnote-color: var(--footnote-500);
   --footnote-bg: var(--footnote-50);
   /* Marker hover wash — one scale step up from the rest state. Both are
      OVERWRITTEN at runtime on :root by DERIVED_CSS (preferences-tree.ts), which
@@ -535,22 +520,13 @@
      the pre-hydration / SSR / print values, not the final rendered ones. See the
      near-match note on the DERIVED_CSS entry. */
   --footnote-bg-hover: var(--footnote-100);
-  --note-color: #15803d;
   --note-bg: #f0fdf4;
-  --note-marker-border: #86efac;
 
-  /* Suggestions */
-  --mark-bg: #fbbf24;
-  --mark-border: #c8960e;
-
-  /* LaTeX commands */
-  --latex-cmd-color: #9ca3af;
+  /* Suggestions (--mark-bg, --mark-border), LaTeX commands
+     (--latex-cmd-color) and Drag (--drag-highlight): promoted — retint via
+     the prefs JSON sidecars (tasks 1218, 1417). */
 
   /* Drag */
-  /* Descriptive declaration. The SHIPPED default is the PROMOTE-DEFAULTS
-     block below (last wins, by design) — retint via the prefs JSON sidecars,
-     not here (task 1218). */
-  --drag-highlight: #3b82f6;
   /* The INSERTION BAR — the one colour for "your drop lands here", read by
      every drop bar: the drop-mode content bar (drop-mode/Indicator.tsx), the
      panel/strip button bar (editor-layout/drag-drop.tsx) and the paper-tab
@@ -601,14 +577,11 @@
      --scrollbar-size is the ONE scrollbar width (task 1175): the webkit
      bar's width/height and the gutter `.panel-scroll` reserves. The editor's
      custom thumb mirrors it as SCROLLBAR_THUMB_WIDTH (constants.ts) — the
-     scrollbar census pins the two equal. */
-  --scrollbar-thumb: #dcd7d0;
+     scrollbar census pins the two equal. --scrollbar-thumb: promoted. */
   --scrollbar-hover: var(--muted-light);
   --scrollbar-size: 6px;
 
-  /* Panel sizing */
-  --panel-font-size: 13px;
-  --panel-header-size: 14px;
+  /* Panel sizing: --panel-font-size, --panel-header-size are promoted. */
 
   /* ── Semantic UI color scale ──────────────────────────────────────────
      Role-based tokens for component-level styling (borders, hovers,
@@ -833,9 +806,10 @@
      paints) rendered at the JSON sidecars' values (usePreferences.defaults.json
      + useViewPrefs.defaults.json). It is the shipped first paint, before the
      JS prefs hook hydrates; check-prefs-coverage fails if it drifts from the
-     table (task 902). Duplicates earlier declarations on purpose — CSS's last-
-     wins rule lets a single managed block override the descriptive ones
-     above without touching the comments that explain what each token does.
+     table (task 902). It is the ONLY declaration of each token it carries on
+     this :root — the comments that explain a token stay in its family above,
+     but no value is re-stated there (task 1417; a second value on the same
+     rule can never paint and had drifted for 13 tokens).
      Do not edit by hand; edit the JSON sidecars instead. */
   --editor-font-size: 0.95rem;
   --editor-line-height: 1.6;
@@ -1675,7 +1649,7 @@ textarea {
 
 .tiptap p {
   line-height: var(--editor-line-height);
-  font-size: var(--editor-font-size, 1.05rem);
+  font-size: var(--editor-font-size);
 }
 
 .tiptap h1 {
@@ -2622,11 +2596,11 @@ textarea {
   align-items: center;
   justify-content: center;
   width: var(--margin-handle-width);
-  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height));
+  height: calc(var(--editor-font-size) * var(--editor-line-height));
   /* Chip 3: width of the centered grab hit/hover halo (the ::before below).
      Scales with the editor font like the handle height (~1.8× font ≈ 1.8em),
      so the target grows with larger prose rather than staying a fixed px. */
-  --margin-handle-hit-pad: calc(var(--editor-font-size, 1.05rem) * 1.8);
+  --margin-handle-hit-pad: calc(var(--editor-font-size) * 1.8);
   /* Chip 3: hit-halo cap — the MAX half-width (px) the halo may take. The
      grab-handle component sets this inline per handle; the default below is
      only the no-inline-value fallback. The live contract (sibling cap ∧
@@ -4872,9 +4846,9 @@ body.perf-contain .static-borrowed-text {
   border-radius: var(--radius-xs);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
-  border: 1px solid var(--citation-border-color, #a8c4de);
+  border: 1px solid var(--citation-border-color);
   padding: 0px 4px;
-  color: var(--citation-color, #555);
+  color: var(--citation-color);
 }
 
 .citation-node:hover {

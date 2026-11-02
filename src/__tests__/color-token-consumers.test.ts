@@ -155,27 +155,25 @@ describe("ErrorCard info severity reads a status token, not a raw hex", () => {
 });
 
 /**
- * The PROMOTE-DEFAULTS block re-declares promoted preference tokens on the same
- * :root ON PURPOSE — CSS last-wins lets one managed block override the
- * descriptive declarations above without disturbing the comments that explain
- * them (see the block's own header, and tools/promote-defaults.mjs which
- * regenerates it from the JSON sidecars).
- *
- * This is locked because the repeated `--drag-highlight` reads as a redundant
- * duplicate to anyone grepping — task 171 was filed asking for its deletion.
- * Deleting it would drop the first-paint default AND be silently reinstated by
- * the next promote-defaults run.
+ * The PROMOTE-DEFAULTS block is the ONE declaration of each promoted
+ * preference token on :root (tools/promote-defaults.mjs regenerates it from
+ * the JSON sidecars). Task 171 asked to delete the managed `--drag-highlight`
+ * as a "redundant duplicate" — it is the first-paint default and would be
+ * reinstated by the next promote run, so it stays. The redundant copy was the
+ * hand-written "descriptive" one above it, which can never paint (last wins);
+ * task 1417 deleted all 48 such copies (13 had drifted from what ships) and
+ * phantom-css-var.test.ts now fails any :root token declared twice.
  */
-describe("PROMOTE-DEFAULTS re-declarations are intentional", () => {
+describe("PROMOTE-DEFAULTS owns each promoted token's ONE declaration", () => {
   it("keeps the managed block's --drag-highlight", () => {
     const block = /PROMOTE-DEFAULTS-START([\s\S]*?)PROMOTE-DEFAULTS-END/.exec(globals)?.[1];
     expect(block).toBeDefined();
     expect(block).toMatch(/--drag-highlight:\s*#3b82f6\s*;/);
   });
 
-  it("keeps the descriptive declaration above it too", () => {
+  it("re-states no value above it (task 1417)", () => {
     const beforeBlock = globals.slice(0, globals.indexOf("PROMOTE-DEFAULTS-START"));
-    expect(beforeBlock).toMatch(/--drag-highlight:\s*#3b82f6\s*;/);
+    expect(beforeBlock).not.toMatch(/^\s*--drag-highlight\s*:/m);
   });
 });
 

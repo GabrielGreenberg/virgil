@@ -13,7 +13,7 @@
 ## Visual identity
 
 Virgil is a writing tool that reads like paper. The canvas is a warm
-cream (`--background: #f8f3ed`); the text is set in a serif
+cream (`--background: #ede3de`); the text is set in a serif
 (`--font-serif`); the chrome around it is sans (`--font-sans`); the
 brand accent is a warm brown (`--accent: #7c5e3c`). Pods sit on the
 canvas as raised paper surfaces with a subtle shadow.
@@ -483,6 +483,20 @@ design-system patch's `--pod-shadow-light` outlived the patch, consumed by
 > fallback-agreement leg pins it in both silos (allowlist EMPTY); tokens defined
 > through another `var()`/`env()` — whose fallback can be live — are out of its
 > scope by construction.
+
+> **A `:root` token is declared ONCE — and a preference-backed one, only in the
+> PROMOTE-DEFAULTS block.** "What is this token's value?" has one answer: the
+> cascade winner. Two `:root` declarations of one token leave the first DEAD;
+> the main `:root` once carried 48 hand-written "descriptive" values for
+> promoted prefs, 13 drifted from what ships (`--background` `#f8f3ed` vs
+> `#ede3de`; `--citation-color` `#555` vs `#6b6245`), and the fallback leg above
+> was silently checking against them. Task 1417 deleted them: a promoted
+> token's comment stays in its family, its value lives only in the generated
+> block, and you retone it via the prefs JSON sidecars. A static surface that
+> must name a default before CSS exists (the manifest's colours) DERIVES it
+> from `DEFAULT_PREFS` (`src/lib/theme-color.ts`), never copies a hex. The same
+> suite fails a token declared twice in top-level `:root` rules (allowlist
+> EMPTY); a `:root` nested in `@media` is conditional and is not a duplicate.
 
 **Font families are CHAINS, and they are spelled once.** A `font-family` here
 is the user's override pref → the `next/font` variable → the load-window
