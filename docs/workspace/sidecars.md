@@ -1,4 +1,4 @@
-<!-- last-verified: 9b0d6a79 2026-11-01 -->
+<!-- last-verified: bf7c640f 2026-11-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
