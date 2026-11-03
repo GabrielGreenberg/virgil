@@ -3651,9 +3651,10 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
 [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts) — which
 knows the px / em / rem ladder and takes the token's SIGN POLICY as an argument
 (`"signed"` for the chevron OFFSET, which is legitimately negative;
-`"positive"` for every distance). So a token's **spelling is a free variable**:
-re-author `--margin-col-handle-inset` as `1.375em` and the JS follows, no code
-change. Never hand-`parseFloat` a `--margin-*` property — `getComputedStyle`
+`"positive"` for every distance). So a token's **spelling is a free variable on
+that ladder**: re-author `--margin-col-handle-inset` as `1.375em` and the JS
+follows, no code change. Any other unit (`ch`, `ex`, `%`, `vw`, `calc(…)`) falls
+back to the shipped value with a dev-only warning — never read as px (task 1445). Never hand-`parseFloat` a `--margin-*` property — `getComputedStyle`
 returns the LITERAL `"1.375em"` and `parseFloat` answers `1.375`, a finite
 positive number that passes any `> 0` guard and silently collapses the distance
 (task 661). And where a token's geometry is relative to an element, read the
