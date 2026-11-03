@@ -184,6 +184,11 @@ const LEDGER: Record<string, Row> = {
     events: ["window.SIDECAR_CHANGED_EVENT"],
     why: "sidecar-changed carries its docId + filename (the one external re-read every sidecar hook shares, task 1078)",
   },
+  "lib/figures/doc-graphics-path.ts": {
+    scope: "singleton",
+    events: ["window.TEX_DELIMITERS_CHANGED_EVENT"],
+    why: "per-doc \\graphicspath registry installs ONE listener; the event's docId picks the entry (task 1437)",
+  },
   "lib/doc-products/pipeline.ts": {
     scope: "doc",
     events: ["window.TEX_DELIMITERS_CHANGED_EVENT"],

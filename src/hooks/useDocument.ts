@@ -56,6 +56,7 @@ import {
   registerRecoveryActions,
 } from "@/lib/mirror-recovery";
 import { hashContent } from "@/lib/disk-ledger";
+import { noteDocPreamble } from "@/lib/figures/doc-graphics-path";
 import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import {
   TEX_DELIMITERS_CHANGED_EVENT,
@@ -810,6 +811,9 @@ export function useDocument() {
   const saveWithDelimiters = useCallback(
     (delimiters: { preamble: string; postamble: string }) => {
       pendingDelimitersRef.current = delimiters;
+      // The figure resolver searches the preamble's `\graphicspath` (task
+      // 1437) — hand it the new preamble now, not after a disk round trip.
+      noteDocPreamble(docId, delimiters.preamble);
       // A preamble edit sitting in a ref is exactly the memory-only state the
       // unsaved-work channel exists to name (task 392) — arm it on the
       // gesture, before any attempt, so a stash that outlives a refused,
