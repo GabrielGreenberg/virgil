@@ -27,6 +27,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { useAskQueue } from "@/hooks/useAskQueue";
 import {
   SUPPRESS_CHECKBOX_LABEL,
   isConfirmSuppressed,
@@ -260,12 +261,8 @@ interface PendingConfirm extends ConfirmOptions {
   resolve: (value: ConfirmChoice) => void;
 }
 
-/** Mutable per-dialog scratch for the suppression checkbox. A ref-shaped box
- *  rather than React state so ticking the box costs no re-render of the host
- *  (the host of `useConfirmDialog` is often a whole editor pane). */
-interface SuppressBox {
-  checked: boolean;
-}
+/** An ask that ends without an answer (its door unmounted) is a cancel. */
+const cancelPendingConfirm = (ask: PendingConfirm) => ask.resolve("cancel");
 
 /**
  * Imperative wrapper. Mount `dialog` once inside your layout; call
@@ -273,14 +270,27 @@ interface SuppressBox {
  *
  * `choose(options)` is the same dialog with a THIRD button, resolving the
  * pressed choice instead of a boolean — for a question whose two real answers
- * both commit (task 238's keep / revert / cancel). One `pending` slot and one
- * mounted dialog serve both, so a host that already mounts this hook gains the
+ * both commit (task 238's keep / revert / cancel). One queue and one mounted
+ * dialog serve both, so a host that already mounts this hook gains the
  * three-way form without a second dialog instance.
+ *
+ * Asks QUEUE (task 1447, `useAskQueue`): a second `confirm()`/`choose()` while
+ * one is open waits behind it rather than replacing it, every promise settles,
+ * and each ask mounts its own dialog (`key={head.id}`) so focus and the cued
+ * default re-enter per question. Unmounting the host resolves every
+ * outstanding ask as cancel.
  */
 export function useConfirmDialog() {
-  const [pending, setPending] = useState<PendingConfirm | null>(null);
-  // One box per dialog instance, reset when a pending confirm opens.
-  const suppressBoxRef = useRef<SuppressBox>({ checked: false });
+  const { head, enqueue, settle } =
+    useAskQueue<PendingConfirm>(cancelPendingConfirm);
+  // Each ask's suppression-checkbox state, keyed by ask id — a ref rather
+  // than React state so ticking the box costs no re-render of the host (often
+  // a whole editor pane), and per ASK so a queued confirm can never read the
+  // box an earlier one ticked.
+  const suppressCheckedRef = useRef(new Map<number, boolean>());
+  const markSuppress = useCallback((id: number, checked: boolean) => {
+    suppressCheckedRef.current.set(id, checked);
+  }, []);
 
   const confirm = useCallback(
     (opts: ConfirmOptions): Promise<boolean> => {
@@ -297,65 +307,67 @@ export function useConfirmDialog() {
       if (allowSuppress && isConfirmSuppressed(opts.suppressId!)) {
         return Promise.resolve(true);
       }
-      suppressBoxRef.current = { checked: false };
       return new Promise<boolean>((resolve) => {
-        setPending({
+        enqueue({
           ...opts,
           suppressId: allowSuppress ? opts.suppressId : undefined,
           resolve: (c) => resolve(c === "confirm"),
         });
       });
     },
-    [],
+    [enqueue],
   );
 
   const choose = useCallback(
     (opts: ChoiceOptions): Promise<ConfirmChoice> =>
       new Promise<ConfirmChoice>((resolve) => {
-        setPending({ ...opts, resolve });
+        enqueue({ ...opts, resolve });
       }),
-    [],
+    [enqueue],
   );
 
-  const handleConfirm = useCallback(() => {
-    // MINT HERE and nowhere else: a suppression may only be created by the
-    // choice it suppresses, so Cancel (and the secondary answer) with the box
-    // ticked persists nothing.
-    if (pending?.suppressId && suppressBoxRef.current.checked) {
-      suppressConfirm(pending.suppressId);
-    }
-    if (pending) pending.resolve("confirm");
-    setPending(null);
-  }, [pending]);
-  const handleSecondary = useCallback(() => {
-    if (pending) pending.resolve("secondary");
-    setPending(null);
-  }, [pending]);
-  const handleCancel = useCallback(() => {
-    if (pending) pending.resolve("cancel");
-    setPending(null);
-  }, [pending]);
+  const answer = useCallback(
+    (id: number, choice: ConfirmChoice) => {
+      const ask = settle(id);
+      const ticked = suppressCheckedRef.current.get(id) === true;
+      suppressCheckedRef.current.delete(id);
+      if (!ask) return;
+      // MINT HERE and nowhere else: a suppression may only be created by the
+      // choice it suppresses, so Cancel (and the secondary answer) with the
+      // box ticked persists nothing.
+      if (choice === "confirm" && ask.suppressId && ticked) {
+        suppressConfirm(ask.suppressId);
+      }
+      ask.resolve(choice);
+    },
+    [settle],
+  );
 
-  const dialog = pending ? (
-    <ConfirmDialog
-      open
-      title={pending.title}
-      message={pending.message}
-      confirmLabel={pending.confirmLabel}
-      cancelLabel={pending.cancelLabel}
-      tone={pending.tone}
-      hideCancel={pending.hideCancel}
-      anchorRef={pending.anchorRef}
-      suppressId={pending.suppressId}
-      onSuppressChange={(checked) => {
-        suppressBoxRef.current.checked = checked;
-      }}
-      secondaryLabel={pending.secondaryLabel}
-      onSecondary={pending.secondaryLabel ? handleSecondary : undefined}
-      onConfirm={handleConfirm}
-      onCancel={handleCancel}
-    />
-  ) : null;
+  const pending = head?.ask;
+  const dialog =
+    head && pending ? (
+      <ConfirmDialog
+        key={head.id}
+        open
+        title={pending.title}
+        message={pending.message}
+        confirmLabel={pending.confirmLabel}
+        cancelLabel={pending.cancelLabel}
+        tone={pending.tone}
+        hideCancel={pending.hideCancel}
+        anchorRef={pending.anchorRef}
+        suppressId={pending.suppressId}
+        onSuppressChange={(checked) => markSuppress(head.id, checked)}
+        secondaryLabel={pending.secondaryLabel}
+        onSecondary={
+          pending.secondaryLabel
+            ? () => answer(head.id, "secondary")
+            : undefined
+        }
+        onConfirm={() => answer(head.id, "confirm")}
+        onCancel={() => answer(head.id, "cancel")}
+      />
+    ) : null;
 
   return { confirm, choose, dialog };
 }

@@ -15,6 +15,7 @@ import SystemDialog, {
   SystemDialogHeader,
 } from "./system-dialog";
 import { Field, Select } from "./field-primitives";
+import { useAskQueue } from "@/hooks/useAskQueue";
 import type { DocumentClassMismatch, SectioningCommand } from "@/lib/document-class";
 
 export type MismatchResolution =
@@ -124,30 +125,28 @@ interface PendingPrompt {
   resolve: (value: MismatchResolution) => void;
 }
 
+const cancelPrompt = (p: PendingPrompt) => p.resolve({ kind: "cancel" });
+
+/** Prompts QUEUE through `useAskQueue` (task 1447): a second `prompt()` while
+ *  one is open waits behind it, every promise settles, and unmount resolves
+ *  outstanding prompts as cancel. */
 export function useDocumentClassMismatchDialog() {
-  const [pending, setPending] = useState<PendingPrompt | null>(null);
+  const { head, enqueue, settle } = useAskQueue<PendingPrompt>(cancelPrompt);
 
   const prompt = useCallback(
     (mismatch: DocumentClassMismatch): Promise<MismatchResolution> =>
       new Promise<MismatchResolution>((resolve) => {
-        setPending({ mismatch, resolve });
+        enqueue({ mismatch, resolve });
       }),
-    [],
+    [enqueue],
   );
 
-  const handleResolve = useCallback(
-    (resolution: MismatchResolution) => {
-      if (pending) pending.resolve(resolution);
-      setPending(null);
-    },
-    [pending],
-  );
-
-  const dialog = pending ? (
+  const dialog = head ? (
     <DocumentClassMismatchDialog
+      key={head.id}
       open
-      mismatch={pending.mismatch}
-      onResolve={handleResolve}
+      mismatch={head.ask.mismatch}
+      onResolve={(resolution) => settle(head.id)?.resolve(resolution)}
     />
   ) : null;
 

@@ -29,8 +29,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
-  useState,
   type ReactNode,
 } from "react";
 import SystemDialog, {
@@ -44,6 +42,7 @@ import {
   confirmActionVariant,
   confirmDialogCuedDefault,
 } from "./confirm-cue-policy";
+import { useAskQueue } from "@/hooks/useAskQueue";
 import { registerEditRefusalVoice } from "@/lib/edit-refusal";
 
 /* ── Option types ────────────────────────────────────────────────── */
@@ -101,7 +100,7 @@ export function useOptionalSystemDialog(): SystemDialogApi | null {
 
 /* ── Pending dialog shape — tagged union ────────────────────────── */
 
-/** One ASK. `id` is its identity for the life of the queue (task 833): the
+/** One ASK. Its queue `id` (minted by `useAskQueue`) is its identity for the life of the queue (task 833): the
  *  head renders keyed by it, so each ask MOUNTS its own dialog. Without it,
  *  two same-kind asks in a row reconciled into ONE `SystemDialog` whose `open`
  *  never left `true` — the second ask inherited the first's focused button
@@ -115,21 +114,21 @@ type PendingAsk =
       resolve: (value: boolean) => void;
     };
 
-type Pending = PendingAsk & { id: number };
+/** How an ask ends when the provider unmounts under it: an alert is
+ *  dismissed, a confirm is declined. */
+function cancelAsk(ask: PendingAsk) {
+  if (ask.kind === "alert") ask.resolve();
+  else ask.resolve(false);
+}
 
 /* ── Provider ────────────────────────────────────────────────────── */
 
 export function SystemDialogProvider({ children }: { children: ReactNode }) {
-  // FIFO queue. We render only the head; shifting on resolve.
-  const [queue, setQueue] = useState<Pending[]>([]);
-
-  // Monotonic ask identity — never reused, so a key can never collide with a
-  // dialog that is still unmounting.
-  const nextIdRef = useRef(0);
-  const enqueue = useCallback((ask: PendingAsk) => {
-    const p: Pending = { ...ask, id: ++nextIdRef.current };
-    setQueue((q) => [...q, p]);
-  }, []);
+  // FIFO queue, keyed by monotonic ask identity — the ONE queue semantics
+  // every imperative dialog door shares (`useAskQueue`, task 1447). We render
+  // only the head; an unmounted provider resolves every outstanding ask as
+  // its cancel.
+  const { head, enqueue, settle } = useAskQueue<PendingAsk>(cancelAsk);
 
   const api = useMemo<SystemDialogApi>(
     () => ({
@@ -170,17 +169,24 @@ export function SystemDialogProvider({ children }: { children: ReactNode }) {
     [api],
   );
 
-  const head = queue[0];
-
-  const close = useCallback(() => {
-    setQueue((q) => q.slice(1));
-  }, []);
+  const close = useCallback(
+    (id: number) => {
+      settle(id);
+    },
+    [settle],
+  );
 
   return (
     <SystemDialogCtx.Provider value={api}>
       {children}
       {/* KEYED by the ask's identity (task 833) — each ask mounts fresh. */}
-      {head && <PendingDialog key={head.id} pending={head} onDone={close} />}
+      {head && (
+        <PendingDialog
+          key={head.id}
+          pending={head.ask}
+          onDone={() => close(head.id)}
+        />
+      )}
     </SystemDialogCtx.Provider>
   );
 }
@@ -191,7 +197,7 @@ function PendingDialog({
   pending,
   onDone,
 }: {
-  pending: Pending;
+  pending: PendingAsk;
   onDone: () => void;
 }) {
   if (pending.kind === "alert") {
