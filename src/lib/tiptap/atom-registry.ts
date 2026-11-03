@@ -37,9 +37,11 @@ export interface AtomMeta {
   nodeName: string;
   /** The `data-type` attribute the NodeView DOM carries. */
   domType: string;
-  /** The class on the NodeView DOM (used for the cursor affordance — the
-   *  globals.css grab rules list it by hand, pinned per-row by the census in
-   *  `atom-grab-affordance.test.ts`). */
+  /** The class on the NodeView DOM (used for the cursor affordance and the
+   *  print flatten — the globals.css rules list it by hand, pinned per-row by
+   *  the censuses in `atom-grab-affordance.test.ts` (grab, and the rest cursor
+   *  against {@link AtomMeta.opensOnClick}) and `print-atom-chip-posture.test.ts`
+   *  (against {@link AtomMeta.chip})). */
   domClass: string;
   /**
    * The node attr carrying the Atom's entity id, or `null` for id-less
@@ -82,6 +84,37 @@ export interface AtomMeta {
    * effective selectability matches this facet for every kind, so it can't drift.
    */
   selectable: boolean;
+  /**
+   * Is the atom a FRAMED CHIP — a tinted, bordered, padded token standing in
+   * for document text (task 1443)? A chip is document content dressed as UI on
+   * screen, so on paper it must read as plain prose: the `@media print` block
+   * in `globals.css` flattens exactly the `chip: true` rows' `domClass`es
+   * (`background`/`border`/`padding` → 0, `color: inherit`).
+   *
+   * `true` for citation / ref / dynamic. `false` for the footnote marker and
+   * inline math: they are GLYPH atoms — a superscript, a typeset formula —
+   * that print as themselves in their own ink (see the "PRINT, deliberately
+   * unscoped" note on `.inline-math` in `globals.css`).
+   *
+   * Pinned by `print-atom-chip-posture.test.ts`: the print flatten's selector
+   * list is EXACTLY these rows, so the next chip atom fails CI by name instead
+   * of printing inside a grey box (the miss task 1335's `\today` chip made).
+   */
+  chip: boolean;
+  /**
+   * Does a plain click on the atom OPEN something — its Card, an edit popover,
+   * a target popover (task 1443)? Decides the atom's resting cursor: `pointer`
+   * iff `true`, `default` otherwise. The scoped `grab`/`grabbing` upgrade (where
+   * `data-atoms-graspable="true"`) is registry-wide and independent of this.
+   *
+   * `true` for footnote / citation (open their Card), ref (`LabelRefPopover`)
+   * and inline math (its edit popover). `false` for dynamic (`\today`): the
+   * text is computed, nothing opens, and a pointer there is the task-524
+   * false-affordance class on every read-only surface.
+   *
+   * Pinned by `atom-grab-affordance.test.ts` ("pointer iff opensOnClick").
+   */
+  opensOnClick: boolean;
   // NO `label` FIELD, deliberately (task 647). A `label` ("Footnote",
   // "Citation", "Cross-reference", "Inline math") rode here from the start,
   // read by nothing, its own comment conceding why ("confirm copy / future
@@ -114,6 +147,8 @@ export const ATOM_REGISTRY = {
     idAttr: "footnoteId",
     domIdAttr: "data-footnote-id",
     selectable: false,
+    chip: false,
+    opensOnClick: true,
   },
   citation: {
     kind: "citation",
@@ -123,6 +158,8 @@ export const ATOM_REGISTRY = {
     idAttr: "citationId",
     domIdAttr: "data-citation-id",
     selectable: false,
+    chip: true,
+    opensOnClick: true,
   },
   ref: {
     kind: "ref",
@@ -132,6 +169,8 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: false,
+    chip: true,
+    opensOnClick: true,
   },
   "inline-math": {
     kind: "inline-math",
@@ -141,6 +180,8 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: true,
+    chip: false,
+    opensOnClick: true,
   },
   // Task 1335: a computed-text command (`\today`) — id-less like `ref`, and
   // `selectable:false` for the same resting-NodeSelection scroll. See
@@ -153,6 +194,8 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: false,
+    chip: true,
+    opensOnClick: false,
   },
   // `as const satisfies` rather than a plain `Record<AtomKind, AtomMeta>`
   // annotation: the rows are still type-checked against `AtomMeta` (a typo'd
