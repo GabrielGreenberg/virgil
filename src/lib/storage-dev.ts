@@ -90,6 +90,7 @@ import {
   sidecarWriteSubkey,
 } from "@/lib/host-writability";
 import { resolveAssetImport, texSafeAssetName } from "@/lib/figures/asset-import";
+import { figureCandidatePaths } from "@/lib/figures/graphics-path";
 import {
   planSidecarCleanup,
   type SidecarCleanupReceipt,
@@ -1103,8 +1104,6 @@ export async function readPdf(docId: string): Promise<Uint8Array | null> {
 // see the same cached webp.
 // ---------------------------------------------------------------------------
 
-const FIGURE_PROBE_EXTS = ["pdf", "png", "jpg", "jpeg", "webp"];
-
 export interface FigureSourceFile {
   bytes: ArrayBuffer;
   ext: string;
@@ -1114,21 +1113,13 @@ export interface FigureSourceFile {
 export async function readFigureSource(
   docId: string,
   source: string,
+  graphicspaths: readonly string[] = [],
 ): Promise<FigureSourceFile | null> {
   if (!source) return null;
-  const parts = source.split("/").filter((p) => p.length > 0);
-  if (parts.length === 0) return null;
-  const filename = parts[parts.length - 1];
-  const subdir = parts.slice(0, -1).join("/");
-  const prefix = subdir ? `${subdir}/` : "";
-  const dotIdx = filename.lastIndexOf(".");
-  const candidates =
-    dotIdx > 0
-      ? [{ name: filename, ext: filename.slice(dotIdx + 1).toLowerCase() }]
-      : FIGURE_PROBE_EXTS.map((ext) => ({ name: `${filename}.${ext}`, ext }));
-  for (const c of candidates) {
-    const url = docFileUrl(docId, `${prefix}${c.name}`);
-    const resp = await fetch(url);
+  for (const c of figureCandidatePaths(source, graphicspaths)) {
+    const rel = c.path.split("/").filter((p) => p.length > 0).join("/");
+    if (!rel) continue;
+    const resp = await fetch(docFileUrl(docId, rel));
     if (!resp.ok) continue;
     const bytes = await resp.arrayBuffer();
     // Server should send Last-Modified + Content-Length but we degrade to

@@ -130,6 +130,7 @@ import {
 } from "@/lib/bib-family";
 import { declaredBibFiles, pickDeclaredBibFile } from "@/lib/bib-resources";
 import { DocUnreachableError, probeDocFolder } from "@/lib/doc-load-failure";
+import { figureCandidatePaths } from "@/lib/figures/graphics-path";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -2055,8 +2056,8 @@ export async function readTextFile(
 /** Backend-agnostic figure source reader.
  *
  * Used by the figure-rendering pipeline to read an `\includegraphics`
- * target file. Tries extensions in the standard graphicx order when the
- * source has none. Returns null on miss.
+ * target file. Tries the candidates `figureCandidatePaths` names — graphicx's
+ * extension order × the paper's `\graphicspath` dirs. Returns null on miss.
  *
  * `fingerprint` is the cache-key seed — for FSA we use mtime+size; the
  * dev backend uses the Last-Modified header.
@@ -2067,34 +2068,22 @@ export interface FigureSourceFile {
   fingerprint: string;
 }
 
-const FIGURE_PROBE_EXTS = ["pdf", "png", "jpg", "jpeg", "webp"];
-
 export async function readFigureSource(
   docId: string,
   source: string,
+  graphicspaths: readonly string[] = [],
 ): Promise<FigureSourceFile | null> {
   if (!source) return null;
+  const candidates = figureCandidatePaths(source, graphicspaths);
+  if (candidates.length === 0) return null;
   const docHandle = await requireDocHandle(docId);
-  const parts = source.split("/").filter((p) => p.length > 0);
-  if (parts.length === 0) return null;
-  const filename = parts[parts.length - 1];
-  const dirParts = parts.slice(0, -1);
-  let dir = docHandle;
-  for (const part of dirParts) {
-    try {
-      dir = await dir.getDirectoryHandle(part);
-    } catch {
-      return null;
-    }
-  }
-  const dotIdx = filename.lastIndexOf(".");
-  const candidates =
-    dotIdx > 0
-      ? [{ name: filename, ext: filename.slice(dotIdx + 1).toLowerCase() }]
-      : FIGURE_PROBE_EXTS.map((ext) => ({ name: `${filename}.${ext}`, ext }));
   for (const c of candidates) {
+    const parts = c.path.split("/").filter((p) => p.length > 0);
+    if (parts.length === 0) continue;
     try {
-      const fh = await dir.getFileHandle(c.name);
+      let dir = docHandle;
+      for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+      const fh = await dir.getFileHandle(parts[parts.length - 1]);
       const file = await fh.getFile();
       return {
         bytes: await file.arrayBuffer(),

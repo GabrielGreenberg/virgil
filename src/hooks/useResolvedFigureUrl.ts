@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { rasterizeFigure, RasterizeError } from "@/lib/figures/rasterize";
 import {
   readFigureSource,
@@ -10,7 +10,13 @@ import {
   writeFigureIndex,
   readFigureIndex,
   getDocWriteHandle,
+  readTex,
 } from "@/lib/storage";
+import {
+  loadDocGraphicsPath,
+  peekDocGraphicsPath,
+  subscribeDocGraphicsPath,
+} from "@/lib/figures/doc-graphics-path";
 
 export type FigureUrlStatus = "loading" | "ready" | "not-found" | "error";
 
@@ -38,7 +44,7 @@ async function sha1Hex12(input: string): Promise<string> {
 }
 
 // Module-level shared cache of resolved figure rasters, keyed by
-// `docId\0source`. The first instance to resolve a figure (typically a
+// `[docId, source, graphicspath]`. The first instance to resolve a figure (typically a
 // main-editor FigurePanel on doc load) publishes the decoded Blob here; a
 // later-mounting consumer (e.g. the read-only FigurePanel inside a popped
 // section float) adopts it SYNCHRONOUSLY on its first frame instead of
@@ -57,7 +63,26 @@ interface CachedRaster {
   cacheKey: string;
 }
 const rasterCache = new Map<string, CachedRaster>();
-const rasterCacheKey = (docId: string, source: string) => `${docId}\u0000${source}`;
+// The paper's `\graphicspath` decides WHICH file `source` names (task 1437), so
+// it is part of every key: a preamble change re-resolves rather than adopting
+// the raster of the file the old search path found.
+const rasterCacheKey = (docId: string, source: string, gpKey: string) =>
+  JSON.stringify([docId, source, gpKey]);
+
+/** Snapshot key for a doc's `\graphicspath` dirs; "?" = not read yet. */
+const UNREAD_GP = "?";
+function gpKeyOf(docId: string | null): string {
+  const dirs = docId ? peekDocGraphicsPath(docId) : undefined;
+  return dirs === undefined ? UNREAD_GP : JSON.stringify(dirs);
+}
+
+/** The raster cache-key seed. A paper with no `\graphicspath` keeps the seed
+ *  it always had, so its on-disk rasters stay valid. */
+function rasterSeed(source: string, dirs: readonly string[], fingerprint: string): string {
+  return dirs.length
+    ? `${source}:${JSON.stringify(dirs)}:${fingerprint}`
+    : `${source}:${fingerprint}`;
+}
 
 // Module-level shared, REFCOUNTED object URLs, keyed by
 // `docId\0source\0cacheKey`. Every consumer of a given raster (the main-editor
@@ -129,7 +154,7 @@ function releaseSharedFigureUrl(key: string): void {
 // Flow per mount:
 //   0. Synchronously adopt a shared cached raster if present (pre-paint),
 //      acquiring its shared URL, so the first frame already shows the image.
-//   1. readFigureSource → bytes + ext + fingerprint
+//   1. the doc's `\graphicspath` dirs, then readFigureSource → bytes + ext + fingerprint
 //   2. computeCacheKey from source + fingerprint
 //   3. If the adopted raster's key still matches → keep it (no re-decode)
 //   4. Else try the on-disk raster cache; if a matching raster exists, hand
@@ -146,6 +171,14 @@ export function useResolvedFigureUrl(
   const [status, setStatus] = useState<FigureUrlStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [bust, setBust] = useState(0);
+  const gpKey = useSyncExternalStore(
+    useCallback(
+      (fn: () => void) => (docId ? subscribeDocGraphicsPath(docId, fn) : () => {}),
+      [docId],
+    ),
+    () => gpKeyOf(docId),
+    () => UNREAD_GP,
+  );
 
   // useLayoutEffect (not useEffect) so the synchronous shared-cache adopt
   // below commits BEFORE the browser paints — a warm-cache consumer shows the
@@ -167,8 +200,8 @@ export function useResolvedFigureUrl(
     // the <img> hits the warm decode cache and paints with no re-decode flash
     // (Issue-7b). The async re-validation below confirms the source's
     // fingerprint is unchanged and only re-resolves if it isn't.
-    const ckey = rasterCacheKey(docId, source);
-    const hit = rasterCache.get(ckey);
+    const ckey = rasterCacheKey(docId, source, gpKey);
+    const hit = gpKey === UNREAD_GP ? undefined : rasterCache.get(ckey);
     let adoptedKey: string | null = null;
     if (hit) {
       heldUrlKey = urlCacheKey(docId, source, hit.cacheKey);
@@ -184,13 +217,15 @@ export function useResolvedFigureUrl(
 
     (async () => {
       try {
-        const sourceFile = await readFigureSource(docId, source);
+        const dirs = await loadDocGraphicsPath(docId, readTex);
+        if (cancelled) return;
+        const sourceFile = await readFigureSource(docId, source, dirs);
         if (cancelled) return;
         if (!sourceFile) {
           setStatus("not-found");
           return;
         }
-        const cacheKey = await sha1Hex12(`${source}:${sourceFile.fingerprint}`);
+        const cacheKey = await sha1Hex12(rasterSeed(source, dirs, sourceFile.fingerprint));
         if (cancelled) return;
 
         // (3) The adopted blob is still current (same fingerprint) → keep the
@@ -255,18 +290,19 @@ export function useResolvedFigureUrl(
       cancelled = true;
       if (heldUrlKey) releaseSharedFigureUrl(heldUrlKey);
     };
-  }, [docId, source, bust]);
+  }, [docId, source, gpKey, bust]);
 
   const refresh = useCallback(() => {
     if (!docId) return;
     // Drop the shared in-memory raster so the bust-triggered re-resolve below
     // can't adopt the stale blob (the on-disk raster is deleted async too).
-    rasterCache.delete(rasterCacheKey(docId, source));
+    rasterCache.delete(rasterCacheKey(docId, source, gpKey));
     (async () => {
       try {
-        const sourceFile = await readFigureSource(docId, source);
+        const dirs = await loadDocGraphicsPath(docId, readTex);
+        const sourceFile = await readFigureSource(docId, source, dirs);
         if (sourceFile) {
-          const cacheKey = await sha1Hex12(`${source}:${sourceFile.fingerprint}`);
+          const cacheKey = await sha1Hex12(rasterSeed(source, dirs, sourceFile.fingerprint));
           const h = getDocWriteHandle(docId);
           if (h) await deleteFigureRaster(h, cacheKey).catch(() => {});
         }
@@ -274,7 +310,7 @@ export function useResolvedFigureUrl(
         setBust((n) => n + 1);
       }
     })();
-  }, [docId, source]);
+  }, [docId, source, gpKey]);
 
   return { url, status, error, refresh };
 }
