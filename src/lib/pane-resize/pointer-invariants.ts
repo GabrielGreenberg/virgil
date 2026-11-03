@@ -13,16 +13,45 @@
  * A bespoke gesture imports these; it does not re-derive them.
  */
 
+import { isMac } from "@/lib/platform";
+
 /**
- * May this event START a drag?
+ * Is this press a CONTEXT click — the platform's "open the context menu"
+ * chord rather than a primary press? On macOS (and iPadOS with a pointer)
+ * Ctrl+click reports `button === 0` and is followed by a `contextmenu`, so the
+ * button number alone cannot tell it from a plain click (task 1449). Elsewhere
+ * Ctrl+click is an ordinary modified primary press and stays one.
+ */
+export function isContextClick(e: { button: number; ctrlKey?: boolean }): boolean {
+  if (e.button === 2) return true;
+  return e.button === 0 && e.ctrlKey === true && isMac();
+}
+
+/**
+ * May this event START a drag — or act as a one-shot press (`press-props`)?
  *
- * Primary button, primary pointer only. A right-press must not begin a gesture
- * whose end event the context menu then eats. `isPrimary` exists on
+ * Primary button, primary pointer only, and never a context click. A
+ * right-press must not begin a gesture whose end event the context menu then
+ * eats; a macOS Ctrl+click IS a right-press in all but its button number, so
+ * it is refused too (task 1449) — a native `<button>` does not act on it, and
+ * neither does any press or gesture this gate admits. `isPrimary` exists on
  * PointerEvent only; a MouseEvent-based gesture passes an object without it
  * and is gated on the button alone.
+ *
+ * Every caller takes this gate whole (task 1449 audited them: the pane-resize
+ * engine, the float/card/marginalia/outline/scrollbar drags, the atom and
+ * text-object grabs, the content-drag start, the ⚡ bolt's press latch and the
+ * press door) — none of them means anything by a context click, and each would
+ * otherwise start a gesture whose release the menu swallows. A caller that
+ * someday wants Ctrl+click on a Mac must test `isContextClick` itself, out
+ * loud, rather than re-derive the button check.
  */
-export function isPrimaryDragStart(e: { button: number; isPrimary?: boolean }): boolean {
-  return e.button === 0 && e.isPrimary !== false;
+export function isPrimaryDragStart(e: {
+  button: number;
+  isPrimary?: boolean;
+  ctrlKey?: boolean;
+}): boolean {
+  return e.button === 0 && e.isPrimary !== false && !isContextClick(e);
 }
 
 /**
@@ -47,8 +76,10 @@ export function isMissedRelease(e: { buttons: number }): boolean {
  * (task 993). The ⚡ bolt's editor-press latch is the shape: it took the start
  * gate, cleared only on a window `mouseup`, and so a release the page never saw
  * (Cmd+Tab with the button held, macOS Ctrl+click's context menu eating the
- * mouseup — Ctrl+click is `button 0`, so it passes the start gate) wedged the
- * latch until some later click anywhere.
+ * mouseup — Ctrl+click is `button 0`, so it passed the start gate until task
+ * 1449 taught the gate `isContextClick`) wedged the latch until some later
+ * click anywhere. The `contextmenu` edge below stays: any other menu chord
+ * the gate does not know still ends the latch.
  *
  * Arm it at the press; `onEnd` fires EXACTLY ONCE, on the first of:
  *   - the real `mouseup`,
