@@ -21,7 +21,7 @@ import { render, cleanup, act, fireEvent } from "@testing-library/react";
 
 const pick = vi.hoisted(() => ({
   importFigureFile: vi.fn(async () => "figures/new.png"),
-  pickFigureFile: vi.fn(async () => ({ name: "new.png" })),
+  pickFigureFile: vi.fn(async () => ({ file: { name: "new.png" }, handle: null })),
 }));
 vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(

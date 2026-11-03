@@ -28,6 +28,7 @@ import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
 // `pickFigureFile` encapsulates the FSA-picker vs hidden-`<input>` dispatch.
 import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
 import { pickFigureFile } from "@/lib/figures/pick-file";
+import { announceEditRefused, editRefusalNotice, errorText } from "@/lib/edit-refusal";
 import { TexUnsafeAssetPathError } from "@/lib/figures/asset-import";
 import { useOptionalSystemDialog } from "@/components/system-dialog-host";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
@@ -567,34 +568,56 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       e.stopPropagation();
     }
     // Task 1083: refuse BEFORE the OS picker opens — a read-only / pen-held
-    // doc offers no image swap the enforcer would then drop.
+    // doc offers no image swap the enforcer would then drop. Silent: the
+    // chrome is hidden there, so this is not a refusal the user acted on.
     if (!figureMayWrite()) return;
-    if (!docId) {
-      console.warn("[figure] no docId — cannot resolve picked file against paper folder");
-      return;
-    }
-    const handle = getDocWriteHandle(docId);
+    // A pick with nowhere to land is not offered (the button is hidden when
+    // `canTakePath` is false); this guard is the belt to that.
+    if (!canTakePath) return;
+    // Every refusal from here on follows a visible "Choose image…" click or
+    // a pick in the OS dialog — the user acted, so it SAYS so (task 1436),
+    // through the app's one refusal voice.
+    const refuse = (
+      reason: "changed" | "read-only" | "failed",
+      detail?: string,
+      draft?: string,
+    ) =>
+      announceEditRefused(
+        editRefusalNotice({
+          title: "Image not added",
+          what: "image",
+          reason,
+          during: "you were choosing a file",
+          detail,
+          draft,
+        }),
+      );
+    const handle = docId ? getDocWriteHandle(docId) : null;
     if (!handle) {
-      console.warn("[figure] no active write pipeline — cannot import file");
-      return;
-    }
-    if (!canTakePath) {
-      console.warn("[figure] no \\includegraphics to point at the picked file — nothing imported");
+      refuse("failed", "this paper’s folder is not open for writing, so the file could not be copied into it.");
       return;
     }
     let picked;
     try {
       picked = await pickFigureFile();
     } catch (err) {
-      console.error("[figure] file picker failed:", err);
+      refuse("failed", `the file picker failed (${errorText(err)}).`);
       return;
     }
-    if (!picked) return;
+    if (!picked) return; // the user cancelled — nothing to say
+    const pickedName = picked.file.name;
     // …and again AFTER it: the pen can be taken while the dialog is up, and
     // `importFigureFile` WRITES the asset to disk — a copy made for a doc edit
     // the enforcer then drops is an orphan in `figures/`. Likewise the node
     // must still be there to take the path.
-    if (!figureMayWrite() || !liveTarget()) return;
+    if (!figureMayWrite()) {
+      refuse("read-only", undefined, pickedName);
+      return;
+    }
+    if (!liveTarget()) {
+      refuse("changed", undefined, pickedName);
+      return;
+    }
     try {
       const relPath = await importFigureFile(handle, picked);
       applyPath(relPath);
@@ -613,7 +636,10 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         }
         return;
       }
+      // Any other import failure — no free name in `figures/`, a write or
+      // permission error — is a refusal the user must hear about.
       console.error("[figure] failed to import picked file:", err);
+      refuse("failed", errorText(err), pickedName);
     }
   };
 
@@ -689,17 +715,24 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
             in it) and stays; its drop-zone paint is flattened on paper by a
             print rule on `.figure-block-empty` instead. */}
         <div className={chromeOnly("figure-empty-stack")}>
-          <button
-            type="button"
-            className="figure-empty-cta"
-            onClick={handlePickFile}
-          >
-            <span className="figure-empty-cta-icon" aria-hidden="true">
-              <FolderIcon />
-            </span>
-            <span className="figure-empty-cta-label">Choose image…</span>
-          </button>
-          <div className="figure-empty-hint">or click anywhere to edit code</div>
+          {/* No "Choose image…" when a pick has nowhere to land (task 1436). */}
+          {canTakePath ? (
+            <button
+              type="button"
+              className="figure-empty-cta"
+              onClick={handlePickFile}
+            >
+              <span className="figure-empty-cta-icon" aria-hidden="true">
+                <FolderIcon />
+              </span>
+              <span className="figure-empty-cta-label">Choose image…</span>
+            </button>
+          ) : null}
+          {canTakePath ? (
+            <div className="figure-empty-hint">or click anywhere to edit code</div>
+          ) : (
+            <div className="figure-empty-hint">Click anywhere to edit code</div>
+          )}
         </div>
         <div className={chromeOnly("figure-chrome figure-chrome-empty")}>
           <ChromeIconButton
@@ -773,7 +806,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
             currentPercent={currentPercent}
             canScale={canScale}
             onScale={applyScale}
-            onPickFile={handlePickFile}
+            onPickFile={canTakePath ? handlePickFile : undefined}
             onRefresh={handleRefreshAll}
             beside={chromeBeside}
           />
@@ -928,7 +961,10 @@ interface FigureChromeProps {
   /** Whether the write LANDED — `false` makes the box drop its draft back to
    *  the document's value (task 1434). */
   onScale: (percent: number) => boolean | void;
-  onPickFile: (e: React.MouseEvent) => void;
+  /** Absent when a picked path has nowhere to land (`canTakePath` false):
+   *  the chrome does not offer a verb with no write behind it (task 1436 —
+   *  the rule `canEditWidthInOptions` follows for the width box). */
+  onPickFile?: (e: React.MouseEvent) => void;
   onRefresh: (e: React.MouseEvent) => void;
   // When true the row sits beside the image's right edge (`.figure-chrome-beside`)
   // instead of overlaying its top-right corner; decided by FigureFullView's fit
@@ -1007,9 +1043,11 @@ export function FigureChrome({
       className={chromeOnly(`figure-chrome${beside ? " figure-chrome-beside" : ""}`)}
       contentEditable={false}
     >
-      <ChromeIconButton title="Pick image file" onClick={onPickFile}>
-        <FolderIcon />
-      </ChromeIconButton>
+      {onPickFile ? (
+        <ChromeIconButton title="Pick image file" onClick={onPickFile}>
+          <FolderIcon />
+        </ChromeIconButton>
+      ) : null}
       <div
         className="figure-scale"
         data-disabled={canScale ? undefined : "true"}

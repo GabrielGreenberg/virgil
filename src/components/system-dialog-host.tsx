@@ -27,6 +27,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -43,6 +44,7 @@ import {
   confirmActionVariant,
   confirmDialogCuedDefault,
 } from "./confirm-cue-policy";
+import { registerEditRefusalVoice } from "@/lib/edit-refusal";
 
 /* ── Option types ────────────────────────────────────────────────── */
 
@@ -143,6 +145,29 @@ export function SystemDialogProvider({ children }: { children: ReactNode }) {
       },
     }),
     [enqueue],
+  );
+
+  // The app's ONE "your edit was refused after you acted" voice (task 1436):
+  // pure doors and NodeViews announce through `announceEditRefused` and it
+  // lands here as an alert, the typed/picked input handed back beneath.
+  useEffect(
+    () =>
+      registerEditRefusalVoice((notice) => {
+        void api.alert({
+          title: notice.title,
+          message: notice.draft ? (
+            <>
+              {notice.message} Your input, so you can re-apply it:
+              <pre className="mt-2 whitespace-pre-wrap break-words select-text font-mono">
+                {notice.draft}
+              </pre>
+            </>
+          ) : (
+            notice.message
+          ),
+        });
+      }),
+    [api],
   );
 
   const head = queue[0];

@@ -5,6 +5,11 @@ import { isLabelTaken, isTexSafeLabelKey } from "@/lib/labels";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
 import type { ConfirmChoice } from "@/components/ConfirmDialog";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import {
+  announceEditRefused,
+  editRefusalNotice,
+  type EditRefusalNotice,
+} from "@/lib/edit-refusal";
 
 /**
  * LABEL RENAME — the ONE door every rename of a `\label{…}` declaration enters
@@ -206,17 +211,26 @@ export async function renameLabelWithRefs(
   // moved under it, and the second resolve is also what a uuid-addressed
   // caller (a float, the Outline) relies on.
   // Nor does editability: the pen may have been taken while the modal was up.
-  if (!surfaceEditableNow(target)) return "read-only";
+  //
+  // A refusal HERE, once the user has answered the question, is announced
+  // (task 1436): they acted, and the key they typed would otherwise vanish
+  // without a word. Refusals before the question stay with the caller — the
+  // field's own live warning already says why (unsafe, conflict).
+  const refusedAfterAnswer = (outcome: LabelRenameOutcome): LabelRenameOutcome => {
+    if (asked) announceEditRefused(labelRenameRefusalNotice(outcome, newLabel));
+    return outcome;
+  };
+  if (!surfaceEditableNow(target)) return refusedAfterAnswer("read-only");
   const after = opts.locate();
-  if (!after) return "unresolved";
+  if (!after) return refusedAfterAnswer("unresolved");
   if (asked) {
     // Nor does any FACT survive it. The question named `oldLabel`; if the
     // declaration now says something else (a float, the Outline, an undo, a
     // reload moved it), writing would clobber that edit and carry refs from a
     // key the node no longer declares. And a key free before the modal may
     // have been claimed by another declaration while it was up.
-    if (currentLabelOf(after.node) !== oldLabel) return "stale";
-    if (newLabel && isLabelTaken(target, newLabel, oldLabel)) return "conflict";
+    if (currentLabelOf(after.node) !== oldLabel) return refusedAfterAnswer("stale");
+    if (newLabel && isLabelTaken(target, newLabel, oldLabel)) return refusedAfterAnswer("conflict");
   }
 
   const tr = target.state.tr;
@@ -234,6 +248,32 @@ export async function renameLabelWithRefs(
 
   target.view.dispatch(tr);
   return "renamed";
+}
+
+/**
+ * The words a rename refused AFTER its question was answered says (task 1436),
+ * the typed key handed back. `conflict` here means another declaration
+ * claimed the key while the question was open.
+ */
+export function labelRenameRefusalNotice(
+  outcome: LabelRenameOutcome,
+  newLabel: string | null,
+): EditRefusalNotice {
+  const title = newLabel ? "Label not renamed" : "Label not removed";
+  const during = "you were answering";
+  if (outcome === "read-only") {
+    return editRefusalNotice({ title, what: "label", reason: "read-only", during, draft: newLabel ?? undefined });
+  }
+  if (outcome === "conflict") {
+    return editRefusalNotice({
+      title,
+      what: "label",
+      reason: "failed",
+      detail: `another label became “${newLabel}” while ${during}.`,
+      draft: newLabel ?? undefined,
+    });
+  }
+  return editRefusalNotice({ title, what: "label", reason: "changed", during, draft: newLabel ?? undefined });
 }
 
 /**
