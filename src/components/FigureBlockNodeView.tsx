@@ -491,10 +491,12 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     command: (n.attrs.command as string | undefined) || "",
   });
 
-  const applyGraphicsEdit = (edit: (text: string) => string | null) => {
-    if (!figureMayWrite()) return;
+  // Answers whether a write LANDED, so the width box can reconcile its draft
+  // from the document instead of keeping a value nothing wrote (task 1434).
+  const applyGraphicsEdit = (edit: (text: string) => string | null): boolean => {
+    if (!figureMayWrite()) return false;
     const hit = liveTarget();
-    if (!hit) return;
+    if (!hit) return false;
     const { pos } = hit;
     const live = liveParts(hit.node);
     if (isFigure) {
@@ -502,21 +504,20 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         { extras: live.extras, trailingExtras: live.trailingExtras },
         edit,
       );
-      if (next) applyFigureExtrasEdit(editor, pos, next);
-    } else {
-      const next = edit(live.command);
-      if (next != null) applyGraphicsCommandEdit(editor, pos, next);
+      return next ? applyFigureExtrasEdit(editor, pos, next) : false;
     }
+    const next = edit(live.command);
+    return next != null && applyGraphicsCommandEdit(editor, pos, next);
   };
 
-  const applyScale = (newPercent: number) => {
+  const applyScale = (newPercent: number): boolean => {
     const clamped = clampPercent(newPercent);
     // The task-470 zero-move rule: a gesture that produced no NET change
     // persists nothing (a redundant `setNodeMarkup` is an undo step and an
     // autosave arm). A source with NO width is never "unchanged" — every
     // first commit lands, including the seed the steppers start from.
-    if (currentPercent !== null && clamped === currentPercent) return;
-    applyGraphicsEdit((text) => withUpdatedFigureWidth(text, clamped));
+    if (currentPercent !== null && clamped === currentPercent) return true;
+    return applyGraphicsEdit((text) => withUpdatedFigureWidth(text, clamped));
   };
 
   // Whether a picked path has somewhere to land — asked BEFORE the import, so
@@ -924,7 +925,9 @@ interface FigureChromeProps {
    *  `DEFAULT_SCALE_PERCENT` on their first press. */
   currentPercent: number | null;
   canScale: boolean;
-  onScale: (percent: number) => void;
+  /** Whether the write LANDED — `false` makes the box drop its draft back to
+   *  the document's value (task 1434). */
+  onScale: (percent: number) => boolean | void;
   onPickFile: (e: React.MouseEvent) => void;
   onRefresh: (e: React.MouseEvent) => void;
   // When true the row sits beside the image's right edge (`.figure-chrome-beside`)
@@ -970,8 +973,11 @@ export function FigureChrome({
     const clamped = clampPercent(num);
     // `null !== 50`, so the first commit on a width-less figure LANDS — the
     // box can only display a value it can commit (task 537).
-    if (clamped !== currentPercent) {
-      onScale(clamped);
+    // A refused write (the pen moved, the width is not the chrome's) restores
+    // the document's value — the box never shows a width nothing wrote.
+    if (clamped !== currentPercent && onScale(clamped) === false) {
+      setDraft(draftFor(currentPercent));
+      return;
     }
     setDraft(String(clamped));
   };
