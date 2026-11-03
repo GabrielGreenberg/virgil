@@ -1,0 +1,160 @@
+// @vitest-environment jsdom
+/**
+ * The tool gutter (task 1440): tools write their body at the top of the
+ * gutter, the standing lists fold, "More" adds a list, a row click goes
+ * through the editor's own jump door and selects the card, and a to-do's box
+ * ticks without a jump.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { FootnoteInfo } from "@/components/Editor";
+import type { TodoItem } from "@/lib/types";
+
+const scrollToFootnote = vi.fn();
+const jumpToCard = vi.fn();
+const setSelectedFootnoteId = vi.fn();
+const setSelectedTodoId = vi.fn();
+
+// The panel primitives transitively reach the `@/lib/storage` barrel (the
+// known vitest resolver gotcha). The gutter only needs the chrome provider,
+// which a tool body reads for its close X.
+vi.mock("@/components/panel-primitives", () => ({
+  PanelChromeProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock("../../contexts/editor-ref", () => ({
+  useEditorRefContext: () => ({
+    editorRef: { current: { scrollToFootnote, jumpToCard, scrollToExample: vi.fn(), scrollToCitation: vi.fn() } },
+  }),
+}));
+vi.mock("../../contexts/selections", () => ({
+  useSelectionsContext: () => ({
+    selected: { kind: "footnote", id: "f2" },
+    selectedBibKey: null,
+    setSelectedFootnoteId,
+    setSelectedTodoId,
+    setSelectedExampleId: vi.fn(),
+    setSelectedCitationId: vi.fn(),
+    setSelectedBibKey: vi.fn(),
+    setSelectedNoteId: vi.fn(),
+    setSelectedArchiveId: vi.fn(),
+    setSelectedCommentId: vi.fn(),
+    setSelectedCutterCardId: vi.fn(),
+    setSelectedReportCardId: vi.fn(),
+  }),
+}));
+vi.mock("@/hooks/useDiagnostics", () => ({
+  useDiagnosticsContext: () => ({
+    allLatexErrors: [],
+    dismissedErrorIds: new Set(),
+    selectedErrorId: null,
+    setSelectedErrorId: vi.fn(),
+    errorJump: { mode: "anchor", jump: vi.fn() },
+  }),
+}));
+
+import { ToolGutter } from "../ToolGutter";
+import { __resetToolGutterStoreForTests } from "@/lib/tool-gutter-store";
+import type { PanelKind } from "@/panels/_shared/types";
+
+const para = (text: string) => ({
+  type: "doc",
+  content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+});
+const footnotes = [
+  { footnoteId: "f1", number: 1, pos: 1, content: para("First note") },
+  { footnoteId: "f2", number: 2, pos: 9, content: para("Second note") },
+] as unknown as FootnoteInfo[];
+const todos = [
+  { id: "t1", text: "Write the coda", done: false, notes: "", aiRequest: false, createdAt: "", links: [] },
+] as TodoItem[];
+
+const ALL: PanelKind[] = [
+  "outline", "search", "wordcount", "footnotes", "examples", "todo", "notes",
+  "citations", "bibliography", "reports", "archive", "revisions", "cutter", "errors",
+];
+
+function mount(visible: PanelKind[] = ALL, toggleTodo = vi.fn()) {
+  render(
+    <ToolGutter
+      visiblePanels={visible}
+      renderTool={(t) => <div data-testid="tool-body">{t} body</div>}
+      footnotes={footnotes}
+      examples={[]}
+      todoItems={todos}
+      toggleTodo={toggleTodo}
+      noteCards={[]}
+      citations={[]}
+      bibEntries={[]}
+      citationPositionMap={new Map()}
+      archiveSnippets={[]}
+      revisionCards={[]}
+      cutterCards={[]}
+      reportCards={[]}
+      archivedIds={new Set()}
+    />,
+  );
+  return { toggleTodo };
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetToolGutterStoreForTests();
+  vi.clearAllMocks();
+});
+
+describe("ToolGutter", () => {
+  it("shows the three tools and the three standing lists, no card chrome", () => {
+    mount();
+    expect(screen.getByRole("toolbar", { name: "Tools" }).querySelectorAll("button")).toHaveLength(3);
+    const sections = [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
+      s.getAttribute("data-gutter-section"),
+    );
+    expect(sections).toEqual(["footnotes", "examples", "todo"]);
+    expect(document.querySelector("[data-card]")).toBeNull();
+    expect(screen.getByText("None yet")).toBeTruthy();
+  });
+
+  it("a tool icon writes that tool at the top; a second click closes it", () => {
+    mount();
+    const outline = document.querySelector('[data-gutter-tool-button="outline"]')!;
+    fireEvent.click(outline);
+    expect(screen.getByTestId("tool-body").textContent).toBe("outline body");
+    fireEvent.click(document.querySelector('[data-gutter-tool-button="search"]')!);
+    expect(screen.getByTestId("tool-body").textContent).toBe("search body");
+    fireEvent.click(document.querySelector('[data-gutter-tool-button="search"]')!);
+    expect(screen.queryByTestId("tool-body")).toBeNull();
+  });
+
+  it("folds a list from its heading", () => {
+    mount();
+    const fn = document.querySelector('[data-gutter-section="footnotes"]')!;
+    expect(within(fn as HTMLElement).getByText("First note")).toBeTruthy();
+    fireEvent.click(within(fn as HTMLElement).getByRole("button", { expanded: true }));
+    expect(within(fn as HTMLElement).queryByText("First note")).toBeNull();
+  });
+
+  it("a row click selects the card and jumps through the editor's door", () => {
+    mount();
+    fireEvent.click(screen.getByText("First note"));
+    expect(setSelectedFootnoteId).toHaveBeenCalledWith("f1");
+    expect(scrollToFootnote).toHaveBeenCalledWith("f1", expect.any(HTMLElement));
+    // The selected card's row is marked.
+    expect(document.querySelector('[data-gutter-row="fn:f2"]')!.hasAttribute("data-selected")).toBe(true);
+  });
+
+  it("a to-do's box ticks without a jump", () => {
+    const { toggleTodo } = mount();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark done" }));
+    expect(toggleTodo).toHaveBeenCalledWith("t1");
+    expect(jumpToCard).not.toHaveBeenCalled();
+  });
+
+  it("offers only what the host offers (the Reader's whitelist)", () => {
+    mount(["outline", "search", "footnotes", "examples", "notes"]);
+    expect(screen.getByRole("toolbar", { name: "Tools" }).querySelectorAll("button")).toHaveLength(2);
+    const sections = [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
+      s.getAttribute("data-gutter-section"),
+    );
+    expect(sections).toEqual(["footnotes", "examples"]);
+  });
+});

@@ -194,6 +194,14 @@ export const FLAG_REGISTRY = {
   },
 
   // ── rollout flags ───────────────────────────────────────────────────────
+  "virgil:gutter-layout": {
+    default: true,
+    status: "rollout",
+    readAt: "call",
+    requires: [],
+    legacy: "off",
+    note: "Cards-right / tools-left layout (task 1440): every card renders in the RIGHT gutter, the left gutter is the tool gutter (Outline/Search/Word count + fold-out text lists written on the manila), no icon strips. OFF restores the two icon strips and docked panel bands.",
+  },
   "virgil:identity-cascade": {
     default: false,
     status: "rollout",
@@ -299,6 +307,7 @@ export const NON_FLAG_VIRGIL_KEYS: Readonly<Record<string, string>> = {
   "virgil:install-prompt-dismissed": "timestamp of the dismissed PWA install prompt",
   "virgil:selection-menu-color-palette": "the selection menu's last-used colour palette",
   "virgil:spell-dictionary": "the user's global custom spelling dictionary",
+  "virgil:tool-gutter": "the left tool gutter's view state — open tool, added list sections, folded sections (tool-gutter-store.ts, task 1440)",
   "virgil:pref-css-paint": "the editor-prefs custom properties last painted, replayed before first paint (pref-css-bootstrap.ts)",
   "virgil:collab-sessions:": "sessionStorage key prefix (+ checked window id): the collab sessions this window ran per paper, adopted after a reload (collab-session.ts, task 1392)",
   "virgil:tex-delimiters-changed": "DOM event name (not a storage key)",

@@ -1958,6 +1958,22 @@ parked of all), while the **promise** is withheld unless the gesture
 would actually succeed. A footnote always can (its body is the atom's only
 attr); a citation cannot while it is keyless or still a draft record.
 
+## The tool gutter: text on the manila (task 1440)
+
+Under the default cards-right / tools-left layout, the LEFT gutter is not a
+panel and wears none of the panel vocabulary below: **no pod, no card frame,
+no shadow, no border** — its tools and lists are written straight onto the
+manila (`--background`). Headings are 11px uppercase `--panel-header-text-color`
+(the panel-header voice, without the header bar); rows are the serif body at
+`--panel-font-size`, two-line clamped, `--muted` when settled (a done to-do, an
+applied change), accent ink + 600 when their card is the selected one. The only
+hover FILL is `.hover-on-light` on the fold headings; a row hovers by ink and
+underline. A tool body (Outline / Search / Word count) keeps its own layout but
+its boxed rows lie flat (`.tool-gutter-tool` overrides). The strips on both
+sides are the bare collapse toggle only. Generalisable rule: **a list of what is
+IN the paper reads as text; a thing you can open and edit reads as a card** —
+and the cards are on the right.
+
 ## Panels
 
 Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is

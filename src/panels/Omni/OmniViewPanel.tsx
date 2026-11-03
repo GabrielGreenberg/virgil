@@ -364,9 +364,16 @@ export function OmniBinStack({
   children,
   host = "pod",
   occupantRef,
+  belowNavigator = false,
 }: {
   children: ReactNode;
   host?: "frame" | "pod";
+  /** Frame host only (task 1440): this column also carries the applied-change
+   *  navigator, which is sticky at the column's top — the same spot the bin
+   *  slot pins to. Step the bins down under it (its 32px box + 8px margin)
+   *  rather than let the two pin over each other. A prop, not a `:has()`
+   *  rule — globals.css carries none (editor-observer / css-invalidation). */
+  belowNavigator?: boolean;
   /** In-pod host only: receives the STICKY inner — the element that is both
    *  the pinned chrome and its own last painted pixel — so the cascade can
    *  floor its first card under it (task 544, `cascadeFloorForStickyOccupant`).
@@ -376,7 +383,12 @@ export function OmniBinStack({
 }) {
   if (host === "frame") {
     return (
-      <div data-omni-bin-stack="" data-omni-bin-host="frame" className="flex flex-col gap-1">
+      <div
+        data-omni-bin-stack=""
+        data-omni-bin-host="frame"
+        className="flex flex-col gap-1"
+        style={belowNavigator ? { paddingTop: 40 } : undefined}
+      >
         {children}
       </div>
     );
@@ -992,7 +1004,10 @@ function OmniViewPanel({
       >
         {binSlot ? (
           createPortal(
-            <OmniBinStack host="frame">
+            <OmniBinStack
+              host="frame"
+              belowNavigator={!!bulkPendingChanges && bulkPendingChanges.count > 0}
+            >
               <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
               <OmniOutsideFocusBin items={outsideFocus} />
             </OmniBinStack>,

@@ -51,6 +51,7 @@
 import type { PanelId, Side } from "@/hooks/useViewPrefs";
 import type { PanelKind } from "@/panels/_shared/types";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import { gutterLayoutOn } from "@/lib/gutter-layout";
 
 /** Which side each panel is placed on right now. A missing entry (or `null`)
  *  means "no placement" → the registry default decides. */
@@ -105,5 +106,8 @@ export function resolvePanelSide(
   panelSides: PanelSideMap,
   override?: Side | null,
 ): Side {
+  // Cards-right / tools-left (task 1440): the right gutter hosts EVERY card,
+  // so every panel's side is "right" — markers, rails and omni columns follow.
+  if (gutterLayoutOn()) return "right";
   return override ?? panelSides[panel] ?? defaultPanelSide(panel);
 }
