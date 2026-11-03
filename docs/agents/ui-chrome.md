@@ -67,10 +67,14 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
   kind rails, `deriveCategorySides` and therefore every omni category, and
   EditorPane's `sideForKind` all land right together. Placements stay stored
   (flag OFF restores them).
-- **No icon strips.** Each side's strip is `GutterCollapseButton` — the
-  `SideCollapseToggle` alone, `bare` (no white view pod, no pressed box), at the
-  strip's stated `--icon-strip-w` so zen's page width (`normal-view-rails.ts`)
-  is unchanged.
+- **No icon strips — edge to edge.** An OPEN column runs to the window edge
+  and carries its own collapse toggle (`SideCollapseToggle`, `bare`): first in
+  the tool gutter's tools row on the left (`ToolGutter.leading`), on a sticky
+  head row above the cards on the right (`.gutter-side-head`; the omni's sticky
+  navigator and bins pin below it through `--omni-sticky-top`, set on the
+  rail). Only a COLLAPSED side mounts `GutterCollapseButton`, the bare toggle
+  at the strip's stated `--icon-strip-w` — the term zen's page width reads
+  (`normal-view-rails.ts`, `NormalViewSide.edgeToEdge`).
 - **No docked bands.** `PaneRail` passes an empty stack to both `PanelColumn`s and
   EditorPane's open-panel portal loop skips docked entries (floats still render).
   `useViewPrefs.openPanel` / `openPanelDocked` / `togglePanel` route through

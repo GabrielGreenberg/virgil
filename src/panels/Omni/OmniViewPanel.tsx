@@ -387,7 +387,9 @@ export function OmniBinStack({
         data-omni-bin-stack=""
         data-omni-bin-host="frame"
         className="flex flex-col gap-1"
-        style={belowNavigator ? { paddingTop: 40 } : undefined}
+        // Below the right gutter's head row (`--omni-sticky-top`, task 1440)
+        // and, when the navigator is up, below that too.
+        style={{ paddingTop: `calc(var(--omni-sticky-top, 0px) + ${belowNavigator ? 40 : 0}px)` }}
       >
         {children}
       </div>
@@ -403,7 +405,9 @@ export function OmniBinStack({
         ref={occupantRef}
         data-omni-bin-sticky=""
         className="flex flex-col gap-1"
-        style={{ position: "sticky", top: "var(--pod-gap)", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
+        // `--omni-sticky-top`: the right gutter's head row (task 1440) sets
+        // it so the sticky chrome pins below the row, not under it.
+        style={{ position: "sticky", top: "calc(var(--pod-gap) + var(--omni-sticky-top, 0px))", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
       >
         {children}
       </div>
@@ -678,6 +682,9 @@ function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
   return (
     <div
       className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-[var(--pending-ai-edge)] bg-surface px-2 py-1.5 shadow-[var(--card-shadow-ambient)]"
+      // Pins below the right gutter's head row where one is mounted
+      // (`--omni-sticky-top`, task 1440); `top-0` otherwise.
+      style={{ top: "var(--omni-sticky-top, 0px)" }}
       role="group"
       aria-label="Pending change navigator"
       data-omni-bulk-pending={bulk.count}

@@ -83,6 +83,30 @@ describe("the shipped basis, evaluated in px", () => {
   });
 });
 
+describe("the gutter layout's edge-to-edge rail (task 1440)", () => {
+  const S = TOKENS.stripWidth;
+  const G = PANE_ROW_GAP_PX;
+  const edge = (side: NormalViewSide): NormalViewSide => ({ ...side, edgeToEdge: true });
+
+  it("an open side mounts NO strip — the column runs to the window edge", () => {
+    expect(normalViewPodWidth(1600, { left: edge(open(320)), right: edge(open(400)) }, TOKENS)).toBe(
+      1600 - (320 + G) - (400 + G),
+    );
+  });
+
+  it("a collapsed side keeps only the strip, its expand control", () => {
+    expect(normalViewPodWidth(1600, { left: edge(collapsed(500)), right: edge(open(320)) }, TOKENS)).toBe(
+      1600 - (S + G) - (320 + G),
+    );
+  });
+
+  it("ships no strip term for an open edge-to-edge side", () => {
+    expect(normalViewPodBasis({ left: edge(open(320)), right: none })).toBe(
+      `calc(100% - max(320px, var(--panel-min)) - ${PANE_ROW_GAP_PX}px)`,
+    );
+  });
+});
+
 describe("normalViewPodBasis — the CSS zen ships", () => {
   it("encodes exactly the model's terms", () => {
     expect(normalViewPodBasis({ left: open(320), right: collapsed(200) })).toBe(

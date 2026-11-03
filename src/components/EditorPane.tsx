@@ -5692,11 +5692,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             present: visiblePanelsLeft.length > 0,
             collapsed: !!viewPrefs.prefs.collapsedLeft,
             panelPref: viewPrefs.getPanelWidth("left", "omni"),
+            edgeToEdge: gutterLayout,
           },
           right: {
             present: visiblePanelsRight.length > 0,
             collapsed: !!viewPrefs.prefs.collapsedRight,
             panelPref: viewPrefs.getPanelWidth("right", "omni"),
+            edgeToEdge: gutterLayout,
           },
         })
       : null;
@@ -7166,6 +7168,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   gutterLayout ? (
                     <ToolGutter
                       visiblePanels={visiblePanels}
+                      // The side's collapse toggle leads the tools row — one
+                      // row of controls, no strip column (task 1440).
+                      leading={viewPrefs ? <SideCollapseToggle side="left" viewPrefs={viewPrefs} bare /> : undefined}
                       renderTool={(tool) => (
                         <PaneRailBody side="left" panelKind={tool} {...paneRailBodyShared} />
                       )}
@@ -8591,9 +8596,10 @@ function SideCollapseToggle({
 
 /**
  * The gutter layout's strip (task 1440): no icons, no white view pod — the
- * collapse toggle alone, sitting on the manila. Keeps the strip's STATED
- * width (`--icon-strip-w`) so zen's normal-view page width
- * (normal-view-rails.ts) is unchanged.
+ * collapse toggle alone, sitting on the manila. Mounted only while the side
+ * is COLLAPSED (an open column runs to the window edge and carries its own
+ * toggle), at the strip's STATED width (`--icon-strip-w`), which is the term
+ * zen's normal-view page width (normal-view-rails.ts, `edgeToEdge`) reads.
  */
 function GutterCollapseButton({
   side,
@@ -8694,7 +8700,7 @@ function PaneRail({
       height: viewPrefs.prefs.panelHeights[id],
     }));
 
-    const omniNode: React.ReactNode = toolGutter ?? (
+    const omniBody: React.ReactNode = toolGutter ?? (
         <OmniHost
           side={side}
           omniDimResting={viewPrefs.prefs.omniDimResting}
@@ -8781,17 +8787,37 @@ function PaneRail({
         />
     );
 
+    const isCollapsed = side === "left"
+      ? viewPrefs.prefs.collapsedLeft
+      : viewPrefs.prefs.collapsedRight;
+
+    // The gutter layout runs edge to edge (task 1440): the collapse toggle
+    // lives IN the column — first in the tool gutter's tools row on the left
+    // (passed as its `leading`), on a sticky head row above the cards on the
+    // right — so no strip column stands between the column and the window
+    // edge. The omni's own sticky chrome (navigator, bins) pins below that
+    // head through `--omni-sticky-top`, set on the rail below.
+    const omniNode: React.ReactNode =
+      gutterLayout && !isLeft ? (
+        <div data-gutter-side-host={side}>
+          <div className="gutter-side-head" data-gutter-head={side}>
+            <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
+          </div>
+          {omniBody}
+        </div>
+      ) : (
+        omniBody
+      );
+
+    // In the gutter layout the strip survives only while the side is
+    // COLLAPSED — it is then the one control that brings the column back.
     const stripJsx = !viewPrefs.zenMode && (
       gutterLayout ? (
-        <GutterCollapseButton side={side} viewPrefs={viewPrefs} />
+        isCollapsed ? <GutterCollapseButton side={side} viewPrefs={viewPrefs} /> : null
       ) : (
         <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
       )
     );
-
-    const isCollapsed = side === "left"
-      ? viewPrefs.prefs.collapsedLeft
-      : viewPrefs.prefs.collapsedRight;
 
     // One always-mounted omni desktop with up to MAX_STACK opaque bands
     // stacked over it. PanelColumn owns the band frames + the bottom-edge
@@ -8836,6 +8862,11 @@ function PaneRail({
           // establishing a scroll context, so descendants' sticky
           // positioning still latches to the row.
           overflow: 'clip',
+          // The right gutter's sticky head row (above): the omni's sticky
+          // navigator and bins read this and pin below it.
+          ...(gutterLayout && !isLeft
+            ? { ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)" }
+            : null),
         }}
       >
         {isLeft ? (

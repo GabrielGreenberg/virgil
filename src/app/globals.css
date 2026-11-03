@@ -6675,14 +6675,39 @@ body.perf-contain .static-borrowed-text {
   max-height: var(--dock-slot-frame-h, 100vh);
   overflow-y: auto;
   scrollbar-width: thin;
-  padding: 8px 4px 16px 0;
-  font-size: var(--panel-font-size, 13px);
+  /* The column runs to the window edge (no strip column), so the gutter
+     carries its own edge inset. */
+  padding: 6px 4px 16px 6px;
+  /* The Outline's voice: the UI sans at text-sm — stated here because the
+     pane around the gutter speaks the paper's serif. */
+  font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.375;
   color: var(--foreground);
 }
 .tool-gutter-tools {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding-bottom: 8px;
+}
+/* The right gutter's head (task 1440, edge to edge): the collapse toggle on
+   a sticky row above the cards, where the left gutter's tools row sits —
+   the strip column is gone. The omni's own sticky chrome (the pending
+   navigator, the bins) pins BELOW it through `--omni-sticky-top`, which the
+   rail sets to this row's height. */
+.gutter-side-head {
+  position: sticky;
+  top: 0;
+  z-index: 31;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  /* 2px, not the tool gutter's 6px: the left column sits 4px lower in its
+     rail, and the two toggles must share a row across the window. */
+  height: calc(var(--pod-gap) + 42px);
+  padding: calc(var(--pod-gap) + 2px) 4px 8px;
+  background: var(--background);
 }
 /* A tool body renders the dock's own panel body, frameless: no fixed
    height (it grows with its content inside the gutter's scroll), and its
@@ -6741,36 +6766,44 @@ body.perf-contain .static-borrowed-text {
   color: var(--muted-light);
 }
 .tool-gutter-empty {
-  margin: 2px 0 0 18px;
+  margin: 2px 0 0;
   font-style: italic;
   color: var(--muted-light);
 }
+/* The LIST is the grid and its rows are `display: contents`, so a numbered
+   list hangs every marker in ONE shared column (sized by the widest marker —
+   a footnote's "12", an example's "(3)", a to-do's checkbox) and the text
+   edge is the tab stop after it; an unnumbered list has no column and its
+   text starts at the edge. */
 .tool-gutter-rows {
   list-style: none;
   margin: 2px 0 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+}
+.tool-gutter-rows[data-marked] {
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 .tool-gutter-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding-left: 18px;
+  display: contents;
 }
 .tool-gutter-row[data-muted] {
   color: var(--muted);
 }
 .tool-gutter-check {
-  flex: none;
-  margin: 4px 0 0 -18px;
+  /* aligns: the row text's 2px padding plus its first line's cap height, so the box sits on the text's baseline */
+  margin: 5px 0 0;
   accent-color: var(--accent);
 }
 .tool-gutter-row-text {
-  flex: 1;
   min-width: 0;
   padding: 2px 0;
   text-align: left;
-  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
-  line-height: 1.35;
+  font-family: inherit;
+  line-height: inherit;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -6790,9 +6823,11 @@ body.perf-contain .static-borrowed-text {
   text-decoration: line-through;
 }
 .tool-gutter-marker {
-  margin-right: 6px;
-  font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
-  font-size: 11px;
+  /* The row text's own padding and size, so marker and text share a
+     baseline — a number here is a label, not a superscript. */
+  padding-top: 2px;
+  font-size: inherit;
+  line-height: inherit;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }

@@ -1964,15 +1964,22 @@ Under the default cards-right / tools-left layout, the LEFT gutter is not a
 panel and wears none of the panel vocabulary below: **no pod, no card frame,
 no shadow, no border** — its tools and lists are written straight onto the
 manila (`--background`). Headings are 11px uppercase `--panel-header-text-color`
-(the panel-header voice, without the header bar); rows are the serif body at
-`--panel-font-size`, two-line clamped, `--muted` when settled (a done to-do, an
-applied change), accent ink + 600 when their card is the selected one. The only
-hover FILL is `.hover-on-light` on the fold headings; a row hovers by ink and
-underline. A tool body (Outline / Search / Word count) keeps its own layout but
-its boxed rows lie flat (`.tool-gutter-tool` overrides). The strips on both
-sides are the bare collapse toggle only. Generalisable rule: **a list of what is
-IN the paper reads as text; a thing you can open and edit reads as a card** —
-and the cards are on the right.
+(the panel-header voice, without the header bar); rows are the UI sans at
+`text-sm` (the Outline's voice), two-line clamped, `--muted` when settled (a
+done to-do, an applied change), accent ink + 600 when their card is the selected
+one. A numbered list HANGS its markers: the list is a grid whose rows are
+`display: contents` (`.tool-gutter-rows[data-marked]`), so every marker — a
+footnote number, an example's `(n)`, a to-do's checkbox — sits in one shared
+column and the text edge is the tab stop after it. The only hover FILL is
+`.hover-on-light` on the fold headings; a row hovers by ink and underline. A
+tool body (Outline / Search / Word count) keeps its own layout but its boxed
+rows lie flat (`.tool-gutter-tool` overrides). **There is no strip:** both
+gutters run to the window edge, the collapse toggle leads the left gutter's
+tools row and sits on a sticky head row above the right gutter's cards
+(`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
+one piece of chrome. Generalisable rule: **a list of what is IN the paper reads
+as text; a thing you can open and edit reads as a card** — and the cards are on
+the right.
 
 ## Panels
 

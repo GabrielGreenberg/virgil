@@ -96,6 +96,9 @@ export interface ToolGutterProps {
   visiblePanels: readonly PanelKind[];
   /** Renders a tool's body (the frameless PaneRailBody). */
   renderTool: (tool: GutterTool) => ReactNode;
+  /** Leads the tools row — the side's collapse toggle, so the gutter's
+   *  controls read as ONE row and no strip column is needed. */
+  leading?: ReactNode;
   footnotes: readonly FootnoteInfo[];
   examples: readonly ExampleInfo[];
   todoItems: readonly TodoItem[];
@@ -162,8 +165,9 @@ export function ToolGutter(p: ToolGutterProps) {
 
   return (
     <div className="tool-gutter" data-tool-gutter="">
-      {tools.length > 0 && (
+      {(tools.length > 0 || p.leading) && (
         <div className="tool-gutter-tools" role="toolbar" aria-label="Tools">
+          {p.leading}
           {tools.map((t) => {
             const on = activeTool === t;
             return (
@@ -283,6 +287,10 @@ function GutterSectionView({
   onToggleTodo: (id: string) => void;
 }) {
   const title = SECTION_TITLE[section];
+  // A numbered list hangs its markers in ONE column shared by every row (the
+  // list is the grid; the rows are `display: contents`), so every row in it
+  // fills that column — with its number, its checkbox, or an empty cell.
+  const marked = rows.some((r) => !!r.marker || !!r.todo);
   return (
     <section className="tool-gutter-section" data-gutter-section={section}>
       <div className="tool-gutter-section-head group">
@@ -311,7 +319,7 @@ function GutterSectionView({
         rows.length === 0 ? (
           <p className="tool-gutter-empty">None yet</p>
         ) : (
-          <ul className="tool-gutter-rows">
+          <ul className="tool-gutter-rows" data-marked={marked ? "" : undefined}>
             {rows.map((r) => (
               <li
                 key={r.key}
@@ -320,7 +328,7 @@ function GutterSectionView({
                 data-muted={r.muted ? "" : undefined}
                 data-selected={selectedIds.has(rowEntityId(r)) ? "" : undefined}
               >
-                {r.todo && (
+                {r.todo ? (
                   <input
                     type="checkbox"
                     className="tool-gutter-check"
@@ -328,13 +336,16 @@ function GutterSectionView({
                     onChange={() => onToggleTodo(r.todo!.id)}
                     aria-label={r.todo.done ? "Mark not done" : "Mark done"}
                   />
-                )}
+                ) : marked ? (
+                  <span className="tool-gutter-marker" aria-hidden={r.marker ? undefined : true}>
+                    {r.marker}
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   className="tool-gutter-row-text"
                   onClick={(e) => onActivate(r.jump, e.currentTarget)}
                 >
-                  {r.marker && <span className="tool-gutter-marker">{r.marker}</span>}
                   {r.text}
                 </button>
               </li>
