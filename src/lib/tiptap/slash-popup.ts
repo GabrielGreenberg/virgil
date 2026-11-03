@@ -13,7 +13,8 @@ import {
   slashDisabledNames,
   stepEnabledIndex,
 } from "./slash-applicability";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { claimGestureKey } from "@/lib/pane-resize/pointer-invariants";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
 const META_KEY = "slashPopup";
@@ -331,8 +332,12 @@ export const SlashPopupExtension = Extension.create({
               return true;
             }
 
-            if (event.key === "Escape") {
-              event.preventDefault();
+            if (isCancelEscape(event)) {
+              // CLAIMED (task 1441): the open popup is the innermost transient
+              // thing on screen, so this Escape closes it and nothing behind
+              // it — not `useMarginEdit`'s window cancel, not a scrimless
+              // window's Escape.
+              claimGestureKey(event);
               view.dispatch(view.state.tr.setMeta(META_KEY, CLOSED));
               return true;
             }

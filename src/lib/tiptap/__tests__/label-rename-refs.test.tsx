@@ -511,7 +511,31 @@ function openLabelInput(el: HTMLElement, uuid: string): HTMLInputElement {
 const pressEnter = (input: HTMLInputElement) =>
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
 
+// Task 1441 — a chrome input CLAIMS the keys it answers: a window `keydown`
+// listener (`useMarginEdit`'s cancel, a scrimless window's Escape) must see
+// neither the Escape that cancels the label nor the Enter that commits it.
+function windowKeySpy(): { seen: string[]; dispose: () => void } {
+  const seen: string[] = [];
+  const onKey = (e: KeyboardEvent) => seen.push(e.key);
+  window.addEventListener("keydown", onKey);
+  return { seen, dispose: () => window.removeEventListener("keydown", onKey) };
+}
+
 describe("the HEADING strip's label input enters the door", () => {
+  it("task 1441: Escape and Enter are CLAIMED — no window listener sees them", async () => {
+    const { el, cleanup: c } = mount({ current: async () => "confirm" as const });
+    const spy = windowKeySpy();
+    try {
+      const esc = openLabelInput(el, H1);
+      expect(esc.isConnected).toBe(true);
+      esc.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      const enter = openLabelInput(el, H1);
+      enter.value = "sec:claimed";
+      pressEnter(enter);
+      await settle();
+      expect(spy.seen).toEqual([]);
+    } finally { spy.dispose(); c(); }
+  });
   it("DEFECT: renaming a labelled heading carries its refs when the host's confirm says yes", async () => {
     const confirm = vi.fn(async () => "confirm" as const);
     const { editor, el, cleanup: c } = mount({ current: confirm });
@@ -910,6 +934,22 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
       expect(refLabels(editor)).toEqual(BASE_REFS);
       spy.mockRestore();
     } finally { c(); }
+  });
+
+  it("task 1441: Escape and Enter are CLAIMED — no window listener sees them", async () => {
+    const { el, cleanup: c } = mount({ current: async () => "confirm" as const });
+    const spy = windowKeySpy();
+    try {
+      const esc = openPodInput(el, uuid, kind);
+      expect(esc.isConnected).toBe(true);
+      esc.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      expect(podOf(el, uuid, kind).querySelector("input")).toBeNull();
+      const enter = openPodInput(el, uuid, kind);
+      enter.value = "";
+      pressEnter(enter);
+      await settle();
+      expect(spy.seen).toEqual([]);
+    } finally { spy.dispose(); c(); }
   });
 });
 
