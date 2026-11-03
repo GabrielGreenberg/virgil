@@ -3284,9 +3284,10 @@ textarea {
  * inline style, which wins over this.
  *
  * PRINT, deliberately unscoped: math prints in the user's ink. The @media
- * print block flattens exactly two inline atoms to `color: inherit` —
- * `.citation-node` and `.label-ref-node` — and its own comment says why: they
- * "lose the chip border and tinted background so they read as plain prose."
+ * print block flattens every CHIP atom (`ATOM_REGISTRY` `chip: true` —
+ * citation, label-ref, `\today`) to `color: inherit`, and its own comment
+ * says why: they "lose the chip border and tinted background so they read as
+ * plain prose."
  * That is a rule about CHIPS, not about pref ink on paper; the non-chip
  * colored atoms (`.footnote-marker` superscript red, `.latex-comment` steel
  * blue) already print in theirs. Math is a glyph atom, so it joins the
@@ -4927,7 +4928,11 @@ body.perf-contain .static-borrowed-text {
 
 /* A computed-text command chip (`\today`, task 1335) — the `\ref` chip's
    quiet frame, with the prose ink: it reads as part of the sentence (a date),
-   not as a link. Nothing opens on click, so no hover wash. */
+   not as a link. Nothing opens on click, so no hover wash and no `pointer`
+   (task 1443): its registry row says `opensOnClick: false`, so it rests on
+   `default` and is upgraded to `grab` only where the gesture is live — the
+   chip moves with the text. On paper it flattens to plain prose with the
+   other chips (`chip: true`; the print block below). */
 .latex-dynamic-node {
   display: inline;
   background: var(--label-ref-bg, #f0f0f0);
@@ -4935,13 +4940,12 @@ body.perf-contain .static-borrowed-text {
   border: 1px solid var(--label-ref-border-color, #d5d3ce);
   padding: 0px 4px;
   color: inherit;
-  /* The base every atom keeps (atom-grab-affordance census): upgraded to
-     `grab` where the gesture is live — the chip moves with the text. */
-  cursor: pointer;
+  cursor: default;
 }
 
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
-   `pointer` (click → Card / edit popover) is upgraded to `grab`; the
+   rest cursor (`pointer` where a click opens a Card / popover, `default`
+   where it opens nothing — `AtomMeta.opensOnClick`) is upgraded to `grab`; the
    press shows `grabbing` until the drop-mode crosshair takes over.
    Higher specificity than each atom's base (0,1,0) rule, so it wins.
 
@@ -4952,8 +4956,9 @@ body.perf-contain .static-borrowed-text {
    non-pen-holder, every non-active keep-alive pane, the Library Reader, and
    a live cowork-pen hold — the one moment the topbar is displaying a badge
    whose whole job is to say the document is read-only. Where the attribute
-   is absent or "false" the base `cursor: pointer` answers, which is the
-   honest read-only affordance: a click still opens the atom's Card.
+   is absent or "false" the base rest cursor answers, which is the honest
+   read-only affordance: `pointer` where a click still opens the atom's Card
+   or popover, `default` on an atom where it opens nothing (task 1443).
 
    Do NOT re-derive the scope from `contenteditable`: MAIN pins it "true"
    whatever the user-facing state (Editor.tsx), so it would exempt exactly
@@ -6401,12 +6406,16 @@ body.perf-contain .static-borrowed-text {
      NodeView chrome. `!important` because a member's screen rule may set
      `display` at higher specificity (`.figure-block .figure-annotation`).
 
-     Inline citation/label-ref tokens are DOCUMENT content and keep their
-     text; they lose the chip border and tinted background so they read as
-     plain prose. */
+     Inline chip atoms (citation, label-ref, computed `\today`) are DOCUMENT
+     content and keep their text; they lose the chip border and tinted
+     background so they read as plain prose. The selector list is EXACTLY the
+     `ATOM_REGISTRY` rows marked `chip: true` — pinned by
+     `print-atom-chip-posture.test.ts`, so a new chip atom fails CI by name
+     rather than printing boxed (task 1443; the `\today` chip did). */
   .virgil-chrome-only { display: none !important; }
   .citation-node,
-  .label-ref-node {
+  .label-ref-node,
+  .latex-dynamic-node {
     background: transparent !important;
     border: 0 !important;
     padding: 0 !important;

@@ -489,7 +489,7 @@ describe("the print block carries ONE rule for the marker", () => {
     // It reaches paper flattened only because this OLDER rule is `!important`
     // and the attention rule is not — a fact about THIS rule, pinned here so a
     // future "tidy" of it cannot silently print a hover wash.
-    const m = PRINT_BLOCK.match(/\.citation-node,\s*\.label-ref-node\s*\{([^}]*)\}/);
+    const m = PRINT_BLOCK.match(/\.citation-node,\s*\.label-ref-node[^{}]*\{([^}]*)\}/);
     expect(m, "the print block no longer flattens `.citation-node`").toBeTruthy();
     expect(m![1]).toMatch(/background:\s*transparent\s*!important/);
     expect(m![1]).toMatch(/border:\s*0\s*!important/);

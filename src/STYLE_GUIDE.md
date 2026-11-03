@@ -576,7 +576,13 @@ The token scales:
   The `\today` chip (`.latex-dynamic-node`, task 1335) BORROWS the label-ref
   frame tokens (`--label-ref-bg`/`-border-color`) with `color: inherit`: it is
   a computed WORD of the sentence (a date), so it wears the prose ink and no
-  hover wash — the frame alone says "this is computed, not typed".
+  hover wash — the frame alone says "this is computed, not typed". Nothing
+  opens on click, so it rests on `cursor: default` (never `pointer`), upgraded
+  to `grab` only where atoms are graspable; on paper it flattens to plain prose
+  like `\ref`/`\cite` (task 1443). Both are REGISTRY facets, not per-kind CSS
+  folklore: `AtomMeta.opensOnClick` decides `pointer` vs `default`
+  (`atom-grab-affordance.test.ts`), and `AtomMeta.chip` puts a kind in the
+  print flatten (`print-atom-chip-posture.test.ts`).
 - **Rendered math ink** (`--math-color`, pref `mathColor`, shipped `#6b4fa0`):
   the one atom whose chrome is not a pill — KaTeX glyphs, painted by a `color`
   on `.inline-math` / `.display-math` / `.math-popover-preview`. KaTeX's own
