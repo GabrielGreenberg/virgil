@@ -42,7 +42,7 @@ import {
 } from "@/lib/document-class";
 import { DOC_TYPES } from "@/lib/doc-types";
 import { iconHint } from "@/components/Hint";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 /**
  * The distinct `\documentclass` names offered by the doc-type control,
@@ -476,7 +476,7 @@ export default function ManageStylesModal({
                             if (isCommitEnter(e)) {
                               e.preventDefault();
                               commitRename(s.id);
-                            } else if (e.key === "Escape") {
+                            } else if (isCancelEscape(e)) {
                               setRenamingId(null);
                             }
                           }}

@@ -23,10 +23,6 @@ import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT, strip, walkFiles } from "@/lib/__tests__/_source-scan";
 
-/** A key/code compared to Escape, in any of the spellings JS allows. */
-export const BARE_ESCAPE =
-  /\b(?:key|code)\s*[!=]==?\s*["'`]Esc(?:ape)?["'`]|["'`]Esc(?:ape)?["'`]\s*[!=]==?\s*[\w.]*\b(?:key|code)\b|\bcase\s*["'`]Esc(?:ape)?["'`]\s*:/;
-
 /** A keyboard event built by hand and cast — the shape that drops the fields
  *  key-intent reads (`isComposing`, `keyCode`, `repeat`). */
 const COERCED_KEY_EVENT = /\bas\s+(?:unknown\s+as\s+)?(?:React\.)?KeyboardEvent\b/;
@@ -67,18 +63,9 @@ describe("menu key-intent CENSUS (task 1188)", () => {
     expect(rels.length).toBeGreaterThan(15);
   });
 
-  it("no menu-door file compares a key to Escape — it asks isCancelEscape(e)", () => {
-    const offenders: string[] = [];
-    for (const { rel, code } of files) {
-      code.split("\n").forEach((line, i) => {
-        if (BARE_ESCAPE.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
-      });
-    }
-    expect(
-      offenders,
-      `Ask isCancelEscape(e) from @/lib/key-intent — a bare Escape gate cancels the menu/field with the Escape that only meant "cancel the IME composition":\n${offenders.join("\n")}`,
-    ).toEqual([]);
-  });
+  // The Escape SPELLING leg that lived here (task 1188) is now app-wide:
+  // `src/lib/__tests__/escape-key-census.test.ts` (task 1448) holds it for
+  // every production file, this population included.
 
   it("no menu-door file hand-builds a keyboard event (pass the native event)", () => {
     const offenders: string[] = [];
@@ -119,16 +106,7 @@ describe("menu key-intent CENSUS (task 1188)", () => {
     expect(effect.indexOf("endOnEscape()")).toBeGreaterThan(repeatAt);
   });
 
-  it("the matchers catch every spelling (red leg)", () => {
-    for (const bad of [
-      `if (e.key === "Escape") go();`,
-      `if (ev.key !== 'Escape') return;`,
-      `if ("Escape" === e.key)`,
-      `if (e.key === "Esc")`,
-      `case "Escape":`,
-    ]) expect(BARE_ESCAPE.test(bad), bad).toBe(true);
-    for (const ok of [`if (isCancelEscape(e)) go();`, `<Kbd keys="Escape" />`, `esc: "Escape",`])
-      expect(BARE_ESCAPE.test(ok), ok).toBe(false);
+  it("the matchers catch every shape (red leg)", () => {
     expect(COERCED_KEY_EVENT.test(`} as unknown as React.KeyboardEvent);`)).toBe(true);
     expect(COERCED_KEY_EVENT.test(`(e: React.KeyboardEvent) => {`)).toBe(false);
     expect(IMPORTS_MENU.test(`import { MenuProvider } from "@/components/menu";`)).toBe(true);

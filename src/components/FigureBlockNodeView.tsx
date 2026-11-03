@@ -40,7 +40,7 @@ import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { describedHint, iconHint } from "@/components/Hint";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
@@ -1089,7 +1089,7 @@ export function FigureChrome({
               // so one Enter dispatched TWO byte-identical `setNodeMarkup`
               // transactions: two undo steps and two autosave arms per resize.
               session.commitAndBlur(e.currentTarget, commitDraft);
-            } else if (e.key === "Escape") {
+            } else if (isCancelEscape(e)) {
               e.preventDefault();
               session.cancel(e.currentTarget, () =>
                 setDraft(draftFor(currentPercent)),

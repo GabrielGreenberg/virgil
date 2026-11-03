@@ -14,7 +14,7 @@ import { Button } from "@/components/Button";
 import { Chevron } from "@/components/Chevron";
 import { Textarea } from "@/components/field-primitives";
 import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 import { copyOutcomeMessage, copyText } from "@library/lib/paper-actions";
 
 interface Props {
@@ -279,7 +279,7 @@ export function AiNotePanel({
             e.preventDefault();
             if (!busy) onSubmit();
           }
-          if (e.key === "Escape") {
+          if (isCancelEscape(e)) {
             e.preventDefault();
             onCancel();
           }

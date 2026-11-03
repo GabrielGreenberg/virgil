@@ -15,7 +15,7 @@ import { activatableProps } from "@/lib/activatable-props";
 import { autoSizeInput, syncInputWidth } from "@/lib/autoSizeInput";
 import { useFieldDraft } from "@/components/field-draft";
 import { iconHint } from "@/components/Hint";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 import { parTitleAffordance } from "@/lib/par-title-affordance";
 
 export interface FloatTitleFieldProps {
@@ -105,7 +105,7 @@ export function FloatTitleField({
             if (isCommitEnter(e)) {
               e.preventDefault();
               commitFrom(e.currentTarget);
-            } else if (e.key === "Escape") {
+            } else if (isCancelEscape(e)) {
               e.preventDefault();
               // Restore the DOM value before leaving edit mode: some browsers
               // fire `focusout` when a focused element is removed, and this

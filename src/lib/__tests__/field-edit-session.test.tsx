@@ -328,10 +328,13 @@ const TAKES_DOOR = /session\.(?:cancel|commitAndBlur)\(/i;
  *  (`SizeStepper`, `PanelTextSizeRow`) is true and leaves nothing to cancel.
  *  This is the honest discriminator: Escape needs a door only where it means
  *  something DIFFERENT from Enter. */
+/** A handler body that names Escape, in production's spelling or a fixture's. */
+const NAMES_ESCAPE = /["']Escape["']|isCancelEscape\(/;
+
 function hasDistinctCancel(body: string): boolean {
   // Enter is spelled `isCommitEnter(e)` in production (task 1165's one Enter
-  // gate), and Escape `isCancelEscape(e)` in the menu doors (task 1188); the
-  // literals are kept for the fixtures below.
+  // gate), and Escape `isCancelEscape(e)` app-wide (task 1448, widening task
+  // 1188's menu doors); the literals are kept for the fixtures below.
   const ESC = String.raw`(?:["']Escape["']|isCancelEscape\(\w*\))`;
   const ENTER = String.raw`(?:["']Enter["']|isCommitEnter\(\w*\))`;
   const withoutAlias = body
@@ -493,7 +496,7 @@ describe("CENSUS — a cancelling field takes the door", () => {
 
   it("MECHANISM — the hook's Escape ends through the field's cancel when it has one", () => {
     const hook = strip(readFileSync(path.join(REPO, TAB_INDENT_HOOK), "utf8"), true);
-    const esc = hook.slice(hook.indexOf('e.key === "Escape"'));
+    const esc = hook.slice(hook.indexOf("isCancelEscape(e)"));
     expect(esc).toMatch(/if\s*\(cancel\)\s*cancel\(el\)/);
     // The bare blur is the FALLBACK, never unconditional.
     expect(esc).toMatch(/else\s*\(el as HTMLElement\)\.blur\(\)/);
@@ -533,7 +536,7 @@ describe("CENSUS — a cancelling field takes the door", () => {
       const src = strip(readFileSync(path.join(REPO, rel), "utf8"), true);
       const h = keydownHandlers(src);
       // They DO name Escape and they DO blur…
-      expect(h.some((x) => /["']Escape["']/.test(x.body))).toBe(true);
+      expect(h.some((x) => NAMES_ESCAPE.test(x.body))).toBe(true);
       expect(h.some((x) => ENDS_SESSION.test(x.body))).toBe(true);
       // …but always in the same statement as Enter, which is the tell, and the
       // REASON is that `onChange` has already committed every keystroke.
@@ -635,7 +638,7 @@ function aliasingFields(): string[] {
   for (const { rel, src } of productionSources()) {
     if (!src.includes("Escape")) continue;
     for (const h of keydownHandlers(src)) {
-      if (!/["']Escape["']/.test(h.body)) continue;
+      if (!NAMES_ESCAPE.test(h.body)) continue;
       if (hasDistinctCancel(h.body)) continue;
       out.push(rel);
       break;

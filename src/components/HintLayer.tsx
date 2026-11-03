@@ -30,6 +30,7 @@
  * `editor.on` subscriber. Typing fires none of this.
  */
 
+import { isCancelEscape } from "@/lib/key-intent";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -227,7 +228,7 @@ export function HintLayer(): ReactElement | null {
     };
     const onFocusOut = () => hide();
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") hide();
+      if (isCancelEscape(e)) hide();
     };
     const onScroll = () => hide();
     const onPointerDown = () => hide();

@@ -1,5 +1,6 @@
 "use client";
 
+import { isCancelEscape } from "@/lib/key-intent";
 import { useCallback, useEffect, useRef } from "react";
 import {
   claimGestureKey,
@@ -304,7 +305,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
     // is claimed only while a drag is live: with no gesture this listener
     // answers nothing and lets every key travel on.
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !dragRef.current) return;
+      if (!isCancelEscape(e) || !dragRef.current) return;
       claimGestureKey(e);
       endDrag("cancel");
     };

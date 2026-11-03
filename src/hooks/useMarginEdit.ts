@@ -1,3 +1,4 @@
+import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { useUnmountEnding } from "@/lib/pane-resize/use-unmount-ending";
@@ -368,10 +369,14 @@ export function useMarginEdit({
     "window",
     "keydown",
     (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        cancel();
-      }
+      if (!isCancelEscape(e)) return;
+      e.preventDefault();
+      // A cancel answers the first press; a held Escape's repeats end nothing
+      // and are eaten until keyup, so they cannot also close what margin-edit
+      // mode was sitting over (task 1448).
+      if (e.repeat) return;
+      swallowRepeatsUntilKeyup(e);
+      cancel();
     },
     { enabled: marginEditMode },
   );

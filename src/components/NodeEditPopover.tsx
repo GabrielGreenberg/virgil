@@ -33,7 +33,7 @@ import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { FIELD_COMMIT_SHORTCUT, matchesPortableChord } from "@/lib/portable-chord";
 import { pressProps } from "@/lib/press-props";
 
@@ -171,11 +171,15 @@ export default function NodeEditPopover({
   // Escape → math COMMITS (save-by-default), figure CANCELS (revert).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        if (isMath) commit();
-        else cancel();
-      }
+      if (!isCancelEscape(e)) return;
+      e.preventDefault();
+      // The first press ends the popover; a held Escape's repeats end nothing
+      // (no second commit/cancel before unmount) and are eaten until keyup, so
+      // they cannot reach the dialog or editor beneath (task 1448).
+      if (e.repeat) return;
+      swallowRepeatsUntilKeyup(e);
+      if (isMath) commit();
+      else cancel();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
