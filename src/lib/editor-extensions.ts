@@ -30,7 +30,7 @@ import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom"
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { headingAttrsForLevel, setParagraphInRange } from "@/lib/tiptap/heading-level";
 import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
+import { labelKeyProblem, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import {
   DEFERRING_PARENTS,
@@ -1126,7 +1126,7 @@ export function createHeadingWithLabel(
             // draft (a blur that re-focused the input would trap focus in it).
             // Task 534: pre-534 the warning was advisory and the duplicate was
             // committed anyway — a duplicate `\label` is always a LaTeX error.
-            if (newLabel && newLabel !== oldLabel && isLabelTaken(target, newLabel, oldLabel)) {
+            if (newLabel && newLabel !== oldLabel && labelKeyProblem(target, newLabel, oldLabel)) {
               if (via === "enter") {
                 warning.refresh();
                 input.focus();

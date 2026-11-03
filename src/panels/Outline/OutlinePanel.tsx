@@ -48,6 +48,7 @@ import { activatableProps } from "@/lib/activatable-props";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { labelKeyProblemIn, labelKeyProblemText, type LabelKeyProblem } from "@/lib/labels";
 
 /* ── parTitle ink ───────────────────────────────────────────────────────
  * The four parTitle sites below read `--par-title-color-dense`, NOT the bare
@@ -268,14 +269,25 @@ function InlineLabel({
     }
   }, [editing, label]);
 
-  const commit = () => {
+  // The live problem with the draft (task 1435): a key TeX cannot read back
+  // (`unsafe`, a pure character test) or one another declaration claims
+  // (`taken`, through EditorLayout's registry). The rename door refuses both
+  // on its own; Enter on a problem keeps the field open, a blur abandons it.
+  const conflict: LabelKeyProblem | null = editing
+    ? (labelKeyProblemIn(null, text, label ?? null) ??
+      (isTaken && text.trim() && isTaken(text.trim(), label ?? null) ? "taken" : null))
+    : null;
+
+  const commit = (via: "enter" | "blur") => {
+    if (conflict) {
+      if (via === "enter") return;
+      setEditing(false);
+      return;
+    }
     const trimmed = text.trim();
     onCommit(trimmed || null);
     setEditing(false);
   };
-
-  const conflict =
-    editing && isTaken ? isTaken(text.trim(), label ?? null) : false;
 
   if (editing) {
     return (
@@ -285,10 +297,10 @@ function InlineLabel({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (isCommitEnter(e)) commit();
+            if (isCommitEnter(e)) commit("enter");
             if (isCancelEscape(e)) setEditing(false);
           }}
-          onBlur={commit}
+          onBlur={() => commit("blur")}
           onClick={(e) => e.stopPropagation()}
           className={`text-[11px] leading-tight mt-0.5 bg-transparent outline-none border-b w-full ${
             conflict
@@ -299,7 +311,7 @@ function InlineLabel({
         />
         {conflict && (
           <div className="text-[10px] text-danger-muted leading-tight mt-0.5">
-            ⚠ label already in use
+            {labelKeyProblemText(conflict, text)}
           </div>
         )}
       </>

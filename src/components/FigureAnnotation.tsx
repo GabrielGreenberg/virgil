@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { isLabelTaken, collectLabelKeys, isLabelTakenIn } from "@/lib/labels";
+import {
+  collectLabelKeys,
+  labelKeyProblem,
+  labelKeyProblemIn,
+  labelKeyProblemText,
+  type LabelKeyProblem,
+} from "@/lib/labels";
 import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { chromeOnly } from "@/lib/view-only-chrome";
@@ -52,7 +58,9 @@ export default function FigureAnnotation({
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState(label);
-  const [conflict, setConflict] = useState(false);
+  // The live problem with the draft — a key ANOTHER declaration claims, or
+  // one TeX cannot read back (task 1435) — or null. One state, one strip.
+  const [conflict, setConflict] = useState<LabelKeyProblem | null>(null);
   // The keys declared elsewhere, SNAPSHOTTED when the edit opens (task 553):
   // the live warning is an O(1) membership test per keystroke over this set,
   // never a document walk. The commit re-asks the live `isLabelTaken`, so a
@@ -73,9 +81,7 @@ export default function FigureAnnotation({
 
   const checkConflict = useCallback(
     (candidate: string) => {
-      const keys = keysRef.current;
-      const taken = candidate && keys ? isLabelTakenIn(keys, candidate, label || null) : false;
-      setConflict(taken);
+      setConflict(labelKeyProblemIn(keysRef.current, candidate, label || null));
     },
     [label],
   );
@@ -92,14 +98,14 @@ export default function FigureAnnotation({
     if (!mayWrite()) return;
     keysRef.current = editor ? collectLabelKeys(editor) : null;
     setDraft(label);
-    setConflict(false);
+    setConflict(null);
     setEditing(true);
   }, [editor, label, mayWrite]);
 
   const cancel = useCallback(() => {
     setEditing(false);
     setDraft(label);
-    setConflict(false);
+    setConflict(null);
   }, [label]);
 
   // 529's door. This field's `commit` is ASYNC — it awaits the host's rename
@@ -120,15 +126,13 @@ export default function FigureAnnotation({
    *  how they come to disagree. Task 534: pre-534 the warning was advisory and
    *  the commit never read `conflict`, so a duplicate `\label` — always a
    *  LaTeX error ("Label multiply defined") — was committed anyway. */
-  const candidateConflicts = useCallback(() => {
-    if (!editor) return false;
+  const candidateConflicts = useCallback((): LabelKeyProblem | null => {
+    if (!editor) return null;
     const newLabel = draft.trim() || null;
     const oldLabel = label || null;
-    return !!(
-      newLabel &&
-      newLabel !== oldLabel &&
-      isLabelTaken(editor, newLabel, oldLabel)
-    );
+    if (!newLabel || newLabel === oldLabel) return null;
+    // Task 1435: the SAME question the door asks — unsafe OR taken.
+    return labelKeyProblem(editor, newLabel, oldLabel);
   }, [draft, editor, label]);
 
   /** The WRITE. Called only once the session has already ended, so it never
@@ -296,8 +300,9 @@ export default function FigureAnnotation({
                 // The conflict REFUSAL keeps the session open, so it is asked
                 // BEFORE the door: `commitAndBlur` always blurs, which would
                 // undo the refocus this branch exists to perform.
-                if (candidateConflicts()) {
-                  setConflict(true);
+                const problem = candidateConflicts();
+                if (problem) {
+                  setConflict(problem);
                   inputRef.current?.focus();
                   return;
                 }
@@ -325,7 +330,9 @@ export default function FigureAnnotation({
             size={Math.max(draft.length, 8)}
           />
           {conflict && (
-            <span className="figure-label-warning">⚠ label already in use</span>
+            <span className="figure-label-warning">
+              {labelKeyProblemText(conflict, draft)}
+            </span>
           )}
         </>
       ) : label ? (

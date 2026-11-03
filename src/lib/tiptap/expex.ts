@@ -2,7 +2,7 @@ import { Node, Extension, mergeAttributes, type Editor } from "@tiptap/react";
 import type { MutableRefObject } from "react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { isLabelTaken, collectLabelKeys } from "@/lib/labels";
+import { labelKeyProblem, collectLabelKeys } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
@@ -182,7 +182,7 @@ function createExampleLabelPod(params: {
       // asks the same predicate, but it is asked here first so the input can
       // stay OPEN on Enter (warning lit), while leaving the field abandons
       // the conflicting draft rather than trapping focus in it.
-      if (newLabel && newLabel !== oldLabel && isLabelTaken(target, newLabel, oldLabel)) {
+      if (newLabel && newLabel !== oldLabel && labelKeyProblem(target, newLabel, oldLabel)) {
         if (via === "enter") {
           warning.refresh();
           input.focus();

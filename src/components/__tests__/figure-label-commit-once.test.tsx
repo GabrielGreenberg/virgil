@@ -99,7 +99,7 @@ const figureOf = (editor: Editor) => findNodeByUuid(editor, FIG);
  *  without the focus the whole mechanism under test cannot fire. */
 function openLabelInput(
   editor: Editor,
-  onConfirmRename: ((o: string, n: string, c: number) => Promise<LabelRenameChoice>) | null,
+  onConfirmRename: ((o: string, n: string | null, c: number) => Promise<LabelRenameChoice>) | null,
 ) {
   const utils = render(
     <FigureAnnotation
@@ -125,7 +125,7 @@ describe("figure label — the edit session ends exactly ONCE (task 555)", () =>
     try {
       const asked: string[] = [];
       let input!: HTMLInputElement;
-      const confirm = vi.fn(async (oldL: string, newL: string) => {
+      const confirm = vi.fn(async (oldL: string, newL: string | null) => {
         asked.push(`${oldL}->${newL}`);
         // What the real dialog does: focus its cued default, which blurs an
         // input that is still mounted. Pre-555 this ran the blur's own commit
