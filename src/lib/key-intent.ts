@@ -26,10 +26,15 @@
  * `enter-key-census.test.ts`: this file is the only one that compares a key to
  * "Enter".
  *
- * **Escape has ONE spelling in the menu doors** (task 1188): `isCancelEscape`.
- * Escape pressed mid-composition CANCELS THE COMPOSITION — it is the IME's key,
- * not "cancel this menu / field". Pinned (for the menu-door population — every
- * file built on `@/components/menu`) by `menu-key-intent-census.test.ts`.
+ * **Escape has ONE spelling** (task 1188 for the menu doors, task 1448
+ * app-wide): `isCancelEscape`. Escape pressed mid-composition CANCELS THE
+ * COMPOSITION — it is the IME's key, not "cancel this dialog / menu / field".
+ * Repeat is the caller's question, but every Escape door must ANSWER it: a door
+ * that closes a surface answers the first press and swallows the rest
+ * (`if (e.repeat) return; swallowRepeatsUntilKeyup(e);` — the dialog shells,
+ * `useMenuDismiss`), so a held Escape cannot close a stacked pair. Pinned by
+ * `escape-key-census.test.ts`: this file is the only one that compares a key to
+ * "Escape", and every other door asks `e.repeat` or is ledgered with a reason.
  *
  * **"Would this key EDIT the document?" has ONE spelling** (task 1189):
  * `editsDocument`. It decides by EFFECT, not by modifier — Option/AltGr type
