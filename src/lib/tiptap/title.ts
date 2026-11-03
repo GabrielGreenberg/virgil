@@ -120,9 +120,13 @@ export const TitleField = Node.create({
   addNodeView() {
     const opts = this.options;
     return ({ node }) => {
+      let currentNode = node;
       const wrapper = document.createElement("div");
       wrapper.className = "title-field-wrapper";
-      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only).
+      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only) — at
+      // construction AND in `update()` below (task 1442): this view keeps
+      // itself across node changes, so the BlockUuidBackfill mint and a
+      // paste/undo re-mint (AttrSteps) reach it only through `update()`.
       if (opts.surface === "main") stampTextObjectAttrs(wrapper, node, null);
 
       const content = document.createElement("div");
@@ -141,6 +145,10 @@ export const TitleField = Node.create({
         contentDOM: content,
         update(updatedNode) {
           if (updatedNode.type.name !== "titleField") return false;
+          if (opts.surface === "main" && updatedNode.attrs.uuid !== currentNode.attrs.uuid) {
+            stampTextObjectAttrs(wrapper, updatedNode, null);
+          }
+          currentNode = updatedNode;
           // Runs on every keystroke inside the field; the annotation's text
           // node is replaced only when the field kind changed (task 551).
           setTextIfChanged(

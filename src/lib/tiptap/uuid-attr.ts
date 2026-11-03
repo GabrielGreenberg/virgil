@@ -20,7 +20,10 @@ import { setAttrIfChanged } from "@/lib/tiptap/idempotent-dom";
  *     `data-text-object-kind` on their own outer `dom` via
  *     `stampTextObjectAttrs` below — at construction and again in `update()`
  *     when `attrs.uuid` changes (the BlockUuidBackfill mint arrives as an
- *     AttrStep, which fires `update`). MAIN surface only — the old decorator
+ *     AttrStep, which fires `update`). A view with NO `update()` remounts on
+ *     every node change and needs only the construction stamp; a view that
+ *     declares one is KEPT and must re-stamp there — censused by
+ *     `nodeview-uuid-restamp.test.ts` (task 1442). MAIN surface only — the old decorator
  *     was main-only chrome, and `useMarginaliaRegistry` resolves blocks via
  *     `[data-uuid="…"]` queries, so a popped-out float must not carry a second
  *     copy of the attribute. The EXCERPT card body is the same rule read one
