@@ -2804,6 +2804,16 @@ strip **+** → *Reset example document*). Both now read
 carry a BARE `autoFocus` (censused in `dialog-cued-default-census.test.ts`,
 allowlist EMPTY).
 
+**One queue, read by EVERY imperative ask door** (`hooks/useAskQueue.ts`,
+task 1447). An ask asked while another is open WAITS behind it — it never
+replaces it. Every door that hands its caller a Promise (`useSystemDialog`,
+`useConfirmDialog`, `useDocumentClassMismatchDialog`, `useCollaboratorIdentity`)
+queues FIFO, renders the head with `key={head.id}` so each question mounts its
+own dialog (fresh focus, fresh cued default), and resolves every outstanding
+ask as its CANCEL when the door unmounts. A new imperative dialog hook uses the
+same primitive; parking `resolve` in a `setPending` slot is censused in
+`use-confirm-dialog-queue.test.tsx`.
+
 **`tone` describes the MESSAGE; a button's paint describes what pressing it
 DOES.** The same leaf owns `confirmActionVariant(tone)` — the tone→variant map
 both doors used to spell by hand, four attributes from the cue they also spelled

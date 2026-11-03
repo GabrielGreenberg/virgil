@@ -30,9 +30,10 @@ vi.mock("@/lib/storage", () => {
   );
 });
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { useConfirmDialog } from "../ConfirmDialog";
 import {
   useDocumentClassMismatchDialog,
@@ -40,7 +41,7 @@ import {
 } from "../DocumentClassMismatchDialog";
 import { useCollaboratorIdentity } from "../CollaboratorIdentityDialog";
 import { __resetDialogStack } from "../dialog-stack";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { codeOnly, trackedFiles } from "@/lib/__tests__/_source-scan";
 import type { DocumentClassMismatch } from "@/lib/document-class";
 
 afterEach(() => {
@@ -54,7 +55,9 @@ function mountConfirmHost() {
   const ref: { api: ConfirmApi | null } = { api: null };
   function Host() {
     const api = useConfirmDialog();
-    ref.api = api;
+    useEffect(() => {
+      ref.api = api;
+    });
     return <>{api.dialog}</>;
   }
   const r = render(<Host />);
@@ -163,7 +166,9 @@ describe("the sibling hook doors share the queue", () => {
       { api: null };
     function Host() {
       const api = useDocumentClassMismatchDialog();
+      useEffect(() => {
       ref.api = api;
+    });
       // Rendering the real dialog needs a full mismatch; the queue is the
       // subject here, so the host keeps it off-screen.
       return null;
@@ -187,7 +192,9 @@ describe("the sibling hook doors share the queue", () => {
     };
     function Host() {
       const api = useCollaboratorIdentity();
+      useEffect(() => {
       ref.api = api;
+    });
       return <>{api.dialog}</>;
     }
     const r = render(<Host />);
@@ -211,21 +218,12 @@ describe("the sibling hook doors share the queue", () => {
 
 const SRC = join(__dirname, "..", "..");
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "__tests__" || name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(p);
-  }
-  return out;
-}
-
 describe("CENSUS: no imperative ask parks its resolve in a single React slot", () => {
   it("no `new Promise((resolve) => set<State>(…))` anywhere in src/", () => {
     const re =
       /new Promise(?:<[^>]*>)?\(\s*\(\s*resolve\s*\)\s*=>\s*\{?\s*set[A-Z]\w*\(/;
-    const offenders = walk(SRC)
+    const offenders = trackedFiles("src", /\.(ts|tsx)$/)
+      .filter((f) => !/__tests__|\.test\.tsx?$/.test(f))
       .filter((f) => re.test(codeOnly(readFileSync(f, "utf8"))))
       .map((f) => relative(SRC, f));
     // Queue the ask through `useAskQueue` (src/hooks/useAskQueue.ts) instead.
