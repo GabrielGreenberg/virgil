@@ -42,7 +42,8 @@ import {
   enumOptions,
   type RegistryPrefs,
 } from "@/lib/view-prefs/registry";
-import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape } from "@/lib/key-intent";
+import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 import { formatWhen } from "@/lib/relative-time";
 
@@ -480,7 +481,11 @@ function BibliographyPanel({
       setShowRequestForm(false);
       setRequestText("");
     }
-    if (isCommitEnter(e) && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
+    const press = chordPress(e, FIELD_COMMIT_SHORTCUT);
+    if (!press) return;
+    e.preventDefault();
+    if (press === "held") return; // a held ⌘Enter files one request
+    handleSubmitRequest();
   });
 
   // Case-folded (task 1325): a library `smith2020` beside a local `Smith2020`

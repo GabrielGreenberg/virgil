@@ -33,10 +33,11 @@ export function matchesPortableChord(
 
 /**
  * The field-commit chord — ⌘/Ctrl+Enter commits a multi-line field whose plain
- * Enter is a newline (the AI window's composer, the figure-environment popover).
- * One constant so each field's `<Kbd>` / `iconHint` and its `onKeyDown` read the
- * same string (task 1376). Pair it with `isCommitEnter`, which keeps the IME's
- * candidate-commit Enter out.
+ * Enter is a newline (the AI window's composer, the figure-environment popover,
+ * the bibliography's entry-request field). One constant so each field's `<Kbd>`
+ * / `iconHint` and its `onKeyDown` read the same string (task 1376). Bind it
+ * through `chordPress`, which keeps the IME's candidate-commit Enter out and
+ * answers a held ⌘Enter once (task 1450).
  */
 export const FIELD_COMMIT_SHORTCUT = "Mod+Enter";
 
@@ -52,12 +53,19 @@ export const FIELD_COMMIT_SHORTCUT = "Mod+Enter";
  *
  * The match is `matchesPortableChord` — the same string the hint renders — and
  * the deliberateness is `key-intent`'s, so neither is re-spelled per binding.
+ *
+ * **Every binding of a chord goes through here** (task 1450) — a window /
+ * document `keydown` AND a field's own `onKeyDown` (it takes a React event: the
+ * IME probe reads `nativeEvent`). The bare matcher above answers only "which
+ * keys", so a binding built on it fired once per auto-repeat (a held ⌘⇧N opened
+ * a window per repeat) and inside an IME composition. Pinned by
+ * `portable-chord-census.test.ts`: `matchesPortableChord(` is called only here.
  */
 export function chordPress(
-  e: Pick<
-    KeyboardEvent,
-    "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "repeat" | "isComposing" | "keyCode"
-  >,
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "repeat" | "keyCode"> & {
+    isComposing?: boolean;
+    nativeEvent?: { isComposing?: boolean };
+  },
   keys: string,
 ): "press" | "held" | null {
   if (!matchesPortableChord(e, keys) || isImeComposing(e)) return null;

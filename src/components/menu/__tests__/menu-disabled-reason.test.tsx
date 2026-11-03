@@ -130,8 +130,12 @@ describe("task 998 — the New-window hint and binding are one chord", () => {
   it("TabPlusMenu renders and EditorLayout binds the SAME constant; neither hand-spells it", () => {
     const menu = readFileSync(path.join(SRC, "components/TabPlusMenu.tsx"), "utf8");
     const layout = readFileSync(path.join(SRC, "components/EditorLayout.tsx"), "utf8");
+    const binding = readFileSync(path.join(SRC, "lib/multi-window/new-window-shortcut.ts"), "utf8");
     expect(menu).toMatch(/shortcut=\{NEW_WINDOW_SHORTCUT\}/);
-    expect(layout).toMatch(/matchesPortableChord\(e, NEW_WINDOW_SHORTCUT\)/);
+    // EditorLayout binds the constant's own handler, which presses through
+    // chordPress (task 1450: a held chord opens one window).
+    expect(layout).toMatch(/newWindowChordHandler\(openNewVirgilWindow\)/);
+    expect(binding).toMatch(/chordPress\(e, NEW_WINDOW_SHORTCUT\)/);
     expect(menu).not.toContain(`"${NEW_WINDOW_SHORTCUT}"`);
     expect(layout).not.toContain(`"${NEW_WINDOW_SHORTCUT}"`);
     expect(layout).not.toMatch(/e\.key\.toLowerCase\(\) === "n"/);

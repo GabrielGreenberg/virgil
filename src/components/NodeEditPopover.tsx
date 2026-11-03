@@ -34,7 +34,7 @@ import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { isCommitEnter, isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
-import { FIELD_COMMIT_SHORTCUT, matchesPortableChord } from "@/lib/portable-chord";
+import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
 import { pressProps } from "@/lib/press-props";
 
 export type NodeEditFamily = "math" | "figure";
@@ -203,10 +203,11 @@ export default function NodeEditPopover({
       commit();
       return;
     }
-    if (matchesPortableChord(e, FIELD_COMMIT_SHORTCUT)) {
-      e.preventDefault();
-      commit();
-    }
+    const press = chordPress(e, FIELD_COMMIT_SHORTCUT);
+    if (!press) return;
+    e.preventDefault();
+    if (press === "held") return; // a held ⌘Enter commits once
+    commit();
   };
 
   const style = {
