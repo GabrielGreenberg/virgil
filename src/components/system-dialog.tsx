@@ -119,6 +119,7 @@ import {
 } from "./dialog-stack";
 import { useDialogFocusRestore } from "./dialog-contract";
 import { isPlainEnter, resolveDialogEnter } from "./dialog-enter-policy";
+import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { useBackdropPress } from "@/lib/backdrop-press";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
@@ -757,14 +758,27 @@ export default function SystemDialog({
 
     const onBubble = (e: KeyboardEvent) => {
       if (!tokenRef.current || !isKeyOwner(tokenRef.current)) return;
-      if (e.key === "Escape") {
-        // Unchanged from pre-389 except for the stack gate: Escape closes the
-        // TOP dialog, unconditionally. Deliberately NOT gated on
+      // A composing Escape is the IME's — it cancels the COMPOSITION, not the
+      // dialog and its draft — so it falls through to the Enter policy below,
+      // which ignores it (task 1448).
+      if (isCancelEscape(e)) {
+        // Escape closes the TOP dialog, unconditionally. Deliberately NOT gated on
         // `defaultPrevented` — CodeMirror binds Escape (simplifySelection) and
         // StyleEditorModal hosts one, so a "the target consumed it" rule would
         // make Escape stop closing that dialog whenever its preamble editor has
         // focus. A modal always has a way out.
         if (!onClose) return;
+        // A cancel answers the FIRST press only (task 1448). A held Escape's
+        // repeats are consumed and end nothing: without this, closing the top
+        // of a stacked pair handed the key to the dialog beneath, and the next
+        // repeat closed that one too.
+        if (e.repeat) {
+          e.preventDefault();
+          return;
+        }
+        // Once this press has acted, its repeats are eaten until keyup — so
+        // they cannot reach whatever the closed dialog uncovers.
+        swallowRepeatsUntilKeyup(e);
         // preventDefault BEFORE the door: the dialog is answering this key
         // whether the answer turns out to be "close" or "ask first", so nothing
         // beneath it (CodeMirror's simplifySelection, the editor keymaps) may

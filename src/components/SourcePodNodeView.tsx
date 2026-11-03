@@ -16,7 +16,7 @@ import {
 } from "@/lib/field-edit-session";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import { useIsFloatPopped } from "@/hooks/usePoppedCards";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 import { parTitleAffordance } from "@/lib/par-title-affordance";
 import {
   sourcePodPreview,
@@ -403,7 +403,7 @@ export default function SourcePodNodeView({
                   e.preventDefault();
                   const el = e.currentTarget;
                   session.commitAndBlur(el, () => commitTitleFrom(el));
-                } else if (e.key === "Escape") {
+                } else if (isCancelEscape(e)) {
                   e.preventDefault();
                   session.cancel(e.currentTarget, () => {
                     titleDraft.revert();

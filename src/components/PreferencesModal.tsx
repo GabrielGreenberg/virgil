@@ -20,7 +20,7 @@ import {
   restoreAllConfirms,
   useSuppressedConfirms,
 } from "./confirm-suppression";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -180,7 +180,7 @@ function PresetBar({
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (isCommitEnter(e)) handleSave();
-    if (e.key === "Escape") setSaving(false);
+    if (isCancelEscape(e)) setSaving(false);
   }, [handleSave]);
 
   // The picker is an ACTION, not a bound value: it applies the preset and

@@ -33,7 +33,7 @@ import {
   AMBER_PENDING_CHIP,
 } from "@/panels/_shared/amber-attention";
 import { StatusDot } from "@/components/StatusDot";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 import { describedHint } from "@/components/Hint";
 
 export type BibReviewType = "fields" | "notes";
@@ -252,7 +252,7 @@ export function ReviewRequestStrip({
             e.preventDefault();
             e.stopPropagation();
             composer.send(type);
-          } else if (e.key === "Escape") {
+          } else if (isCancelEscape(e)) {
             e.preventDefault();
             e.stopPropagation();
             composer.close(type);

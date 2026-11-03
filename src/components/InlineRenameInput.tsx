@@ -53,7 +53,7 @@ import {
 } from "react";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import { useFieldEditSession } from "@/lib/field-edit-session";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 export interface InlineRenameInputProps {
   /** The current name; seeds the draft and is the no-op baseline. */
@@ -177,7 +177,7 @@ export function InlineRenameInput({
         if (isCommitEnter(e)) {
           e.preventDefault();
           session.commitAndBlur(e.currentTarget, finish);
-        } else if (e.key === "Escape") {
+        } else if (isCancelEscape(e)) {
           e.preventDefault();
           session.cancel(e.currentTarget, close);
         }
