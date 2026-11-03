@@ -212,6 +212,12 @@ export function ToolGutter(p: ToolGutterProps) {
             triggerHint="Add another list"
             triggerClassName="tool-gutter-heading hover-on-light"
             wrapperClassName="relative"
+            // A column, sized to its longest label. The rows are buttons —
+            // inline-block by default — so a plain block container's
+            // max-content lays all eight side by side on one line and the
+            // surface comes out half the window wide; as flex items they are
+            // blockified and the column is as wide as "Bibliography".
+            menuClassName="flex flex-col w-max min-w-[140px] whitespace-nowrap"
             // "More" ADDS a list rather than folding one, so its glyph is the
             // add "+", not a disclosure chevron.
             trigger={() => (
