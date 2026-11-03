@@ -8,7 +8,7 @@
  * computed-style declaration — no jsdom layout is trusted.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -72,6 +72,46 @@ describe("resolveMarginEm — em vs rem input domain", () => {
   it("falls back when the token is missing / unparseable", () => {
     expect(resolveMarginEm(fakeCs(""), 16, VAR, FALLBACK)).toBe(FALLBACK);
     expect(resolveMarginEm(fakeCs("junk"), 16, VAR, FALLBACK)).toBe(FALLBACK);
+  });
+});
+
+/**
+ * Task 1445 — the input domain is the px / em / rem ladder and NOTHING else.
+ * Before, every spelling that was neither `rem` nor `em` fell through to a bare
+ * `parseFloat`, so `2ch` / `3%` / `1vw` resolved to 2 / 3 / 1 px — finite and
+ * positive, so `legal()` passed it and the fallback never fired.
+ */
+describe("resolveMarginEm — an unknown unit cannot pass as px", () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it.each(["2ch", "0.5ex", "3%", "1vw", "calc(1px + 2px)", "12 px", "1.375emx"])(
+    "%s falls back (on both sign policies)",
+    (token) => {
+      expect(resolveMarginEm(fakeCs(token), 16, VAR, FALLBACK)).toBe(FALLBACK);
+      expect(resolveMarginEm(fakeCs(token), 16, VAR, -44, "signed")).toBe(-44);
+    },
+  );
+
+  it("still reads the ladder: `px`, a bare number, and any case of the unit", () => {
+    expect(resolveMarginEm(fakeCs("12px"), 16, VAR, FALLBACK)).toBe(12);
+    expect(resolveMarginEm(fakeCs("12"), 16, VAR, FALLBACK)).toBe(12);
+    expect(resolveMarginEm(fakeCs(".5EM"), 16, VAR, FALLBACK)).toBeCloseTo(8, 5);
+    expect(resolveMarginEm(fakeCs("0"), 16, VAR, FALLBACK, "signed")).toBe(0);
+  });
+
+  it("warns (dev) naming the token for an unknown unit, but not for an absent one", () => {
+    resolveMarginEm(fakeCs("7ch"), 16, "--margin-col-handle-inset", FALLBACK);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("--margin-col-handle-inset");
+    warn.mockClear();
+    resolveMarginEm(fakeCs(""), 16, VAR, FALLBACK);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

@@ -367,12 +367,15 @@
      `resolveMarginEm` (text-objects/block-frame.ts), which knows the px / em /
      rem ladder and takes each token's sign policy as an argument (the chevron
      OFFSET is legitimately negative; the widths and insets are distances). So
-     the SPELLING of any --margin-* token here is a free variable: re-authoring
-     one in em or rem is a stylesheet change with no code change, the way
+     the SPELLING of any --margin-* token here is a free variable WITHIN px,
+     em or rem: re-authoring one in em or rem is a stylesheet change with no
+     code change, the way
      --margin-handle-gap / --margin-track-width already are. Do NOT add a
      hand parseFloat for a new one — getComputedStyle returns the LITERAL
      "1.375em" and parseFloat answers 1.375, which passes a > 0 guard and
-     silently collapses the distance.
+     silently collapses the distance. Any OTHER unit (ch, ex, %, vw, calc)
+     is outside the ladder: the interpreter falls back to its shipped value
+     and warns in dev, rather than reading "2ch" as 2px (task 1445).
      See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
   --margin-col-chevron-width: 14px;
