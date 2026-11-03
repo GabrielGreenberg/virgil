@@ -15,9 +15,10 @@
 // input that only `preventDefault()`s fails here.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { stripComments } from "@/components/menu/__tests__/_menu-census";
+import { walkFiles } from "@/lib/__tests__/_source-scan";
 
 const SRC = path.resolve(__dirname, "../../..");
 const TIPTAP = path.join(SRC, "lib/tiptap");
@@ -28,17 +29,9 @@ const CLAIM_WINDOW_LINES = 8;
 const ESCAPE_TEST = /isCancelEscape\(|["']Escape["']/;
 
 function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) {
-      if (name === "__tests__") continue;
-      out.push(...walk(full));
-    } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-      out.push(full);
-    }
-  }
-  return out;
+  return walkFiles(dir, { skipDirs: ["__tests__"] }).filter(
+    (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f),
+  );
 }
 
 /** Every unclaimed Escape test in `source`, as `line:text`. */
