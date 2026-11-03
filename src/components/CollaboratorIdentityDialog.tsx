@@ -27,6 +27,7 @@ import {
 import { iconHint } from "@/components/Hint";
 import { isCommitEnter } from "@/lib/key-intent";
 import { useRadioGroup } from "@/hooks/useRadioGroup";
+import { useAskQueue } from "@/hooks/useAskQueue";
 import { RadioMark } from "@/components/icons/RadioMark";
 
 /** The swatch row's option values, normalised once (the saved colour is
@@ -187,46 +188,38 @@ interface PendingIdentityAsk {
   resolve: (identity: CollabIdentity | null) => void;
 }
 
+const cancelIdentityAsk = (ask: PendingIdentityAsk) => ask.resolve(null);
+
 /**
  * `ensureIdentity()` resolves to a saved or newly-entered identity, or
  * `null` if the user cancelled. Mount `dialog` once near the layout root.
+ * Asks QUEUE through `useAskQueue` (task 1447); unmount resolves `null`.
  */
 export function useCollaboratorIdentity() {
-  const [pending, setPending] = useState<PendingIdentityAsk | null>(null);
+  const { head, enqueue, settle } =
+    useAskQueue<PendingIdentityAsk>(cancelIdentityAsk);
 
   const ensureIdentity = useCallback(
     (opts?: { force?: boolean }): Promise<CollabIdentity | null> => {
       const existing = loadIdentity();
       if (existing && !opts?.force) return Promise.resolve(existing);
       return new Promise<CollabIdentity | null>((resolve) => {
-        setPending({ initial: existing, resolve });
+        enqueue({ initial: existing, resolve });
       });
     },
-    [],
+    [enqueue],
   );
-
-  const handleConfirm = useCallback(
-    (identity: CollabIdentity) => {
-      pending?.resolve(identity);
-      setPending(null);
-    },
-    [pending],
-  );
-
-  const handleCancel = useCallback(() => {
-    pending?.resolve(null);
-    setPending(null);
-  }, [pending]);
 
   // The copy follows what the ask FOUND: an existing identity is being
   // edited, a missing one is being set up for the first time.
-  const dialog = pending ? (
+  const dialog = head ? (
     <CollaboratorIdentityDialog
+      key={head.id}
       open
-      initial={pending.initial}
-      {...(pending.initial ? IDENTITY_EDIT_COPY : {})}
-      onConfirm={handleConfirm}
-      onCancel={handleCancel}
+      initial={head.ask.initial}
+      {...(head.ask.initial ? IDENTITY_EDIT_COPY : {})}
+      onConfirm={(identity) => settle(head.id)?.resolve(identity)}
+      onCancel={() => settle(head.id)?.resolve(null)}
     />
   ) : null;
 
