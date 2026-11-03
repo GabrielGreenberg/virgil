@@ -215,35 +215,120 @@ export function parseWidthSpec(options: string): number | null {
   return Math.min(100, w.factor * 100);
 }
 
-/** Extract a `\includegraphics[opts]{path}` match starting at `pos` in `src`.
- *  Returns the match and its end index, or null if no graphics command is
- *  present at this position. */
-export function matchIncludegraphics(
-  src: string,
-  pos: number,
-): { command: string; options: string; path: string; end: number } | null {
-  // Tolerate \includegraphics with optional [opts] and required {path}.
-  if (!src.startsWith("\\includegraphics", pos)) return null;
-  let i = pos + "\\includegraphics".length;
-  let options = "";
-  // Optional star (e.g. \includegraphics*)? Rare but harmless to swallow.
-  if (src[i] === "*") i++;
-  // Optional [options], possibly multiple
-  while (src[i] === "[") {
-    const opt = extractBracketed(src, i);
-    if (!opt) return null;
-    options += src.slice(i, opt.end);
-    i = opt.end;
+/** One `\includegraphics` as TeX reads it — the verbatim command plus the
+ *  spans a writer splices (all indices into the searched text), so an edit
+ *  replaces exactly one argument and leaves the author's spacing, line breaks
+ *  and comments between the arguments byte-identical. */
+export interface IncludegraphicsMatch {
+  /** The full verbatim command, `src.slice(start, end)`. */
+  command: string;
+  /** Inner text of the option group(s); several groups (the obsolete bbox
+   *  form `[0,0][100,100]`) are joined with `][`, so a top-level `]` in it
+   *  means "more than one group" (see `graphicsWidthOwned`). */
+  options: string;
+  path: string;
+  start: number;
+  end: number;
+  /** Just past `\includegraphics` and its optional star — where an absent
+   *  option group is inserted. */
+  headEnd: number;
+  /** Inner span of each `[…]` group, in order. */
+  optionGroups: Array<{ start: number; end: number }>;
+  /** Inner span of the `{path}` group. */
+  pathStart: number;
+  pathEnd: number;
+}
+
+/** Skip what TeX skips while it looks for a macro's next argument: spaces and
+ *  tabs, ONE line end (a second, i.e. a blank line, is `\par` — the scan stops
+ *  on it), and `%` comments, each of which eats its own line end and leaves TeX
+ *  at the start of the next line. */
+function skipTexArgSpace(src: string, i: number): number {
+  let atLineStart = false;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === " " || c === "\t" || c === "\r") {
+      i++;
+    } else if (c === "\n") {
+      if (atLineStart) return i;
+      atLineStart = true;
+      i++;
+    } else if (c === "%") {
+      const nl = src.indexOf("\n", i);
+      if (nl === -1) return src.length;
+      i = nl + 1;
+      atLineStart = true;
+    } else {
+      return i;
+    }
   }
-  if (src[i] !== "{") return null;
-  const braced = findBracedBody(src, i);
+  return i;
+}
+
+const GRAPHICS_CMD = "\\includegraphics";
+
+/** Read the `\includegraphics[opts]{path}` that starts at `pos` in `src`, by
+ *  TeX's argument grammar (task 1434): an optional star, any number of `[…]`
+ *  groups, a required `{…}` — with the spaces / single line end / `%`-comments
+ *  TeX skips allowed between each. `\includegraphics [width=.5\textwidth] {a}`
+ *  compiles, so it is read; `\includegraphicsfoo` is another macro, so it is
+ *  not. Null when no graphics command starts here. */
+export function matchIncludegraphics(src: string, pos: number): IncludegraphicsMatch | null {
+  if (!src.startsWith(GRAPHICS_CMD, pos)) return null;
+  let i = pos + GRAPHICS_CMD.length;
+  if (/[a-zA-Z]/.test(src[i] ?? "")) return null;
+  let j = skipTexArgSpace(src, i);
+  if (src[j] === "*") i = j + 1;
+  const headEnd = i;
+  const optionGroups: Array<{ start: number; end: number }> = [];
+  j = skipTexArgSpace(src, i);
+  while (src[j] === "[") {
+    const opt = extractBracketed(src, j);
+    if (!opt) return null;
+    optionGroups.push({ start: j + 1, end: opt.end - 1 });
+    j = skipTexArgSpace(src, opt.end);
+  }
+  if (src[j] !== "{") return null;
+  const braced = findBracedBody(src, j);
   if (!braced) return null;
   return {
     command: src.slice(pos, braced.end),
-    options: options.replace(/^\[|\]$/g, ""),
+    options: optionGroups.map((g) => src.slice(g.start, g.end)).join("]["),
     path: braced.body,
+    start: pos,
     end: braced.end,
+    headEnd,
+    optionGroups,
+    pathStart: j + 1,
+    pathEnd: braced.end - 1,
   };
+}
+
+/**
+ * THE reading of which `\includegraphics` commands a text holds (task 1434):
+ * every LIVE one (not commented out, not inside `\verb`) that parses, in order,
+ * with its spans. The display (`extractFigureSources` → `sources[i]`) and every
+ * writer (`withUpdatedFirstGraphics`, `hasLiveIncludegraphics`) are views of
+ * this one list, so "the first image" is the same command on both sides — an
+ * unparseable `\includegraphics` ahead of a real one is skipped by both, where
+ * the display used to skip it and the writers to give up on it.
+ */
+export function liveIncludegraphicsMatches(text: string): IncludegraphicsMatch[] {
+  const matches: IncludegraphicsMatch[] = [];
+  const live = liveGraphicsView(text);
+  let i = 0;
+  while (i < text.length) {
+    const idx = live.indexOf(GRAPHICS_CMD, i);
+    if (idx === -1) break;
+    const m = matchIncludegraphics(text, idx);
+    if (!m) {
+      i = idx + 1;
+      continue;
+    }
+    matches.push(m);
+    i = m.end;
+  }
+  return matches;
 }
 
 /**
@@ -285,25 +370,11 @@ function liveGraphicsView(text: string): string {
 
 /** Walk an env body string and pull out all LIVE `\includegraphics` commands. */
 export function extractFigureSources(envContent: string): FigureSource[] {
-  const sources: FigureSource[] = [];
-  const live = liveGraphicsView(envContent);
-  let i = 0;
-  while (i < envContent.length) {
-    const idx = live.indexOf("\\includegraphics", i);
-    if (idx === -1) break;
-    const m = matchIncludegraphics(envContent, idx);
-    if (!m) {
-      i = idx + 1;
-      continue;
-    }
-    sources.push({
-      path: m.path,
-      options: m.options,
-      widthPercent: parseWidthSpec(m.options),
-    });
-    i = m.end;
-  }
-  return sources;
+  return liveIncludegraphicsMatches(envContent).map((m) => ({
+    path: m.path,
+    options: m.options,
+    widthPercent: parseWidthSpec(m.options),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -697,8 +768,6 @@ function splitFigureOwnCommands(
 
 /** Run the full structural extraction for a `\begin{figure}...\end{figure}` body. */
 export function extractFigureAttrs(envContent: string): FigureAttrs {
-  const sources = extractFigureSources(envContent);
-  const first = sources[0] ?? null;
   // ONE scan feeds caption, label and extras — so the bytes `extras` strips
   // are exactly the bytes the serializer re-emits, which is what makes the
   // round-trip a fixed point.
@@ -713,6 +782,12 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
   // on the side that decides what `\ref` prints (task 1262).
   const labelBeforeCaption =
     !!binding && !!scan.caption && !binding.inCaption && binding.start < scan.caption.start;
+  const parts = splitFigureOwnCommands(envContent, scan, labelBeforeCaption ? null : binding);
+  // Read off the SAME halves the chrome writes (task 1434): an icon inside the
+  // caption is not the figure's image, so it is neither displayed as one nor
+  // left to disagree with the writer about which image is "first".
+  const sources = figureSourcesOf(parts);
+  const first = sources[0] ?? null;
   return {
     source: first?.path ?? null,
     widthPercent: first?.widthPercent ?? null,
@@ -723,7 +798,7 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
     captionStarred: scan.caption?.starred ?? false,
     label: binding?.body ?? "",
     labelBeforeCaption,
-    ...splitFigureOwnCommands(envContent, scan, labelBeforeCaption ? null : binding),
+    ...parts,
   };
 }
 
@@ -778,18 +853,59 @@ function formatWidthFraction(percent: number): string {
   return fixed.replace(/0$/, "").replace(/\.$/, "");
 }
 
+/** Keys after which a written `width=` no longer decides the printed width:
+ *  each sizes the image itself (`scale` multiplies whatever width says;
+ *  `height` / `totalheight` beside a width STRETCH it, there being no
+ *  `keepaspectratio`). graphicx applies keys in order, so `angle` is handled
+ *  by position instead — see `graphicsWidthOwned`. */
+const SIZE_KEYS = new Set(["scale", "height", "totalheight"]);
+
+/**
+ * Whether the visual width chrome OWNS this option list's width (task 1434) —
+ * i.e. a `width=` it writes is the width the PDF prints. The ONE rule both the
+ * stepper's enablement (`canEditWidthInOptions`) and the write
+ * (`setWidthInOptions`) read, so an enabled stepper always has a faithful
+ * write behind it, and every other list is "edit in code" rather than a write
+ * that prints something other than what the box shows. Not owned when:
+ *
+ *  - the live width is one the chrome never overwrites (`fixed`: `3cm`, …);
+ *  - another sizing key is live (`scale` / `height` / `totalheight`) —
+ *    `[scale=0.3]` + 60 printed at 18 %; `[height=3cm]` + width stretched;
+ *  - an `angle` follows the live width — graphicx rotates AFTER sizing, so the
+ *    printed width is the rotated box's, not the written one. (An angle BEFORE
+ *    it is fine, and with no width yet the write lands after every angle.)
+ *  - there are several option groups (the obsolete bbox form
+ *    `[0,0][100,100]`), which a single `width=` key cannot join.
+ *
+ * Rewriting `scale` / `height` into a width was the rejected alternative: it
+ * silently changes what the author wrote the figure to mean.
+ */
+export function graphicsWidthOwned(options: string): boolean {
+  if (topLevelIndicesOf(options, "]").length > 0) return false;
+  const w = readGraphicsWidth(options);
+  if (w.kind === "fixed") return false;
+  const entries = parseGraphicsOptions(options);
+  if (entries.some((e) => SIZE_KEYS.has(e.key))) return false;
+  if (w.kind === "relative") {
+    const lastAngle = entries.filter((e) => e.key === "angle").pop();
+    if (lastAngle && lastAngle.valueStart > w.valueStart) return false;
+  }
+  return true;
+}
+
 /** Update the LIVE `width=…` directive in an options string (no surrounding
  *  `[]`) to express `percent`% of whichever relative unit it already uses —
  *  REPLACING that one value in place, so the list never carries two widths.
- *  With no width at all, one is prepended in `\textwidth`. Returns `ok: false`
- *  when the live width is one the chrome doesn't own (`readGraphicsWidth` →
- *  `fixed`) — caller should leave it alone. */
+ *  With no width at all, one is added in `\textwidth`: prepended, or appended
+ *  when an `angle` is live so it applies after the rotation. Returns
+ *  `ok: false` when the chrome does not own this list's width
+ *  (`graphicsWidthOwned`) — caller should leave it alone. */
 export function setWidthInOptions(
   options: string,
   percent: number,
 ): { options: string; ok: boolean } {
+  if (!graphicsWidthOwned(options)) return { options, ok: false };
   const w = readGraphicsWidth(options);
-  if (w.kind === "fixed") return { options, ok: false };
   const fracStr = formatWidthFraction(percent);
   if (w.kind === "relative") {
     return {
@@ -797,58 +913,48 @@ export function setWidthInOptions(
       ok: true,
     };
   }
-  // No width set yet — prepend one. Empty options stays bracket-free; otherwise
-  // splice in front with a comma.
   const inserted = `width=${fracStr}\\textwidth`;
-  return {
-    options: options.length === 0 ? inserted : `${inserted},${options}`,
-    ok: true,
-  };
+  if (options.length === 0) return { options: inserted, ok: true };
+  if (parseGraphicsOptions(options).some((e) => e.key === "angle")) {
+    // After the last LIVE byte — never inside a trailing `% comment`.
+    const at = liveGraphicsView(options).trimEnd().length;
+    const sep = options.slice(0, at).endsWith(",") ? "" : ",";
+    return { options: options.slice(0, at) + sep + inserted + options.slice(at), ok: true };
+  }
+  return { options: `${inserted},${options}`, ok: true };
 }
 
 /** Determine whether the visual scale stepper can adjust this options string —
  *  the SAME reading `setWidthInOptions` acts on, so an enabled stepper always
  *  has a write behind it. */
 export function canEditWidthInOptions(options: string): boolean {
-  return readGraphicsWidth(options).kind !== "fixed";
+  return graphicsWidthOwned(options);
 }
 
-/** Rebuild a `\includegraphics` command from its parts, preserving the
- *  starred form if the original used it. */
-function rebuildIncludegraphics(
-  originalCommand: string,
-  options: string,
-  path: string,
-): string {
-  const isStarred = originalCommand.startsWith("\\includegraphics*");
-  const head = isStarred ? "\\includegraphics*" : "\\includegraphics";
-  return options.length > 0 ? `${head}[${options}]{${path}}` : `${head}{${path}}`;
-}
-
-/** Splice an updated `\includegraphics` command into a larger text string
- *  (a graphicsBlock `command` or a figureBlock `raw`). Locates the first LIVE
- *  `\includegraphics` and replaces it with `build(match)`. Returns null
- *  when no `\includegraphics` is found. */
+/** Splice an updated `\includegraphics` into a larger text string (a
+ *  graphicsBlock `command` or one half of a figureBlock body). Targets the
+ *  FIRST of `liveIncludegraphicsMatches` — the command `sources[0]` displays —
+ *  and replaces only the spans `build` names, so the author's spacing between
+ *  the arguments survives. Null when there is no such command or `build`
+ *  bails. */
 function withUpdatedFirstGraphics(
   text: string,
-  build: (m: {
-    command: string;
-    options: string;
-    path: string;
-  }) => string | null,
+  build: (m: IncludegraphicsMatch) => Array<{ start: number; end: number; text: string }> | null,
 ): string | null {
-  const idx = liveGraphicsView(text).indexOf("\\includegraphics");
-  if (idx === -1) return null;
-  const m = matchIncludegraphics(text, idx);
+  const m = liveIncludegraphicsMatches(text)[0];
   if (!m) return null;
-  const rebuilt = build({ command: m.command, options: m.options, path: m.path });
-  if (rebuilt == null) return null;
-  return text.slice(0, idx) + rebuilt + text.slice(idx + m.command.length);
+  const splices = build(m);
+  if (splices == null) return null;
+  let out = text;
+  for (const sp of [...splices].sort((x, y) => y.start - x.start)) {
+    out = out.slice(0, sp.start) + sp.text + out.slice(sp.end);
+  }
+  return out;
 }
 
 /** Apply a new width percentage to the first `\includegraphics` in `text`.
- *  Returns null when the text has no `\includegraphics`, or when the existing
- *  width uses absolute units (signaling the chrome to bail). */
+ *  Returns null when the text has no `\includegraphics`, or when the chrome
+ *  does not own its width (`graphicsWidthOwned`). */
 export function withUpdatedFigureWidth(
   text: string,
   percent: number,
@@ -856,7 +962,9 @@ export function withUpdatedFigureWidth(
   return withUpdatedFirstGraphics(text, (m) => {
     const result = setWidthInOptions(m.options, percent);
     if (!result.ok) return null;
-    return rebuildIncludegraphics(m.command, result.options, m.path);
+    const group = m.optionGroups[0];
+    if (!group) return [{ start: m.headEnd, end: m.headEnd, text: `[${result.options}]` }];
+    return [{ start: group.start, end: group.end, text: result.options }];
   });
 }
 
@@ -870,15 +978,14 @@ export function withReplacedFigurePath(
   newPath: string,
 ): string | null {
   if (!isTexSafeGraphicsPath(newPath)) return null;
-  return withUpdatedFirstGraphics(text, (m) =>
-    rebuildIncludegraphics(m.command, m.options, newPath),
-  );
+  return withUpdatedFirstGraphics(text, (m) => [
+    { start: m.pathStart, end: m.pathEnd, text: newPath },
+  ]);
 }
 
 /** Whether `text` holds a LIVE `\includegraphics` the mutators can patch. */
 export function hasLiveIncludegraphics(text: string): boolean {
-  const idx = liveGraphicsView(text).indexOf("\\includegraphics");
-  return idx !== -1 && matchIncludegraphics(text, idx) !== null;
+  return liveIncludegraphicsMatches(text).length > 0;
 }
 
 /** The two halves of a figure body the visual chrome may patch: `extras`
@@ -887,6 +994,16 @@ export function hasLiveIncludegraphics(text: string): boolean {
 export interface FigureGraphicsParts {
   extras: string;
   trailingExtras: string;
+}
+
+/** A figure's images, read off the two halves the chrome may patch, in body
+ *  order — the caption is excluded on BOTH sides (task 1434), so `sources[0]`
+ *  is by construction the command `figureGraphicsTarget` +
+ *  `withUpdatedFirstGraphics` rewrite. The parser (`extractFigureAttrs`) and
+ *  the chrome's writeback (`applyFigureExtrasEdit`) both derive `sources`
+ *  here. */
+export function figureSourcesOf(parts: FigureGraphicsParts): FigureSource[] {
+  return [...extractFigureSources(parts.extras), ...extractFigureSources(parts.trailingExtras)];
 }
 
 /**

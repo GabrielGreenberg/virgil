@@ -285,4 +285,26 @@ describe("FigureChrome alone — the chrome's own contract for `null`", () => {
     expect(onScale).not.toHaveBeenCalled();
     expect(input.value).toBe("");
   });
+
+  // Task 1434: a write that did not land (the chrome does not own the width,
+  // or the pen moved) must not leave the typed value showing — the box drops
+  // back to the document's value.
+  it("a REFUSED write restores the document's value, not the typed draft", () => {
+    const onScale = vi.fn(() => false);
+    const { container } = render(
+      <FigureChrome
+        currentPercent={40}
+        canScale
+        onScale={onScale}
+        onPickFile={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    const input = container.querySelector("input.figure-scale-input") as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: "70" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onScale).toHaveBeenCalledWith(70);
+    expect(input.value).toBe("40");
+  });
 });

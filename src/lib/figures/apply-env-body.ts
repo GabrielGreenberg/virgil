@@ -21,7 +21,7 @@
 import type { Editor } from "@tiptap/core";
 import {
   extractFigureAttrs,
-  extractFigureSources,
+  figureSourcesOf,
   figureNodeAttrsFromSource,
   extractGraphicsAttrs,
   type FigureGraphicsParts,
@@ -166,7 +166,7 @@ export function applyFigureExtrasEdit(
   // caption/label attrs are never named here, so they cannot be clobbered.
   // Both halves (task 1084): a caption-first figure's image lives in
   // `trailingExtras`, and deriving from `extras` alone erased its `sources`.
-  const sources = extractFigureSources(`${next.extras}\n${next.trailingExtras}`);
+  const sources = figureSourcesOf(next);
   const first = sources[0] ?? null;
   editor.view.dispatch(
     editor.state.tr.setNodeMarkup(pos, undefined, {

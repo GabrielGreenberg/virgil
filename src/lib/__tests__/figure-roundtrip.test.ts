@@ -812,8 +812,11 @@ describe("setWidthInOptions", () => {
 
   it("preserves other options around the width directive", () => {
     expect(
-      setWidthInOptions("width=0.5\\textwidth,angle=45,clip", 70).options,
-    ).toBe("width=0.7\\textwidth,angle=45,clip");
+      setWidthInOptions("width=0.5\\textwidth,trim=1 2 3 4,clip", 70).options,
+    ).toBe("width=0.7\\textwidth,trim=1 2 3 4,clip");
+    // Task 1434: a width BEFORE an angle is sized pre-rotation, so it is not
+    // the printed width — the chrome refuses it rather than mislabel it.
+    expect(setWidthInOptions("width=0.5\\textwidth,angle=45,clip", 70).ok).toBe(false);
     expect(
       setWidthInOptions("angle=45,width=0.5\\textwidth,clip", 70).options,
     ).toBe("angle=45,width=0.7\\textwidth,clip");
@@ -873,10 +876,10 @@ describe("withUpdatedFigureWidth", () => {
   it("preserves untouched options", () => {
     expect(
       withUpdatedFigureWidth(
-        "\\includegraphics[width=0.5\\textwidth,angle=45,clip]{foo}",
+        "\\includegraphics[angle=45,width=0.5\\textwidth,clip]{foo}",
         70,
       ),
-    ).toBe("\\includegraphics[width=0.7\\textwidth,angle=45,clip]{foo}");
+    ).toBe("\\includegraphics[angle=45,width=0.7\\textwidth,clip]{foo}");
   });
 
   it("returns null for absolute-unit widths", () => {
