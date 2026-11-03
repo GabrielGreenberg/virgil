@@ -64,8 +64,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { describedHint, iconHint } from "@/components/Hint";
 import type { StatusTone } from "./StatusDot";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { isCommitEnter } from "@/lib/key-intent";
-import { FIELD_COMMIT_SHORTCUT, matchesPortableChord } from "@/lib/portable-chord";
+import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -920,10 +919,11 @@ export default function AIWindow({
   ]);
 
   const onComposerKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
-    if (isCommitEnter(e) && matchesPortableChord(e, FIELD_COMMIT_SHORTCUT)) {
-      e.preventDefault();
-      submitComposer();
-    }
+    const press = chordPress(e, FIELD_COMMIT_SHORTCUT);
+    if (!press) return;
+    e.preventDefault();
+    if (press === "held") return; // a held ⌘Enter submits once
+    submitComposer();
   });
 
   if (!open) return null;

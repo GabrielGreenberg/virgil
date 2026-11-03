@@ -248,8 +248,8 @@ import {
 } from "@/lib/doc-index";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 import { iconHint } from "@/components/Hint";
-import { chordPress, matchesPortableChord } from "@/lib/portable-chord";
-import { NEW_WINDOW_SHORTCUT } from "@/lib/multi-window/new-window-shortcut";
+import { chordPress } from "@/lib/portable-chord";
+import { newWindowChordHandler } from "@/lib/multi-window/new-window-shortcut";
 
 
 export default function EditorLayout() {
@@ -2467,13 +2467,10 @@ export default function EditorLayout() {
   }, []);
 
   // NEW_WINDOW_SHORTCUT (⌘⇧N) → new window. The chord is stated once and
-  // the "+" menu's hint renders the same string (task 998).
+  // the "+" menu's hint renders the same string (task 998); a held chord opens
+  // one window (task 1450).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!matchesPortableChord(e, NEW_WINDOW_SHORTCUT)) return;
-      e.preventDefault();
-      openNewVirgilWindow();
-    };
+    const onKey = newWindowChordHandler(openNewVirgilWindow);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openNewVirgilWindow]);
