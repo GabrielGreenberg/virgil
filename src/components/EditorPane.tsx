@@ -316,6 +316,7 @@ import { paintMenuTriggerAria } from "./menu/menu-trigger";
 import { useConfirmDialog } from "./ConfirmDialog";
 import {
   labelRenameConfirmCopy,
+  labelClearConfirmCopy,
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
@@ -4903,10 +4904,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Escape / click-away CANCEL the rename outright. A boolean `confirm` read
   // Escape as "Leave references" and orphaned every ref. The words are the
   // door's, spelled once beside the mechanism they gate. Not `danger`.
+  // A CLEAR (`newLabel === null`, task 1435) asks a TWO-way "Remove label?"
+  // through the boolean confirm — a cleared key has nowhere to carry refs to,
+  // so "Leave references" would be a button that means nothing.
   const handleConfirmLabelRename = useCallback<LabelRenameConfirm>(
     (oldLabel, newLabel, refCount) =>
-      chooseFromNodeView(labelRenameConfirmCopy(oldLabel, newLabel, refCount)),
-    [chooseFromNodeView],
+      newLabel === null
+        ? confirmFromNodeView(labelClearConfirmCopy(oldLabel, refCount)).then((ok) =>
+            ok ? "confirm" : "cancel",
+          )
+        : chooseFromNodeView(labelRenameConfirmCopy(oldLabel, newLabel, refCount)),
+    [chooseFromNodeView, confirmFromNodeView],
   );
   // Moving an ANCHORED footnote by dropping its panel card back into the
   // document (Editor.tsx's `MIME_FOOTNOTE` drop branch — retained for a

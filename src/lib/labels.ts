@@ -198,3 +198,79 @@ export function isLabelTaken(
   if (!candidate.trim()) return false;
   return isLabelTakenIn(collectLabelKeys(editor), candidate, excludeLabel);
 }
+
+// ── Key SAFETY (task 1435) ───────────────────────────────────────────────
+//
+// A label key is written VERBATIM into `\label{…}` (and every `\ref{…}`
+// carried with it), and read back by `LABEL_RE` — `[^}]+` — and by TeX. So a
+// key holding a character that is SYNTAX inside that brace group writes
+// source the app cannot read back: `fig:a}b` → `\label{fig:a}b}` unbalances
+// the environment and re-reads as `fig:a`; `%` comments out the rest of the
+// line; `#` and `\` break the compile. One predicate states which characters
+// a key may not hold — the label twin of task 1081's `texUnsafePathChars`
+// (`figures/asset-import.ts`) — and the rename door refuses on it, so every
+// label editor (heading chip, figure lozenge, expex pod, Outline) inherits
+// the refusal rather than each carrying a copy.
+//
+// The set is the brace/comment/parameter/escape grammar plus whitespace and
+// control characters (a key with a space or a newline in it is a key no
+// author means). `:` `-` `_` `.` `/` and non-ASCII letters stay legal.
+
+/** One character a label key may not hold. Global for `texUnsafeLabelChars`. */
+const TEX_UNSAFE_LABEL_CHAR = /[{}%#\\\s\u0000-\u001f\u007f]/g;
+
+/** Every TeX-unsafe character in `key`, in order, deduplicated — the
+ *  refusal's evidence. Empty ⇔ the key can be written and read back. */
+export function texUnsafeLabelChars(key: string): string[] {
+  return [...new Set(key.match(TEX_UNSAFE_LABEL_CHAR) ?? [])];
+}
+
+/** Whether `key` can be written into `\label{…}` / `\ref{…}` and read back
+ *  byte-for-byte by both Virgil's parser and TeX. */
+export function isTexSafeLabelKey(key: string): boolean {
+  return texUnsafeLabelChars(key).length === 0;
+}
+
+/** Why a candidate key cannot be committed: `unsafe` (TeX syntax inside it)
+ *  or `taken` (another declaration claims it). */
+export type LabelKeyProblem = "unsafe" | "taken";
+
+/**
+ * THE question every label field asks of a candidate — live per keystroke
+ * over a snapshot (`labelKeyProblemIn`) and at commit against the live doc
+ * (`labelKeyProblem`). Safety first: it is O(key) and needs no key set. An
+ * empty candidate (a CLEAR) has no problem; `own` is never a collision.
+ */
+export function labelKeyProblemIn(
+  keys: ReadonlySet<string> | null,
+  candidate: string,
+  own?: string | null,
+): LabelKeyProblem | null {
+  const key = candidate.trim();
+  if (!key) return null;
+  if (!isTexSafeLabelKey(key)) return "unsafe";
+  return keys && isLabelTakenIn(keys, key, own) ? "taken" : null;
+}
+
+/** The commit-time answer against the LIVE document (one O(doc) walk, and
+ *  only when the key is safe). */
+export function labelKeyProblem(
+  editor: Editor,
+  candidate: string,
+  own?: string | null,
+): LabelKeyProblem | null {
+  const key = candidate.trim();
+  if (!key) return null;
+  if (!isTexSafeLabelKey(key)) return "unsafe";
+  return isLabelTaken(editor, key, own) ? "taken" : null;
+}
+
+/** The words a label field shows under a problem candidate — spelled ONCE,
+ *  so the heading chip, figure lozenge, expex pod and Outline agree. */
+export function labelKeyProblemText(problem: LabelKeyProblem, candidate: string): string {
+  if (problem === "taken") return "⚠ label already in use";
+  const shown = texUnsafeLabelChars(candidate.trim()).map((c) =>
+    /\s/.test(c) ? "spaces" : /[\u0000-\u001f\u007f]/.test(c) ? "control characters" : c,
+  );
+  return `⚠ a label can't contain ${[...new Set(shown)].join(" ")}`;
+}

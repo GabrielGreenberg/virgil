@@ -46,10 +46,16 @@ import {
   renameLabelWithRefs,
   countLabelRefs,
   labelRenameConfirmCopy,
+  labelClearConfirmCopy,
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
-import { isLabelTaken } from "@/lib/labels";
+import {
+  isLabelTaken,
+  labelKeyProblemIn,
+  labelKeyProblemText,
+  texUnsafeLabelChars,
+} from "@/lib/labels";
 import { Node as PMNode } from "@tiptap/pm/model";
 import FigureAnnotation from "@/components/FigureAnnotation";
 import { useEditorOps } from "@/components/editor-layout/card-actions/editor-ops";
@@ -313,7 +319,7 @@ describe("the door — renameLabelWithRefs", () => {
     } finally { c(); }
   });
 
-  it("asks NOTHING and carries nothing on an ADD (no refs yet) or a CLEAR (nowhere to point)", async () => {
+  it("asks NOTHING on an ADD (no refs yet) or a CLEAR of a key nothing references", async () => {
     const { editor, cleanup: c } = mount();
     try {
       const confirm = vi.fn(async () => "confirm" as const);
@@ -323,6 +329,29 @@ describe("the door — renameLabelWithRefs", () => {
       expect(labelOf(editor, H_NONE)).toBe("sec:fresh");
       // A clear takes the attr's SCHEMA default — `null` on a heading …
       expect(await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, H_NONE), newLabel: "   ", confirm,
+      })).toBe("renamed");
+      expect(labelOf(editor, H_NONE)).toBeNull();
+      expect(confirm).not.toHaveBeenCalled();
+      expect(refLabels(editor)).toEqual(BASE_REFS);
+    } finally { c(); }
+  });
+
+  // Task 1435 member 2: a CLEAR of a key `\ref`s still name leaves every one
+  // of them dangling — exactly why the figure's delete confirms — so the door
+  // ASKS (`newLabel: null`), and Cancel writes nothing.
+  it("ASKS before a CLEAR that would dangle refs — confirm clears (refs untouched), cancel writes nothing", async () => {
+    const { editor, cleanup: c } = mount();
+    try {
+      const cancel = vi.fn(async () => "cancel" as const);
+      expect(await renameLabelWithRefs(editor, {
+        locate: locateByUuid(editor, H1), newLabel: "   ", confirm: cancel,
+      })).toBe("cancelled");
+      expect(cancel).toHaveBeenCalledWith("sec:old", null, 2);
+      expect(labelOf(editor, H1)).toBe("sec:old");
+
+      const confirm = vi.fn(async () => "confirm" as const);
+      expect(await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, H1), newLabel: "   ", confirm,
       })).toBe("renamed");
       expect(labelOf(editor, H1)).toBeNull();
@@ -331,10 +360,48 @@ describe("the door — renameLabelWithRefs", () => {
         locate: locateByUuid(editor, FIG), newLabel: null, confirm,
       })).toBe("renamed");
       expect(labelOf(editor, FIG)).toBe("");
-      expect(confirm).not.toHaveBeenCalled();
-      // The cleared keys' refs are exactly where they were.
+      expect(confirm).toHaveBeenCalledWith("fig:a", null, 1);
+      // A cleared key has nowhere to point its refs: they are exactly where they were.
       expect(refLabels(editor)).toEqual(BASE_REFS);
     } finally { c(); }
+  });
+
+  it("the clear confirm's words name the dangling count; a rename's keep the three-way copy", () => {
+    const one = labelClearConfirmCopy("fig:a", 1);
+    expect(one.title).toBe("Remove label?");
+    expect(one.message).toContain('1 reference in this document points at "fig:a"');
+    expect(labelClearConfirmCopy("sec:x", 3).message).toContain("3 references");
+  });
+
+  // Task 1435 member 1: a key TeX reads as syntax is REFUSED at the door, so
+  // every surface inherits it. `fig:a}b` used to write `\label{fig:a}b}`.
+  it.each(["fig:a}b", "fig:{a", "fig:a%b", "fig:a#b", "fig:a\\b", "fig a", "fig:\tb"])(
+    "REFUSES the TeX-unsafe key %j — outcome unsafe, nothing written, nothing asked",
+    async (bad) => {
+      const { editor, cleanup: c } = mount();
+      try {
+        const confirm = vi.fn(async () => "confirm" as const);
+        const spy = vi.spyOn(editor.view, "dispatch");
+        expect(await renameLabelWithRefs(editor, {
+          locate: locateByUuid(editor, FIG), newLabel: bad, confirm,
+        })).toBe("unsafe");
+        expect(spy).not.toHaveBeenCalled();
+        expect(confirm).not.toHaveBeenCalled();
+        expect(labelOf(editor, FIG)).toBe("fig:a");
+        expect(refLabels(editor)).toEqual(BASE_REFS);
+        spy.mockRestore();
+      } finally { c(); }
+    },
+  );
+
+  it("keeps the punctuation authors use in keys legal (`: - _ . /`, non-ASCII)", () => {
+    for (const ok of ["fig:a-b_c.d/e", "sec:über", "eq:1"]) {
+      expect(texUnsafeLabelChars(ok)).toEqual([]);
+      expect(labelKeyProblemIn(new Set(), ok, null)).toBeNull();
+    }
+    expect(labelKeyProblemIn(new Set(["sec:two"]), "sec:two", null)).toBe("taken");
+    expect(labelKeyProblemIn(new Set(["sec:two"]), "a}b", null)).toBe("unsafe");
+    expect(labelKeyProblemText("unsafe", "a}b %c")).toBe("⚠ a label can't contain } spaces %");
   });
 
   it("REFUSES a key another declaration already claims — nothing written, nothing asked", async () => {
@@ -508,6 +575,28 @@ describe("the HEADING strip's label input enters the door", () => {
     } finally { c(); }
   });
 
+  it("a TeX-unsafe key is REFUSED on Enter like a taken one — input open, warning names the character", async () => {
+    const confirm = vi.fn(async () => "confirm" as const);
+    const { editor, el, cleanup: c } = mount({ current: confirm });
+    try {
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const input = openLabelInput(el, H1);
+      input.value = "sec:a}b";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      pressEnter(input);
+      await settle();
+      const annot = annotOf(el, H1);
+      expect(annot.querySelector("input.heading-label-input")).toBe(input);
+      expect(input.classList.contains("has-conflict")).toBe(true);
+      const warning = annot.querySelector<HTMLElement>(".heading-label-warning")!;
+      expect(warning.style.display).toBe("");
+      expect(warning.textContent).toBe("⚠ a label can't contain }");
+      expect(spy).not.toHaveBeenCalled();
+      expect(labelOf(editor, H1)).toBe("sec:old");
+      spy.mockRestore();
+    } finally { c(); }
+  });
+
   it("the live warning reads the SSOT predicate — it fires with no prop threaded at all", () => {
     const { el, cleanup: c } = mount(); // callbacks: {} — nothing supplied
     try {
@@ -589,6 +678,27 @@ describe("the FIGURE lozenge's label input enters the door", () => {
       expect(container.querySelector(".figure-label-warning")).not.toBeNull();
       expect(spy).not.toHaveBeenCalled();
       expect(labelOf(editor, FIG)).toBe("fig:a");
+      spy.mockRestore();
+    } finally { c(); }
+  });
+
+  it("a TeX-unsafe key is REFUSED on Enter — input open, the warning names the character, nothing written", async () => {
+    const { editor, cleanup: c } = mount();
+    try {
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const { input, container } = renderLozenge(editor, async () => "confirm" as const);
+      fireEvent.change(input, { target: { value: "fig:a}b" } });
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Enter" });
+        await settle();
+      });
+      expect(container.querySelector("input.figure-label-input")).toBe(input);
+      expect(container.querySelector(".figure-label-warning")?.textContent).toBe(
+        "⚠ a label can't contain }",
+      );
+      expect(spy).not.toHaveBeenCalled();
+      expect(labelOf(editor, FIG)).toBe("fig:a");
+      expect(refLabels(editor)).toEqual(BASE_REFS);
       spy.mockRestore();
     } finally { c(); }
   });

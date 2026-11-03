@@ -1,4 +1,4 @@
-import { isLabelTakenIn } from "@/lib/labels";
+import { labelKeyProblemIn, labelKeyProblemText } from "@/lib/labels";
 
 /**
  * LABEL KEY WARNING — the live "⚠ label already in use" strip under a label
@@ -19,6 +19,11 @@ import { isLabelTakenIn } from "@/lib/labels";
  * collaborator's write landing mid-edit is the stated residual; the COMMIT
  * still asks the live `isLabelTaken`, so a stale snapshot can only delay the
  * warning, never let a duplicate through.)
+ *
+ * Since task 1435 it warns on the whole `labelKeyProblemIn` question, not
+ * only a collision: a key holding a character TeX reads as syntax (`}` `%`
+ * `#` `\\`, whitespace) shows the same strip with the door's own words, so the
+ * field stays open on Enter exactly as it does for a taken key.
  *
  * What it owns: the warning element, the `has-conflict` class on the input,
  * and the `input` listener. What it does NOT own: the commit gate — that is
@@ -43,13 +48,14 @@ export interface LabelKeyWarningOptions {
 export interface LabelKeyWarning {
   /** Re-derive from the input's current value. */
   refresh(): void;
-  /** Whether the current value conflicts — what `refresh` last painted. */
+  /** Whether the current value has a problem (taken OR unsafe) — what
+   *  `refresh` last painted. */
   conflict(): boolean;
   /** Remove the strip and the listener. Idempotent. */
   dispose(): void;
 }
 
-export const LABEL_KEY_WARNING_TEXT = "⚠ label already in use";
+export const LABEL_KEY_WARNING_TEXT = labelKeyProblemText("taken", "");
 
 export function createLabelKeyWarning(opts: LabelKeyWarningOptions): LabelKeyWarning {
   const { input, container, keys, own } = opts;
@@ -61,8 +67,9 @@ export function createLabelKeyWarning(opts: LabelKeyWarningOptions): LabelKeyWar
 
   let taken = false;
   const refresh = () => {
-    const candidate = input.value.trim();
-    taken = candidate ? isLabelTakenIn(keys, candidate, own) : false;
+    const problem = labelKeyProblemIn(keys, input.value, own);
+    taken = problem !== null;
+    if (problem) el.textContent = labelKeyProblemText(problem, input.value);
     el.style.display = taken ? "" : "none";
     input.classList.toggle("has-conflict", taken);
   };

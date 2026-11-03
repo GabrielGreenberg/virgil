@@ -139,7 +139,7 @@ interface EditorProps {
    */
   onConfirmLabelRename?: (
     oldLabel: string,
-    newLabel: string,
+    newLabel: string | null,
     refCount: number,
   ) => Promise<LabelRenameChoice>;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
@@ -277,7 +277,7 @@ export interface EditorHandle {
   /** Confirm rewriting `\ref`s when a heading / figure label is renamed. */
   onConfirmLabelRename: (
     oldLabel: string,
-    newLabel: string,
+    newLabel: string | null,
     refCount: number,
   ) => Promise<LabelRenameChoice>;
   /** Confirm deleting a heading (unused from floats — delete is gated off
@@ -995,7 +995,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     // Defaults match what the NodeView assumes when the host omitted the prop.
     onConfirmLabelRename(
       oldLabel: string,
-      newLabel: string,
+      newLabel: string | null,
       refCount: number,
     ): Promise<LabelRenameChoice> {
       const fn = onConfirmLabelRenameRef.current;

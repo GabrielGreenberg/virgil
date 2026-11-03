@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
-import { isLabelTaken } from "@/lib/labels";
+import { isLabelTaken, isTexSafeLabelKey } from "@/lib/labels";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
 import type { ConfirmChoice } from "@/components/ConfirmDialog";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
@@ -29,6 +29,12 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
  *     editor that holds the SOURCE OF TRUTH — main, even when the gesture
  *     happens in a popped-out float, which is what lets the ref walk cover the
  *     whole document rather than the float's one section;
+ *   • a candidate TeX cannot read back — one holding `{ } % # \\`, whitespace
+ *     or a control character — is REFUSED (`"unsafe"`, task 1435): the key is
+ *     written verbatim into `\label{…}` and every carried `\ref{…}`, so
+ *     `fig:a}b` would unbalance the source and re-read as `fig:a`. Same
+ *     `@/lib/labels` predicate (`isTexSafeLabelKey`) every field's live
+ *     warning reads;
  *   • a candidate already claimed by ANOTHER declaration is REFUSED — the same
  *     `@/lib/labels` predicate the live "label already in use" warning reads,
  *     so the warning and the commit can never disagree (the rule the Outline
@@ -37,7 +43,11 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
  *     question (task 876): "Update references" moves the declaration AND
  *     every ref in ONE transaction — one undo step, one autosave arm, no
  *     window in which the paper is inconsistent; "Leave references" moves the
- *     declaration alone; and CANCEL (Escape, click-away) writes NOTHING. Pre-876
+ *     declaration alone; and CANCEL (Escape, click-away) writes NOTHING.
+ *     A CLEAR of a key that refs still name asks too (task 1435) — with
+ *     `newLabel: null`, a two-way "Remove label?" (confirm / cancel), because
+ *     a cleared key has nowhere to carry refs to and every one of them will
+ *     dangle; the figure's delete confirm asks for exactly that reason. Pre-876
  *     the confirm was a boolean, so Escape's `false` read as "Leave
  *     references" and renamed the label while orphaning every ref — Escape
  *     doing the opposite of cancel (law: *Escape means cancel*);
@@ -86,9 +96,11 @@ import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
  *  `cancel` = Escape / click-away / Cancel — ABORT, nothing written. */
 export type LabelRenameChoice = ConfirmChoice;
 
+/** `newLabel` is `null` for a CLEAR — then the only answers that mean
+ *  anything are `confirm` (remove the label, refs dangle) and `cancel`. */
 export type LabelRenameConfirm = (
   oldLabel: string,
-  newLabel: string,
+  newLabel: string | null,
   refCount: number,
 ) => Promise<LabelRenameChoice>;
 
@@ -99,6 +111,9 @@ export type LabelRenameOutcome =
   | "unchanged"
   /** The candidate is claimed by ANOTHER declaration — refused, nothing written. */
   | "conflict"
+  /** The candidate holds a character TeX reads as syntax inside `\label{…}`
+   *  (`isTexSafeLabelKey`) — refused, nothing written (task 1435). */
+  | "unsafe"
   /** `locate` answered null (before or after the confirm) — nothing written. */
   | "unresolved"
   /** The user CANCELLED the "Update references?" question — nothing written. */
@@ -117,8 +132,10 @@ export interface LabelRenameOptions {
   locate: () => { pos: number; node: PMNode } | null;
   /** The new key. Empty / whitespace / `null` clears the label. */
   newLabel: string | null;
-  /** Asked only for a NON-EMPTY → NON-EMPTY rename that has refs to carry.
-   *  `null` / `undefined` ⇒ the refs are carried without asking (see above). */
+  /** Asked for a NON-EMPTY → NON-EMPTY rename that has refs to carry, and
+   *  for a CLEAR of a key refs still name (`newLabel: null`).
+   *  `null` / `undefined` ⇒ the refs are carried (a clear proceeds) without
+   *  asking (see above). */
   confirm?: LabelRenameConfirm | null;
 }
 
@@ -165,19 +182,23 @@ export async function renameLabelWithRefs(
   const newLabel: string | null = trimmed.length > 0 ? trimmed : null;
   if (newLabel === oldLabel) return "unchanged";
 
-  // The commit gate reads the SAME predicate the live warnings read.
+  // The commit gates read the SAME predicates the live warnings read.
+  if (newLabel && !isTexSafeLabelKey(newLabel)) return "unsafe";
   if (newLabel && isLabelTaken(target, newLabel, oldLabel)) return "conflict";
 
-  // Refs are carried only for a rename between two non-empty keys: an ADD has
-  // no refs yet, and a CLEAR has nowhere to point them.
-  const refCount = oldLabel && newLabel ? countLabelRefs(target.state.doc, oldLabel) : 0;
+  // Refs are carried only for a rename between two non-empty keys (an ADD
+  // has no refs yet); a CLEAR has nowhere to point them, so it COUNTS them
+  // to ask whether to leave them dangling.
+  const refCount = oldLabel ? countLabelRefs(target.state.doc, oldLabel) : 0;
 
-  let carryRefs = refCount > 0;
-  const asked = carryRefs && !!oldLabel && !!newLabel && !!opts.confirm;
+  let carryRefs = refCount > 0 && !!newLabel;
+  const asked = refCount > 0 && !!oldLabel && !!opts.confirm;
   if (asked) {
-    const choice = await opts.confirm!(oldLabel!, newLabel!, refCount);
+    const choice = await opts.confirm!(oldLabel!, newLabel, refCount);
     if (choice === "cancel") return "cancelled";
-    carryRefs = choice === "confirm";
+    // For a clear there is nothing to carry whatever the answer; any
+    // non-cancel answer removes the label.
+    carryRefs = !!newLabel && choice === "confirm";
   }
 
   // Re-resolve after the await — the declaration by `locate`, the refs by a
@@ -242,6 +263,27 @@ export function labelRenameConfirmCopy(
     confirmLabel: "Update references",
     secondaryLabel: "Leave references",
     // Escape and click-away resolve this same answer: rename NOTHING.
+    cancelLabel: "Cancel",
+  };
+}
+
+/**
+ * The words the "Remove label?" confirm says when a CLEAR would leave `\ref`s
+ * dangling (task 1435) — a two-way question (no "Leave references": a cleared
+ * key has nowhere to carry them), produced through the boolean confirm.
+ */
+export function labelClearConfirmCopy(
+  oldLabel: string,
+  refCount: number,
+): { title: string; message: string; confirmLabel: string; cancelLabel: string } {
+  const noun = refCount === 1 ? "1 reference" : `${refCount} references`;
+  return {
+    title: "Remove label?",
+    message:
+      `${noun} in this document point${refCount === 1 ? "s" : ""} at ` +
+      `"${oldLabel}". Removing the label leaves ${refCount === 1 ? "it" : "them"} ` +
+      `pointing at a key nothing declares.`,
+    confirmLabel: "Remove label",
     cancelLabel: "Cancel",
   };
 }
