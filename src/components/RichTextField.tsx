@@ -409,10 +409,29 @@ function RichTextFieldImpl({
     fire: () => {
       const pending = pendingEditorRef.current;
       pendingEditorRef.current = null;
-      if (pending) onChangeRef.current(pending.getJSON());
+      if (!pending) return;
+      // The user's edit is handed upstream, so it is the NEWER intent than any
+      // external value this field was holding back for it: the owed re-seed
+      // is dropped (task 1446, "theirs wins"). The parent's echo of this edit
+      // re-runs the sync effect, which then reconciles against it.
+      reseedOwedRef.current = false;
+      onChangeRef.current(pending.getJSON());
     },
   });
   const isFocusedRef = useRef(false);
+  // The value most recently passed in, read by the sync at blur time.
+  const valueRef = useRef(value);
+  // Task 1446 — task 532's draft rule ("adopt the source WHILE THE DRAFT IS
+  // NOT DIRTY", `field-draft.ts`) in the rich-text medium. The draft is the
+  // editor itself, and its dirty bit is the coalescer's PENDING edit rather
+  // than a value comparison: an editor's doc legitimately differs from the
+  // seed it was given (schema normalization, appended transactions), so
+  // `doc ≠ lastSynced` would read as permanently dirty, while "an edit not
+  // yet handed upstream" is exactly the thing a re-seed must not overwrite.
+  // Focus HOLDS the sync too (a re-seed under the caret fights live typing),
+  // but a held sync is OWED, not dropped: the blur edge pays it, and a user
+  // edit handed upstream in the meantime cancels it (`fire` above).
+  const reseedOwedRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
   const initialContent = refreshAtomDisplay(normalizeRichContent(value));
@@ -593,6 +612,9 @@ function RichTextFieldImpl({
       // Flush any pending debounced update so the parent sees the final value
       // before we report the blur (which often triggers cleanup logic).
       changeCoalescer.flush();
+      // Pay a sync that focus held back (task 1446). If the flush just handed
+      // an edit upstream it cleared the debt — the user's edit wins.
+      if (reseedOwedRef.current) syncExternalValueRef.current();
       onFocusChangeRef.current?.(false, null);
     },
   // Re-create the editor when instanceKey changes (footnote/note ID changed
@@ -621,14 +643,26 @@ function RichTextFieldImpl({
   // Editor-census probe (__editorCensus): one live-instance tick per mount.
   useEffect(() => registerEditorMount("rich-text-field"), []);
 
-  // External value sync — only when the editor isn't focused (otherwise we'd
-  // wipe the caret on every debounced parent update). We also refresh
-  // citation + ref displayText here so that bibliography edits / newly-numbered
-  // sections picked up by the parent propagate into the mini editor.
-  useEffect(() => {
+  // External value sync. We also refresh citation + ref displayText here so
+  // that bibliography edits / newly-numbered sections picked up by the parent
+  // propagate into the mini editor.
+  //
+  // HELD (task 1446) while the editor is focused (a re-seed would wipe the
+  // caret on every debounced parent update) or holds an edit the coalescer
+  // has not handed upstream yet (a re-seed would replace it, and the
+  // coalescer's `getJSON()` would then read the SEED back as the user's edit —
+  // an unfocused citation/archive drop was lost that way). A held sync is
+  // OWED: the blur edge pays it. Without the debt, a value that landed while
+  // focused was never shown, and the next keystroke wrote the stale body back
+  // over it.
+  const syncExternalValue = useCallback(() => {
     if (!editor) return;
-    if (isFocusedRef.current) return;
-    const desired = refreshAtomDisplay(normalizeRichContent(value));
+    if (isFocusedRef.current || pendingEditorRef.current) {
+      reseedOwedRef.current = true;
+      return;
+    }
+    reseedOwedRef.current = false;
+    const desired = refreshAtomDisplay(normalizeRichContent(valueRef.current));
     const current = editor.getJSON();
     if (JSON.stringify(current) !== JSON.stringify(desired)) {
       // Through the re-seed door: an external value push is not the user's
@@ -637,7 +671,15 @@ function RichTextFieldImpl({
       // revert back (task 1398).
       reseedEditor(editor, desired);
     }
-  }, [editor, value, refreshAtomDisplay]);
+  }, [editor, refreshAtomDisplay]);
+  // The blur handler is bound once at editor construction, so it reaches the
+  // live sync (and the live value) through refs.
+  const syncExternalValueRef = useRef(syncExternalValue);
+  useEffect(() => {
+    valueRef.current = value;
+    syncExternalValueRef.current = syncExternalValue;
+    syncExternalValue();
+  }, [value, syncExternalValue]);
 
   // Intercept beforeinput in the CAPTURE phase, before the browser commits
   // its native input handling and before PM's own bubble-phase handler
