@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIsVisibleRef } from "@/lib/keep-alive/visibility-context";
+import { useUnmountEnding } from "@/lib/pane-resize/use-unmount-ending";
 import {
   hasActiveLayoutGesture,
   onLayoutGestureSetChange,
@@ -295,6 +296,9 @@ export function EditorScrollbar({
     : 0;
   const thumbY = progress * maxThumbY;
 
+  // The thumb drag outliving the scrollbar (pane swapped under a held press)
+  // would keep scrolling a detached row: unmount ends it (task 1444).
+  const thumbEndingRef = useUnmountEnding();
   const onThumbMouseDown = useCallback(
     (e: React.MouseEvent) => {
       const row = rowRef.current;
@@ -311,12 +315,18 @@ export function EditorScrollbar({
       const trackPx = layout.height - thumbHeight;
       const scrollPx = scroll.height - scroll.client;
       const ratio = trackPx > 0 ? scrollPx / trackPx : 0;
-      // ONE end path — release, missed release, both.
+      // ONE teardown — release, missed release, and unmount (task 1444; an
+      // unmount ends with the listeners only, never re-arming the fade timer
+      // the unmount just cleared).
+      const detach = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        if (thumbEndingRef.current === detach) thumbEndingRef.current = null;
+      };
       const onUp = () => {
         setDragging(false);
         scheduleFade();
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
+        detach();
       };
       const onMove = (mv: MouseEvent) => {
         // Missed-release failsafe (task 185): the primary button is up, so the
@@ -331,10 +341,12 @@ export function EditorScrollbar({
         const dy = mv.clientY - startY;
         row.scrollTop = startScroll + dy * ratio;
       };
+      thumbEndingRef.current?.();
+      thumbEndingRef.current = detach;
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [rowRef, layout.height, scroll.height, scroll.client, thumbHeight, scheduleFade],
+    [rowRef, layout.height, scroll.height, scroll.client, thumbHeight, scheduleFade, thumbEndingRef],
   );
 
   if (!scrollable) return null;

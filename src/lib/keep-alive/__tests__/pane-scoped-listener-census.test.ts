@@ -327,12 +327,13 @@ const LEDGER: Record<string, Row> = {
     events: [
       "window.mousemove",
       "window.mouseup",
+      "window.keydown",
       "document.mousemove",
       "window.scroll",
       "window.resize",
       "document.selectionchange",
     ],
-    why: "hover/scroll/resize gated on visibility; the pair is the grab drag; selectionchange bails unless the range is inside this editor",
+    why: "hover/scroll/resize gated on visibility; the pair is the grab drag, and the capture keydown is that press's Escape cancel (task 1444) — all three armed only by a press on THIS pane's handle; selectionchange bails unless the range is inside this editor",
   },
 };
 
