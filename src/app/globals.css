@@ -3847,7 +3847,20 @@ textarea {
   cursor: default;
 }
 
-.figure-block .figure-chrome-btn {
+/* ── Figure chrome interaction states (task 1438) ───────────────────
+   The chrome rests on a .92-white pod over the image, so its controls take
+   THE neutral hover — `.hover-on-light`, worn in the JSX — and this sheet
+   states only geometry, the resting fill, and the ACCENT ink/border cue the
+   utility composes at its shared timing. No hover FILL is spelled here: until
+   1438 the buttons hovered to plain `white` and the −/+ to `--code-bg`, two
+   hand-rolled spellings beside the SSOT that the census could not see.
+
+   The resting rules are written `:where(.figure-block) …` — (0,1,0) — so the
+   unlayered `.hover-on-light:hover` (0,2,0) beats the resting fill wherever
+   it matches; at (0,2,0) and LATER in the sheet the resting fill would win
+   and the hover would paint nothing. Same reason the disabled −/+ needs no
+   rule of its own: `.hover-on-light[disabled]:hover` already paints none. */
+:where(.figure-block) .figure-chrome-btn {
   width: 22px;
   height: 22px;
   display: inline-flex;
@@ -3863,7 +3876,6 @@ textarea {
 }
 
 .figure-block .figure-chrome-btn:hover {
-  background: white;
   color: var(--accent);
   border-color: var(--accent);
 }
@@ -3871,6 +3883,17 @@ textarea {
 .figure-block .figure-chrome-btn-danger:hover {
   color: var(--danger-strong);
   border-color: var(--danger-strong);
+}
+
+/* The card-preview STUB — a figure/graphic with no resolvable image, shown
+   inside a card body as a compact mono pill rather than a broken-image box.
+   Stated here with the rest of the figure's chrome instead of as an inline
+   `style={{…}}` one-off in FigureCardPreview (task 1438). */
+.figure-card-preview-stub {
+  background-color: var(--surface-muted);
+  border: 1px solid var(--edge-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--ink-strong);
 }
 
 /* Scale composite: [ − | 60 | + ] attached, shares the chrome-btn look. */
@@ -3888,7 +3911,7 @@ textarea {
   opacity: 0.45;
 }
 
-.figure-block .figure-scale-btn {
+:where(.figure-block) .figure-scale-btn {
   width: 20px;
   height: 100%;
   display: inline-flex;
@@ -3905,7 +3928,6 @@ textarea {
 
 .figure-block .figure-scale-btn:hover:not(:disabled) {
   color: var(--accent);
-  background: var(--code-bg, #f0eeeb);
 }
 
 .figure-block .figure-scale-btn:disabled {

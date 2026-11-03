@@ -28,6 +28,7 @@ import type {
 } from "@/lib/library/library-types";
 import { bibStateTone, indexTierTone, type Tone } from "@/lib/library/status-tone";
 import { OpenEntryLink } from "./open-library-entry";
+import { describedHint } from "@/components/Hint";
 
 // Status-badge dialect — a documented sibling of the META tier: 10px, but
 // sentence-case (the user-facing vocabulary reads "Verified" / "Indexed PDF",
@@ -146,8 +147,7 @@ function indexTierChip(tier: LibraryIndexTier) {
     <span
       className={CHIP_BASE}
       style={toneStyle(indexTierTone(tier))}
-      data-hint={TIER_HINT[tier]}
-      aria-description={TIER_HINT[tier]}
+      {...describedHint(TIER_HINT[tier])}
     >
       {indexTierLabel(tier)}
     </span>

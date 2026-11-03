@@ -34,6 +34,7 @@ import {
 } from "@/panels/_shared/amber-attention";
 import { StatusDot } from "@/components/StatusDot";
 import { isCommitEnter } from "@/lib/key-intent";
+import { describedHint } from "@/components/Hint";
 
 export type BibReviewType = "fields" | "notes";
 export type BibReviewStatus = "none" | "pending" | "complete";
@@ -194,8 +195,7 @@ export function ReviewRequestChip({
           ? AMBER_PENDING_CHIP
           : "text-ink-muted hover:text-ink-body hover-on-light"
       }`}
-      data-hint={hint}
-      aria-description={hint}
+      {...describedHint(hint)}
     >
       {pending ? (
         <><StatusDot tone="pending" size="md" motion="ping" /><span>Requested</span></>

@@ -19,6 +19,7 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_KIND_BY_STACK_CARD_KIND } from "@/lib/stack/card-kinds";
 import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
+import { describedHint } from "@/components/Hint";
 
 /** One thumbnail's box. The strip's width formula reads the same width, so the
  *  budget it sizes for and the cards it lays out cannot drift apart. */
@@ -55,7 +56,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
       data-stack-thumb-id={item.id}
       data-stack-thumb-kind={kindLabel}
       onMouseDown={onMouseDown}
-      data-hint={`${kindLabel} · ${time}`}
+      {...describedHint(`${kindLabel} · ${time}`)}
       style={{
         position: "relative",
         flex: "0 0 auto",
@@ -70,7 +71,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         cursor: "grab",
         color: "var(--ink-body)",
         userSelect: "none",
-      }} aria-description={`${kindLabel} · ${time}`}
+      }}
     >
       <div
         style={{

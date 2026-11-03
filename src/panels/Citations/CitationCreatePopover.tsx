@@ -37,7 +37,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@/lib/types";
 import { Button } from "@/components/Button";
 import { CitekeyPicker } from "./CitekeyPicker";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import type { LiveAnchor } from "@/components/menu/live-anchor";
 
 export interface CitationCreatePopoverProps {
@@ -209,8 +209,7 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
         className="shrink-0"
         onClick={onOk}
         disabled={staged.length === 0}
-        data-hint="Insert citation"
-        aria-description="Insert citation"
+        {...describedHint("Insert citation")}
       >
         OK
       </Button>

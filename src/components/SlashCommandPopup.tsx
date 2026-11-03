@@ -43,6 +43,7 @@ import {
   isLayoutGestureActive,
   useLayoutGestureActive,
 } from "@/lib/pane-resize";
+import { describedHint } from "@/components/Hint";
 
 const POPUP_WIDTH = 180;
 /** Task 968: a popup with greyed rows carries their reasons as a suffix, so it
@@ -281,8 +282,7 @@ function SlashCommandList({
             key={name}
             type="button"
             disabled={isDisabled}
-            data-hint={why ?? undefined}
-            aria-description={why ?? undefined}
+            {...describedHint(why)}
             onClick={() => {
               if (!editor) return;
               executeSlashSelectionAt(editor.view, i);

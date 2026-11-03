@@ -16,7 +16,7 @@
  * (`[data-card-header] button` would also hide the kind label, which is
  * content). This census asks the question of the population: **every
  * chrome-SHAPED element a card primitive renders — a `<button>`, a
- * `PopoutButton`, `role="button"`, a hover hint (`data-hint` / `iconHint(`) —
+ * `PopoutButton`, `role="button"`, a hover hint (`data-hint` / `iconHint(` / `describedHint(`) —
  * is stamped `chromeOnly(…)` on its own tag, or sits on the reviewed
  * allowlist below that states why it is document content.**
  *
@@ -59,7 +59,7 @@ function cardFunctions(src: string): Map<string, string> {
   return out;
 }
 
-const CHROME_SHAPED = /\bdata-hint\s*=|\biconHint\s*\(|\brole=["']button["']/;
+const CHROME_SHAPED = /\bdata-hint\s*=|\b(?:iconHint|describedHint)\s*\(|\brole=["']button["']/;
 
 /** Every chrome-shaped opening tag in `body`: `[tagName, tagText]`. */
 function chromeShapedTags(body: string): [string, string][] {

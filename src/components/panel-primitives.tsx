@@ -80,7 +80,7 @@ import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
 import { omniPinStore, pinOwnerOf } from "./editor-layout/omni-pin-store";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { bindPress, pressProps } from "@/lib/press-props";
 import { cardPrimaryFieldProps } from "@/lib/card-primary-field";
@@ -2132,7 +2132,7 @@ export function EditableCard({
             ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
             : null),
         }}
-        data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-description={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
+        {...describedHint(partnerClaim ? `${partnerClaim.holder} is editing this card` : null)}
       >
         {aboveBody}
         {onBodyTitleChange && (

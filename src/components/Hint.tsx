@@ -99,6 +99,38 @@ export function iconHint({
   return attrs;
 }
 
+export type DescribedHintAttributes = HintAttributes & {
+  "aria-description"?: string;
+};
+
+/**
+ * The hint protocol for a control whose tooltip is a DESCRIPTION, not its
+ * name — a greyed control's reason, a "Click to expand" affordance, a
+ * co-author's claim. The tooltip and `aria-description` are one string, so
+ * a pointer user and a screen-reader user are told the same thing; the
+ * element's own text (or `aria-label`) stays its name. `null`/empty stamps
+ * nothing, so a conditional reason is `describedHint(disabled ? why : null)`.
+ *
+ * The sibling of {@link iconHint}: that one retires the hand-paired
+ * `data-hint` + `aria-label`, this one the hand-paired `data-hint` +
+ * `aria-description` — the same one-string-spelled-twice shape, the census
+ * in `icon-button-a11y-guardrail.test.ts` holding both (task 1438). A plain
+ * function for the same reason `iconHint` is.
+ */
+export function describedHint(
+  description: string | null | undefined,
+  { keys, pos }: Omit<HintOptions, "label"> = {},
+): DescribedHintAttributes {
+  const attrs: DescribedHintAttributes = {};
+  if (description) {
+    attrs["data-hint"] = description;
+    attrs["aria-description"] = description;
+  }
+  if (keys) attrs["data-hint-keys"] = keys;
+  if (pos) attrs["data-hint-pos"] = pos;
+  return attrs;
+}
+
 /** Wraps a single child element, injecting the hint attributes onto it. */
 export function Hint({
   label,

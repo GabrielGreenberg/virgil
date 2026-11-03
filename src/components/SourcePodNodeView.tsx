@@ -5,7 +5,7 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { SourcePodCodeMirror } from "./source-pod-code-mirror";
 import ConfirmDialog from "./ConfirmDialog";
 import { useFieldDraft } from "./field-draft";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import { foldChevronAttrs, FOLD_CHEVRON_CLASS } from "@/lib/fold-chevron";
 import { FoldChevronGlyph } from "@/components/icons/FoldChevronGlyph";
 import type { SourcePodDerive } from "./source-pod-derive";
@@ -563,9 +563,7 @@ export default function SourcePodNodeView({
             e.stopPropagation();
             toggleCollapsed();
           }}
-          {...(editable
-            ? { "data-hint": "Click to expand", "aria-description": "Click to expand" }
-            : {})}
+          {...describedHint(editable ? "Click to expand" : null)}
         >
           {previewLines.length > 0 ? (
             previewLines.map((line, i) => (
@@ -614,8 +612,7 @@ export default function SourcePodNodeView({
             e.stopPropagation();
             setShowSource(true);
           }}
-          data-hint={`Click to edit ${config.kindLabel} source`}
-          aria-description={`Click to edit ${config.kindLabel} source`}
+          {...describedHint(`Click to edit ${config.kindLabel} source`)}
         >
           {/* The tree scrolls INSIDE this; the corner does not. An absolutely
               positioned child of a scroll container is positioned against its

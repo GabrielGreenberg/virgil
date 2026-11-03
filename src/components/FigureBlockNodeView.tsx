@@ -39,7 +39,7 @@ import { chromeOnly } from "@/lib/view-only-chrome";
 import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import { isCommitEnter } from "@/lib/key-intent";
 
 const MIN_PERCENT = 10;
@@ -157,14 +157,7 @@ function FigureCardPreview({
       : firstSource?.path || "[graphic]";
     return (
       <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
-        <div
-          className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
-          style={{
-            backgroundColor: "var(--surface-muted)",
-            borderColor: "var(--edge-subtle)",
-            color: "var(--ink-strong)",
-          }}
-        >
+        <div className="figure-card-preview-stub inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-mono">
           <span className="text-[var(--ink-muted)]">
             {isFigure ? "Figure" : "Graphic"}:
           </span>
@@ -1051,13 +1044,13 @@ export function FigureChrome({
       <div
         className="figure-scale"
         data-disabled={canScale ? undefined : "true"}
-        data-hint={canScale ? undefined : "Width uses absolute units — edit in code to adjust"} aria-description={canScale ? undefined : "Width uses absolute units — edit in code to adjust"}
+        {...describedHint(canScale ? null : SCALE_LOCKED_REASON)}
       >
         <button
           data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
-          className="figure-scale-btn focus-ring"
-          aria-label="Decrease width"
+          className="figure-scale-btn hover-on-light focus-ring"
+          {...iconHint({ label: "Decrease width" })}
           onMouseDown={stopProp}
           onClick={(e) => stepBy(-1, e)}
           disabled={minusDisabled}
@@ -1108,8 +1101,8 @@ export function FigureChrome({
         <button
           data-iconbtn-exempt="geometry + states owned by its own node-view stylesheet class"
           type="button"
-          className="figure-scale-btn focus-ring"
-          aria-label="Increase width"
+          className="figure-scale-btn hover-on-light focus-ring"
+          {...iconHint({ label: "Increase width" })}
           onMouseDown={stopProp}
           onClick={(e) => stepBy(1, e)}
           disabled={plusDisabled}
@@ -1144,7 +1137,7 @@ function ChromeIconButton({
       // sits outside every row that renders it. `focus-ring` matches the
       // row's −/+ siblings: the icon census reads a `{children}`-forwarding
       // wrapper through its call sites (task 2026-10-24-1264).
-      className={chromeOnly(`figure-chrome-btn focus-ring${kind === "danger" ? " figure-chrome-btn-danger" : ""}`)}
+      className={chromeOnly(`figure-chrome-btn hover-on-light focus-ring${kind === "danger" ? " figure-chrome-btn-danger" : ""}`)}
       {...iconHint({ label: title })}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={onClick}
@@ -1164,6 +1157,10 @@ function draftFor(percent: number | null): string {
  *  a muted "50" still reads as a width, and the whole defect was a number
  *  the document did not contain. */
 const NATURAL_SIZE_PLACEHOLDER = "auto";
+
+/** Why the width composite is greyed: its tooltip AND its accessible
+ *  description, one string (`describedHint`). */
+const SCALE_LOCKED_REASON = "Width uses absolute units — edit in code to adjust";
 
 function clampPercent(n: number): number {
   if (!Number.isFinite(n)) return DEFAULT_SCALE_PERCENT;
