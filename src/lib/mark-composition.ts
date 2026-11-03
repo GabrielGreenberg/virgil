@@ -248,11 +248,33 @@ export const SLASH_MARK_TYPES: readonly string[] = WRAPPER_MARK_ROWS.filter(
  */
 export const SPELLING_ATTR = "spelling";
 
-/** The marks that carry a {@link SPELLING_ATTR} (rows with more than one
- *  spelling) — the list the schema's global-attribute extension registers. */
+/** The marks that carry a {@link SPELLING_ATTR} — rows with more than one
+ *  command spelling, plus the `colorArg` row, whose spelling is the HEX as
+ *  read (task 1439: `[HTML]{ff8800}` came back `{FF8800}`). The list the
+ *  schema's global-attribute extension registers. */
 export const SPELLING_MARK_TYPES: readonly string[] = WRAPPER_MARK_ROWS.filter(
-  (r) => r.commands.length > 1,
+  (r: WrapperMarkRow) => r.commands.length > 1 || r.colorArg === true,
 ).map((r) => r.mark);
+
+/**
+ * The mark attr recording a wrapper's SOURCE NESTING position on a run that
+ * wears several wrappers (task 1439) — 0 = outermost. A ProseMirror mark set
+ * is sorted by schema rank, so once a doc is mounted a node's mark ORDER no
+ * longer says how the source nested them, and two wrappers covering exactly
+ * the same span (`\textbf{\emph{x}}`) have no run length to tell them apart:
+ * the emit fell back to rank order and wrote `\emph{\textbf{x}}`.
+ *
+ * Stamped by {@link wrapParsedRun} ONLY where the source order differs from
+ * the CANONICAL order (table order, later rows outermost — what an unstamped
+ * run, i.e. a newly applied mark, emits), so the ordinary shapes parse to
+ * exactly the JSON they always did. Ignored by {@link markWrapSignature}: it
+ * orders wrappers, it never distinguishes them. Not rendered.
+ */
+export const NEST_ATTR = "nest";
+
+const TABLE_INDEX: ReadonlyMap<string, number> = new Map(
+  WRAPPER_MARK_ROWS.map((r, k) => [r.mark, k]),
+);
 
 /** The command a wrapper mark EMITS: its recorded spelling when that is one of
  *  the row's own, else the row's canonical spelling. */
@@ -260,6 +282,20 @@ function emitCommandFor(row: WrapperMarkRow, mark: MarkLike): string {
   const spelled = mark.attrs?.[SPELLING_ATTR];
   if (typeof spelled === "string" && row.commands.includes(spelled)) return spelled;
   return row.commands[0];
+}
+
+/** The six hex digits a `colorArg` wrapper EMITS: the hex as read when the
+ *  recorded spelling still names the mark's colour (a recolour through the
+ *  picker leaves a stale spelling, which then loses to the canonical
+ *  uppercase), else the uppercase canonical form. `null` = not a colour. */
+function emitHexFor(mark: MarkLike): string | null {
+  const c = (mark.attrs?.color as string | undefined) ?? "";
+  // \textcolor[HTML] takes 6 hex digits, no leading "#".
+  const hex = c.replace(/^#/, "").toUpperCase();
+  if (!/^[0-9A-F]{6}$/.test(hex)) return null;
+  const spelled = mark.attrs?.[SPELLING_ATTR];
+  if (typeof spelled === "string" && spelled.toUpperCase() === hex) return spelled;
+  return hex;
 }
 
 /** The `spelling` attrs a parse of `command` must stamp on its mark — empty for
@@ -307,9 +343,13 @@ export function matchWrapperCommandAt(
   if (row.colorArg) {
     const m = COLOR_ARG_RE.exec(text.slice(j, j + "[HTML]{RRGGBB}{".length));
     if (!m) return null;
+    const hex = m[1].toUpperCase();
     return {
       row,
-      mark: { type: row.mark, attrs: { color: `#${m[1].toUpperCase()}` } },
+      mark: {
+        type: row.mark,
+        attrs: hex === m[1] ? { color: `#${hex}` } : { color: `#${hex}`, [SPELLING_ATTR]: m[1] },
+      },
       bodyOpen: j + m[0].length - 1,
     };
   }
@@ -376,7 +416,7 @@ export function markWrapSignature(marks?: MarkLike[] | null): string {
   return wrappers
     .map((m) => {
       const row = ROW_BY_MARK.get(m.type)!;
-      if (row.colorArg) return `${m.type}:${String(m.attrs?.color ?? "")}`;
+      if (row.colorArg) return `${m.type}:${emitHexFor(m) ?? String(m.attrs?.color ?? "")}`;
       const cmd = emitCommandFor(row, m);
       return cmd === row.commands[0] ? m.type : `${m.type}:${cmd}`;
     })
@@ -406,10 +446,8 @@ export function applyWrapperMarks(
   for (const mark of wrapperMarksOf(marks)) {
     const row = ROW_BY_MARK.get(mark.type)!;
     if (row.colorArg) {
-      const c = (mark.attrs?.color as string | undefined) ?? "";
-      // \textcolor[HTML] expects 6 uppercase hex digits, no leading "#".
-      const hex = c.replace(/^#/, "").toUpperCase();
-      if (!/^[0-9A-F]{6}$/.test(hex)) continue;
+      const hex = emitHexFor(mark);
+      if (hex === null) continue;
       result = `\\${row.commands[0]}[HTML]{${hex}}{${result}}`;
     } else {
       result = `\\${emitCommandFor(row, mark)}{${result}}`;
@@ -556,19 +594,20 @@ function nestByRun(
       continue;
     }
     // The wrapper that extends the longest run from here; ties go to the
-    // node's outermost (first in `wrappers`).
-    let best = head.wrappers[0];
-    let bestKey = wrapperKey(best);
-    let bestEnd = runEnd(pieces, i, bestKey);
-    for (const w of head.wrappers.slice(1)) {
-      const key = wrapperKey(w);
-      const end = runEnd(pieces, i, key);
+    // one the SOURCE nested outermost (task 1439 — see `outermostOf`).
+    let bestEnd = -1;
+    let tied: MarkLike[] = [];
+    for (const w of head.wrappers) {
+      const end = runEnd(pieces, i, wrapperKey(w));
       if (end > bestEnd) {
-        best = w;
-        bestKey = key;
         bestEnd = end;
+        tied = [w];
+      } else if (end === bestEnd) {
+        tied.push(w);
       }
     }
+    const best = outermostOf(tied);
+    const bestKey = wrapperKey(best);
     const inner = nestByRun(
       pieces.slice(i, bestEnd).map((p) => ({
         ...p,
@@ -580,6 +619,83 @@ function nestByRun(
     i = bestEnd;
   }
   return out;
+}
+
+/**
+ * Of wrappers that cover exactly the same run, the one that goes OUTSIDE —
+ * the source's order when the parse recorded one ({@link NEST_ATTR} on every
+ * candidate), else the canonical order: later table rows outermost. Never the
+ * node's mark ORDER, which a mounted editor has re-sorted by schema rank —
+ * that is how `\textbf{\emph{x}}` came back `\emph{\textbf{x}}` after a
+ * mount and not through the JSON path (task 1439).
+ */
+function outermostOf(tied: readonly MarkLike[]): MarkLike {
+  const nests = tied.map((w) => w.attrs?.[NEST_ATTR]);
+  if (nests.every((n): n is number => typeof n === "number")) {
+    let k = 0;
+    for (let j = 1; j < tied.length; j++) if (nests[j] < nests[k]) k = j;
+    return tied[k];
+  }
+  let k = 0;
+  for (let j = 1; j < tied.length; j++) {
+    if ((TABLE_INDEX.get(tied[j].type) ?? -1) > (TABLE_INDEX.get(tied[k].type) ?? -1)) k = j;
+  }
+  return tied[k];
+}
+
+/**
+ * The PARSE side of composition — the ONE rule both inline parsers apply when
+ * a recognized wrapper command's body has been parsed (task 1439). Returns the
+ * nodes to emit in its place:
+ *
+ *  - **A wrapper inside an OPEN wrapper of the same mark** (`\emph{the
+ *    \emph{Tractatus} says}`) cannot be a second mark: a ProseMirror mark set
+ *    holds each type once, so the inner one used to MERGE into the outer and
+ *    the save wrote `\emph{the Tractatus says}` — in LaTeX a nested `\emph`
+ *    turns emphasis back OFF, so the printed PDF changed. Its command and
+ *    closing brace ride the raw-LaTeX carrier instead (the bare `{…}` group's
+ *    precedent), its body stays ordinary prose under the outer mark, and the
+ *    bytes round-trip exactly.
+ *  - **Otherwise** the wrapper's mark is appended to every body node, and a
+ *    node whose stacked wrappers now nest in a NON-canonical order gets each
+ *    wrapper stamped with its source position ({@link NEST_ATTR}), so the
+ *    order survives a mount.
+ *
+ * `open` is the set of wrapper marks enclosing this command; `body` parses the
+ * command's body given the set ITS contents sit inside. `carrier` builds a
+ * raw-LaTeX text node (each parser owns its carrier mark).
+ */
+export function wrapParsedRun<N extends { marks?: MarkLike[] | null }>(
+  match: WrapperCommandMatch,
+  opener: string,
+  open: ReadonlySet<string>,
+  body: (open: ReadonlySet<string>) => N[],
+  carrier: (bytes: string) => N,
+): N[] {
+  if (open.has(match.row.mark)) {
+    return [carrier(opener), ...body(open), carrier("}")];
+  }
+  const inner = body(new Set([...open, match.row.mark]));
+  return inner.map((n) => ({ ...n, marks: stampNest([...(n.marks ?? []), match.mark]) }));
+}
+
+/** Re-stamp {@link NEST_ATTR} over a node's marks, its wrappers listed
+ *  innermost first (as the parser builds them): stamped iff that order is not
+ *  the canonical one, stripped otherwise — a level that restores the canonical
+ *  order (or a node with one wrapper) carries no stamp. */
+function stampNest(marks: MarkLike[]): MarkLike[] {
+  const wrappers = marks.filter((m) => ROW_BY_MARK.has(m.type));
+  const idx = wrappers.map((m) => TABLE_INDEX.get(m.type)!);
+  const canonical = idx.every((v, k) => k === 0 || idx[k - 1] < v);
+  const depth = new Map(wrappers.map((m, k) => [m, wrappers.length - 1 - k]));
+  return marks.map((m) => {
+    const d = depth.get(m);
+    if (d === undefined) return m;
+    const { [NEST_ATTR]: _drop, ...rest } = m.attrs ?? {};
+    void _drop;
+    const attrs = canonical ? rest : { ...rest, [NEST_ATTR]: d };
+    return Object.keys(attrs).length > 0 ? { type: m.type, attrs } : { type: m.type };
+  });
 }
 
 /** One past the last consecutive piece from `from` that carries `key`. */

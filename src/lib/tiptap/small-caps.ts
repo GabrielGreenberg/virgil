@@ -2,8 +2,10 @@ import { Extension, Mark, mergeAttributes } from "@tiptap/react";
 import {
   isSmallCapsStyle,
   SMALL_CAPS_MARK,
+  NEST_ATTR,
   SPELLING_ATTR,
   SPELLING_MARK_TYPES,
+  WRAPPER_MARK_TYPES,
 } from "@/lib/mark-composition";
 
 /**
@@ -59,7 +61,8 @@ export const SmallCaps = Mark.create({
 
 /**
  * The `spelling` attr on every wrapper mark with more than one LaTeX spelling
- * (today `italic`: `\emph` / `\textit`), read from the vocabulary table. It
+ * (today `italic`: `\emph` / `\textit`; and `textColor`, whose spelling is
+ * its hex as read — task 1439), read from the vocabulary table. It
  * records which spelling a run was PARSED from so the emit writes that one back
  * — `\textit{x}` used to come back `\emph{x}`. Not rendered; default null =
  * the canonical spelling, which is what a newly typed mark gets. Registered on
@@ -73,6 +76,18 @@ export const MarkSpellingAttrs = Extension.create({
         types: [...SPELLING_MARK_TYPES],
         attributes: {
           [SPELLING_ATTR]: {
+            default: null,
+            rendered: false,
+          },
+        },
+      },
+      // Task 1439: a wrapper's SOURCE nesting position on a run that stacks
+      // wrappers in a non-canonical order (`\textbf{\emph{x}}`) — without it
+      // the schema's rank order decides the emit after a mount.
+      {
+        types: [...WRAPPER_MARK_TYPES],
+        attributes: {
+          [NEST_ATTR]: {
             default: null,
             rendered: false,
           },

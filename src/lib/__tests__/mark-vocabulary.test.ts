@@ -34,6 +34,8 @@ import {
   WRAPPER_MARK_ROWS,
   SPELLING_MARK_TYPES,
   SPELLING_ATTR,
+  NEST_ATTR,
+  wrapperRowFor,
   composeInlineRun,
   type WrapperMarkRow,
 } from "@/lib/mark-composition";
@@ -299,6 +301,62 @@ describe("a wrapper shared across a run stays ONE wrapper", () => {
   });
 });
 
+// ── 4b · nesting survives as read (task 1439) ────────────────────────────────
+//
+// A ProseMirror mark set holds each mark type ONCE and sorts it by schema
+// rank, so `\emph{the \emph{Tractatus} says}` used to save as `\emph{the
+// Tractatus says}` (a nested `\emph` turns emphasis back OFF — the PDF
+// changed), and `\textbf{\emph{x}}` came back `\emph{\textbf{x}}` after a
+// mount. The census is DERIVED from the table, so a new row joins it.
+
+describe("nested wrappers round-trip as read — a census over the table (task 1439)", () => {
+  const rows = WRAPPER_MARK_ROWS as readonly WrapperMarkRow[];
+  // A lowercase hex also pins the colour's spelling (`ff8800` stays `ff8800`).
+  const open = (r: WrapperMarkRow) =>
+    r.colorArg ? `\\${r.commands[0]}[HTML]{ff8800}{` : `\\${r.commands[0]}{`;
+  const cases = (scope: readonly WrapperMarkRow[]) => {
+    const out: string[] = [];
+    for (const a of scope) {
+      out.push(`${open(a)}a ${open(a)}b} c}`);
+      for (const b of scope) out.push(`A ${open(a)}${open(b)}x}} z.`);
+    }
+    return out;
+  };
+
+  it("main — the JSON path and a mounted editor", () => {
+    const input = cases(rows).join("\n\n");
+    mainStable(input);
+    const ed = mountMain(input);
+    expect(body(serializeToLatex(ed.getJSON() as JSONContent))).toBe(input);
+  });
+
+  it("card/footnote fork (the rows its schema mounts)", () => {
+    for (const c of cases(rows.filter((r) => r.cardBody !== false))) forkStable(c);
+  });
+
+  it("the three reported shapes", () => {
+    for (const x of [
+      "\\emph{the \\emph{Tractatus} says}",
+      "\\textbf{a \\textbf{b}}",
+      "\\textbf{\\emph{x}}",
+      "\\textcolor[HTML]{ff8800}{x}",
+    ]) {
+      mainStable(x);
+      const ed = mountMain(x);
+      expect(serializeToLatex(ed.getJSON() as JSONContent)).toContain(x);
+      ed.destroy();
+      editor = null;
+    }
+  });
+
+  it("a recolour drops the as-read hex spelling (canonical uppercase)", () => {
+    const ed = mountMain("A \\textcolor[HTML]{ff8800}{word} b.");
+    ed.commands.setTextSelection({ from: 3, to: 7 });
+    ed.commands.setTextColor("#00aa11");
+    expect(serializeToLatex(ed.getJSON() as JSONContent)).toContain("\\textcolor[HTML]{00AA11}{word}");
+  });
+});
+
 // ── 5 · the table agrees with the schemas ────────────────────────────────────
 
 describe("the vocabulary table agrees with every schema that mounts it", () => {
@@ -314,11 +372,22 @@ describe("the vocabulary table agrees with every schema that mounts it", () => {
     });
   }
 
-  it("every multi-spelling mark carries the spelling attr in every schema", () => {
+  it("every multi-spelling mark carries the spelling attr in every schema that mounts it", () => {
     expect(SPELLING_MARK_TYPES).toContain("italic");
+    expect(SPELLING_MARK_TYPES).toContain("textColor");
     for (const schema of [main, card, excerpt]) {
       for (const t of SPELLING_MARK_TYPES) {
+        if (schema === card && wrapperRowFor(t)?.cardBody === false) continue;
         expect(schema.marks[t].spec.attrs?.[SPELLING_ATTR]).toBeTruthy();
+      }
+    }
+  });
+
+  it("every wrapper mark carries the nest attr in every schema that mounts it (task 1439)", () => {
+    for (const schema of [main, card, excerpt]) {
+      for (const row of WRAPPER_MARK_ROWS as readonly WrapperMarkRow[]) {
+        if (schema === card && row.cardBody === false) continue;
+        expect(schema.marks[row.mark].spec.attrs?.[NEST_ATTR], row.mark).toBeTruthy();
       }
     }
   });

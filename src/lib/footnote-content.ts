@@ -32,6 +32,7 @@ import {
   composeInlineRun,
   isCodeWrapped,
   matchWrapperCommandAt,
+  wrapParsedRun,
   wrapperMarkForHtmlElement,
   type MarkLike,
 } from "@/lib/mark-composition";
@@ -688,7 +689,14 @@ function richLatexToJsonInScope(latex: string): JSONContent {
   };
 }
 
-function parseInlineLatex(text: string, inCode = false): JSONContent[] {
+const NO_OPEN_WRAPPERS: ReadonlySet<string> = new Set();
+
+function parseInlineLatex(
+  text: string,
+  inCode = false,
+  // The wrapper marks enclosing this text (task 1439) — see `wrapParsedRun`.
+  openWrappers: ReadonlySet<string> = NO_OPEN_WRAPPERS,
+): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
@@ -769,7 +777,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
           text: "{",
           marks: [{ type: "latexCommand" }],
         });
-        nodes.push(...parseInlineLatex(group.content, inCode));
+        nodes.push(...parseInlineLatex(group.content, inCode, openWrappers));
         nodes.push({
           type: "text",
           text: "}",
@@ -873,11 +881,15 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         if (closed !== -1) {
           flush();
           const inner = text.slice(wrapper.bodyOpen + 1, closed);
-          const innerNodes = parseInlineLatex(inner, wrapper.row.opensCode === true || inCode);
-          for (const n of innerNodes) {
-            const marks = [...((n as JSONContent).marks || []), wrapper.mark];
-            nodes.push({ ...n, marks });
-          }
+          nodes.push(
+            ...wrapParsedRun<JSONContent>(
+              wrapper,
+              text.slice(i, wrapper.bodyOpen + 1),
+              openWrappers,
+              (open) => parseInlineLatex(inner, wrapper.row.opensCode === true || inCode, open),
+              (bytes) => ({ type: "text", text: bytes, marks: [{ type: "latexCommand" }] }),
+            ),
+          );
           i = closed + 1;
           continue;
         }
