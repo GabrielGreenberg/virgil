@@ -79,7 +79,7 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
   "library/hooks/usePgmarkPages.ts":
     "LIVE — the reader's current-page tracker, RAF-coalesced to one `scrollTop`/`clientHeight` read per frame. The page number is what the scroll is FOR, so parking it would freeze the readout mid-scroll; the file participates in the doctrine through its ResizeObserver park.",
   "src/components/EditorLayout.tsx":
-    "PARK ×2 + LIVE ×1 — the Help-menu anchor rect parks (task 317) and the section-path breadcrumb walk now parks on BOTH its geometry paths (task 416: a content drag's auto-scroll re-ran an O(headings) `coordsAtPos` walk per frame; a user scroll is not a gesture, so the breadcrumb still follows it). The third is the paragraph-nav recorder's `debouncedCheck`, deliberately live: per event it is ONE `clearTimeout` + `setTimeout`, and its 1000 ms callback cannot fire during a continuous scroll at all.",
+    "PARK ×2 — the Help-menu anchor rect parks (task 317) and the section-path breadcrumb walk now parks on BOTH its geometry paths (task 416: a content drag's auto-scroll re-ran an O(headings) `coordsAtPos` walk per frame; a user scroll is not a gesture, so the breadcrumb still follows it). Its paragraph-nav recorder moved to `src/hooks/useParaNavHistory.ts` (task 1451).",
   "src/components/EditorPane.tsx":
     "PARK — the scroll-position persist. `el.offsetHeight` is a FORCED-LAYOUT read and it ran once per scroll event, i.e. once per auto-scroll frame, interleaved with the drop indicator's own React `top` write (the write → read → write thrash task 330 names). Parking is also semantically right: the captured value is 'where the reader left the document', and mid-gesture there is no such position — the end edge re-reads the settled one once.",
   "src/components/HintLayer.tsx":
@@ -89,9 +89,11 @@ const PERMITTED_SCROLL_LISTENERS: Record<string, string> = {
   "src/components/editor-layout/editor-scrollbar.tsx":
     "LIVE scroll path (the measure path parks and the thumb suppresses on the RESIZE family only) — see PERMITTED_LIVE_SCROLL_HANDLERS.",
   "src/components/editor-layout/reader-view-prefs.ts":
-    "PARK + LIVE — the Reader's twin of EditorLayout's pair: the breadcrumb walk parks on both geometry paths (task 416, kept byte-for-byte in step with the main-pane copy), and the paragraph-nav `debouncedCheck` stays live for the same O(1)-timer-reset reason.",
+    "PARK — the Reader's twin of EditorLayout's breadcrumb: the walk parks on both geometry paths (task 416, kept byte-for-byte in step with the main-pane copy). Its paragraph-nav recorder is the shared `src/hooks/useParaNavHistory.ts` (task 1451).",
   "src/hooks/useFloatingMenuPosition.ts":
     "PARK — the optional scroll re-anchor rides the SHARED RAF scheduler, which is itself `park.fire()`, so the scroll, resize and RO paths all settle once per gesture. The menu's anchor is chrome, which a gesture displaces sub-pixel, so parking cannot visibly detach it.",
+  "src/hooks/useParaNavHistory.ts":
+    "LIVE — the ONE paragraph Back/Forward recorder (EditorLayout + the Reader, task 1451). Its `debouncedCheck` is deliberately live: per event it is ONE timer clear + re-arm on the component's ViewLifetime, and its 1000 ms callback cannot fire during a continuous scroll at all.",
   "src/hooks/useScrollActivityTracker.ts":
     "LIVE — see PERMITTED_LIVE_SCROLL_HANDLERS.",
   "src/lib/scroll-reposition-probe.ts":
@@ -118,6 +120,8 @@ const PERMITTED_LIVE_SCROLL_HANDLERS: Record<string, string> = {
     "`onScroll = () => hide()` — an anchored hint whose anchor has moved must vanish, and it must vanish on the frame the scroll happens. This IS the suppress half; there is nothing to defer.",
   "src/components/editor-layout/editor-scrollbar.tsx":
     "The thumb tracks the scroll it describes, and its suppress is deliberately kind-filtered to the RESIZE family so a content drag's auto-scroll keeps it VISIBLE (a drag past the fold is exactly when the reader wants to see where they are). Per event: one `scrollTop` read, one equality-bailed `setScroll`, one timer reset — no forced layout of its own, and scroll events are already delivered at most once per frame. Its MEASURE pass (a full-document layout read → 3 CSS-var writes) is on the resize path and parks.",
+  "src/hooks/useParaNavHistory.ts":
+    "LIVE — the ONE paragraph Back/Forward recorder (EditorLayout + the Reader, task 1451). Its `debouncedCheck` is deliberately live: per event it is ONE timer clear + re-arm on the component's ViewLifetime, and its 1000 ms callback cannot fire during a continuous scroll at all.",
   "src/hooks/useScrollActivityTracker.ts":
     "Global auto-hide scrollbars: the visible thumb IS the scroll's feedback, so parking it would blank the scrollbar for the whole of a drag's auto-scroll. Per event: one `hasAttribute` test, an idempotence-gated `setAttribute` (task 416 — re-setting an attribute to its current value still invalidates style in Blink, and this fires every frame of a continuous scroll), and a timer reset. It measures nothing and renders nothing.",
   "src/lib/scroll-reposition-probe.ts":

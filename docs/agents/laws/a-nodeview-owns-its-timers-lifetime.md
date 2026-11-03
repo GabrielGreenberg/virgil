@@ -322,6 +322,15 @@ re-mints inside the effect, not in render, because StrictMode's mount → cleanu
 → mount runs with no render in between and a facade pinned to the disposed
 scope would leave the component's timers dead on arrival.
 
+**A latch is ONE owned slot (task 1451).** A press that arms a "busy for N ms"
+latch must hold the handle and clear it before re-arming — otherwise a second
+press inside the window is unlatched early by the FIRST press's timer. The
+paragraph Back/Forward recorder (`src/hooks/useParaNavHistory.ts`, shared by
+EditorLayout and the Reader) keeps its 1.5 s latch on the component's
+lifetime in one slot, ends it on the doc-switch `resetKey`, and reads its
+source through a latest-ref so no per-doc value (the collab) is captured stale.
+CI: [useParaNavHistory.test.tsx](../../../src/hooks/__tests__/useParaNavHistory.test.tsx).
+
 #### The identity half: a session also ends zero times when its ELEMENT is re-minted
 
 The same sweep found the defect twice more on the same card, wearing identity
