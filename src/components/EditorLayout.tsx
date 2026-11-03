@@ -27,10 +27,7 @@ import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
 import { applyPerfBodyFlags } from "@/lib/perf-feature-flags";
-import {
-  isLayoutGestureActive,
-  parkDuringLayoutGesture,
-} from "@/lib/pane-resize";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import {
@@ -186,6 +183,7 @@ import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
 import { useCloseFloatChord } from "@/hooks/useCloseFloatChord";
+import { useParaNavHistory } from "@/hooks/useParaNavHistory";
 import { frontmostOnScreen } from "@/floats/owner-floats";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
@@ -1333,121 +1331,42 @@ export default function EditorLayout() {
     paneStateRef.current?.setSelectedErrorId?.(id);
   }, []);
 
-  // Paragraph navigation history (back/forward) — ref-based to avoid stale closures
-  const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
-  const currentParaRef = useRef<string | null>(null);
-  const navigatingRef = useRef(false);
-  // Bumped only to re-render the toolbar — the value itself is never read.
-  const [, setParaNavVersion] = useState(0);
-
-  // Track active paragraph and build navigation history
-  // Model: stack always includes current position, idx points to where we are now.
-  // Back: idx--, Forward: idx++, New position: truncate forward + push.
-  useEffect(() => {
-    if (!editorInstance && !codeView) return;
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-
-    const checkParagraph = () => {
-      if (navigatingRef.current) return;
-      // Wave-2b C6: this runs on a bare 2s wall clock — gate it on
-      // page visibility (a backgrounded tab must not poll layout) and on
-      // layout gestures (mid-drag geometry is in flux; the post-gesture
-      // tick reads the settled truth). Hidden keep-alive PANES are handled
-      // inside getActiveParagraphId itself (offsetHeight bail → null).
-      if (typeof document !== "undefined" && document.hidden) return;
-      if (isLayoutGestureActive()) return;
-      let paraId: string | null = null;
-      if (codeView) {
-        paraId = codeEditorHandleRef.current?.getActiveParagraphId() ?? null;
-      } else if (editorRef.current) {
-        paraId = editorRef.current.getActiveParagraphId();
-      }
-      if (!paraId || paraId === currentParaRef.current) return;
-      currentParaRef.current = paraId;
-      // Soft-presence: broadcast cursor paragraph for the partner. The
-      // hook de-dupes if unchanged, so safe to call every tick.
-      collab.updateCursorParagraph(paraId);
-      const h = paraHistoryRef.current;
-      h.stack = h.stack.slice(0, h.idx + 1);
-      h.stack.push(paraId);
-      if (h.stack.length > 100) h.stack.shift();
-      h.idx = h.stack.length - 1;
-      setParaNavVersion((v) => v + 1);
-    };
-
-    const debouncedCheck = () => {
-      if (timerId) clearTimeout(timerId);
-      timerId = setTimeout(checkParagraph, 1000);
-    };
-
-    if (!codeView && editorInstance) {
-      const scrollEl = findEditorScrollFor(editorInstance.view.dom);
-      scrollEl?.addEventListener("scroll", debouncedCheck, { passive: true });
-      const interval = setInterval(debouncedCheck, 2000);
-      return () => {
-        scrollEl?.removeEventListener("scroll", debouncedCheck);
-        clearInterval(interval);
-        if (timerId) clearTimeout(timerId);
-      };
-    } else if (codeView) {
-      const interval = setInterval(debouncedCheck, 2000);
-      return () => {
-        clearInterval(interval);
-        if (timerId) clearTimeout(timerId);
-      };
-    }
-  }, [editorInstance, codeView]);
-
-  // Clear history on document change
-  useEffect(() => {
-    paraHistoryRef.current = { stack: [], idx: -1 };
-    currentParaRef.current = null;
-    setParaNavVersion((v) => v + 1);
-  }, [currentDocId]);
-
-  const scrollToParagraph = useCallback((uuid: string) => {
-    // Sentinel for document top / title area
-    if (uuid === "__DOC_TOP__") {
-      editorRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
-      return;
-    }
-    if (codeView) {
-      codeEditorHandleRef.current?.scrollToParagraphId?.(uuid);
-    } else {
-      editorRef.current?.scrollToParagraphId(uuid);
-    }
-  }, [codeView]);
-
-  const paraNavBack = useCallback(() => {
-    const h = paraHistoryRef.current;
-    if (h.idx <= 0) return;
-    h.idx--;
-    const targetId = h.stack[h.idx];
-    navigatingRef.current = true;
-    currentParaRef.current = targetId;
-    scrollToParagraph(targetId);
-    setParaNavVersion((v) => v + 1);
-    setTimeout(() => { navigatingRef.current = false; }, 1500);
-  }, [scrollToParagraph]);
-
-  const paraNavForward = useCallback(() => {
-    const h = paraHistoryRef.current;
-    if (h.idx >= h.stack.length - 1) return;
-    h.idx++;
-    const targetId = h.stack[h.idx];
-    navigatingRef.current = true;
-    currentParaRef.current = targetId;
-    scrollToParagraph(targetId);
-    setParaNavVersion((v) => v + 1);
-    setTimeout(() => { navigatingRef.current = false; }, 1500);
-  }, [scrollToParagraph]);
-
-  // Para nav disabled state — derived from `paraHistoryRef.current` so it
-  // updates when setParaNavVersion bumps. Bumped from `paraNavBack` and
-  // `paraNavForward` plus the history-recording effect.
-  const paraNavBackDisabled = paraHistoryRef.current.idx <= 0;
-  const paraNavForwardDisabled =
-    paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1;
+  // Paragraph navigation history (back/forward) — the ONE recorder the
+  // Reader also runs (`useParaNavHistory`, task 1451): its 1.5 s "navigating"
+  // latch is one owned timer slot (a second press re-arms it; a doc switch or
+  // unmount ends it), and the source is read LIVE each tick, so cursor
+  // presence follows the real collab even when it bubbles up after the editor.
+  const paraNavScrollEl = useMemo(
+    () => (!codeView && editorInstance ? findEditorScrollFor(editorInstance.view.dom) : null),
+    [editorInstance, codeView],
+  );
+  const { paraNavBack, paraNavForward, paraNavBackDisabled, paraNavForwardDisabled } =
+    useParaNavHistory(
+      {
+        getActiveParagraphId: () =>
+          codeView
+            ? codeEditorHandleRef.current?.getActiveParagraphId() ?? null
+            : editorRef.current?.getActiveParagraphId() ?? null,
+        scrollToParagraph: (uuid) => {
+          // Sentinel for document top / title area
+          if (uuid === "__DOC_TOP__") {
+            editorRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
+          } else if (codeView) {
+            codeEditorHandleRef.current?.scrollToParagraphId?.(uuid);
+          } else {
+            editorRef.current?.scrollToParagraphId(uuid);
+          }
+        },
+        // Soft-presence: broadcast the cursor paragraph for the partner (the
+        // hook de-dupes if unchanged).
+        onParagraph: (uuid) => collabRef.current.updateCursorParagraph(uuid),
+      },
+      {
+        active: !!editorInstance || codeView,
+        scrollEl: paraNavScrollEl,
+        resetKey: currentDocId,
+      },
+    );
 
   // The bib entry → in-text citation ring and the toolbar-override reset
   // live in EditorPane with the per-pane state they act on (task 870):

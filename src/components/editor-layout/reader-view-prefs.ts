@@ -38,7 +38,7 @@
  * paragraph titles") mutates the same store the panel rail / rendered text
  * read — no two-engine divergence. Fonts…/Margins… auto-drop via
  * `READER_CHROME.showMenuBarEditItems=false`. Back/forward is a FUNCTIONAL
- * port of EditorLayout's wall-clock recorder (`useParaNavHistory`) — keystroke
+ * run by the SAME wall-clock recorder as EditorLayout (`useParaNavHistory`) — keystroke
  * -safe by construction (no `editor.on(...)` subscription; a `setInterval` +
  * debounced passive `scroll` listener that reads `getActiveParagraphId()` on
  * its own cadence). In a read-only doc there are no keystrokes anyway.
@@ -50,7 +50,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type RefObject,
 } from "react";
@@ -83,10 +82,7 @@ import {
   pushCrossedHeading,
 } from "@/lib/editor-geometry/section-path";
 import { headingLevelOf } from "@/lib/heading-types";
-import {
-  isLayoutGestureActive,
-  parkDuringLayoutGesture,
-} from "@/lib/pane-resize";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
@@ -101,6 +97,7 @@ import {
   omniCategoriesForSide,
 } from "@/panels/Omni/omni-categories";
 import { READER_CHROME } from "./chrome-config";
+import { useParaNavHistory, type ParaNavBundle } from "@/hooks/useParaNavHistory";
 
 /**
  * The Reader's no-op editor handlers (everything EXCEPT `onScrollToHeading`,
@@ -139,136 +136,34 @@ const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = 
 };
 
 /**
- * The four paragraph-nav values the MenuBar bundle needs.
- */
-export interface ParaNavBundle {
-  paraNavBack: () => void;
-  paraNavForward: () => void;
-  paraNavBackDisabled: boolean;
-  paraNavForwardDisabled: boolean;
-}
-
-/**
- * Paragraph back/forward history — a FUNCTIONAL port of EditorLayout's
- * recorder (`EditorLayout.tsx:1656-1856`), trimmed for the Reader (no code
- * view, no collab). It is NOT an `editor.on('update'|'transaction')`
- * subscriber: it is a WALL-CLOCK service (a `setInterval` + a debounced,
- * passive `scroll` listener) that reads the active paragraph on its own
- * cadence, so typing leaves `__virgilBusStats().emitCount` flat. In the
- * Reader the doc is read-only (`editable=false`) so there are no keystrokes
- * on this surface at all — but the design is keystroke-safe regardless and
- * needs NO entry in the AGENTS.md permitted-subscriber list (same class as
- * DiskWatcher). Per tick it does O(1) work plus one `getActiveParagraphId`
- * lookup; the history stack is capped at 100.
+ * The Reader's paragraph back/forward — the SAME recorder the main editor
+ * runs (`useParaNavHistory`, task 1451), fed from the EditorPane's
+ * `EditorHandle`. No code view and no collab here; the live `editor` is the
+ * reset key, so a new paper's editor starts with a fresh history and no latch.
  *
  * @param editorHandleRef the EditorPane's `EditorHandle` ref (for
  *   `getActiveParagraphId` / `scrollToParagraphId`).
  * @param scrollEl the Reader's scroll container (PaperRender owns it as
  *   state); null until it mounts.
  */
-export function useParaNavHistory(
+export function useReaderParaNav(
   editorHandleRef: RefObject<EditorHandle | null>,
   scrollEl: HTMLElement | null,
+  editor: Editor | null,
 ): ParaNavBundle {
-  // Stack always includes the current position; idx points to where we are.
-  // Back: idx--, Forward: idx++, New position: truncate-forward + push.
-  const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({
-    stack: [],
-    idx: -1,
-  });
-  const currentParaRef = useRef<string | null>(null);
-  const navigatingRef = useRef(false);
-  // Disabled flags as STATE (not a ref read during render — react-hooks/refs).
-  // Recomputed from the ref after every mutation/nav via `syncDisabled`.
-  const [paraNavBackDisabled, setBackDisabled] = useState(true);
-  const [paraNavForwardDisabled, setForwardDisabled] = useState(true);
-  const syncDisabled = useCallback(() => {
-    const h = paraHistoryRef.current;
-    setBackDisabled(h.idx <= 0);
-    setForwardDisabled(h.idx >= h.stack.length - 1);
-  }, []);
-
-  // Recorder: poll the active paragraph on a wall clock + on scroll.
-  useEffect(() => {
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-
-    const checkParagraph = () => {
-      if (navigatingRef.current) return;
-      // Wave-2b C6: bare 2s wall-clock poll — gate on page visibility and
-      // layout gestures (same discipline as EditorLayout's recorder; the
-      // hidden-PANE bail lives inside getActiveParagraphId).
-      if (typeof document !== "undefined" && document.hidden) return;
-      if (isLayoutGestureActive()) return;
-      const paraId = editorHandleRef.current?.getActiveParagraphId() ?? null;
-      if (!paraId || paraId === currentParaRef.current) return;
-      currentParaRef.current = paraId;
-      const h = paraHistoryRef.current;
-      h.stack = h.stack.slice(0, h.idx + 1);
-      h.stack.push(paraId);
-      if (h.stack.length > 100) h.stack.shift();
-      h.idx = h.stack.length - 1;
-      syncDisabled();
-    };
-
-    const debouncedCheck = () => {
-      if (timerId) clearTimeout(timerId);
-      timerId = setTimeout(checkParagraph, 1000);
-    };
-
-    scrollEl?.addEventListener("scroll", debouncedCheck, { passive: true });
-    const interval = setInterval(debouncedCheck, 2000);
-    return () => {
-      scrollEl?.removeEventListener("scroll", debouncedCheck);
-      clearInterval(interval);
-      if (timerId) clearTimeout(timerId);
-    };
-  }, [editorHandleRef, scrollEl, syncDisabled]);
-
-  const scrollToParagraph = useCallback(
-    (uuid: string) => {
-      if (uuid === "__DOC_TOP__") {
-        editorHandleRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
-        return;
-      }
-      editorHandleRef.current?.scrollToParagraphId(uuid);
+  return useParaNavHistory(
+    {
+      getActiveParagraphId: () => editorHandleRef.current?.getActiveParagraphId() ?? null,
+      scrollToParagraph: (uuid) => {
+        if (uuid === "__DOC_TOP__") {
+          editorHandleRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
+          return;
+        }
+        editorHandleRef.current?.scrollToParagraphId(uuid);
+      },
     },
-    [editorHandleRef],
+    { active: true, scrollEl, resetKey: editor },
   );
-
-  const paraNavBack = useCallback(() => {
-    const h = paraHistoryRef.current;
-    if (h.idx <= 0) return;
-    h.idx--;
-    const targetId = h.stack[h.idx];
-    navigatingRef.current = true;
-    currentParaRef.current = targetId;
-    scrollToParagraph(targetId);
-    syncDisabled();
-    setTimeout(() => {
-      navigatingRef.current = false;
-    }, 1500);
-  }, [scrollToParagraph, syncDisabled]);
-
-  const paraNavForward = useCallback(() => {
-    const h = paraHistoryRef.current;
-    if (h.idx >= h.stack.length - 1) return;
-    h.idx++;
-    const targetId = h.stack[h.idx];
-    navigatingRef.current = true;
-    currentParaRef.current = targetId;
-    scrollToParagraph(targetId);
-    syncDisabled();
-    setTimeout(() => {
-      navigatingRef.current = false;
-    }, 1500);
-  }, [scrollToParagraph, syncDisabled]);
-
-  return {
-    paraNavBack,
-    paraNavForward,
-    paraNavBackDisabled,
-    paraNavForwardDisabled,
-  };
 }
 
 /**
@@ -696,7 +591,7 @@ export function useReaderView(
   );
 
   // Paragraph back/forward — functional, keystroke-safe (see hook doc).
-  const paraNav = useParaNavHistory(editorHandleRef, scrollEl);
+  const paraNav = useReaderParaNav(editorHandleRef, scrollEl, editor);
   const menuBar = useReaderMenuBarBundle(vp, editor, paraNav);
 
   return { viewPrefs, menuBar };
