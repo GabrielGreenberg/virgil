@@ -72,7 +72,7 @@ import { useMenuItem } from "@/components/menu/useMenuItem";
 import { menuRowRovingStyle } from "@/components/menu/row-tone";
 import { useMenuCombobox, type ComboboxKeyEvent } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import { Button } from "@/components/Button";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
@@ -810,8 +810,7 @@ function VerifiedPill({ bibState }: { bibState: LibraryBibState | undefined }) {
         backgroundColor: `var(--pill-${bibStateTone(state)}-bg)`,
         borderColor: `var(--pill-${bibStateTone(state)}-edge)`,
       }}
-      data-hint={tooltip}
-      aria-description={tooltip}
+      {...describedHint(tooltip)}
     >
       {text}
     </span>

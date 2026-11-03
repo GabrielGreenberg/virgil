@@ -482,6 +482,105 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
 });
 
 /**
+ * The STYLESHEET half of the one-neutral-hover rule (task 1438). The legs
+ * above read `.tsx` class strings, so a hover hand-rolled as a `:hover` RULE
+ * in globals.css walked past all of them — the figure chrome hovered its
+ * buttons to plain `white` and its −/+ steppers to `--code-bg`, two spellings
+ * beside the SSOT that CI could not see. This leg reads every `:hover` rule
+ * that paints a background, and each must be either an SSOT declaration (the
+ * utility group itself) or a stated ROLE: a selection/annotation/marker wash
+ * that is deliberately NOT the neutral hover. A NEW one is either a control
+ * — take `.hover-on-light` / `.hover-on-dark` in the JSX and spell only the
+ * ink/border cue here — or a role, named in this table with its reason.
+ */
+describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", () => {
+  const SSOT = "the neutral-hover utility family itself (globals.css \"Hover utilities\" / \"Icon-button utilities\")";
+  const WASH = "an inline atom's own register wash — the node's identity colour, not a control hover";
+  const ANNOT = "the annotation-lozenge register (heading/figure label chips) — its own named border/danger tokens";
+  const CHROME = "non-control chrome (scrollbar / drag grip / dim lift) — a state of a surface, not a button";
+  const POPOVER = "the label-ref popover's accent-light option register";
+  /** Same defect shape as 1438's figure chrome, not yet converted — listed so
+   *  the debt is VISIBLE and cannot grow; converting one deletes its row. */
+  const DEBT = "UNCONVERTED neutral hover on a control (task 1438 residual) — convert to .hover-on-light";
+  const STATED: Record<string, string> = {
+    ".hover-on-light:hover": SSOT,
+    '.hover-on-light[disabled]:hover, .hover-on-light[aria-disabled="true"]:hover, .hover-on-dark[disabled]:hover, .hover-on-dark[aria-disabled="true"]:hover': SSOT,
+    ".hover-on-dark:hover": SSOT,
+    ".iconbtn-xs:hover, .iconbtn-sm:hover, .iconbtn-md:hover, .iconbtn-lg:hover": SSOT,
+    ".iconbtn-xs[disabled]:hover, .iconbtn-sm[disabled]:hover, .iconbtn-md[disabled]:hover, .iconbtn-lg[disabled]:hover": SSOT,
+    ".iconbtn-xs.iconbtn-danger:hover, .iconbtn-sm.iconbtn-danger:hover, .iconbtn-md.iconbtn-danger:hover": SSOT,
+    ".iconbtn-xs.iconbtn-danger-hover:hover, .iconbtn-sm.iconbtn-danger-hover:hover, .iconbtn-md.iconbtn-danger-hover:hover, .iconbtn-lg.iconbtn-danger-hover:hover": SSOT,
+    ".iconbtn-xs.iconbtn-on-dark:hover, .iconbtn-sm.iconbtn-on-dark:hover, .iconbtn-md.iconbtn-on-dark:hover, .iconbtn-lg.iconbtn-on-dark:hover": SSOT,
+    ".topbarbtn:hover": SSOT,
+    ".omni-bin-pill:hover": "a tinted-rest pill that hovers one step deeper (the hover trap — its own comment in globals.css)",
+    ".source-pod-preview:hover": "the source pod's code-block register (--code-block-bg-hover)",
+    ".inline-math:hover, .inline-math.selected": WASH,
+    ".display-math:hover, .display-math.selected": WASH,
+    ".footnote-marker:hover": WASH,
+    ".note-marker:hover": WASH,
+    ".latex-comment:hover": WASH,
+    ".latex-comment-handle:hover": WASH,
+    ".citation-node:hover": WASH,
+    ".label-ref-node:hover": WASH,
+    ".heading-annotation-type-chip:hover": ANNOT,
+    ".heading-annotation-numbered-toggle:hover": ANNOT,
+    ".heading-annotation-delete:hover": ANNOT,
+    ".figure-block .figure-annotation-numbered-toggle:hover": ANNOT,
+    ".figure-block .figure-annotation-numbered-toggle.is-unavailable:hover": ANNOT,
+    ".figure-block .figure-annotation-delete:hover": ANNOT,
+    ".label-ref-popover-target:hover": POPOVER,
+    ".label-ref-popover-label-display:hover": POPOVER,
+    ".label-ref-popover-option:hover": POPOVER,
+    ".label-ref-popover-option.active, .label-ref-popover-option.active:hover": POPOVER,
+    ".doc-interruption-band__secondary:hover:not(:disabled)": "the interruption band's accent-light secondary action",
+    "[data-scroll-active]::-webkit-scrollbar-thumb, :hover::-webkit-scrollbar-thumb": CHROME,
+    "::-webkit-scrollbar-thumb:hover": CHROME,
+    ".drag-gap-h.band-grip:hover::after": CHROME,
+    ".drag-gap-v.band-grip:hover::after": CHROME,
+    '[data-omni-dim="true"] [data-omni-entry]:not([data-selected]):hover': CHROME,
+    ".text-object-grab-handle:hover::before": DEBT,
+    ".math-popover-cancel:hover": DEBT,
+    ".label-ref-popover-refcmd-btn:hover": DEBT,
+  };
+
+  /** Every innermost rule (an `@media` body's rules included) whose selector
+   *  names `:hover` and whose body writes `background` / `background-color`. */
+  const hoverFills = (css: string): string[] => {
+    const out: string[] = [];
+    const RULE = /([^{}]+)\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = RULE.exec(cssCommentsStripped(css)))) {
+      const sel = m[1].trim().replace(/\s+/g, " ");
+      if (/:hover/.test(sel) && /(?:^|[;\s])background(?:-color)?\s*:/.test(m[2])) out.push(sel);
+    }
+    return out;
+  };
+
+  it("sees the population (self-check)", () => {
+    expect(hoverFills(globals).length).toBeGreaterThan(30);
+  });
+
+  it("states every one — a new stylesheet hover fill is a control (take the utility) or a named role", () => {
+    expect(hoverFills(globals).filter((sel) => !(sel in STATED))).toEqual([]);
+  });
+
+  it("keeps no stale row (an entry whose rule is gone excuses the next one)", () => {
+    const live = new Set(hoverFills(globals));
+    expect(Object.keys(STATED).filter((sel) => !live.has(sel))).toEqual([]);
+  });
+
+  it("CAN SEE the figure chrome's retired spellings (synthetic canary)", () => {
+    const retired = `.figure-block .figure-chrome-btn:hover {\n  background: white;\n  color: var(--accent);\n}\n@media (hover: hover) { .figure-block .figure-scale-btn:hover:not(:disabled) { background: var(--code-bg, #f0eeeb); } }`;
+    expect(hoverFills(retired)).toEqual([
+      ".figure-block .figure-chrome-btn:hover",
+      ".figure-block .figure-scale-btn:hover:not(:disabled)",
+    ]);
+    // An ink/border-only hover — what the figure chrome keeps — is not a fill.
+    expect(hoverFills(`.x:hover { color: var(--accent); border-color: var(--accent); }`)).toEqual([]);
+  });
+});
+
+/**
  * ONE focus ring, and nothing out-specifies it (task 2026-08-31-503).
  *
  * The sibling law above is about an UNLAYERED class beating a Tailwind

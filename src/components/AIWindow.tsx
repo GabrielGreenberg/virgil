@@ -61,7 +61,7 @@ import SystemDialog from "./system-dialog";
 import { Button } from "./Button";
 import { Field, Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import type { StatusTone } from "./StatusDot";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { isCommitEnter } from "@/lib/key-intent";
@@ -1249,7 +1249,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       <span
         className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
         style={{ background: chip.badgeBg, color: chip.badgeColor }}
-        data-hint={meta.description} aria-description={meta.description}
+        {...describedHint(meta.description)}
       >
         {meta.label}
       </span>

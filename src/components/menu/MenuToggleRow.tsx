@@ -26,6 +26,7 @@
 import type { ReactNode } from "react";
 import { useMenuItem } from "./useMenuItem";
 import { menuRowRovingStyle, menuRowToneClass } from "./row-tone";
+import { describedHint } from "@/components/Hint";
 
 export interface MenuToggleRowProps {
   /** Unique within the menu. */
@@ -105,8 +106,7 @@ export function MenuToggleRow({
       type="button"
       disabled={disabled || undefined}
       aria-checked={checked}
-      data-hint={hint}
-      aria-description={hint}
+      {...describedHint(hint)}
       className={`w-full text-left ${pad} py-1.5 text-xs flex items-center justify-between gap-3 ${menuRowToneClass("default", disabled)}`}
       style={menuRowRovingStyle(active, disabled)}
     >

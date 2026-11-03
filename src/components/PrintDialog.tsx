@@ -20,6 +20,7 @@ import {
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { Checkbox } from "./CheckSquare";
 import { SegmentedToggle } from "./SegmentedToggle";
+import { describedHint } from "@/components/Hint";
 
 interface PrintDialogProps {
   open: boolean;
@@ -198,8 +199,7 @@ function PrintCheckbox({
       checked={checked}
       onChange={onChange}
       disabled={disabled}
-      data-hint={hint}
-      aria-description={hint}
+      {...describedHint(hint)}
       className={`text-xs w-full px-1 py-0.5 rounded text-ink-body ${disabled ? "" : "hover-on-light"}`}
     >
       {label}

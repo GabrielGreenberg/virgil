@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { describedHint } from "@/components/Hint";
 import { chromeOnly } from "@/lib/view-only-chrome";
 
 interface CollabClaimPillProps {
@@ -37,7 +38,7 @@ export default function CollabClaimPill({ holder, color, focusedAt }: CollabClai
         color,
         border: `1px solid ${color}55`,
       }}
-      data-hint="Co-author is editing this card" aria-description="Co-author is editing this card"
+      {...describedHint("Co-author is editing this card")}
     >
       <span
         aria-hidden

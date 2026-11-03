@@ -1179,7 +1179,14 @@ Five states. One implementation each.
   If a surface genuinely needs a heavier hover, that is a new named role with
   its own token and its own declaration. CI reads this rule:
   `color-token-consumers.test.ts` → "the neutral hover has ONE spelling per
-  resting bg" (allowlist for `--edge-subtle`: EMPTY).
+  resting bg" (allowlist for `--edge-subtle`: EMPTY). **The rule holds in a
+  stylesheet too** (task 1438): a node-view control styled by its own class
+  (the figure chrome's buttons and −/+) WEARS `hover-on-light` in its JSX and
+  its `:hover` rule spells only the ink/border cue — never a fill. Its resting
+  fill is written `:where(.host) .control` so the utility's (0,2,0) hover
+  out-specifies it. Every globals.css `:hover` rule that paints a background
+  is censused ("a stylesheet :hover paints a fill only as the SSOT or a stated
+  role"); a new one is a control (take the utility) or a named role row.
 - **A hover utility owns the element's whole transition.** `hover-on-light` /
   `hover-on-dark` / `iconbtn-*` / `.topbarbtn` are UNLAYERED, and Tailwind's
   `transition-*` lives in `@layer utilities` — so the utility wins whatever the
@@ -2661,7 +2668,12 @@ element may carry `data-hint={X}` and `aria-label={X}` from one value. On an
 icon that pair is `iconHint({ label })`; on anything showing text it REPLACES
 the visible name with the tooltip (the print dialog's marginalia row announced
 "Enable marginalia in the editor first."), so the hint goes to
-`aria-description` and the text stays the name. Leg E reads every opening tag
+`aria-description` and the text stays the name — through
+**`describedHint(text)`** ([Hint.tsx](components/Hint.tsx)), `iconHint`'s twin:
+one string, tooltip AND description, `null` stamps nothing (so a greyed reason
+is `describedHint(disabled ? why : null)`). Hand-pairing `data-hint={X}` with
+`aria-description={X}` is the same two-copies-one-string defect and fails the
+same leg (task 1438; 19 sites converted). Leg E reads every opening tag
 and needs no icon/text classifier — computed children (`{label}`,
 `{children}`) had walked past both of the older legs. A control whose content
 IS state says so: a checkbox row is `role="checkbox"` + `aria-checked`, a

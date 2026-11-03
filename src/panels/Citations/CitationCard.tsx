@@ -56,7 +56,7 @@ import { OpenEntryLink } from "@/components/library/open-library-entry";
 import { CitekeyPicker } from "./CitekeyPicker";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
@@ -1734,7 +1734,7 @@ function CitationKeyRow({
               onOpenPicker();
             }}
             className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2 truncate min-w-0"
-            data-hint="Click to change" aria-description="Click to change"
+            {...describedHint("Click to change")}
           >
             {trimmed}
           </button>

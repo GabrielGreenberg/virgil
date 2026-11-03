@@ -49,7 +49,7 @@ export {
   type SuggestionField,
 } from "./suggestion-field-vocabulary";
 import type { SuggestionField } from "./suggestion-field-vocabulary";
-import { iconHint } from "@/components/Hint";
+import { describedHint, iconHint } from "@/components/Hint";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
@@ -160,8 +160,7 @@ export function AuthorChip({ author }: { author: SuggestionAuthor }) {
           ? "bg-[var(--accent)]/10 text-[var(--accent)]"
           : "bg-surface-muted-strong text-ink-body"
       }`}
-      data-hint={isAi ? "AI-authored" : "Human-authored"}
-      aria-description={isAi ? "AI-authored" : "Human-authored"}
+      {...describedHint(isAi ? "AI-authored" : "Human-authored")}
     >
       {isAi ? "AI" : "Human"}
     </span>

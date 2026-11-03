@@ -7,6 +7,7 @@ import {
   FOLDER_TAB_VARIANTS,
   TAB_TOP_GUTTER,
 } from "@/components/chrome/folder-tab-geometry";
+import { describedHint } from "@/components/Hint";
 
 // The topbar variant of the shared folder-tab chrome (geometry SSOT at
 // src/components/chrome/folder-tab-geometry.ts): tabH 30, --topbar-border
@@ -62,8 +63,7 @@ function DocumentFolderTabImpl({ fill, onClick, title, children }: Props) {
         marginBottom: -FOLDER_TAB_SEAM_OVERLAP,
       }}
       onClick={onClick}
-      data-hint={title}
-      aria-description={title}
+      {...describedHint(title)}
     >
       <FolderTabChrome variant="topbar" fill={fill} />
       {/* Tab content sits over the narrow tab portion, vertically centered.

@@ -811,6 +811,13 @@ export const handPaired = (tag: string): boolean => {
   return hint !== null && hint === attrValue(tag, "aria-label");
 };
 
+/** …and the description twin (task 1438): `data-hint` and `aria-description`
+ *  as ONE value spelled twice — `describedHint(text)` by hand. */
+export const handPairedDescription = (tag: string): boolean => {
+  const hint = attrValue(tag, "data-hint");
+  return hint !== null && hint === attrValue(tag, "aria-description");
+};
+
 /**
  * Legs B and D judge a `<button>` by what it RENDERS, and a computed child
  * (`{label}`, `{children}`) is neither provably an icon nor provably text — so
@@ -825,6 +832,7 @@ export const handPaired = (tag: string): boolean => {
 describe("no element hand-pairs data-hint and aria-label from one value", () => {
   const OPEN = /<[A-Za-z][\w.]*(?=[\s/>])/g;
   const sites: string[] = [];
+  const describedSites: string[] = [];
   let tags = 0;
   for (const { file, src, raw } of sources()) {
     OPEN.lastIndex = 0;
@@ -839,9 +847,9 @@ describe("no element hand-pairs data-hint and aria-label from one value", () => 
       tags++;
       const rawAt = raw.indexOf(tag.split("\n")[0], cursor);
       if (rawAt >= 0) cursor = rawAt + 1;
-      if (handPaired(tag)) {
-        sites.push(`${file}:${(rawAt >= 0 ? raw.slice(0, rawAt) : src.slice(0, m.index)).split("\n").length}`);
-      }
+      const at = () => `${file}:${(rawAt >= 0 ? raw.slice(0, rawAt) : src.slice(0, m!.index)).split("\n").length}`;
+      if (handPaired(tag)) sites.push(at());
+      if (handPairedDescription(tag)) describedSites.push(at());
       OPEN.lastIndex = end;
     }
   }
@@ -855,6 +863,22 @@ describe("no element hand-pairs data-hint and aria-label from one value", () => 
     // element keeps its text as the name and moves the hint to
     // `aria-description`.
     expect(sites).toEqual([]);
+  });
+
+  it("no opening tag spells one value as both its hint and its description", () => {
+    // Allowlist EMPTY (task 1438): the tooltip-that-is-a-description is
+    // `describedHint(text)` — one string, both consumers, `iconHint`'s twin.
+    // Six sites had hand-paired it (the figure width lock, a citation's
+    // "Click to change", a co-author claim twice, an AI-window chip, a
+    // source pod's "Click to expand").
+    expect(describedSites).toEqual([]);
+  });
+
+  it("reads the description pair the same way (self-check)", () => {
+    expect(handPairedDescription(`<div data-hint={why} aria-description={why}>`)).toBe(true);
+    expect(handPairedDescription(`<span data-hint="Click to change"\n aria-description="Click to change" />`)).toBe(true);
+    expect(handPairedDescription(`<div {...describedHint(why)}>`)).toBe(false);
+    expect(handPairedDescription(`<div data-hint={a} aria-description={b}>`)).toBe(false);
   });
 
   it("reads the pair through expressions, strings and whitespace (self-check)", () => {

@@ -314,7 +314,8 @@ function jsxHits(rel: string): JsxHit[] {
       if (AFFORDANCE_TAGS.has(name)) shaped.push(`<${name}>`);
       if (/\bon(?:Click|MouseDown|PointerDown|DoubleClick|KeyDown)\s*=/.test(tag)) shaped.push("handler");
       if (/\brole=["']button["']/.test(tag)) shaped.push("role=button");
-      if (/\bdata-hint\s*=/.test(tag)) shaped.push("data-hint");
+      // `describedHint(…)` is the same hover hint through its door (task 1438).
+      if (/\bdata-hint\s*=|\bdescribedHint\s*\(/.test(tag)) shaped.push("data-hint");
       if (src[close - 1] !== "/") {
         const text = directText(src, close + 1, end);
         if (/[A-Za-z]{2,}/.test(text)) shaped.push(`copy ${JSON.stringify(text.trim().slice(0, 40))}`);
