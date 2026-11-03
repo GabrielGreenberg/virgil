@@ -1,6 +1,6 @@
 <!-- last-verified: 2121bae7 2026-11-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
-<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts -->
+<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts, src/lib/tool-gutter-store.ts, src/lib/gutter-layout.ts -->
 
 # UI Chrome
 
@@ -52,6 +52,69 @@ EditorPane (canonical editor surface)
 ├─ PanelColumn side="right"
 └─ PaneRail side="right" (icon strip, OmniFilterMenu)
 ```
+
+## Gutter layout — cards right, tools left (task 1440, DEFAULT)
+
+Since task 1440 the shipped layout is **cards-right / tools-left**, behind the
+rollout flag `virgil:gutter-layout` (default ON; `localStorage["virgil:gutter-layout"]
+= "off"` + reload restores the two-strip layout described in the rest of this
+file, which is still the code path the pre-1440 suites pin — `vitest.setup.ts`
+turns the flag OFF before every test, and a gutter-layout suite turns it ON).
+The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/gutter-layout.ts)).
+
+- **Every card is on the RIGHT.** `resolvePanelSide` ([src/lib/panel-side.ts](../../src/lib/panel-side.ts))
+  answers `"right"` for every panel under the flag — so the margin markers, the
+  kind rails, `deriveCategorySides` and therefore every omni category, and
+  EditorPane's `sideForKind` all land right together. Placements stay stored
+  (flag OFF restores them).
+- **No icon strips — edge to edge.** An OPEN column runs to the window edge
+  and carries its own collapse toggle (`SideCollapseToggle`, `bare`): first in
+  the tool gutter's tools row on the left (`ToolGutter.leading`), on a sticky
+  head row above the cards on the right (`.gutter-side-head`; the omni's sticky
+  navigator and bins pin below it through `--omni-sticky-top`, set on the
+  rail). Only a COLLAPSED side mounts `GutterCollapseButton`, the bare toggle
+  at the strip's stated `--icon-strip-w` — the term zen's page width reads
+  (`normal-view-rails.ts`, `NormalViewSide.edgeToEdge`).
+- **No docked bands.** `PaneRail` passes an empty stack to both `PanelColumn`s and
+  EditorPane's open-panel portal loop skips docked entries (floats still render).
+  `useViewPrefs.openPanel` / `openPanelDocked` / `togglePanel` route through
+  `routePanelOpenToGutter` ([src/lib/tool-gutter-store.ts](../../src/lib/tool-gutter-store.ts)):
+  a TOOL (outline / search / wordcount) opens at the top of the tool gutter; a
+  CARD panel's open is swallowed (its card is already on the right — a marker
+  click or a new card must not grow a list on the left).
+- **The LEFT rail is the tool gutter.** `PaneRail side="left"` takes a
+  `toolGutter` node that replaces its omni desktop: `ToolGutter`
+  ([tool-gutter/ToolGutter.tsx](../../src/components/editor-layout/tool-gutter/ToolGutter.tsx)),
+  sticky in the column (`top: var(--pod-gap)`, `max-height: var(--dock-slot-frame-h)`,
+  internal scroll). Everything in it is text on the manila (`.tool-gutter*` in
+  `globals.css`; no pod fill, no card frame):
+  1. **Tools** — three icon buttons across the top. The active tool's body is the
+     SAME `PaneRailBody` the dock rendered (props built once as
+     `paneRailBodyShared` in EditorPane), wrapped in `.tool-gutter-tool`, which
+     flattens Search's result cards (`[data-card]`) and Word count's pods
+     (`.rounded-lg`) onto the manila. The close X closes the tool
+     (`PanelChromeProvider` → `closeGutterTool`).
+  2. **Lists** — fold-out sections. Standing: Footnotes, Numbered examples,
+     To-dos (fold, never leave). "More" (an `AnchoredMenu`) adds Notes,
+     Citations, Bibliography, Reports, Archive, Revisions, Cuts, Errors (each
+     removable). A row is ONE line of text from
+     [gutter-rows.ts](../../src/components/editor-layout/tool-gutter/gutter-rows.ts)
+     (pure, archived cards left out via `archivedIds`, `\cite…{}` read as
+     "Author Year"); a click selects the card (`useSelectionsContext`) and jumps
+     through the editor handle's own doors (`scrollToFootnote` / `scrollToExample`
+     / `scrollToCitation` / `jumpToCard` / `errorJump`); a to-do's checkbox calls
+     `toggleItem`. The selected card's row wears `data-selected`.
+  The section set honours the host's `visiblePanels` (the Reader's whitelist).
+- **Store.** `tool-gutter-store.ts` — `{ tool, extra, folded }`, window-wide like
+  the dock it replaces, one `localStorage` key (`virgil:tool-gutter`) re-read on
+  the `storage` event via `subscribeToStorageKey`.
+- **Shared top of the right column.** With every omni surface on the right, the
+  applied-change navigator and the "N unanchored" bin would pin to one spot;
+  `OmniViewPanel` passes `belowNavigator` to the frame-host `OmniBinStack`,
+  which steps the bins down 40px (a prop, never a `:has()` rule).
+
+Tests: `tool-gutter-store.test.ts`, `gutter-layout-side.test.ts`,
+`tool-gutter/__tests__/gutter-rows.test.ts`, `tool-gutter/__tests__/ToolGutter.test.tsx`.
 
 ## Tool strips (left & right)
 

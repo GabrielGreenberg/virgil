@@ -342,6 +342,9 @@ import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
 import { PanelChromeProvider, useCycle } from "./panel-primitives";
+import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { useToolGutterState } from "@/lib/tool-gutter-store";
+import { ToolGutter } from "./editor-layout/tool-gutter/ToolGutter";
 import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import FloatingPanel from "./FloatingPanel";
@@ -5609,6 +5612,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Default to all kinds when chrome whitelist is undefined; the
   // chrome filter then narrows back to the subset (Reader passes the
   // 6-kind whitelist; FULL_CHROME passes undefined → show all).
+  // Task 1440 — the cards-right / tools-left layout. Read once per render
+  // (one localStorage read; a flip takes effect on reload like every flag).
+  const gutterLayout = gutterLayoutOn();
+  const toolGutterState = useToolGutterState();
   const visiblePanels = useMemo<PanelKind[]>(
     () =>
       filterPanelKinds(
@@ -5634,9 +5641,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     (k: PanelKind): "left" | "right" | null => {
       const registrySide = PANEL_REGISTRY[k]?.defaultStripSide ?? null;
       if (registrySide === null) return null;
+      // Cards-right / tools-left (task 1440): every card's home is the right
+      // gutter; the left gutter is the ToolGutter, which reads `visiblePanels`.
+      if (gutterLayout) return "right";
       return placementSideByKind.get(k) ?? registrySide;
     },
-    [placementSideByKind],
+    [placementSideByKind, gutterLayout],
   );
   // Order each side's strip by `effectivePlacements` so drag-reorders
   // mutating `prefs.placements` show up in the rendered icon order.
@@ -5659,9 +5669,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [visiblePanels, sideForKind, effectivePlacements],
   );
+  // Under the gutter layout (task 1440) the LEFT rail is the tool gutter,
+  // which offers every visible panel as a tool or a list — so the rail is
+  // present whenever anything is visible, and the strip/zen terms read it
+  // exactly as they read a two-strip left rail.
   const visiblePanelsLeft = useMemo<PanelKind[]>(
-    () => orderedSidePanels("left"),
-    [orderedSidePanels],
+    () => (gutterLayout ? visiblePanels : orderedSidePanels("left")),
+    [gutterLayout, visiblePanels, orderedSidePanels],
   );
   const visiblePanelsRight = useMemo<PanelKind[]>(
     () => orderedSidePanels("right"),
@@ -5678,11 +5692,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             present: visiblePanelsLeft.length > 0,
             collapsed: !!viewPrefs.prefs.collapsedLeft,
             panelPref: viewPrefs.getPanelWidth("left", "omni"),
+            edgeToEdge: gutterLayout,
           },
           right: {
             present: visiblePanelsRight.length > 0,
             collapsed: !!viewPrefs.prefs.collapsedRight,
             panelPref: viewPrefs.getPanelWidth("right", "omni"),
+            edgeToEdge: gutterLayout,
           },
         })
       : null;
@@ -5701,7 +5717,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // check keyed off the strip whitelist + the retired `activeLeftPanelKind`
   // model: the whitelist only says the icon is available, not that the panel
   // is open, so the highlight never cleared when search actually closed.)
-  const searchPanelOpen = viewPrefs
+  const searchPanelOpen = gutterLayout
+    ? toolGutterState.tool === "search"
+    : viewPrefs
     ? dockedSideOf(viewPrefs.prefs, "search") !== null ||
       viewPrefs.prefs.poppedOutPanels.includes("search")
     : false;
@@ -6754,6 +6772,61 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `visiblePanels` and `tail`; everything else is built ONCE here and spread
   // into both, so the two call sites cannot drift. PaneRail is not memoized,
   // so a fresh object per render costs nothing it didn't already pay.
+  // The docked/floating panel bodies AND the tool gutter's tool bodies (task
+  // 1440) render the same PaneRailBody; its props are built once here.
+  const paneRailBodyShared: Omit<PaneRailBodyProps, "side" | "panelKind"> = {
+    content: outlineContentEffective,
+    examples,
+    docId,
+    citationsHook,
+    annotationsHook,
+    bibReviewHook,
+    bibSettingsHook,
+    notesHook,
+    allEditorCitations,
+    citationPositionMap,
+    citationOrder,
+    footnoteInfos,
+    unanchoredFootnotes: unanchoredFootnoteRefs,
+    onDeleteUnanchoredFootnote: handleDeleteUnanchoredFootnote,
+    footnoteAiRequests,
+    setFootnoteAiRequest: footnotesHook.setFootnoteAiRequest,
+    setBibActiveCitationId,
+    pendingCitationCreate,
+    setPendingCitationCreate,
+    pendingCitationMode,
+    setPendingCitationMode,
+    notesPanelSide,
+    bibliographyPanelSide,
+    todoPanelSide,
+    cutterPanelSide,
+    reportsPanelSide,
+    revisionsPanelSide,
+    discardPristineNotes: notesHook.discardPristineNotes,
+    todosHook,
+    archiveHook,
+    cutterHook,
+    reportsHook,
+    revisionsHook,
+    sortedArchiveSnippets,
+    onArchiveDelete: handleArchiveDelete,
+    onAddFootnote: handleAddFootnote,
+    onEditFootnote: handleEditFootnote,
+    onEditFootnoteTitle: handleEditFootnoteTitle,
+    onDeleteFootnote: handleDeleteFootnote,
+    onDeleteCitation: handleDeleteCitation,
+    compileLog: compileHook.lastLog,
+    compileStatus: compileHook.lastStatus,
+    isCompiling: compileHook.isCompiling,
+    searchState,
+    setSearchState,
+    setSearchHighlightRange,
+    openItemInPanel,
+    wordCountHook,
+    editor,
+    viewPrefs: effectiveViewPrefs,
+  };
+
   const railShared: PaneRailSharedProps = {
     onBinSurfaceChange: noteBinSurface,
     examples,
@@ -6970,7 +7043,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             const seen = new Set<PanelId>();
             // Docked bands: walk each side's ordered stack (top→bottom)
             // and portal each into its band anchor (`bandSlotKey(side, i)`).
-            for (const side of ["left", "right"] as const) {
+            // The gutter layout (task 1440) docks no bands: its tools render
+            // frameless in the ToolGutter and its cards in the right gutter.
+            for (const side of gutterLayout ? ([] as const) : (["left", "right"] as const)) {
               viewPrefs.prefs.dockStack[side].forEach((pid, i) => {
                 if (seen.has(pid)) return;
                 seen.add(pid);
@@ -7005,56 +7080,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   <PaneRailBody
                     side={panelSide}
                     panelKind={pid as PanelKind}
-                    content={outlineContentEffective}
-                    examples={examples}
-                    docId={docId}
-                    citationsHook={citationsHook}
-                    annotationsHook={annotationsHook}
-                    bibReviewHook={bibReviewHook}
-                    bibSettingsHook={bibSettingsHook}
-                    notesHook={notesHook}
-                    allEditorCitations={allEditorCitations}
-                    citationPositionMap={citationPositionMap}
-                    citationOrder={citationOrder}
-                    footnoteInfos={footnoteInfos}
-                    unanchoredFootnotes={unanchoredFootnoteRefs}
-                    onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
-                    footnoteAiRequests={footnoteAiRequests}
-                    setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
-                    setBibActiveCitationId={setBibActiveCitationId}
-                    pendingCitationCreate={pendingCitationCreate}
-                    setPendingCitationCreate={setPendingCitationCreate}
-                    pendingCitationMode={pendingCitationMode}
-                    setPendingCitationMode={setPendingCitationMode}
-                    notesPanelSide={notesPanelSide}
-                    bibliographyPanelSide={bibliographyPanelSide}
-                    todoPanelSide={todoPanelSide}
-                    cutterPanelSide={cutterPanelSide}
-                    reportsPanelSide={reportsPanelSide}
-                    revisionsPanelSide={revisionsPanelSide}
-                    discardPristineNotes={notesHook.discardPristineNotes}
-                    todosHook={todosHook}
-                    archiveHook={archiveHook}
-                    cutterHook={cutterHook}
-                    reportsHook={reportsHook}
-                    revisionsHook={revisionsHook}
-                    sortedArchiveSnippets={sortedArchiveSnippets}
-                    onArchiveDelete={handleArchiveDelete}
-                    onAddFootnote={handleAddFootnote}
-                    onEditFootnote={handleEditFootnote}
-                    onEditFootnoteTitle={handleEditFootnoteTitle}
-                    onDeleteFootnote={handleDeleteFootnote}
-                    onDeleteCitation={handleDeleteCitation}
-                    compileLog={compileHook.lastLog}
-                    compileStatus={compileHook.lastStatus}
-                    isCompiling={compileHook.isCompiling}
-                    searchState={searchState}
-                    setSearchState={setSearchState}
-                    setSearchHighlightRange={setSearchHighlightRange}
-                    openItemInPanel={openItemInPanel}
-                    wordCountHook={wordCountHook}
-                    editor={editor}
-                    viewPrefs={effectiveViewPrefs}
+                    {...paneRailBodyShared}
                   />
                 ) : (
                   <PanelChromeProvider
@@ -7063,56 +7089,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     <PaneRailBody
                       side={panelSide}
                       panelKind={pid as PanelKind}
-                      content={outlineContentEffective}
-                      examples={examples}
-                      docId={docId}
-                      citationsHook={citationsHook}
-                      annotationsHook={annotationsHook}
-                      bibReviewHook={bibReviewHook}
-                      bibSettingsHook={bibSettingsHook}
-                      notesHook={notesHook}
-                      allEditorCitations={allEditorCitations}
-                      citationPositionMap={citationPositionMap}
-                      citationOrder={citationOrder}
-                      footnoteInfos={footnoteInfos}
-                      unanchoredFootnotes={unanchoredFootnoteRefs}
-                      onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
-                      footnoteAiRequests={footnoteAiRequests}
-                      setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
-                      setBibActiveCitationId={setBibActiveCitationId}
-                      pendingCitationCreate={pendingCitationCreate}
-                      setPendingCitationCreate={setPendingCitationCreate}
-                      pendingCitationMode={pendingCitationMode}
-                      setPendingCitationMode={setPendingCitationMode}
-                      notesPanelSide={notesPanelSide}
-                      bibliographyPanelSide={bibliographyPanelSide}
-                      todoPanelSide={todoPanelSide}
-                      cutterPanelSide={cutterPanelSide}
-                      reportsPanelSide={reportsPanelSide}
-                      revisionsPanelSide={revisionsPanelSide}
-                      discardPristineNotes={notesHook.discardPristineNotes}
-                      todosHook={todosHook}
-                      archiveHook={archiveHook}
-                      cutterHook={cutterHook}
-                      reportsHook={reportsHook}
-                      revisionsHook={revisionsHook}
-                      sortedArchiveSnippets={sortedArchiveSnippets}
-                      onArchiveDelete={handleArchiveDelete}
-                        onAddFootnote={handleAddFootnote}
-                      onEditFootnote={handleEditFootnote}
-                      onEditFootnoteTitle={handleEditFootnoteTitle}
-                      onDeleteFootnote={handleDeleteFootnote}
-                      onDeleteCitation={handleDeleteCitation}
-                      compileLog={compileHook.lastLog}
-                      compileStatus={compileHook.lastStatus}
-                      isCompiling={compileHook.isCompiling}
-                      searchState={searchState}
-                      setSearchState={setSearchState}
-                      setSearchHighlightRange={setSearchHighlightRange}
-                      openItemInPanel={openItemInPanel}
-                      wordCountHook={wordCountHook}
-                      editor={editor}
-                      viewPrefs={effectiveViewPrefs}
+                      {...paneRailBodyShared}
                     />
                   </PanelChromeProvider>
                 );
@@ -7187,6 +7164,32 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 side="left"
                 visiblePanels={visiblePanelsLeft}
                 tail={leftMarginPrelude}
+                toolGutter={
+                  gutterLayout ? (
+                    <ToolGutter
+                      visiblePanels={visiblePanels}
+                      // The side's collapse toggle leads the tools row — one
+                      // row of controls, no strip column (task 1440).
+                      leading={viewPrefs ? <SideCollapseToggle side="left" viewPrefs={viewPrefs} bare /> : undefined}
+                      renderTool={(tool) => (
+                        <PaneRailBody side="left" panelKind={tool} {...paneRailBodyShared} />
+                      )}
+                      footnotes={footnoteInfos}
+                      examples={examples}
+                      todoItems={todosHook.items}
+                      toggleTodo={todosHook.toggleItem}
+                      noteCards={notesHook.cards}
+                      citations={citationsHook.citations}
+                      bibEntries={citationsHook.bibEntries}
+                      citationPositionMap={citationPositionMap}
+                      archiveSnippets={sortedArchiveSnippets}
+                      revisionCards={revisionsHook.cards}
+                      cutterCards={cutterHook.cards}
+                      reportCards={reportsHook.cards}
+                      archivedIds={archivedIds}
+                    />
+                  ) : undefined
+                }
                 {...railShared}
               />
             )}
@@ -8465,10 +8468,13 @@ interface PaneRailProps {
    *  it on the side hosting the applied cards. Dismiss-all PRESERVES (archives)
    *  each card. Absent / count 0 → no header. */
   omniBulkPendingChanges?: OmniBulkPendingChanges;
+  /** Task 1440 — under the gutter layout, the LEFT rail's whole column is the
+   *  tool gutter (it replaces the omni desktop there). Absent elsewhere. */
+  toolGutter?: React.ReactNode;
 }
 
 /** Everything a PaneRail takes that is the same on both sides (task 1225). */
-type PaneRailSharedProps = Omit<PaneRailProps, "side" | "visiblePanels" | "tail">;
+type PaneRailSharedProps = Omit<PaneRailProps, "side" | "visiblePanels" | "tail" | "toolGutter">;
 
 /**
  * Canonical icon strip — view-controls pod (collapse/blank/split) + the
@@ -8498,11 +8504,6 @@ function IconStrip({
   // In the stack model the column is "open" whenever it isn't collapsed.
   // The view-controls collapse toggle reflects that; the per-strip-button
   // "active" highlight reflects whether the panel is docked or floating.
-  const isCollapsed = side === "left"
-    ? viewPrefs.prefs.collapsedLeft
-    : viewPrefs.prefs.collapsedRight;
-  const isOpen = !isCollapsed;
-  const isLeft = side === "left";
   const isPanelOpen = (pid: PanelKind) =>
     viewPrefs.prefs.dockStack[side].includes(pid as PanelId) ||
     viewPrefs.prefs.poppedOutPanels.includes(pid as PanelId);
@@ -8518,34 +8519,7 @@ function IconStrip({
       {/* View-controls pod: collapse/expand. The split toggle is
           retired — panels now stack as bands over omni. */}
       <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
-        <button
-          onClick={() => {
-            if (isOpen) {
-              if (isLeft) viewPrefs.collapseLeft();
-              else viewPrefs.collapseRight();
-            } else if (isLeft) {
-              viewPrefs.expandLeft();
-            } else {
-              viewPrefs.expandRight();
-            }
-          }}
-          className="iconbtn-md iconbtn-toggle"
-          aria-pressed={isOpen}
-          // Off the iconbtn ladder on purpose: the strip's 18px panel glyphs
-          // (panel-icons.tsx) sit directly below, and this toggle matches them.
-          data-iconbtn-glyph="aligns: the icon strip's 18px panel glyphs (panel-icons.tsx)"
-          {...iconHint({ label: "Toggle sidebar" })}
-        >
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="4" y="4" width="16" height="16" rx="1.5" />
-            {isOpen && (
-              isLeft
-                ? <rect x="4" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />
-                : <rect x="15" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />
-            )}
-            <line x1={isLeft ? 9 : 15} y1="4" x2={isLeft ? 9 : 15} y2="20" />
-          </svg>
-        </button>
+        <SideCollapseToggle side={side} viewPrefs={viewPrefs} />
       </div>
       {stripItems.map((p) => (
         <StripButton
@@ -8569,6 +8543,79 @@ function IconStrip({
           categorySides={viewPrefs.categorySides}
         />
       </div>
+    </div>
+  );
+}
+
+/** The side's collapse/expand toggle — the one control both the icon strip's
+ *  view pod and the gutter layout's bare column (task 1440) carry. */
+function SideCollapseToggle({
+  side,
+  viewPrefs,
+  bare = false,
+}: {
+  side: "left" | "right";
+  viewPrefs: EditorPaneViewPrefs;
+  /** The gutter layout's toggle (task 1440): no pressed-state box — the
+   *  glyph's own filled column already says open/closed. */
+  bare?: boolean;
+}) {
+  const isLeft = side === "left";
+  const isOpen = !(isLeft ? viewPrefs.prefs.collapsedLeft : viewPrefs.prefs.collapsedRight);
+  return (
+    <button
+      onClick={() => {
+        if (isOpen) {
+          if (isLeft) viewPrefs.collapseLeft();
+          else viewPrefs.collapseRight();
+        } else if (isLeft) {
+          viewPrefs.expandLeft();
+        } else {
+          viewPrefs.expandRight();
+        }
+      }}
+      className={bare ? "iconbtn-md" : "iconbtn-md iconbtn-toggle"}
+      aria-pressed={isOpen}
+      // Off the iconbtn ladder on purpose: the strip's 18px panel glyphs
+      // (panel-icons.tsx) sit directly below, and this toggle matches them.
+      data-iconbtn-glyph="aligns: the icon strip's 18px panel glyphs (panel-icons.tsx)"
+      {...iconHint({ label: "Toggle sidebar" })}
+    >
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="1.5" />
+        {isOpen && (
+          isLeft
+            ? <rect x="4" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />
+            : <rect x="15" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />
+        )}
+        <line x1={isLeft ? 9 : 15} y1="4" x2={isLeft ? 9 : 15} y2="20" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * The gutter layout's strip (task 1440): no icons, no white view pod — the
+ * collapse toggle alone, sitting on the manila. Mounted only while the side
+ * is COLLAPSED (an open column runs to the window edge and carries its own
+ * toggle), at the strip's STATED width (`--icon-strip-w`), which is the term
+ * zen's normal-view page width (normal-view-rails.ts, `edgeToEdge`) reads.
+ */
+function GutterCollapseButton({
+  side,
+  viewPrefs,
+}: {
+  side: "left" | "right";
+  viewPrefs: EditorPaneViewPrefs;
+}) {
+  return (
+    <div
+      data-strip-side={side}
+      data-gutter-strip=""
+      className="flex flex-col items-center pt-2 pb-3 px-1.5 shrink-0 sticky top-0 z-20 self-start"
+      style={{ width: `var(${ICON_STRIP_WIDTH_VAR})` }}
+    >
+      <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
     </div>
   );
 }
@@ -8604,6 +8651,7 @@ function PaneRail({
   tail,
   omniBulkPendingChanges,
   onBinSurfaceChange,
+  toolGutter,
 }: PaneRailProps) {
   const isLeft = side === "left";
 
@@ -8645,12 +8693,14 @@ function PaneRail({
     // The docked stack for this side, top→bottom. Each band carries its
     // persisted height (px) or undefined ⇒ content-sized. This is the only
     // input PanelColumn needs to lay out the bands over omni.
-    const stack = viewPrefs.prefs.dockStack[side].map((id) => ({
+    // The gutter layout (task 1440) docks no bands on either side.
+    const gutterLayout = gutterLayoutOn();
+    const stack = (gutterLayout ? [] : viewPrefs.prefs.dockStack[side]).map((id) => ({
       id,
       height: viewPrefs.prefs.panelHeights[id],
     }));
 
-    const omniNode: React.ReactNode = (
+    const omniBody: React.ReactNode = toolGutter ?? (
         <OmniHost
           side={side}
           omniDimResting={viewPrefs.prefs.omniDimResting}
@@ -8737,13 +8787,37 @@ function PaneRail({
         />
     );
 
-    const stripJsx = !viewPrefs.zenMode && (
-      <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
-    );
-
     const isCollapsed = side === "left"
       ? viewPrefs.prefs.collapsedLeft
       : viewPrefs.prefs.collapsedRight;
+
+    // The gutter layout runs edge to edge (task 1440): the collapse toggle
+    // lives IN the column — first in the tool gutter's tools row on the left
+    // (passed as its `leading`), on a sticky head row above the cards on the
+    // right — so no strip column stands between the column and the window
+    // edge. The omni's own sticky chrome (navigator, bins) pins below that
+    // head through `--omni-sticky-top`, set on the rail below.
+    const omniNode: React.ReactNode =
+      gutterLayout && !isLeft ? (
+        <div data-gutter-side-host={side}>
+          <div className="gutter-side-head" data-gutter-head={side}>
+            <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
+          </div>
+          {omniBody}
+        </div>
+      ) : (
+        omniBody
+      );
+
+    // In the gutter layout the strip survives only while the side is
+    // COLLAPSED — it is then the one control that brings the column back.
+    const stripJsx = !viewPrefs.zenMode && (
+      gutterLayout ? (
+        isCollapsed ? <GutterCollapseButton side={side} viewPrefs={viewPrefs} /> : null
+      ) : (
+        <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
+      )
+    );
 
     // One always-mounted omni desktop with up to MAX_STACK opaque bands
     // stacked over it. PanelColumn owns the band frames + the bottom-edge
@@ -8754,7 +8828,7 @@ function PaneRail({
         side={side}
         omni={omniNode}
         stack={stack}
-        omniHasCards={omniCardCount > 0}
+        omniHasCards={!!toolGutter || omniCardCount > 0}
         onTradeHeight={viewPrefs.tradePanelHeights}
         onResizeBottomEdge={viewPrefs.setPanelHeight}
         onFocusBand={(id) => viewPrefs.notePanelUse(side, id)}
@@ -8788,6 +8862,11 @@ function PaneRail({
           // establishing a scroll context, so descendants' sticky
           // positioning still latches to the row.
           overflow: 'clip',
+          // The right gutter's sticky head row (above): the omni's sticky
+          // navigator and bins read this and pin below it.
+          ...(gutterLayout && !isLeft
+            ? { ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)" }
+            : null),
         }}
       >
         {isLeft ? (

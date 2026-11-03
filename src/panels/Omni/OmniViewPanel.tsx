@@ -364,9 +364,16 @@ export function OmniBinStack({
   children,
   host = "pod",
   occupantRef,
+  belowNavigator = false,
 }: {
   children: ReactNode;
   host?: "frame" | "pod";
+  /** Frame host only (task 1440): this column also carries the applied-change
+   *  navigator, which is sticky at the column's top — the same spot the bin
+   *  slot pins to. Step the bins down under it (its 32px box + 8px margin)
+   *  rather than let the two pin over each other. A prop, not a `:has()`
+   *  rule — globals.css carries none (editor-observer / css-invalidation). */
+  belowNavigator?: boolean;
   /** In-pod host only: receives the STICKY inner — the element that is both
    *  the pinned chrome and its own last painted pixel — so the cascade can
    *  floor its first card under it (task 544, `cascadeFloorForStickyOccupant`).
@@ -376,7 +383,14 @@ export function OmniBinStack({
 }) {
   if (host === "frame") {
     return (
-      <div data-omni-bin-stack="" data-omni-bin-host="frame" className="flex flex-col gap-1">
+      <div
+        data-omni-bin-stack=""
+        data-omni-bin-host="frame"
+        className="flex flex-col gap-1"
+        // Below the right gutter's head row (`--omni-sticky-top`, task 1440)
+        // and, when the navigator is up, below that too.
+        style={{ paddingTop: `calc(var(--omni-sticky-top, 0px) + ${belowNavigator ? 40 : 0}px)` }}
+      >
         {children}
       </div>
     );
@@ -391,7 +405,9 @@ export function OmniBinStack({
         ref={occupantRef}
         data-omni-bin-sticky=""
         className="flex flex-col gap-1"
-        style={{ position: "sticky", top: "var(--pod-gap)", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
+        // `--omni-sticky-top`: the right gutter's head row (task 1440) sets
+        // it so the sticky chrome pins below the row, not under it.
+        style={{ position: "sticky", top: "calc(var(--pod-gap) + var(--omni-sticky-top, 0px))", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
       >
         {children}
       </div>
@@ -666,6 +682,9 @@ function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
   return (
     <div
       className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-[var(--pending-ai-edge)] bg-surface px-2 py-1.5 shadow-[var(--card-shadow-ambient)]"
+      // Pins below the right gutter's head row where one is mounted
+      // (`--omni-sticky-top`, task 1440); `top-0` otherwise.
+      style={{ top: "var(--omni-sticky-top, 0px)" }}
       role="group"
       aria-label="Pending change navigator"
       data-omni-bulk-pending={bulk.count}
@@ -992,7 +1011,10 @@ function OmniViewPanel({
       >
         {binSlot ? (
           createPortal(
-            <OmniBinStack host="frame">
+            <OmniBinStack
+              host="frame"
+              belowNavigator={!!bulkPendingChanges && bulkPendingChanges.count > 0}
+            >
               <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
               <OmniOutsideFocusBin items={outsideFocus} />
             </OmniBinStack>,

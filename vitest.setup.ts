@@ -30,7 +30,8 @@
  *
  * Pinned by `src/__tests__/test-mount-lifetime.test.tsx`.
  */
-import { afterAll, afterEach } from "vitest";
+import { afterAll, afterEach, beforeEach } from "vitest";
+import { setFlagOverride } from "./src/lib/feature-flags";
 import {
   assertNoMockExportGaps,
   installMockExportGapDetector,
@@ -56,3 +57,13 @@ afterEach(async () => {
 installMockExportGapDetector();
 afterEach(() => assertNoMockExportGaps("logged during this test or after the previous one"));
 afterAll(() => assertNoMockExportGaps("logged after the file's last test"));
+
+/*
+ * The cards-right / tools-left layout (`virgil:gutter-layout`, task 1440)
+ * ships default ON, but the suites written before it pin the two-strip layout
+ * it can still revert to — placements on both sides, docked bands, icon
+ * strips. So every test starts with the flag OFF, and a suite that exercises
+ * the gutter layout turns it ON itself (`setFlagOverride(..., true)`).
+ */
+setFlagOverride("virgil:gutter-layout", false); // describe-time derivations
+beforeEach(() => setFlagOverride("virgil:gutter-layout", false));
