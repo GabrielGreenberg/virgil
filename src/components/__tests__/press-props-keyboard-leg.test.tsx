@@ -13,6 +13,11 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 vi.mock("katex", () => ({ default: { render: () => undefined } }));
+const platform = vi.hoisted(() => ({ mac: false }));
+vi.mock("@/lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/platform")>()),
+  isMac: () => platform.mac,
+}));
 
 const captured: { editor: import("@tiptap/core").Editor | null } = { editor: null };
 vi.mock("@tiptap/react", async (importOriginal) => {
@@ -34,6 +39,7 @@ import { PopoutButton, createPopoutButtonEl } from "@/components/panel-primitive
 import { bindPress, pressProps } from "@/lib/press-props";
 
 afterEach(() => {
+  platform.mac = false;
   cleanup();
   captured.editor = null;
 });
@@ -62,6 +68,32 @@ describe("the press door (src/lib/press-props.ts)", () => {
     render(<button type="button" {...pressProps(action)}>go</button>);
     fireEvent.mouseDown(screen.getByText("go"), { button: 2 });
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it("a macOS Ctrl+click is a context click: neither door acts (task 1449)", () => {
+    platform.mac = true;
+    const action = vi.fn();
+    const imperative = vi.fn();
+    render(<button type="button" {...pressProps(action)}>go</button>);
+    const el = document.createElement("button");
+    document.body.appendChild(el);
+    bindPress(el, imperative);
+    const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+    screen.getByText("go").dispatchEvent(down);
+    el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+    expect(action).not.toHaveBeenCalled();
+    expect(imperative).not.toHaveBeenCalled();
+    // Native behaviour kept: the press is not swallowed.
+    expect(down.defaultPrevented).toBe(false);
+    el.remove();
+  });
+
+  it("off a Mac, Ctrl+click is an ordinary press and still acts", () => {
+    platform.mac = false;
+    const action = vi.fn();
+    render(<button type="button" {...pressProps(action)}>go</button>);
+    fireEvent.mouseDown(screen.getByText("go"), { button: 0, ctrlKey: true });
+    expect(action).toHaveBeenCalledTimes(1);
   });
 
   it("pressProps: mousedown prevents default (focus stays put); stopPropagation is opt-in", () => {
