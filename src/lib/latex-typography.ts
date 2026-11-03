@@ -958,16 +958,34 @@ export function smartenStraightQuotes(
     // one caller is `smartenQuotesOutsideSyntax` and a census forbids a second.
     // (A curly glyph before the `"` is not in the opener class, so it reads
     // as a closer exactly as its two-character TeX spelling used to.)
-    return isEscaped(s, i) || isQuoteSyntaxAt(s, i)
-      ? q
-      : i === 0 || SMART_QUOTE_OPENER_PREV.test(s[i - 1])
-        ? "``"
-        : "''";
+    if (isQuoteSyntaxAt(s, i)) return q;
+    const role = straightQuoteRole(s, i);
+    return role === "escaped" ? q : role === "open" ? "``" : "''";
   });
 }
 
 /** The character before a straight `"` that makes it an OPENING quote. */
 const SMART_QUOTE_OPENER_PREV = /[\s([{/—–]/;
+
+/**
+ * THE quote-direction decision for a straight `"` at `text[i]` (task 1440):
+ * `"escaped"` when an odd backslash run precedes it (`\"u`, the umlaut
+ * accent — not a quote at all), else `"open"` at the start of the buffer or
+ * after whitespace / opening punctuation (incl. `/`) / a dash glyph, else
+ * `"close"`. Both directions read it: the save-side `smartenStraightQuotes`
+ * above and the type-time `SmartQuotes` input rule, which until task 1440
+ * carried its own regex copy that had lost `/` and the escape test. A
+ * parity census (`smart-quote-parity.test.ts`) pins the two to one answer.
+ */
+export function straightQuoteRole(
+  text: string,
+  i: number,
+): "escaped" | "open" | "close" {
+  if (isEscaped(text, i)) return "escaped";
+  return i === 0 || SMART_QUOTE_OPENER_PREV.test(text[i - 1])
+    ? "open"
+    : "close";
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // LaTeX quote pairs ↔ curly quotes
