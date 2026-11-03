@@ -24,6 +24,7 @@
 import { type ReactNode, type RefObject, type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
+import { useUnmountEnding } from "@/lib/pane-resize/use-unmount-ending";
 import { BAND_GRIP_Z } from "@/components/editor-layout/constants";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize/layout-gesture-park";
 import { LAYOUT_SITE_CARD_HEADER } from "@/lib/layout-gesture-probe";
@@ -3040,6 +3041,10 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // misaligns on some cards. The measured height is published as a CSS
   // variable on the card root; the popout uses `calc()` to self-center.
   const innerRef = useRef<HTMLDivElement>(null);
+  // The card-lift press's CANCEL ending (task 1444): the card unmounting under
+  // a held press (a sidecar reload, a panel swap) ends it, rather than leaving
+  // its window listeners armed to pop a card that no longer exists.
+  const liftPressEndingRef = useUnmountEnding();
   // Armed when the lift gesture crosses its threshold so the browser's trailing
   // click (mousedown→drag→mouseup still synthesizes one) is swallowed instead
   // of firing the header toggle or the root onClick. The guard disarms itself
@@ -3267,7 +3272,14 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       cardEl.removeEventListener("dragstart", suppressDragStart);
       gripEl?.classList.remove("is-pressed");
       headerEl.classList.remove("is-pressed");
+      if (liftPressEndingRef.current === onUnmount) liftPressEndingRef.current = null;
     };
+    const onUnmount = () => {
+      if (!triggered) setCardLiftTarget(null);
+      cleanup();
+    };
+    liftPressEndingRef.current?.();
+    liftPressEndingRef.current = onUnmount;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };

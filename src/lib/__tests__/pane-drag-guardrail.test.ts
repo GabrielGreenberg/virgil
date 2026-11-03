@@ -381,8 +381,6 @@ const PERMITTED_ESCAPELESS_GESTURES: Record<string, string> = {
     "[hands-off: the card-lift threshold detector hands the pointer to the lift host / drop-mode session before anything commits; clearStaleHover's one-shot pointermove commits nothing]",
   "src/lib/tiptap/inline-atom-grab.ts":
     "[hands-off: pre-threshold it commits nothing; post-threshold the drop-mode controller owns the pointer AND Escape (its own docblock lists Escape as one of the session's four endings)]",
-  "src/text-objects/TextObjectGrabHandle.tsx":
-    "[hands-off: the grab handle's hold-threshold detector hands off to LiftHost before any commit; the hover tracker is not a gesture]",
   "src/text-objects/LiftHost.tsx":
     "[hands-off: the lift overlay rides a drop-mode session, and that session's Escape (the controller's claimed handler) is one of the endings this host already tears down on]",
   "src/components/editor-layout/editor-scrollbar.tsx":
@@ -1875,6 +1873,8 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
       "src/lib/pane-resize/use-pane-resize-handle.ts",
       // Task 1167 — the bespoke gesture that lacked the engine's third invariant.
       "src/panels/Outline/focus-band-drag.ts",
+      // Task 1444 — the grab handle's press claims the Escape that cancels it.
+      "src/text-objects/TextObjectGrabHandle.tsx",
     ]);
     const unclaimed = files504
       .map((f) => ({ rel: f.rel, names: findUnclaimedGestureKeys(f.source) }))
@@ -2092,6 +2092,8 @@ describe("pane-drag guardrail — Escape-answer census (task 1167)", () => {
       "src/components/drop-mode/controller.ts",
       "src/components/drop-mode/pending-session.ts",
       "src/panels/Outline/focus-band-drag.ts",
+      // Task 1444 — the grab handle's pre-threshold press cancels on Escape.
+      "src/text-objects/TextObjectGrabHandle.tsx",
     ]);
   });
 

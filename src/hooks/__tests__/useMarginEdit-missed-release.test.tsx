@@ -148,3 +148,33 @@ describe("useMarginEdit missed-release failsafes", () => {
     expect(h.hook.result.current.liveMargins?.right).toBe(99);
   });
 });
+
+// Task 1444 — the drag's endings include its owner's teardown and the
+// margin-edit session ending under it.
+describe("useMarginEdit — a guide drag ends on unmount and on Cancel (task 1444)", () => {
+  it("UNMOUNT mid-drag detaches the drag and unwedges the body cursor", () => {
+    const h = makeHarness();
+    act(() => h.hook.result.current.beginDrag(h.mouseDown(), "right"));
+    h.move(650, 1);
+    expect(document.body.style.cursor).toBe("ew-resize");
+    h.hook.unmount();
+    expect(document.body.style.cursor, "cursor restored").toBe("");
+    h.move(500, 1);
+    flushRaf();
+    expect(h.col.style.getPropertyValue("--editor-pr"), "no write after unmount").not.toBe("299px");
+  });
+
+  it("CANCEL mid-drag ends it: no commit on the later release, and the guide is put back", () => {
+    const h = makeHarness();
+    act(() => h.hook.result.current.enter());
+    act(() => h.hook.result.current.beginDrag(h.mouseDown(), "right"));
+    h.move(650, 1);
+    flushRaf();
+    expect(h.col.style.getPropertyValue("--editor-pr")).toBe("149px");
+    act(() => h.hook.result.current.cancel());
+    expect(document.body.style.cursor).toBe("");
+    expect(h.col.style.getPropertyValue("--editor-pr"), "guide restored to the drag's start").toBe("88px");
+    act(() => { window.dispatchEvent(new MouseEvent("mouseup")); });
+    expect(h.hook.result.current.liveMargins, "nothing re-committed into the cancelled session").toBeNull();
+  });
+});

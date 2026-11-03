@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useUnmountEnding } from "@/lib/pane-resize/use-unmount-ending";
 import {
   isMissedRelease,
   isPrimaryDragStart,
@@ -45,6 +46,10 @@ export function useDragPosition() {
   const draggingRef = useRef(false);
   const offsetRef = useRef<Position>({ x: 0, y: 0 });
   const rafRef = useRef(0);
+  // Unmounting mid-drag (the window closed by a shortcut under a held press)
+  // is an ending too (task 1444): it must not leave the grabbing cursor and
+  // `user-select: none` wedged on <body>.
+  const endingRef = useUnmountEnding();
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     const panel = panelRef.current;
@@ -75,6 +80,7 @@ export function useDragPosition() {
       document.body.style.userSelect = "";
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      if (endingRef.current === endGesture) endingRef.current = null;
     };
 
     function handleMouseMove(ev: MouseEvent) {
@@ -106,9 +112,10 @@ export function useDragPosition() {
       endGesture();
     }
 
+    endingRef.current = endGesture;
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-  }, []);
+  }, [endingRef]);
 
   return { position, onMouseDown, panelRef, isDraggingRef: draggingRef };
 }
