@@ -100,9 +100,8 @@
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import type { ViewLifetime } from "@/lib/tiptap/view-lifetime";
-import { claimGestureKey } from "@/lib/pane-resize/pointer-invariants";
 import { INLINE_EDIT_INPUT_Z, INLINE_EDIT_OVERLAY_Z } from "@/floats/float-policy";
-import { isCommitEnter } from "@/lib/key-intent";
+import { answerFieldKeys } from "@/lib/tiptap/field-keys";
 
 /** The input's own class — the ONE spelling; CSS and every suite read it. */
 export const PAR_TITLE_INPUT_CLASS = "par-title-input";
@@ -256,27 +255,19 @@ export function createParTitleSession(opts: ParTitleSessionOptions): ParTitleSes
       render();
     };
 
-    input.addEventListener("keydown", (ev) => {
-      // The session CLAIMS the keys it answers, and only those (task 552 —
-      // the second member of `claimGestureKey`'s law). An open title input is
-      // the innermost transient thing on screen, so one press ends exactly one
-      // thing: unclaimed, this Escape ALSO reached `useMarginEdit`'s window
-      // listener (dropping every guide dragged and not yet Saved),
-      // `system-dialog`'s window-BUBBLE Escape (closing a scrimless
-      // Preferences or a half-typed bug report), `NodeEditPopover` (committing
-      // a math edit or discarding a figure one) and the marginalia overflow
-      // pill. Every other key — Cmd-S, Cmd-P, a character — passes through:
-      // the session does not answer them, and the paragraph's pre-552 blanket
-      // `stopPropagation()` made this the one field in the app where Save did
-      // nothing.
-      if (isCommitEnter(ev)) {
-        claimGestureKey(ev);
-        commitSession();
-      } else if (ev.key === "Escape") {
-        claimGestureKey(ev);
-        cancel();
-      }
-    });
+    // The session CLAIMS the keys it answers, and only those (task 552 — the
+    // second member of `claimGestureKey`'s law; one door since task 1441). An
+    // open title input is the innermost transient thing on screen, so one
+    // press ends exactly one thing: unclaimed, this Escape ALSO reached
+    // `useMarginEdit`'s window listener (dropping every guide dragged and not
+    // yet Saved), `system-dialog`'s window-BUBBLE Escape (closing a scrimless
+    // Preferences or a half-typed bug report), `NodeEditPopover` (committing a
+    // math edit or discarding a figure one) and the marginalia overflow pill.
+    // Every other key — Cmd-S, Cmd-P, a character — passes through: the
+    // session does not answer them, and the paragraph's pre-552 blanket
+    // `stopPropagation()` made this the one field in the app where Save did
+    // nothing.
+    answerFieldKeys(input, { commit: commitSession, cancel });
     let armed = false;
     input.addEventListener("blur", () => {
       if (armed) commitSession();

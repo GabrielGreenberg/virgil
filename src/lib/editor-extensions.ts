@@ -111,7 +111,7 @@ import {
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, buildFoldChevronSvg, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import { proxiedSurfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
-import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { answerFieldKeys } from "@/lib/tiptap/field-keys";
 import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
 import { VirgilHorizontalRule } from "@/lib/tiptap/virgil-horizontal-rule";
 
@@ -1172,9 +1172,10 @@ export function createHeadingWithLabel(
             refocusEditor(nodeEditor);
           };
 
-          input.addEventListener("keydown", (ev) => {
-            if (isCommitEnter(ev)) { ev.preventDefault(); void commit("enter"); }
-            if (isCancelEscape(ev)) { ev.preventDefault(); committed = true; cleanupSizer(); finish(); }
+          // Claims the keys it answers (task 1441, `answerFieldKeys`).
+          answerFieldKeys(input, {
+            commit: () => void commit("enter"),
+            cancel: () => { committed = true; cleanupSizer(); finish(); },
           });
 
           let armed = false;
