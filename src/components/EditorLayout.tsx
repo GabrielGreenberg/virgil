@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import { EditorHandle } from "./Editor";
 import { readFlag } from "@/lib/feature-flags";
+import { announceEditRefused, editRefusalNotice } from "@/lib/edit-refusal";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
@@ -2096,27 +2097,18 @@ export default function EditorLayout() {
     (what: "formula" | "figure" | "reference", draft?: string) => {
       const noun =
         what === "formula" ? "Formula" : what === "figure" ? "Figure" : "Reference";
-      void runConfirm({
-        title: `${noun} not changed`,
-        message: (
-          <>
-            The {what} you were editing was changed or removed while the editor was open, so
-            your edit was not applied.
-            {draft ? (
-              <>
-                {" "}Your edit, so you can re-apply it:
-                <pre className="mt-2 whitespace-pre-wrap break-words select-text font-mono">
-                  {draft}
-                </pre>
-              </>
-            ) : null}
-          </>
-        ),
-        confirmLabel: "OK",
-        hideCancel: true,
-      });
+      // Through the app's ONE refusal voice (task 1436) — the figure chrome's
+      // picker, delete and label doors say "refused after you acted" in it too.
+      announceEditRefused(
+        editRefusalNotice({
+          title: `${noun} not changed`,
+          what,
+          reason: "changed",
+          draft,
+        }),
+      );
     },
-    [runConfirm],
+    [],
   );
   const commitCitationCreate = useCallback(
     (pos: number, keys: string[], owner?: Editor | null) => {

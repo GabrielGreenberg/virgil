@@ -15,6 +15,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { render, cleanup, act, fireEvent } from "@testing-library/react";
+import { registerEditRefusalVoice, type EditRefusalNotice } from "@/lib/edit-refusal";
 
 vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(
@@ -114,13 +115,19 @@ async function clickAndSettle(el: Element) {
   });
 }
 
+let notices: EditRefusalNotice[] = [];
+let unregisterVoice: (() => void) | null = null;
+
 beforeEach(() => {
+  notices = [];
+  unregisterVoice = registerEditRefusalVoice((n) => notices.push(n));
   vi.stubGlobal("ResizeObserver", RO);
   held.editor = null;
   confirmDelete.mockReset();
   confirmDelete.mockImplementation(async () => true);
 });
 afterEach(() => {
+  unregisterVoice?.();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -134,6 +141,8 @@ describe("the empty-state delete asks the shared confirm rule", () => {
     await clickAndSettle(container.querySelector('[aria-label="Delete figure"]')!);
     expect(confirmDelete).toHaveBeenCalledTimes(1);
     expect(count("figureBlock")).toBe(1);
+    // "Cancel" is the user's own answer — nothing to announce.
+    expect(notices).toHaveLength(0);
   });
 
   it("an empty figure WITH a label asks first, and a yes deletes it", async () => {
@@ -161,6 +170,42 @@ describe("the empty-state delete asks the shared confirm rule", () => {
     await clickAndSettle(btn!);
     expect(confirmDelete).not.toHaveBeenCalled();
     expect(count("graphicsBlock")).toBe(0);
+  });
+});
+
+describe("a confirmed delete refused after the answer SAYS so (task 1436)", () => {
+  it("the pen taken while the confirm is up: nothing deleted, announced once", async () => {
+    confirmDelete.mockImplementation(async () => {
+      held.editor!.setEditable(false);
+      return true;
+    });
+    const { container } = await mount(emptyFigure({ label: "fig:a" }));
+    await clickAndSettle(container.querySelector('[aria-label="Delete figure"]')!);
+    expect(count("figureBlock")).toBe(1);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].title).toBe("Figure not deleted");
+  });
+
+  it("the figure removed while the confirm is up: announced once", async () => {
+    confirmDelete.mockImplementation(async () => {
+      const ed = held.editor!;
+      let at = -1;
+      ed.state.doc.descendants((n, pos) => {
+        if (n.type.name === "figureBlock") at = pos;
+      });
+      ed.view.dispatch(ed.state.tr.delete(at, at + ed.state.doc.nodeAt(at)!.nodeSize));
+      return true;
+    });
+    const { container } = await mount(emptyFigure({ label: "fig:a" }));
+    await clickAndSettle(container.querySelector('[aria-label="Delete figure"]')!);
+    expect(notices).toHaveLength(1);
+  });
+
+  it("a delete that lands announces nothing", async () => {
+    const { container } = await mount(emptyFigure({ label: "fig:a" }));
+    await clickAndSettle(container.querySelector('[aria-label="Delete figure"]')!);
+    expect(count("figureBlock")).toBe(0);
+    expect(notices).toHaveLength(0);
   });
 });
 

@@ -163,7 +163,9 @@ export default function FigureAnnotation({
     // Nothing written (cancelled, stale, conflict, unresolved, read-only —
     // the door asks the write gate itself, task 1083): the field's
     // draft goes back to the committed label rather than holding a key the
-    // document never took (task 876).
+    // document never took (task 876). A refusal AFTER the user answered the
+    // question is announced by the door itself, the typed key handed back
+    // (task 1436), so resetting the field loses nothing silently.
     if (outcome !== "renamed") setDraft(label);
   }, [draft, editor, label, getFigurePos, onConfirmRename]);
 

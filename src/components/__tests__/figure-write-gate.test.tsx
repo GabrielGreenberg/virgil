@@ -15,10 +15,11 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { render, cleanup, act, fireEvent } from "@testing-library/react";
+import { registerEditRefusalVoice, type EditRefusalNotice } from "@/lib/edit-refusal";
 
 const pick = vi.hoisted(() => ({
   importFigureFile: vi.fn(async () => "figures/new.png"),
-  pickFigureFile: vi.fn(async (): Promise<unknown> => ({ name: "new.png" })),
+  pickFigureFile: vi.fn(async (): Promise<unknown> => ({ file: { name: "new.png" }, handle: null })),
 }));
 vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(
@@ -124,16 +125,24 @@ function lockEditor() {
   });
 }
 
+// Task 1436: every refusal AFTER the user acted is announced exactly once
+// through the app's refusal voice; gesture-time refusals announce nothing.
+let notices: EditRefusalNotice[] = [];
+let unregisterVoice: (() => void) | null = null;
+
 beforeEach(() => {
+  notices = [];
+  unregisterVoice = registerEditRefusalVoice((n) => notices.push(n));
   vi.stubGlobal("ResizeObserver", RO);
   held.editor = null;
   pick.importFigureFile.mockClear();
   pick.pickFigureFile.mockReset();
-  pick.pickFigureFile.mockImplementation(async () => ({ name: "new.png" }));
+  pick.pickFigureFile.mockImplementation(async () => ({ file: { name: "new.png" }, handle: null }));
   confirmDelete.mockReset();
   confirmDelete.mockImplementation(async () => true);
 });
 afterEach(() => {
+  unregisterVoice?.();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -151,6 +160,7 @@ describe("read-only: every figure verb writes nothing and opens nothing", () => 
     expect(confirmDelete).not.toHaveBeenCalled();
 
     expect(held.editor!.state.doc.eq(before)).toBe(true);
+    expect(notices).toHaveLength(0);
   });
 
   it("chrome width / Remove figure / Pick image — no dispatch, no picker, no file", async () => {
@@ -169,6 +179,7 @@ describe("read-only: every figure verb writes nothing and opens nothing", () => 
     expect(pick.pickFigureFile).not.toHaveBeenCalled();
     expect(pick.importFigureFile).not.toHaveBeenCalled();
     expect(held.editor!.state.doc.eq(before)).toBe(true);
+    expect(notices).toHaveLength(0);
   });
 
   it("empty figure: Remove figure and Choose image — no dispatch, no picker", async () => {
@@ -179,6 +190,7 @@ describe("read-only: every figure verb writes nothing and opens nothing", () => 
     await clickAndSettle(container.querySelector(".figure-empty-cta")!);
     expect(pick.pickFigureFile).not.toHaveBeenCalled();
     expect(held.editor!.state.doc.eq(before)).toBe(true);
+    expect(notices).toHaveLength(0);
   });
 });
 
@@ -192,18 +204,47 @@ describe("the gate is re-asked after every await", () => {
     await clickAndSettle(container.querySelector(".figure-annotation-delete")!);
     expect(confirmDelete).toHaveBeenCalledTimes(1);
     expect(figure()).not.toBeNull();
+    // The user answered "Delete" — the refusal SAYS so (task 1436).
+    expect(notices).toHaveLength(1);
+    expect(notices[0].title).toBe("Figure not deleted");
   });
 
   it("the pen taken while the OS picker is up: no file written, no edit", async () => {
     const { container } = await mount();
     pick.pickFigureFile.mockImplementation(async () => {
       held.editor!.setEditable(false);
-      return { name: "new.png" };
+      return { file: { name: "new.png" }, handle: null };
     });
     await clickAndSettle(container.querySelector('[aria-label="Pick image file"]')!);
     expect(pick.pickFigureFile).toHaveBeenCalledTimes(1);
     expect(pick.importFigureFile).not.toHaveBeenCalled();
     expect(figure()!.attrs.extras).toBe(EXTRAS);
+    // The user picked a file — announced, the pick handed back.
+    expect(notices).toHaveLength(1);
+    expect(notices[0].title).toBe("Image not added");
+    expect(notices[0].draft).toBe("new.png");
+  });
+
+  it("an import failure other than an unsafe path is announced, not just logged", async () => {
+    const { container } = await mount();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    pick.importFigureFile.mockImplementationOnce(async () => {
+      throw new Error("no free name for new.png after 1000 candidates");
+    });
+    await clickAndSettle(container.querySelector('[aria-label="Pick image file"]')!);
+    expect(figure()!.attrs.extras).toBe(EXTRAS);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].message).toContain("no free name");
+    expect(notices[0].draft).toBe("new.png");
+    err.mockRestore();
+  });
+
+  it("a cancelled pick says nothing", async () => {
+    const { container } = await mount();
+    pick.pickFigureFile.mockImplementation(async () => null as never);
+    await clickAndSettle(container.querySelector('[aria-label="Pick image file"]')!);
+    expect(pick.importFigureFile).not.toHaveBeenCalled();
+    expect(notices).toHaveLength(0);
   });
 
   it("Pick image rebuilds from the LIVE node: an edit made during the picker survives", async () => {
@@ -217,7 +258,7 @@ describe("the gate is re-asked after every await", () => {
           extras: `% kept\n${EXTRAS}`,
         }),
       );
-      return { name: "new.png" };
+      return { file: { name: "new.png" }, handle: null };
     });
     await clickAndSettle(container.querySelector('[aria-label="Pick image file"]')!);
     expect(pick.importFigureFile).toHaveBeenCalledTimes(1);
@@ -243,6 +284,8 @@ describe("the rename door refuses a non-editable target (every caller inherits i
     });
     expect(outcome).toBe("read-only");
     expect(figure()!.attrs.label).toBe("fig:a");
+    // Refused before any question — nothing the user answered; silent.
+    expect(notices).toHaveLength(0);
   });
 
   it("pen taken while the confirm is up → \"read-only\", nothing written", async () => {
@@ -261,6 +304,24 @@ describe("the rename door refuses a non-editable target (every caller inherits i
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(outcome).toBe("read-only");
     expect(figure()!.attrs.label).toBe("fig:a");
+    // The user answered "Update references" — announced, the typed key back.
+    expect(notices).toHaveLength(1);
+    expect(notices[0].title).toBe("Label not renamed");
+    expect(notices[0].draft).toBe("fig:b");
+  });
+
+  it("the declaration removed while the confirm is up → announced once", async () => {
+    await mount();
+    const ed = held.editor!;
+    const confirm = vi.fn(async () => {
+      const f = figure()!;
+      ed.view.dispatch(ed.state.tr.delete(f.pos, f.pos + ed.state.doc.nodeAt(f.pos)!.nodeSize));
+      return "confirm" as const;
+    });
+    const outcome = await renameLabelWithRefs(ed as never, { locate, newLabel: "fig:b", confirm });
+    expect(outcome).toBe("unresolved");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].draft).toBe("fig:b");
   });
 });
 
@@ -280,6 +341,7 @@ describe("positive control: an editable doc still performs each verb", () => {
     await clickAndSettle(container.querySelector(".figure-annotation-delete")!);
     expect(confirmDelete).toHaveBeenCalledTimes(1);
     expect(figure()).toBeNull();
+    expect(notices).toHaveLength(0);
   });
 
   it("the rename door still renames an editable target", async () => {

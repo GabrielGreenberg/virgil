@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import { announceEditRefused, editRefusalNotice } from "@/lib/edit-refusal";
 
 /**
  * Task 1265 — ONE delete door for a figure-family block.
@@ -56,7 +57,8 @@ export function figureDeleteNeedsConfirm(node: PMNode): boolean {
  * `figureDeleteNeedsConfirm` says so. The write gate (`surfaceEditableNow`) is
  * asked at gesture time AND again after the confirm's await (task 1083), and
  * the node is re-read live after the await — a stale position or a block that
- * changed kind meanwhile deletes nothing. Resolves `true` iff it deleted.
+ * changed kind meanwhile deletes nothing — and, once the user has answered
+ * the confirm, says so (task 1436). Resolves `true` iff it deleted.
  */
 export async function requestFigureDelete(args: {
   editor: Editor;
@@ -77,12 +79,29 @@ export async function requestFigureDelete(args: {
   if (!surfaceEditableNow(editor)) return false;
   const first = live();
   if (!first) return false;
-  if (figureDeleteNeedsConfirm(first.node) && confirm) {
-    const ok = await confirm();
-    if (!ok || !surfaceEditableNow(editor)) return false;
+  const asked = figureDeleteNeedsConfirm(first.node) && !!confirm;
+  // The user answered "Delete" and the document moved under the question
+  // (task 1436): say so — a confirmed delete that silently does nothing reads
+  // as a broken button. Gesture-time refusals above stay silent (pinned).
+  const noun = figureDeleteNoun(typeName);
+  const refused = (reason: "changed" | "read-only"): false => {
+    announceEditRefused(
+      editRefusalNotice({
+        title: `${noun === "figure" ? "Figure" : "Image"} not deleted`,
+        what: noun,
+        reason,
+        during: "you were confirming",
+      }),
+    );
+    return false;
+  };
+  if (asked) {
+    const ok = await confirm!();
+    if (!ok) return false;
+    if (!surfaceEditableNow(editor)) return refused("read-only");
   }
   const hit = live();
-  if (!hit) return false;
+  if (!hit) return asked ? refused("changed") : false;
   editor.view.dispatch(editor.state.tr.delete(hit.pos, hit.pos + hit.node.nodeSize));
   return true;
 }

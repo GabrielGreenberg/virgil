@@ -68,23 +68,32 @@ export async function pickFigureFile(): Promise<PickedFigureFile | null> {
  * input attached to the document body, calls `.click()` to open the native
  * file dialog, and resolves on `change`.
  *
- * Cancellation detection: `<input type="file">` doesn't fire any event on
- * cancel. We resolve `null` once the document regains focus (signaling the
- * dialog closed) without a `change` having fired. Some browsers re-fire
- * the focus event before `change`, so we delay by a microtask to give
- * `change` a chance to win the race.
+ * Cancellation detection (task 1436): where the input fires the native
+ * `cancel` event (Chrome 113+, Firefox 91+, Safari 16.4+), THAT is the cancel
+ * — the window's `focus` is ignored, so a `change` arriving late can never
+ * lose a race it should win. Only where `cancel` is unsupported does the
+ * window regaining focus stand in for it, and then after a grace long enough
+ * (`FOCUS_CANCEL_GRACE_MS`) that a `change` delivered more than one macrotask
+ * after the focus still resolves the real file — the old `setTimeout(0)`
+ * resolved `null` and dropped it.
  */
+export const FOCUS_CANCEL_GRACE_MS = 1000;
+
 function pickViaHiddenInput(): Promise<PickedFigureFile | null> {
   if (typeof document === "undefined") {
     return Promise.resolve(null);
   }
   return new Promise<PickedFigureFile | null>((resolve) => {
     const input = getOrCreateHiddenInput();
+    const nativeCancel = "oncancel" in input;
     let settled = false;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
     const settle = (value: PickedFigureFile | null) => {
       if (settled) return;
       settled = true;
+      if (graceTimer !== null) clearTimeout(graceTimer);
       input.removeEventListener("change", onChange);
+      input.removeEventListener("cancel", onCancel);
       window.removeEventListener("focus", onFocus);
       // Reset so the same path can be picked twice in a row.
       input.value = "";
@@ -94,13 +103,16 @@ function pickViaHiddenInput(): Promise<PickedFigureFile | null> {
       const file = input.files?.[0] ?? null;
       settle(file ? { file, handle: null } : null);
     };
+    const onCancel = () => settle(null);
     const onFocus = () => {
-      // Window regained focus → dialog closed. Yield a microtask so the
-      // `change` event (if a file was picked) lands first.
-      setTimeout(() => settle(null), 0);
+      // Window regained focus → the dialog probably closed. Wait out the
+      // grace so a `change` the browser delivers after the focus lands first.
+      if (graceTimer !== null) clearTimeout(graceTimer);
+      graceTimer = setTimeout(() => settle(null), FOCUS_CANCEL_GRACE_MS);
     };
     input.addEventListener("change", onChange);
-    window.addEventListener("focus", onFocus);
+    if (nativeCancel) input.addEventListener("cancel", onCancel);
+    else window.addEventListener("focus", onFocus);
     input.click();
   });
 }
