@@ -95,7 +95,7 @@ import {
   DEFAULT_EXAMPLE_DIALECT,
   type ExampleDialect,
 } from "@/lib/example-dialect";
-import { matchWrapperCommandAt } from "@/lib/mark-composition";
+import { matchWrapperCommandAt, wrapParsedRun } from "@/lib/mark-composition";
 
 interface ParseContext {
   pos: number;
@@ -467,10 +467,15 @@ export function parseInlineContent(
   return withDeclaredIds(text, () => parseInlineInScope(text, inCode, opts));
 }
 
+const NO_OPEN_WRAPPERS: ReadonlySet<string> = new Set();
+
 function parseInlineInScope(
   text: string,
   inCode: boolean,
   opts?: { commentTails?: boolean },
+  // The wrapper marks enclosing this text (task 1439) — a wrapper of an
+  // already-open mark cannot be a second mark (`wrapParsedRun`).
+  openWrappers: ReadonlySet<string> = NO_OPEN_WRAPPERS,
 ): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
@@ -579,7 +584,7 @@ function parseInlineInScope(
           text: "{",
           marks: [{ type: "latexCommand" }],
         });
-        nodes.push(...parseInlineInScope(group.content, inCode, opts));
+        nodes.push(...parseInlineInScope(group.content, inCode, opts, openWrappers));
         nodes.push({
           type: "text",
           text: "}",
@@ -709,16 +714,21 @@ function parseInlineInScope(
         flush();
         const inner = extractBraced(text, wrapper.bodyOpen);
         if (inner !== null) {
-          const innerNodes = parseInlineInScope(
-            inner.content,
-            wrapper.row.opensCode === true || inCode,
+          nodes.push(
+            ...wrapParsedRun<JSONContent>(
+              wrapper,
+              text.slice(i, wrapper.bodyOpen + 1),
+              openWrappers,
+              (open) =>
+                parseInlineInScope(
+                  inner.content,
+                  wrapper.row.opensCode === true || inCode,
+                  undefined,
+                  open,
+                ),
+              (bytes) => ({ type: "text", text: bytes, marks: [{ type: "latexCommand" }] }),
+            ),
           );
-          for (const n of innerNodes) {
-            nodes.push({
-              ...n,
-              marks: [...(n.marks || []), wrapper.mark],
-            });
-          }
           i = inner.end;
           continue;
         }
