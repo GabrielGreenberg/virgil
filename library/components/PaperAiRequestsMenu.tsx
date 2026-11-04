@@ -111,7 +111,7 @@ const countBadgeStyle: CSSProperties = {
   minWidth: 16,
   height: 16,
   padding: "0 4px",
-  fontSize: 10,
+  fontSize: 11,
   fontFamily: FONT_MONO,
   lineHeight: 1,
   color: "white",

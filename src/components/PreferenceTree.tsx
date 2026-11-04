@@ -84,7 +84,7 @@ export function SliderPref({
             onChange={(e) => onChange(parseFloat(e.target.value))}
             className="flex-1 h-1 accent-[var(--accent)]"
           />
-          <span className="text-[11px] text-ink-muted w-14 text-right tabular-nums">
+          <span className="text-2xs text-ink-muted w-14 text-right tabular-nums">
             {value}{unit}
           </span>
           {defaultValue !== undefined && (

@@ -1029,7 +1029,7 @@ export default function AIWindow({
                 <div className="px-5 pt-3 pb-2 border-b border-[var(--border)]">
                   <div className="flex items-baseline gap-2">
                     <h3 className="text-sm font-semibold text-ink-body">Request status</h3>
-                    <span className="text-[11px] text-ink-muted">
+                    <span className="text-2xs text-ink-muted">
                       {buckets.open.length} open · {buckets.responded.length} responded · {buckets.resolved.length} resolved
                     </span>
                   </div>
@@ -1076,7 +1076,7 @@ export default function AIWindow({
                             <option value="panel-citation">Citation request</option>
                           </optgroup>
                         </Select>
-                        <span className="text-[11px] text-ink-muted truncate">
+                        <span className="text-2xs text-ink-muted truncate">
                           {KIND_META[composerKind].description}
                         </span>
                       </div>
@@ -1218,7 +1218,7 @@ function Bucket({
         <span className="section-caption">
           {title}
         </span>
-        <span className="text-[10px] text-ink-muted">{items.length}</span>
+        <span className="text-2xs text-ink-muted">{items.length}</span>
       </div>
       <ul className="flex flex-col gap-1.5">
         {items.map((req) => (
@@ -1247,7 +1247,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
   return (
     <li className="flex gap-2.5 items-start px-2.5 py-2 rounded-md border border-[var(--border)] bg-surface hover:border-edge-hover transition-colors">
       <span
-        className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
+        className="shrink-0 text-2xs px-1.5 py-0.5 rounded font-medium"
         style={{ background: chip.badgeBg, color: chip.badgeColor }}
         {...describedHint(meta.description)}
       >
@@ -1259,15 +1259,15 @@ function RequestCard({ req }: { req: AIRequestVM }) {
             {req.label}
           </span>
           {req.resolvedHint && (
-            <span className="text-[10px] text-ink-muted truncate">
+            <span className="text-2xs text-ink-muted truncate">
               {req.resolvedHint}
             </span>
           )}
-          <span className="text-[10px] text-ink-muted ml-auto shrink-0">
+          <span className="text-2xs text-ink-muted ml-auto shrink-0">
             {formatRelativeTime(req.createdAt, { dateAfterDays: 30 })}
           </span>
         </div>
-        <p className="text-[11px] text-ink-subtle leading-snug mt-0.5 break-words">
+        <p className="text-2xs text-ink-subtle leading-snug mt-0.5 break-words">
           {truncate(req.snippet)}
         </p>
       </div>
@@ -1275,7 +1275,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
         <button
           data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
           onClick={handleCancel}
-          className="shrink-0 text-[10px] text-ink-muted hover:text-danger-muted transition-colors px-1 focus-ring"
+          className="shrink-0 text-2xs text-ink-muted hover:text-danger-muted transition-colors px-1 focus-ring"
           {...iconHint({ label: "Cancel" })}
         >
           ×
@@ -1297,7 +1297,7 @@ function ConnectWithClaude() {
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4">
       <h3 className="text-sm font-semibold text-ink-body mb-1">Connect with Claude</h3>
-      <p className="text-[11px] text-ink-subtle mb-4">
+      <p className="text-2xs text-ink-subtle mb-4">
         Manage how this document talks to Claude. Authentication, models, and
         workspace defaults will appear here.
       </p>
@@ -1307,7 +1307,7 @@ function ConnectWithClaude() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs font-medium text-ink-body">Account</div>
-              <div className="text-[11px] text-ink-subtle mt-0.5">
+              <div className="text-2xs text-ink-subtle mt-0.5">
                 Not yet connected. Sign in to use Claude for requests in this document.
               </div>
             </div>
@@ -1319,7 +1319,7 @@ function ConnectWithClaude() {
 
         <div className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5">
           <div className="text-xs font-medium text-ink-body mb-1">Model</div>
-          <div className="text-[11px] text-ink-subtle mb-2">
+          <div className="text-2xs text-ink-subtle mb-2">
             Default model used for new requests.
           </div>
           <Select
@@ -1334,7 +1334,7 @@ function ConnectWithClaude() {
 
         <div className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5">
           <div className="text-xs font-medium text-ink-body mb-1">Context sharing</div>
-          <div className="text-[11px] text-ink-subtle">
+          <div className="text-2xs text-ink-subtle">
             Configure which parts of the document Claude can read when responding
             to requests. Settings will live here.
           </div>
@@ -1370,7 +1370,7 @@ function SkillsPanel() {
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4">
       <h3 className="text-sm font-semibold text-ink-body mb-1">Skills</h3>
-      <p className="text-[11px] text-ink-subtle mb-4">
+      <p className="text-2xs text-ink-subtle mb-4">
         Skills are the tools Claude can use inside this document. Toggle them on
         or off to shape what Claude can do on your behalf.
       </p>
@@ -1383,11 +1383,11 @@ function SkillsPanel() {
           >
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-ink-body">{s.name}</div>
-              <div className="text-[11px] text-ink-subtle mt-0.5">{s.description}</div>
+              <div className="text-2xs text-ink-subtle mt-0.5">{s.description}</div>
             </div>
             <span
               className={
-                "shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium " +
+                "shrink-0 text-2xs px-1.5 py-0.5 rounded font-medium " +
                 (s.enabled
                   ? "bg-[#f0fdf4] text-[#15803d]"
                   : "bg-surface-muted-strong text-ink-subtle")

@@ -302,7 +302,7 @@ function InlineLabel({
           }}
           onBlur={() => commit("blur")}
           onClick={(e) => e.stopPropagation()}
-          className={`text-[11px] leading-tight mt-0.5 bg-transparent outline-none border-b w-full ${
+          className={`text-2xs leading-tight mt-0.5 bg-transparent outline-none border-b w-full ${
             conflict
               ? "text-danger-muted border-danger-muted"
               : "text-[var(--heading-annotation-color,#6b9ac4)] border-[var(--heading-annotation-color,#6b9ac4)]"
@@ -310,7 +310,7 @@ function InlineLabel({
           placeholder="label key"
         />
         {conflict && (
-          <div className="text-[10px] text-danger-muted leading-tight mt-0.5">
+          <div className="text-2xs text-danger-muted leading-tight mt-0.5">
             {labelKeyProblemText(conflict, text)}
           </div>
         )}
@@ -322,7 +322,7 @@ function InlineLabel({
     return (
       <button
         type="button"
-        className="block max-w-full text-left text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate cursor-text hover:underline rounded focus-ring"
+        className="block max-w-full text-left text-2xs text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate cursor-text hover:underline rounded focus-ring"
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         data-hint="Edit label"
         data-hint-pos="above"
@@ -338,7 +338,7 @@ function InlineLabel({
   return (
     <button
       type="button"
-      className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer select-none rounded focus-ring"
+      className="text-2xs text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer select-none rounded focus-ring"
       data-iconbtn-exempt="outline label +: a glyph on the label's own type line, sized by the row's text by design"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
       {...iconHint({ label: "Add label", pos: "above" })}
@@ -554,7 +554,7 @@ function ParTitleRow({
     <button
       type="button"
       data-outline-pos={`pt-${pt.index}`}
-      className={`block w-full text-left cursor-pointer rounded text-[11px] text-[var(--par-title-color-dense,#b05756)] truncate focus-ring ${activation.focusEditing ? "" : "hover-on-light"}`}
+      className={`block w-full text-left cursor-pointer rounded text-2xs text-[var(--par-title-color-dense,#b05756)] truncate focus-ring ${activation.focusEditing ? "" : "hover-on-light"}`}
       style={{
         paddingLeft,
         paddingRight: 8,
@@ -709,13 +709,13 @@ function OutlineNode({
           ) : node.heading.label ? (
             // Task 710: a host that offers no label edit (the Library Reader)
             // still SHOWS the label — just not the click-to-edit / "+" chrome.
-            <div className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate">
+            <div className="text-2xs text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate">
               {node.heading.label}
             </div>
           ) : null)}
         </div>
         {showWordCount && (
-          <span className="text-[10px] tabular-nums text-ink-muted shrink-0 mt-0.5">
+          <span className="text-2xs tabular-nums text-ink-muted shrink-0 mt-0.5">
             {sectionWordCount}
           </span>
         )}
@@ -937,7 +937,7 @@ const EditablePod = memo(function EditablePod({
             }}
             onBlur={commitRename}
             className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
-              isParTitle ? "text-[11px] text-[var(--par-title-color-dense,#b05756)]" : "text-sm text-ink-strong"
+              isParTitle ? "text-2xs text-[var(--par-title-color-dense,#b05756)]" : "text-sm text-ink-strong"
             }`}
           />
         ) : (
@@ -946,7 +946,7 @@ const EditablePod = memo(function EditablePod({
             onClick={() => { setEditText(pod.text); setEditing(true); }}
             className={`flex-1 min-w-0 text-left truncate cursor-text rounded focus-ring ${
               isParTitle
-                ? "text-[11px] text-[var(--par-title-color-dense,#b05756)]"
+                ? "text-2xs text-[var(--par-title-color-dense,#b05756)]"
                 : (pod.level ?? 0) <= 1
                   ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
@@ -1667,7 +1667,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
         <button
           onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
           aria-pressed={editMode}
-          className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
+          className={`text-2xs px-1.5 py-0 rounded-md transition-colors ${
             editMode
               ? "bg-[var(--control-selected)] text-white"
               : focusState?.active
@@ -1690,7 +1690,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
             }
           }}
           aria-pressed={!!focusState?.active}
-          className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
+          className={`text-2xs px-1.5 py-0 rounded-md transition-colors ${
             focusState?.active
               ? "bg-[var(--control-selected)] text-white"
               : editMode
@@ -1834,7 +1834,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                   )}
                 </span>
                 {showWordCount && (
-                  <span className="text-[10px] text-ink-muted shrink-0 mt-0.5">
+                  <span className="text-2xs text-ink-muted shrink-0 mt-0.5">
                     words
                   </span>
                 )}

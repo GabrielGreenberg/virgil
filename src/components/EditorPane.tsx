@@ -7633,9 +7633,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // `clip` (NOT `hidden`): `clip` doesn't establish a scroll
                 // container or new containing block, so the pod's sticky
                 // descendants (frame ring, caps, lozenge) still latch to the
-                // scroll root unchanged.
-                borderTopLeftRadius: "var(--editor-pod-radius)",
-                borderTopRightRadius: "var(--editor-pod-radius)",
+                // scroll root unchanged. Under a chrome header this top edge
+                // sits mid-page, so a rounded corner would be a notch there.
+                borderTopLeftRadius: podHeaderH > 0 ? 0 : "var(--editor-pod-radius)",
+                borderTopRightRadius: podHeaderH > 0 ? 0 : "var(--editor-pod-radius)",
                 overflow: "clip",
                 // Marginalia portals markers as `position: absolute`
                 // children of the closest `[data-marginalia-host]`. The

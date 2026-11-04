@@ -58,7 +58,7 @@ export function InstallPwaPrompt() {
   if (installed || !evt || dismissed) return null;
 
   return (
-    <div className="flex items-center gap-2 text-[11px] text-ink-subtle">
+    <div className="flex items-center gap-2 text-2xs text-ink-subtle">
       <button
         type="button"
         onClick={() => void promptInstall()}

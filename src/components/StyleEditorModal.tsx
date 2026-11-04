@@ -226,7 +226,7 @@ export default function StyleEditorModal({
           )}
         </Field>
         {nameError && (
-          <p className="text-[11px] text-error mt-1">
+          <p className="text-2xs text-error mt-1">
             {nameError}
           </p>
         )}
@@ -269,7 +269,7 @@ export default function StyleEditorModal({
             </div>
           )}
         </Field>
-        <div className="flex items-center justify-between mt-2 text-[11px]">
+        <div className="flex items-center justify-between mt-2 text-2xs">
           <span className="text-ink-subtle">
             Virgil markers (
             {SHIM_COMMAND_NAMES.map((n) => `\\${n}`).join(", ")}) are added

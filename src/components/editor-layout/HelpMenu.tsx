@@ -235,7 +235,7 @@ function RefreshSkillsRow({
       <span className="flex flex-col items-start gap-0.5">
         <span>Refresh skills</span>
         {skillSyncNotice && (
-          <span className="text-[10px] text-ink-subtle leading-snug whitespace-normal">
+          <span className="text-2xs text-ink-subtle leading-snug whitespace-normal">
             Updated to v{skillSyncNotice.version} — restart your Claude Code
             cowork session to pick up the new commands.
           </span>
@@ -320,7 +320,7 @@ function CommandsRow({
           ))}
           <div
             role="presentation"
-            className="border-t border-edge-subtle mt-1 pt-1.5 pb-1 px-3 text-[10px] text-ink-muted flex items-center gap-1"
+            className="border-t border-edge-subtle mt-1 pt-1.5 pb-1 px-3 text-2xs text-ink-muted flex items-center gap-1"
           >
             <span>Type text +</span>
             <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

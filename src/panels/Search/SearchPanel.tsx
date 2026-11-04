@@ -179,7 +179,7 @@ export function clampMark(match: string): string {
  * conditional class) — here it is announced state, not a selector.
  */
 const MODE_TOGGLE_BASE =
-  "focus-ring text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors";
+  "focus-ring text-2xs font-bold px-1.5 py-0.5 rounded border transition-colors";
 const MODE_TOGGLE_ON =
   "border-[var(--control-selected-ink)] text-[var(--control-selected-ink)] bg-[var(--control-selected-tint)]";
 const MODE_TOGGLE_OFF = "border-edge-hover text-ink-muted hover:text-ink-body";
@@ -1102,7 +1102,7 @@ function MoreScopesDropdown({
       }
       wrapperClassName="relative"
       menuClassName="min-w-[140px]"
-      triggerClassName={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+      triggerClassName={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-2xs transition-colors ${
         active
           ? "border-edge-hover bg-white/70 text-ink-body"
           : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
@@ -1111,7 +1111,7 @@ function MoreScopesDropdown({
         <>
           <span>More</span>
           {active && (
-            <span className="text-[9px] leading-none tabular-nums text-ink-subtle">
+            <span className="text-2xs leading-none tabular-nums text-ink-subtle">
               {enabledCount}
             </span>
           )}
@@ -1196,7 +1196,7 @@ function ScopeChip({
       type="button"
       onClick={onToggle}
       aria-pressed={enabled}
-      className={`focus-ring inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+      className={`focus-ring inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-2xs transition-colors ${
         enabled
           ? "border-edge-hover bg-white/70 text-ink-body"
           : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
@@ -1213,7 +1213,7 @@ function ScopeChip({
       />
       <span>{SCOPE_LABEL[scope]}</span>
       {enabled && (
-        <span aria-hidden className="text-[9px] leading-none">
+        <span aria-hidden className="text-2xs leading-none">
           ✓
         </span>
       )}
@@ -1265,7 +1265,7 @@ const ResultCard = memo(function ResultCard({
     >
       <div className={PANEL.cardInner}>
         {(showScopeLabel || result.breadcrumb.length > 0) && (
-          <div className="text-[10px] truncate mb-1">
+          <div className="text-2xs truncate mb-1">
             {showScopeLabel && (
               <>
                 <span

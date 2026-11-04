@@ -180,7 +180,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
             fontSize: 13,
             lineHeight: 1,
             cursor: "pointer",
-            borderRadius: "var(--radius-xs)",
+            borderRadius: "var(--radius-sm)",
           }}
         >
           ×

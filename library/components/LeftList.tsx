@@ -737,9 +737,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
         padding: "6px 8px",
         textAlign: align,
         fontFamily: FONT_MONO,
-        fontSize: 10,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
+        fontSize: 11,
         color: active ? "var(--control-selected-ink)" : "var(--muted)",
         cursor: "pointer",
         whiteSpace: "nowrap",
@@ -754,7 +752,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
               : "none",
       }}
     >
-      {label}
+      {label.charAt(0).toUpperCase() + label.slice(1)}
       <span style={{ fontFamily: FONT_MONO }}>{arrow}</span>
     </button>
   );
@@ -762,10 +760,10 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
 
 /** Glyph for each facet's sub-bar segment — mirrors the StatusPills order. */
 const FACET_GLYPH: Record<StatusFacet, string> = {
-  pdf: "pdf",
-  idx: "idx",
-  bib: "bib",
-  imp: "imp",
+  pdf: "PDF",
+  idx: "Idx",
+  bib: "Bib",
+  imp: "Imp",
 };
 
 /**
@@ -915,10 +913,8 @@ function FacetSubBar({
               background: active ? "var(--control-selected-tint)" : "transparent",
               cursor: "pointer",
               fontFamily: FONT_MONO,
-              fontSize: 10,
+              fontSize: 11,
               lineHeight: "12px",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
               color: active ? "var(--control-selected-ink)" : "var(--muted)",
               overflow: "hidden",
             }}

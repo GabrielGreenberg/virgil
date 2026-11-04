@@ -485,7 +485,7 @@ function ExampleDialectHelpPane({
     <div
       id={id}
       data-example-help={dialect}
-      className={`${AMBER_ATTENTION_STRIP} text-[11px] leading-snug text-ink-body`}
+      className={`${AMBER_ATTENTION_STRIP} text-2xs leading-snug text-ink-body`}
       onClick={(e) => e.stopPropagation()}
     >
       <p className="mb-1">{renderSegments(help.intro)}</p>
@@ -707,7 +707,7 @@ export function ExampleCard({
             e.stopPropagation();
             setShowHelp((v) => !v);
           }}
-          className="text-[10px] px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold focus-ring"
+          className="text-2xs px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold focus-ring"
           aria-expanded={showHelp}
           aria-controls={helpId}
           {...iconHint({ label: showHelp ? "Hide help" : "Help", pos: "above" })}

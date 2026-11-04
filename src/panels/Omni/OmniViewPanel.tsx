@@ -467,7 +467,7 @@ export function OmniBinPill({
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium focus-ring"
+        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-2xs font-medium focus-ring"
         data-omni-bin-tone={tone}
         data-hint={expanded ? hintExpanded : hintCollapsed}
         aria-expanded={expanded}
@@ -492,7 +492,7 @@ export function OmniBinPill({
  *  docked card's parked rest-state wears (STYLE_GUIDE "Unanchored / parked
  *  card rest-state"), spelled once for the pill and its rows. */
 function ParkedGlyph() {
-  return <span className="text-[11px] leading-none text-ink-muted">◌</span>;
+  return <span className="text-2xs leading-none text-ink-muted">◌</span>;
 }
 
 /**
@@ -611,7 +611,7 @@ export function OmniOutsideFocusBin({
       count={count}
       label={`${count} outside focus`}
       tone="neutral"
-      glyph={<span className="text-[11px] leading-none">◎</span>}
+      glyph={<span className="text-2xs leading-none">◎</span>}
       hintCollapsed="These cards are anchored outside your focus band. Switch off focus or extend the band to see them inline."
       hintExpanded="Collapse cards outside the focus band"
     >

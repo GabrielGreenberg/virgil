@@ -40,7 +40,7 @@ describe("buildTextDragGhost", () => {
     expect(css).toContain("background: var(--surface");
     expect(css).toContain("var(--border-light");
     expect(css).toContain("var(--ink-body");
-    expect(css).toContain("border-radius: var(--radius-xs");
+    expect(css).toContain("border-radius: var(--radius-sm");
     // Palette flows through tokens — never a raw color literal (hex is allowed
     // only as a var() first-paint fallback, e.g. `var(--surface, #ffffff)`).
     expect(css).not.toContain("background: #");

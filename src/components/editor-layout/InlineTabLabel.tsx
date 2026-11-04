@@ -128,7 +128,7 @@ function InlineTabLabelImpl({
       {icon ? <span className="relative inline-flex">{icon}</span> : null}
       <span
         {...TAB_LABEL_ATTRS}
-        className="relative text-[13px] leading-4 truncate"
+        className="relative text-sm leading-4 truncate"
         style={{
           // The bar-wide label cap (task 395) — shared with the ACTIVE folder
           // tab's label so the two renderers of one tab can't disagree about

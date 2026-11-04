@@ -320,10 +320,8 @@ function SectionHeader({
       <div
         style={{
           flex: 1,
-          fontSize: 10,
+          fontSize: 11,
           color: "var(--muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
           fontFamily: FONT_MONO,
         }}
       >
@@ -348,7 +346,7 @@ function SectionHeader({
             cursor: "pointer",
             fontSize: 16,
             lineHeight: 1,
-            borderRadius: "var(--radius-xs)",
+            borderRadius: "var(--radius-sm)",
             padding: 0,
             fontFamily: "inherit",
           }}

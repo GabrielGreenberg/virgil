@@ -383,9 +383,7 @@
   background: var(--surface);
   color: var(--pgmark-rule-color);
   font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  font-size: 9px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 11px;
   padding: 0 4px;
   user-select: none;
 }
@@ -438,7 +436,7 @@
 .lib-dashboard-title {
   margin: 0;
   font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--ink-strong, var(--foreground));
   line-height: 1.2;
@@ -467,7 +465,7 @@
   flex: 1;
   min-width: 0;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: 13px;
   transition: border-color var(--motion-fast);
 }
 
@@ -506,10 +504,8 @@
 .lib-dashboard-section-title {
   margin: 0 0 8px;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--ink-muted, var(--muted));
 }
 
@@ -522,7 +518,7 @@
 .lib-dashboard-card {
   background: var(--surface);
   border: 1px solid var(--pod-border, var(--border-light));
-  border-radius: var(--pod-radius, 8px);
+  border-radius: var(--pod-radius);
   /* An in-flow dashboard card: the CARD tier's ambient lift (task 818 — the
      shadow census admits no literal elevation; the old `0 1px 5px` literal
      was the fallback of the phantom `--pod-shadow-light`, task 170). */
@@ -534,7 +530,7 @@
 }
 
 .lib-dashboard-card-value {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.05;
   color: var(--ink-strong, var(--foreground));
@@ -543,10 +539,8 @@
 
 .lib-dashboard-card-label {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--ink-muted, var(--muted));
 }
 
@@ -565,7 +559,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--pod-border, var(--border-light));
-  border-radius: var(--pod-radius, 8px);
+  border-radius: var(--pod-radius);
   overflow: hidden;
   background: var(--surface);
 }

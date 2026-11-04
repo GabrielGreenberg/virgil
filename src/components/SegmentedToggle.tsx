@@ -48,8 +48,8 @@ export interface SegmentedOption<V extends string | number> {
 export type SegmentedToggleSize = "xs" | "sm";
 
 const SIZE: Record<SegmentedToggleSize, string> = {
-  xs: "text-[10px] px-1.5 py-1",
-  sm: "text-[11px] font-medium px-2 h-6",
+  xs: "text-2xs px-1.5 py-1",
+  sm: "text-2xs font-medium px-2 h-6",
 };
 
 const SEGMENT_BASE =

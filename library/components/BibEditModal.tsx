@@ -324,7 +324,7 @@ function Header({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <div id={titleId} style={{ fontSize: 14, fontWeight: 600 }}>
+        <div id={titleId} style={{ fontSize: 15, fontWeight: 600 }}>
           Edit bib entry <span className="sr-only">{citekey}</span>
         </div>
         <code style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)" }}>
@@ -424,7 +424,7 @@ function FormView({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <Section label="Identity">
-        <Row label="type">
+        <Row label="Type">
           <Select
             density="dense"
             value={type}
@@ -497,9 +497,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
       <legend
         style={{
           fontFamily: FONT_MONO,
-          fontSize: 10,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
+          fontSize: 11,
           color: "var(--muted)",
           padding: "0 6px",
         }}

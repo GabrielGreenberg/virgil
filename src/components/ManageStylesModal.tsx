@@ -391,7 +391,7 @@ export default function ManageStylesModal({
                   </Select>
                 )}
               </Field>
-              <span className="text-[11px] text-ink-subtle">
+              <span className="text-2xs text-ink-subtle">
                 Changes <code className="font-mono">\documentclass</code>.
               </span>
             </div>
@@ -490,9 +490,9 @@ export default function ManageStylesModal({
                           {s.origin === "seed" && (
                             <span
                               data-hint="Seeded on first launch — fully editable like any other style."
-                              className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-muted text-ink-subtle border border-edge-subtle/60"
+                              className="text-2xs px-1.5 py-0.5 rounded bg-surface-muted text-ink-subtle border border-edge-subtle/60"
                             >
-                              seeded
+                              Seeded
                             </span>
                           )}
                         </>

@@ -443,7 +443,7 @@ export default function PaperHeader({
               <code
                 style={{
                   fontFamily: FONT_MONO,
-                  fontSize: 10,
+                  fontSize: 11,
                   color: "var(--muted)",
                   whiteSpace: "nowrap",
                 }}
@@ -488,7 +488,7 @@ export default function PaperHeader({
                     border: "none",
                     color: "var(--muted)",
                     fontFamily: FONT_MONO,
-                    fontSize: 10,
+                    fontSize: 11,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
@@ -506,7 +506,7 @@ export default function PaperHeader({
                     border: "none",
                     color: "var(--muted)",
                     fontFamily: FONT_MONO,
-                    fontSize: 10,
+                    fontSize: 11,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
@@ -523,7 +523,7 @@ export default function PaperHeader({
                     border: "none",
                     color: "var(--muted)",
                     fontFamily: FONT_MONO,
-                    fontSize: 10,
+                    fontSize: 11,
                     cursor: "not-allowed",
                     padding: "0 4px",
                     opacity: 0.55,
@@ -663,7 +663,7 @@ export default function PaperHeader({
               htmlFor="paper-ai-instructions"
               style={{
                 fontFamily: FONT_MONO,
-                fontSize: 10,
+                fontSize: 11,
                 color: "var(--muted)",
                 letterSpacing: 0.3,
               }}

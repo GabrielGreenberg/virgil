@@ -178,13 +178,13 @@ function RecentPaperOpenButton({
       <span className="flex-1 min-w-0 flex flex-col">
         <span className="text-sm text-ink-strong truncate">{doc.name}</span>
         {subtitle && (
-          <span className="text-[11px] text-ink-subtle truncate">
+          <span className="text-2xs text-ink-subtle truncate">
             {subtitle}
           </span>
         )}
       </span>
       <span
-        className={`text-[11px] text-ink-subtle shrink-0 ${
+        className={`text-2xs text-ink-subtle shrink-0 ${
           removable ? (active ? "invisible" : TIME_YIELDS_CLASS) : ""
         }`}
         data-testid="recent-paper-time"

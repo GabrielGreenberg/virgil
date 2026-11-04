@@ -180,7 +180,7 @@ function StackGlyph({ illuminated }: { illuminated: boolean }) {
   // against the warm-tinted button background without going to harsh
   // black. Fill stays paper-white so each page reads as a discrete
   // sheet.
-  const stroke = illuminated ? "var(--accent-blue)" : "var(--virgil-bar-text, #78716c)";
+  const stroke = illuminated ? "var(--accent-blue)" : "var(--virgil-bar-text)";
   const fill = illuminated
     ? "color-mix(in srgb, var(--accent-blue) 8%, var(--surface, #ffffff))"
     : "var(--surface, #ffffff)";

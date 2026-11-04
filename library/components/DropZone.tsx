@@ -37,7 +37,7 @@ export default function DropZone({ dragActive, children }: Props) {
             alignItems: "center",
             justifyContent: "center",
             pointerEvents: "none",
-            fontSize: 18,
+            fontSize: 20,
             color: "var(--accent)",
             fontFamily: FONT_SERIF,
           }}

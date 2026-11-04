@@ -399,7 +399,7 @@ export default function BugReportWindow({
                 ))}
               </div>
               {images.length >= MANY_SHOTS && (
-                <p className="text-[10px] text-ink-muted mt-1">
+                <p className="text-2xs text-ink-muted mt-1">
                   That&apos;s a lot of screenshots — was that a paste loop?
                 </p>
               )}
@@ -407,7 +407,7 @@ export default function BugReportWindow({
           )}
 
           <div className="flex items-center justify-between gap-3 pt-2 pb-1 border-t border-[var(--border)] shrink-0">
-            <div className="flex items-center gap-2 min-w-0 text-[10px] text-ink-muted">
+            <div className="flex items-center gap-2 min-w-0 text-2xs text-ink-muted">
               <span className="whitespace-nowrap">From:</span>
               <Input
                 value={machineLabel}
@@ -415,7 +415,7 @@ export default function BugReportWindow({
                 disabled={sending}
                 placeholder="machine"
                 density="dense"
-                className="text-[10px] px-1.5 py-0.5 w-24"
+                className="text-2xs px-1.5 py-0.5 w-24"
               />
               {currentDocName && (
                 <span className="truncate">about: {currentDocName}</span>
@@ -429,7 +429,7 @@ export default function BugReportWindow({
                 type="button"
                 onClick={() => void folder.reset()}
                 disabled={sending}
-                className="focus-ring rounded-[var(--radius-xs)] whitespace-nowrap underline decoration-dotted underline-offset-2 hover:text-ink-body disabled:opacity-50"
+                className="focus-ring rounded-[var(--radius-sm)] whitespace-nowrap underline decoration-dotted underline-offset-2 hover:text-ink-body disabled:opacity-50"
               >
                 Change folder…
               </button>

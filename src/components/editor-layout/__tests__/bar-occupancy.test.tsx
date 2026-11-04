@@ -875,7 +875,7 @@ describe("census · the structural floor and the shared cap", () => {
     // blanks — the trap `_source-scan`'s own header documents.
     const spans = tagsContaining(
       commentsStripped(read(STRIP)),
-      /text-\[13px\] leading-4 truncate min-w-0/,
+      /text-sm leading-4 truncate min-w-0/,
     );
     expect(spans.length, "no active-tab label spans found — the needle is stale").toBe(3);
     for (const tag of spans) {

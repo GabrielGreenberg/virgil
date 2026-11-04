@@ -865,7 +865,7 @@ export const CARD_THEMES: Record<PanelThemeKey, CardTheme> = Object.fromEntries(
 
 /* ── Shared badge classes ────────────────────────────────────────── */
 
-const BADGE_BASE = "inline-flex items-center justify-center w-[18px] h-[18px] rounded text-[10px] font-semibold shrink-0";
+const BADGE_BASE = "inline-flex items-center justify-center w-[18px] h-[18px] rounded text-2xs font-semibold shrink-0";
 
 /** Anchored badge with a label (e.g. number or letter). */
 export function BadgeLabel({ label, theme }: { label: string | number; theme: CardTheme }) {
@@ -889,7 +889,7 @@ export function AnchorBadge({
 }) {
   if (!summary) return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)] tabular-nums shrink-0">
+    <span className="inline-flex items-center gap-1 text-2xs text-[var(--muted)] tabular-nums shrink-0">
       <span>{summary.kind}</span>
       <span aria-hidden="true">·</span>
       <span>
@@ -906,7 +906,7 @@ export function AnchorBadge({
 export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   return (
     <span
-      className="inline-flex items-center justify-center shrink-0 opacity-60 w-2.5 h-2.5 rounded-xs"
+      className="inline-flex items-center justify-center shrink-0 opacity-60 w-2.5 h-2.5 rounded-sm"
       style={{ background: theme.badgeBg, border: `1.5px solid ${theme.badgeBorder}` }}
       role="img" {...iconHint({ label: "No anchor in document" })}
     />
@@ -987,7 +987,7 @@ export interface UnanchoredCardCue {
   canAnchor: boolean;
 }
 
-/** Small uppercase overline naming the card type ("Citation", "Footnote", …).
+/** Small overline naming the card type ("Citation", "Footnote", …).
  *  Used by `CardKindHeader` (unified card chrome) as the single-kind case.
  *  Wears the ONE `.card-meta-label` class (task 1029) — the same class a
  *  float's plain-title span and the `CardKindDropdown` trigger wear, so the
@@ -1018,8 +1018,8 @@ export function CardEmptyText({ label = "empty" }: { label?: string }) {
   return <span className="text-ink-faint italic">{label}</span>;
 }
 
-/** In-card META tier label (UI-consistency sweep): 10px / 500 / uppercase /
- *  tracking-wide / the ONE meta gray (`var(--muted)`, matching
+/** In-card META tier label (UI-consistency sweep): 11px / 500 /
+ *  the ONE meta gray (`var(--muted)`, matching
  *  `CardTypeLabel`). For the small overlines naming a meta row inside a
  *  card body ("Type", "Code", "Preview", …). Design-system-fixed — the
  *  per-panel body-font picker never applies to meta rows. */
@@ -3554,16 +3554,16 @@ export function PanelHeader({
   return (
     <div className={`${PANEL.header} flex items-center gap-1.5`}>
       {leading}
-      <h3 className={`panel-header-title text-[11px] font-semibold uppercase tracking-wider leading-none${leading ? " -ml-1" : ""}`}>
+      <h3 className={`panel-header-title text-2xs font-semibold leading-none${leading ? " -ml-1" : ""}`}>
         {title}
       </h3>
       {countLabel != null && (
-        <span className="panel-header-view text-[11px] font-semibold uppercase tracking-wider leading-none ml-1">
+        <span className="panel-header-view text-2xs font-semibold leading-none ml-1">
           {countLabel}
         </span>
       )}
       {count != null && (count > 0 || countLabel != null) && (
-        <span className="panel-header-count text-[11px] font-semibold uppercase tracking-wider leading-none ml-1">
+        <span className="panel-header-count text-2xs font-semibold leading-none ml-1">
           {count}
         </span>
       )}

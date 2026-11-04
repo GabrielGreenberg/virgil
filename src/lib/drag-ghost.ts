@@ -35,7 +35,7 @@ export interface TextDragGhostOptions {
   border?: string;
   /** CSS text color — a token or literal. Default `var(--ink-body)`. */
   ink?: string;
-  /** border-radius — a token or literal. Default `var(--radius-xs)`. */
+  /** border-radius — a token or literal. Default `var(--radius-sm)`. */
   radius?: string;
   /** font-size in px. Default 12. */
   fontSizePx?: number;
@@ -63,7 +63,7 @@ export function buildTextDragGhost(
     bg = "var(--surface, #ffffff)",
     border = "var(--border-light)",
     ink = "var(--ink-body, #44403c)",
-    radius = "var(--radius-xs, 3px)",
+    radius = "var(--radius-sm, 3px)",
     fontSizePx = 12,
     padding = "4px 8px",
     opacity,

@@ -12,11 +12,12 @@
 
 ## Visual identity
 
-Virgil is a writing tool that reads like paper. The canvas is a warm
-cream (`--background: #ede3de`); the text is set in a serif
-(`--font-serif`); the chrome around it is sans (`--font-sans`); the
-brand accent is a warm brown (`--accent: #7c5e3c`). Pods sit on the
-canvas as raised paper surfaces with a subtle shadow.
+Virgil is a writing tool that reads like paper. The canvas is one warm
+sand (`--background: #ede3de`), and the bar, the tabs and the Library stand
+on that same ground rather than on colours of their own; the text is set in
+a serif (`--font-serif`); the chrome around it is sans (`--font-sans`); the
+brand accent is a warm brown (`--accent: #7c5e3c`). Pods sit on the canvas
+as raised paper surfaces with a subtle shadow.
 
 When in doubt, ask: *would this look right printed?* If the answer is
 no, it's not Virgil.
@@ -776,18 +777,17 @@ mount on `document.body`.
 ### Radius scale
 
 Corner radii are tokens, the single source of truth — the same rule colors
-already follow. Six steps, defined in `src/app/globals.css :root` and mapped
+already follow. Five steps, defined in `src/app/globals.css :root` and mapped
 onto the Tailwind `rounded-*` utilities via an `@theme` block, so
 `rounded-md` etc. are token-backed and `var(--radius-md)` works in inline
 `style`/CSS. Pick by role, not by eyeballed pixels:
 
 | Token | px | `rounded-*` | Use |
 |---|---|---|---|
-| `--radius-xs` | 3 | `rounded-xs` | in-text/chip micro details: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb. |
-| `--radius-sm` | 4 | `rounded-sm` | small controls & inner rows: icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
-| `--radius-md` | 6 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
-| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod (via `--editor-pod-radius`), code / display-math blocks + source-pod code surfaces, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
-| `--panel-radius` | 14 | `rounded-xl` | large PANEL + MODAL tier: sidebar panel pods, docked floating panels, system/font dialogs. |
+| `--radius-sm` | 4 | `rounded-sm` | in-text marks and small controls: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb, icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
+| `--radius-md` | 8 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
+| `--pod-radius` | 10 | `rounded-lg` | CARD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, code / display-math blocks + source-pod code surfaces, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
+| `--panel-radius` | 12 | `rounded-xl` | SHEET tier: the page (via `--editor-pod-radius`), sidebar panel pods, docked floating panels, system/font dialogs. |
 | `--radius-pill` | 9999 | `rounded-pill` / `rounded-full` | fully-round capsules: status pills, page-scroll lozenges, pgmark chips, drag-ghost badges. |
 
 **A tier token has ONE value in every mode.** No `@media`, state or selector
@@ -795,7 +795,7 @@ block redefines `--pod-radius` / `--panel-radius` / `--radius-*` — they are
 declared once, in `:root` (and aliased once, in `@theme`). Where a mode must
 change ONE surface's corner, that surface reads its own name defaulting to the
 tier and the mode overrides the name: the editor pod's chrome reads
-`--editor-pod-radius` (= `var(--pod-radius)`), and print flattens THAT, so code
+`--editor-pod-radius` (= `var(--panel-radius)`), and print flattens THAT, so code
 blocks, display math and figure images — content, not chrome — print with the
 corners they show on screen (task 2026-10-23-1248; pinned by the
 "no tier redefinition" leg of `radius-scale.test.ts`). Source-pod code
@@ -836,6 +836,20 @@ A genuine one-off can carry a `radius-allow` comment on the line to opt out of
 the guard, but reach for that rarely — a new radius almost always belongs to a
 tier above.
 
+### Depth — three levels
+
+Elevation is a tier a surface belongs to, not a value it chooses. Each level is
+a faint warm edge plus a soft warm shadow, so depth reads as paper on sand
+rather than a drawn outline. Pick by what the surface IS:
+
+| Level | Token | Use |
+|---|---|---|
+| Resting | `--card-shadow-ambient` | cards, docked panels |
+| Raised | `--pod-shadow` | the page, menus (through `--menu-shadow`) |
+| Floating | `--shadow-float` | floating panels, dialogs |
+
+A new surface takes one of these; it does not get a fourth value.
+
 ## Typography
 
 | Family | Use |
@@ -856,14 +870,35 @@ Always emit the override-first var stack via `resolveFontStack(name)`
 heuristic generic tail. Don't write local `fontStack` helpers.
 
 Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
-1.05rem/400 with line-height 1.6. Panel scale: header 11px/600 uppercase
-tracking-wider (`PanelHeader`), card title `--par-title-size`
-(0.78rem ≈ 12.5px)/500, badge 10px/600.
+1.05rem/400 with line-height 1.6. Panel scale: header 11px/600
+(`PanelHeader`), card title `--par-title-size` (0.78rem ≈ 12.5px)/500,
+badge 11px/600.
+
+**The UI has five sizes.** Chrome picks from this table and nothing else; the
+paper keeps its own scale above. Each rung is a Tailwind utility owned by the
+`@theme` block in `globals.css`, which clears the vendor ladder first, so
+`text-2xl` emits nothing. **11px is the floor**: nothing readable goes smaller.
+
+| Size | Utility | Use |
+|---|---|---|
+| 20 / 26 | `text-lg` | page and dialog titles |
+| 15 / 20 | `text-base` | section headings |
+| 13 / 18 | `text-sm` | body, lists, menus |
+| 12 / 16 | `text-xs` | labels, buttons, controls |
+| 11 / 14 | `text-2xs` | captions, card kind, chips |
+
+**Sentence case, never capitals.** Hierarchy comes from size and weight, so no
+chrome sets `text-transform: uppercase` or tracks its letters out. Both cost
+reading speed at these sizes and make one interface read as two.
+
+Decorative glyphs (▾, ⋮, +) are icons, not text, and may sit outside the table;
+the onboarding gates keep their larger serif display titles. Each exception is
+named in `type-size-census.test.ts`.
 
 **UI sizes are integer px rungs** (task 1414). Every named UI size above is a
 whole pixel; a half-pixel (`text-[10.5px]`, `fontSize: 12.5`, `font-size:
 11.5px`) is a value nobody picked from the ladder — snap it to the nearest
-rung for its register (a muted secondary line → 10px, the META analogue).
+rung for its register (a muted secondary line → 11px, the META analogue).
 The only kept half-pixels are READING text, not chrome — the code pane body
 (13.5px) and the Library Reader prose (15.5px) — each stated at its site.
 rem/em sizes are out of scope (em inside inline atoms is relative on
@@ -887,26 +922,24 @@ fold-chevron offsets already do — never to the viewport.
 ### In-card type scale — meta vs content (UI-consistency sweep)
 
 Inside a card body there are exactly **two tiers** (ratified 2026-06-12);
-anything at 10.5 / 11 / 11.5px is a stray:
+anything at 10.5 / 11.5px is a stray:
 
 | Tier | Spec | Use | Token |
 |---|---|---|---|
-| **META** | 10px / 500 / uppercase / 0.05em (`tracking-wider`) / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text, **the card-header kind label** | `.card-meta-label` / `CardMetaLabel` / `CardTypeLabel` |
+| **META** | 11px / 500 / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text, **the card-header kind label** | `.card-meta-label` / `CardMetaLabel` / `CardTypeLabel` |
 | **CONTENT** | 12px | entry rows, inputs, previews | `.card-content-row` (or the panel body style) |
 
 **The kind label has one class** (task 1029). The docked header's
 `CardTypeLabel`, the `CardKindDropdown` morph trigger, a popped float's
 plain-title span (`FloatChrome`) and the suggestion-field section labels all
-wear `.card-meta-label` — never a hand-typed `text-[10px] … uppercase
-tracking-wider` (that twin is how a popped card's label drifted to
+wear `.card-meta-label` — never a hand-typed `text-2xs font-medium` (that twin is how a popped card's label drifted to
 `--ink-muted`, a different gray from its docked self). The class lives in
 `@layer components`, so a call site composes `truncate` or a `hover:text-*`
 over it with plain utilities. Census: `card-ui-consistency.test.tsx`.
 
 **Outside a card body — the section caption** (task 1333). The small
-uppercase caption has ONE class per register, and the panel/window body's is
-`.section-caption` — 10px / 500 / uppercase / 0.025em (`tracking-wide`) /
-`--ink-muted` ("Request entry", "Pending requests (n)", "Recent", "Browse",
+caption has ONE class per register, and the panel/window body's is
+`.section-caption` — 11px / 500 / `--ink-muted` ("Request entry", "Pending requests (n)", "Recent", "Browse",
 font groups, the preferences dividers, the compile-log header):
 
 | Register | Token |
@@ -916,17 +949,17 @@ font groups, the preferences dividers, the compile-log header):
 | menu | `<MenuSectionLabel>` — composes `.section-caption` (padding via `padding`) |
 | dialog field label | `field-primitives` `register: "section"` (11px by spec) |
 
-Named non-captions: `PanelHeader` (the 11px/600 header scale) and chips (9–10px,
+Named non-captions: `PanelHeader` (the 11px/600 header scale) and chips (11px,
 `rounded`, the membership-chip dialect). A caption in a tinted box takes
 `text-[var(--accent)]` over the class (Word Count's "Selection"). Never
-hand-type `text-[10px] … uppercase tracking-…`. Census:
+hand-type the caption's size and weight. Census:
 `section-caption-census.test.ts`.
 
 Mono inside cards always routes through the override-first stack
 `var(--font-mono-override, var(--font-mono)), monospace` — the `.card-mono`
 class (Tailwind's `font-mono` skips the user's mono override pref; apply
 `.card-mono` directly and set the size alongside it). CODE/key mono sits on
-the META tier (10px).
+the META tier (11px).
 
 **Status badges (library cards).** Two documented chip dialects coexist on
 the bibliography/citation card's stacked header, distinguished by role, not
@@ -934,12 +967,10 @@ drift:
 
 | Dialect | Spec | Use |
 |---|---|---|
-| **Membership chip** | 9px / uppercase / tracking-wide | "location tags" — which library an entry lives in (Local / Central / a custom library). `provenance-chips.tsx`. |
-| **Status badge** | 10px / sentence-case / tracking-wide / colored | the entry's *state* — `✓ Authenticated` (bib-auth; "Verified" is retired — F#2) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
+| **Membership chip** | 11px / sentence-case | "location tags" — which library an entry lives in (Local / Central / a custom library). `provenance-chips.tsx`. |
+| **Status badge** | 11px / sentence-case / colored | the entry's *state* — `✓ Authenticated` (bib-auth; "Verified" is retired — F#2) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
 
-Sentence-case on the status badge is deliberate: the labels are user-facing
-vocabulary that reads as words, not shouted tags. Membership chips stay the
-denser uppercase tag so the two layers read as distinct registers.
+The two dialects are told apart by colour and position, not by capitals.
 
 **Stacked card header (library cards).** The bibliography card header is a
 **three-layer vertical stack** — (1) text: author · year · title, full width;
@@ -1112,7 +1143,7 @@ silent bug where it does not. The vocabulary:
 | Variant | Ink |
 |---|---|
 | *(none)* | `--ink-muted` at rest, `--ink-body` on hover — the default |
-| `iconbtn-meta` | `var(--muted)` at rest (the ratified 10px META tier), default hover |
+| `iconbtn-meta` | `var(--muted)` at rest (the 11px META tier), default hover |
 | `iconbtn-danger` | `--danger` at rest AND hover, on `--danger-soft` — a control that reads destructive at a glance (a card's trash button) |
 | `iconbtn-danger-hover` | default rest, `--danger` on `--danger-soft` when you reach for it — a per-row remove X |
 | `iconbtn-toggle` | the accent-on-tint "this mode is on" state, at `aria-pressed="true"` |
@@ -1922,7 +1953,7 @@ in the text, the place is just in the archive, and it re-attaches when the
 passage is restored. Its card says so in the **archive-relation row**.
 
 **The archive-relation row** (task 1195) is a small muted line under the
-card body — `text-[11px]`, `--muted` — holding **chips** (`rounded-xs`,
+card body — `text-[11px]`, `--muted` — holding **chips** (`rounded-sm`,
 1px `--border`, `hover-on-light`): on an Archive card, "Archived with this
 passage: N <kind nouns>" then one chip per travelled card (registry `label`
 + title); on a travelled card, "Archived with passage" (or the parked
@@ -1963,7 +1994,7 @@ attr); a citation cannot while it is keyless or still a draft record.
 Under the default cards-right / tools-left layout, the LEFT gutter is not a
 panel and wears none of the panel vocabulary below: **no pod, no card frame,
 no shadow, no border** — its tools and lists are written straight onto the
-manila (`--background`). Headings are 11px uppercase `--panel-header-text-color`
+manila (`--background`). Headings are 12px/600 sentence-case `--panel-header-text-color`
 (the panel-header voice, without the header bar); rows are the UI sans at
 `text-sm` (the Outline's voice), two-line clamped, `--muted` when settled (a
 done to-do, an applied change), accent ink + 600 when their card is the selected
@@ -1992,7 +2023,7 @@ add button, extras, close X. Order is fixed even when slots are absent.
 slot.)
 
 Panel pods are **borderless warm sheets**: `--pod-panel` fill, a larger
-`--panel-radius` (14px, vs the editor pod's 8px `--pod-radius`), and the
+`--panel-radius` (12px, the same sheet tier as the editor pod), and the
 **same ambient shadow as cards** (`--card-shadow-ambient`); **no border**
 (`--panel-border: none`). The **header shares the body fill**
 (`--pod-panel`) with **no divider** — header and body read as one
@@ -2031,8 +2062,8 @@ Three properties of the rule are load-bearing, and each is a way the value
 drifted before it had an owner:
 
 - **The width is derived.** `--pod-seam` is the greatest downward reach of the
-  pod's own `--card-shadow-ambient` (offset 2 + blur 6 ⇒ 5px), rounded up to
-  6. Narrower and the shadow smears onto the card below as a smudge; wider and
+  pod's own `--card-shadow-ambient` (offset 1 + blur 3 ⇒ 2.5px), rounded up to
+  4. Narrower and the shadow smears onto the card below as a smudge; wider and
   it is the moat again. If the shadow tier changes, re-derive it — the token's
   comment says so, and that is the only place the arithmetic lives.
 - **One question per token.** `--pod-gap` (10px) is the *gutter*: the resize
@@ -2338,7 +2369,7 @@ Five variants × three sizes via `<Button variant size>`:
 - **ghost** — transparent. Cancel, skip, de-emphasized.
 
 Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
-14px. All share `rounded-md` (6px).
+13px. All share `rounded-md` (8px).
 
 Modal footers (`<SystemDialogFooter>`, task 1258 — this describes every
 shipped footer, and `dialog-footer-order-census.test.ts` holds it):
@@ -2485,7 +2516,7 @@ dialogs had done exactly that, in four class strings. `<Field label="Name">
 
 | Prop | Values | When |
 |---|---|---|
-| `register` | `section` (default: 11px medium, `text-ink-subtle`, uppercase, tracked) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
+| `register` | `section` (default: 11px medium, `text-ink-subtle`) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
 | `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
 | `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
 
@@ -4338,7 +4369,7 @@ reload (or a successful re-anchor) restores it to the grid.
 
 ## Top bar
 
-40px, `--topbar-bg`. One row. Slots: logo, project tabs, title bar, AI
+40px, `--topbar-bg`, which is the canvas colour: the bar is part of the ground, not a band above it. One row. Slots: logo, project tabs, title bar, AI
 status, user menu. Hovers use `hover-on-dark`. The active-project tab
 joins the canvas via the locked `--main-tab-bg` = `--background`
 alias.

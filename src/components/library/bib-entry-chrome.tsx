@@ -171,7 +171,7 @@ export function BibEntryChrome({
         {/* Structured author·year·title stack — or, in apaOnly mode, the APA
             citation itself, so it inherits this grab row. */}
         <div
-          className="flex-1 min-w-0 leading-snug text-[13px]"
+          className="flex-1 min-w-0 leading-snug text-sm"
           style={{ overflowWrap: "anywhere" }}
           data-hint={headerText}
         >
@@ -207,7 +207,7 @@ export function BibEntryChrome({
           rides Layer 1 above (else it would repeat). */}
       {!apaOnly && apaHtml ? (
         <div
-          className="library-bib-formatted text-[13px] leading-relaxed"
+          className="library-bib-formatted text-sm leading-relaxed"
           style={{
             paddingLeft: UNDER_TITLE_INDENT_PX,
             fontFamily: FONT_SERIF,

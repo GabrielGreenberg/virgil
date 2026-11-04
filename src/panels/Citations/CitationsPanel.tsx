@@ -436,7 +436,7 @@ function CitationsPanel({
                 <span className="flex-1 border-t border-edge-subtle" />
               </div>
             )}
-            <div className="ml-4 mb-0.5 text-[10px] font-medium text-ink-muted">
+            <div className="ml-4 mb-0.5 text-2xs font-medium text-ink-muted">
               {nestedInfo.number != null
                 ? `↳ in ${kindLabel} ${nestedInfo.number}`
                 : `↳ in ${kindLabel}`}

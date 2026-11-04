@@ -762,14 +762,14 @@ function BibliographyPanel({
             </button>
           </div>
           {searchScope === "library" && !isLibraryConnected && (
-            <div className="text-[10px] text-ink-muted mt-1.5">
+            <div className="text-2xs text-ink-muted mt-1.5">
               {LIBRARY_NOT_CONNECTED_HINT}
             </div>
           )}
           {searchScope === "library" &&
             isLibraryConnected &&
             !searchQuery.trim() && (
-              <div className="text-[10px] text-ink-muted mt-1.5">
+              <div className="text-2xs text-ink-muted mt-1.5">
                 Type to search the central library ({libraryBibEntries.length}{" "}
                 entries).
               </div>
@@ -779,7 +779,7 @@ function BibliographyPanel({
 
       {conflictDecision && (
         <div className={`${AMBER_ATTENTION_STRIP} border-b`}>
-          <div className="text-[11px] text-ink-body mb-1.5">
+          <div className="text-2xs text-ink-body mb-1.5">
             <span className="font-mono text-ink-muted">
               {conflictDecision.libraryEntry.key}
             </span>{" "}
@@ -905,7 +905,7 @@ function BibliographyPanel({
                 </svg>
               </button>
             </div>
-            <div className="text-[10px] text-ink-muted mt-1">
+            <div className="text-2xs text-ink-muted mt-1">
               {formatWhen(req.createdAt, Date.now(), { dateOnly: true })}
               {req.status === "pending" && (
                 <span className="ml-1.5 inline-flex items-center gap-1">

@@ -172,7 +172,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
           onChange={(e) => setField("fontSize", parseInt(e.target.value, 10))}
           className="w-14 h-1 accent-[var(--accent)]"
         />
-        <span className="text-[10px] text-ink-muted tabular-nums w-6 text-right">{typo.fontSize}px</span>
+        <span className="text-2xs text-ink-muted tabular-nums w-6 text-right">{typo.fontSize}px</span>
       </div>
       {/* The shared swatch+hex control (task 532). This cell used to hand-roll
           a second copy with a fully-controlled `value={typo.color}` and an
@@ -184,7 +184,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         onChange={(hex) => setField("color", hex)}
         className="flex items-center gap-1"
         swatchClassName="w-5 h-5 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
-        inputClassName="text-[10px] font-mono w-[60px] px-1 py-0.5"
+        inputClassName="text-2xs font-mono w-[60px] px-1 py-0.5"
       />
       <ResetButton onReset={resetAll} atDefault={isDefault} target={`${panelLabel} typography`} />
     </div>
@@ -245,7 +245,7 @@ function LinkEdgeRow({
   };
 
   return (
-    <div className="flex items-center gap-2 pl-6 py-0.5 text-[10px] text-ink-muted">
+    <div className="flex items-center gap-2 pl-6 py-0.5 text-2xs text-ink-muted">
       <span className="text-ink-faint">↳</span>
       {/* A two-state toggle: `aria-pressed` announces the state and
           `.iconbtn-toggle` paints it (task 1305) — the name stays fixed, the
@@ -284,7 +284,7 @@ function LinkEdgeRow({
         disabled={!locked}
         className={`w-20 h-1 accent-[var(--accent)] ${locked ? "" : "opacity-40"}`}
       />
-      <span className="text-[10px] tabular-nums w-9 text-right">
+      <span className="text-2xs tabular-nums w-9 text-right">
         {pct > 0 ? "+" : ""}{pct}%
       </span>
     </div>
@@ -346,9 +346,9 @@ function Section({
         onToggle={() => setOpen(!open)}
         className="w-full text-left px-3 py-2 hover-on-light text-ink-muted"
       >
-        <span className="block text-[12px] font-semibold text-ink-strong">{section.label}</span>
+        <span className="block text-xs font-semibold text-ink-strong">{section.label}</span>
         {section.description && (
-          <span className="block text-[10px] text-ink-muted leading-tight">{section.description}</span>
+          <span className="block text-2xs text-ink-muted leading-tight">{section.description}</span>
         )}
       </PodDisclosure>
       {open && (

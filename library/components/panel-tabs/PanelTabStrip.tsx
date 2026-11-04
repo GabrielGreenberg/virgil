@@ -930,7 +930,7 @@ function PinButton({
         justifyContent: "center",
         color: activeColor,
         cursor: "pointer",
-        borderRadius: "var(--radius-xs)",
+        borderRadius: "var(--radius-sm)",
         padding: 0,
       }}
     >
@@ -979,10 +979,10 @@ function CloseButton({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 14,
+        fontSize: 13,
         lineHeight: 1,
         cursor: "pointer",
-        borderRadius: "var(--radius-xs)",
+        borderRadius: "var(--radius-sm)",
         fontFamily: "inherit",
         padding: 0,
       }}
@@ -1077,12 +1077,12 @@ function TabMenuTrigger({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 14,
+          fontSize: 13,
           lineHeight: 1,
           cursor: "pointer",
           fontFamily: "inherit",
           padding: 0,
-          borderRadius: "var(--radius-xs)",
+          borderRadius: "var(--radius-sm)",
         }}
       >
         ⋮

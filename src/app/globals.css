@@ -145,19 +145,19 @@
      referenced, NEVER redefined outside :root — print flattens the editor
      pod through --editor-pod-radius, not the tier); the @theme `--radius-lg`/`--radius-xl`
      alias onto them. Tiers, small→large:
-       --radius-xs 3px    in-text/chip micro details (marks, chips, kbd)
-       --radius-sm 4px    small controls & inner rows (icon btns, swatches)
-       --radius-md 6px    primary CONTROL radius (buttons, inputs, tooltips)
-       --pod-radius 8px   CARD + POD + MENU + code/math block tier
-       --panel-radius 14px large PANEL + MODAL tier
+       --radius-sm 4px    in-text marks, chips, kbd, icon btns, inner rows
+       --radius-md 8px    primary CONTROL radius (buttons, inputs, tooltips)
+       --pod-radius 10px  CARD + MENU + code/math block tier
+       --panel-radius 12px SHEET tier: the page, panels, modals
        --radius-pill 9999px fully-round capsules (status pills, lozenges)
+     Corners nest: an inner corner is the outer corner minus the padding
+     between them, which is why the steps are this close together.
      See src/STYLE_GUIDE.md "Radius scale". Do NOT hard-code a literal radius:
      the lint guard (scripts/check-radius-tokens.mjs) flags new ones. */
-  --radius-xs: 3px;
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --pod-radius: 8px;
-  --panel-radius: 14px; /* panel-only; editor pod & menus stay 8px */
+  --radius-md: 8px;
+  --pod-radius: 10px;
+  --panel-radius: 12px;
   --radius-pill: 9999px;
   /* Deliberate exception, NOT a scale step: the Library "manila folder"
      corner. The active-tab shoulder arc (MANILA_RADIUS in
@@ -173,10 +173,10 @@
      the pod's CHROME, not the tier (task 2026-10-23-1248). Print flattens
      the editor pod's chrome by zeroing THIS, so `--pod-radius` keeps one
      meaning in every mode: code blocks, display math and figure images
-     (which read the tier) print with the same 8px corners they show on
+     (which read the tier) print with the same corners they show on
      screen. Every editor-pod chrome surface (frame ring, caps, in-card
      header, split panes) reads this name, never `--pod-radius` directly. */
-  --editor-pod-radius: var(--pod-radius);
+  --editor-pod-radius: var(--panel-radius);
   /* ── The icon-button LADDER (task 2026-10-23-1249) ──────────────────
      Each `.iconbtn-*` box and the glyph it centres, as ONE pair of tokens.
      The box rules read the box token, `.iconbtn-* > svg` reads the glyph
@@ -214,7 +214,7 @@
      not moat-width: the pod's shadow does the work and the seam only has to
      be wide enough to HOLD it. So the value is DERIVED, not chosen — it is
      the greatest downward reach of --card-shadow-ambient (the docked pod's
-     own shadow: offset 2 + blur 6 ⇒ 2 + 6/2 = 5px), rounded up to 6. A
+     own shadow: offset 1 + blur 3 ⇒ 1 + 3/2 = 2.5px), rounded up to 4. A
      narrower seam would smear the shadow onto the card below; a wider one is
      the moat. Re-derive it if that shadow changes.
 
@@ -223,7 +223,7 @@
      `BandDivider` — a band↔band gutter is question (a), two sheets on a desk
      with no lower layer to read through, and it stays --pod-gap.
      See STYLE_GUIDE "Panels" → the seam rule. */
-  --pod-seam: 6px;
+  --pod-seam: 4px;
   /* ── The GRAB floor (SSOT, task 1241) ─────────────────────────────────
      How wide a resize gutter's POINTER TARGET is, as distinct from how wide
      it is painted (--pod-gap / --pod-seam / the Library's LIB_GRID_GUTTER).
@@ -234,7 +234,12 @@
   --gutter-grab: 18px;
   --pod-border: 1px solid var(--border-light);
   --panel-border: none; /* borderless: panels are warm sheets; separation via --pod-gap + shadow. Also derived at runtime in preferences-tree.ts — keep both in sync. */
-  --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
+  /* ── THE three depths (Sand) ──────────────────────────────────────────
+     RESTING --card-shadow-ambient, RAISED --pod-shadow, FLOATING
+     --shadow-float. Each is a faint warm edge plus a soft warm shadow, so
+     depth reads as paper on sand rather than a drawn outline. A surface picks
+     one by what it IS; a new surface does not get a fourth value. */
+  --pod-shadow: 0 0 0 0.5px rgba(70,50,30,0.08), 0 1px 2px rgba(70,50,30,0.05), 0 8px 24px rgba(70,50,30,0.10);
   /* ── MENU tier surface (SSOT, task 295) ───────────────────────────────
      The four axes of a dropdown / context-menu container, named once so a
      menu's chrome can be moved in ONE place. `--pod-radius` already called
@@ -264,10 +269,10 @@
    * --card-shadow-ambient so it can read as "lifted off the canvas" without
    * dragging card / docked-panel shadows along — thinning it must not flatten
    * cards (see task 2026-07-03-026/3a, which preserves --card-shadow-ambient). */
-  --shadow-float: 0 6px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-float: 0 0 0 0.5px rgba(70,50,30,0.08), 0 20px 48px rgba(70,50,30,0.18);
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
    * than the main editor pod's shadow but still readable as "raised". */
-  --card-shadow-ambient: 0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+  --card-shadow-ambient: 0 0 0 0.5px rgba(70,50,30,0.06), 0 1px 3px rgba(70,50,30,0.07);
   /* The KEYBOARD FOCUS RING, spelled once (task 503). Read by the shared
    * `:focus-visible` block below AND by the one rule that has to COMPOSE
    * with it — a pressed `.iconbtn-toggle`, whose own inset ring sits at a
@@ -621,8 +626,8 @@
 
   /* Text scale */
   --ink-faint: #d6d3d1;     /* disabled, resting card grips (≈ stone-300) */
-  --ink-muted: #78716c;     /* placeholders, default icons, timestamps (≈ stone-500) */
-  --ink-subtle: #78716c;    /* subtitles (≈ stone-500) */
+  --ink-muted: #625a53;     /* placeholders, default icons, timestamps (≈ stone-500) */
+  --ink-subtle: #625a53;    /* subtitles (≈ stone-500) */
   --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
   --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
 
@@ -814,12 +819,12 @@
   --editor-font-size: 0.95rem;
   --editor-line-height: 1.6;
   --editor-text-color: #000000;
-  --topbar-bg: #c5dbe2;
-  --topbar-bg-bottom: #c4c4c4;
-  --topbar-border: #cbc3b8;
-  --tab-bg: #c5dbe2;
-  --library-bg: #ddeaee;
-  --virgil-bar-text: #78716c;
+  --topbar-bg: #ede3de;
+  --topbar-bg-bottom: #ede3de;
+  --topbar-border: #dcd3cb;
+  --tab-bg: #ede3de;
+  --library-bg: #ede3de;
+  --virgil-bar-text: #625a53;
   --heading-annotation-color: #6b9ac4;
   --heading-annotation-border: #a8c4de;
   --par-title-size: 0.78rem;
@@ -846,17 +851,17 @@
   --latex-cmd-color: #9ca3af;
   --panel-font-size: 13px;
   --panel-header-size: 14px;
-  --header-bg: #c6cbcd;
+  --header-bg: #dcd3cb;
   --pod-panel: #fffdfa;
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
   --panel-admin-text-color: #000000;
-  --panel-header-text-color: #8a8580;
+  --panel-header-text-color: #625a53;
   --panel-admin-text-font: "Inter";
   --foreground: #1a1a1a;
   --border: #e5e2dd;
-  --border-light: #c6cbcd;
-  --muted: #8a8580;
+  --border-light: #dcd3cb;
+  --muted: #625a53;
   --muted-light: #b5b0aa;
   --drag-highlight: #3b82f6;
   --scrollbar-thumb: #dcd7d0;
@@ -1003,7 +1008,7 @@ body[data-zen-mode="on"] {
        about an unknown value. Want that tier? Give it a token first. */
 @theme inline {
   --radius: var(--radius-sm);
-  --radius-xs: var(--radius-xs);
+  --radius-xs: initial;
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--pod-radius);
@@ -1012,6 +1017,28 @@ body[data-zen-mode="on"] {
   --radius-2xl: initial;
   --radius-3xl: initial;
   --radius-4xl: initial;
+}
+
+/* ── THE type scale (Sand) ───────────────────────────────────────────
+   Five UI sizes, each owned here so a Tailwind utility cannot fall back to a
+   vendor value the app never chose: 11 caption (the floor), 12 label, 13 body,
+   15 section heading, 20 page title. `--text-*: initial` clears the vendor
+   ladder first, so `text-2xl` and friends emit nothing at all. The paper keeps
+   its own scale (--editor-font-size and the header prefs), and em sizes inside
+   inline atoms stay relative to the text around them.
+   Census: src/__tests__/type-size-census.test.ts. */
+@theme inline {
+  --text-*: initial;
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 15px;
+  --text-base--line-height: 20px;
+  --text-lg: 20px;
+  --text-lg--line-height: 26px;
 }
 
 /* ── Motion timing (task 1413) ────────────────────────────────────
@@ -1718,7 +1745,7 @@ textarea {
 .tiptap h6[data-section-number]::before,
 .tiptap .heading-wrapper-l0 > h0[data-section-number]::before {
   content: attr(data-section-number) "\00a0\00a0";
-  color: var(--muted, #8a8580);
+  color: var(--muted);
   font-weight: inherit;
 }
 
@@ -1765,7 +1792,7 @@ textarea {
   }
 }
 .margin-fold-chevron:hover {
-  color: var(--muted, #8a8580);
+  color: var(--muted);
 }
 .margin-fold-chevron.is-folded {
   /* Folded: faces in (pointing right). Tinted reddish so folded content
@@ -1970,9 +1997,9 @@ textarea {
      a "shared class" that repaints the chip is a look change wearing a
      refactor's clothes. */
   padding: 1px 4px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.25;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--background) 85%, transparent);
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   color: var(--heading-annotation-color, #6b9ac4);
@@ -2058,7 +2085,7 @@ textarea {
 }
 .source-pod-card-preview-title {
   margin-bottom: 0.25rem;
-  font-size: 10px; /* in-card META tier (STYLE_GUIDE "In-card type scale") */
+  font-size: 11px; /* in-card META tier (STYLE_GUIDE "In-card type scale") */
   font-weight: 500;
   color: var(--ink-muted);
 }
@@ -2219,7 +2246,7 @@ textarea {
 .heading-annotation {
   display: inline-flex;
   align-items: center;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
@@ -2228,7 +2255,7 @@ textarea {
   cursor: default;
   user-select: none;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
 }
 
@@ -2238,7 +2265,7 @@ textarea {
   gap: 2px;
   cursor: pointer;
   padding: 0 2px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .heading-annotation-type-chip:hover {
@@ -2260,7 +2287,7 @@ textarea {
   min-width: 13px;
   height: 13px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   font-weight: 600;
 }
@@ -2318,7 +2345,7 @@ textarea {
   min-width: 14px;
   height: 14px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-size: 0.95rem;
   line-height: 1;
   color: var(--heading-annotation-color, #6b9ac4);
@@ -2339,7 +2366,7 @@ textarea {
   border: none;
   border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
   outline: none;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
@@ -2356,7 +2383,7 @@ textarea {
   display: block;
   margin-top: 0.2em;
   color: var(--danger-muted);
-  font-size: 0.62rem;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
@@ -2487,7 +2514,7 @@ textarea {
 
 /* ── In-card type scale (UI-consistency sweep, 2026-06-12) ──────────
  * Two ratified tiers inside card bodies:
- *   META    — 10px / 500 / uppercase / tracking-wide / var(--muted):
+ *   META    — 11px / 500 / var(--muted):
  *             kind labels, key rows, chips, CODE rows.
  *   CONTENT — 12px: entry rows, inputs, previews (and the picker-styled
  *             body text, whose default is the same 12px).
@@ -2499,31 +2526,26 @@ textarea {
  * docked `CardTypeLabel`, the `CardKindDropdown` morph trigger, a float's
  * plain-title span (FloatChrome — so popping a card out keeps its label's
  * gray) and the suggestion-field section labels all wear this ONE class
- * instead of hand-typing `text-[10px] … uppercase tracking-wider`. It sits in
+ * instead of hand-typing its size and weight. It sits in
  * `@layer components` so a call site's utilities (`truncate`, a
  * `hover:text-*`) compose over it by layer — an unlayered class would beat
  * every Tailwind utility and silently kill a trigger's hover ink. */
 @layer components {
   .card-meta-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em; /* Tailwind v4 tracking-wider */
     color: var(--muted);
   }
   /* The PANEL/WINDOW-BODY section caption (task 1333) — "Request entry",
    * "Pending requests (n)", "Recent", "Browse", a font group, a preferences
-   * divider. The ONE spelling of the small uppercase caption outside card
-   * bodies (cards wear .card-meta-label above): 10px / 500 / uppercase /
-   * tracking-wide / --ink-muted. `<MenuSectionLabel>` composes this class,
+   * divider. The ONE spelling of the small caption outside card
+   * bodies (cards wear .card-meta-label above): 11px / 500 / --ink-muted. `<MenuSectionLabel>` composes this class,
    * so a menu caption and a panel caption cannot drift apart. In
    * @layer components so a call site's padding, `text-[var(--accent)]`, or
    * `hover:` ink composes over it. Census: section-caption-census.test.ts. */
   .section-caption {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.025em; /* Tailwind v4 tracking-wide */
     color: var(--ink-muted);
   }
 }
@@ -2612,7 +2634,7 @@ textarea {
   pointer-events: auto;
   cursor: grab;
   user-select: none;
-  color: var(--muted, #8a8580);
+  color: var(--muted);
   z-index: 20;
 }
 
@@ -2738,7 +2760,7 @@ textarea {
   background: transparent;
   border: none;
   box-shadow: none;
-  border-radius: var(--pod-radius, 8px);
+  border-radius: var(--pod-radius);
   transition:
     opacity var(--motion-fast) ease,
     background-color var(--motion-fast) ease,
@@ -2806,8 +2828,8 @@ textarea {
   background: var(--surface-muted-strong);
   border: var(--pod-border, 1px solid #e5e2dd);
   border-bottom: none;
-  border-top-left-radius: var(--pod-radius, 8px);
-  border-top-right-radius: var(--pod-radius, 8px);
+  border-top-left-radius: var(--pod-radius);
+  border-top-right-radius: var(--pod-radius);
   /* Matches the overlay's chrome transition timing so header + body
      border fade in together when popout mode engages. */
   opacity: 0;
@@ -3035,7 +3057,7 @@ textarea {
 .card-drag-handle.is-pressed {
   color: var(--ink-body) !important;
   background: rgba(0, 0, 0, 0.14) !important;
-  border-radius: var(--radius-xs) !important;
+  border-radius: var(--radius-sm) !important;
   transform: translateY(2px) scale(0.9) !important;
   cursor: grabbing !important;
   transition: none !important;
@@ -3126,13 +3148,13 @@ textarea {
 
 .title-field-annotation {
   display: inline-block;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   margin-bottom: 0.2em;
   user-select: none;
@@ -3366,7 +3388,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  font-size: 0.9rem;
+  font-size: 13px;
 }
 
 .math-popover-preview {
@@ -3396,7 +3418,7 @@ textarea {
 .math-popover-input {
   width: 100%;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.85rem;
+  font-size: 13px;
   padding: 0.4em 0.5em;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -3412,7 +3434,7 @@ textarea {
 }
 
 .math-popover-hint {
-  font-size: 0.72rem;
+  font-size: 11px;
   color: var(--ink-muted);
 }
 /* kbd inside these hints now uses the global .kbd (see Kbd.tsx). */
@@ -3428,7 +3450,7 @@ textarea {
 
 .math-popover-cancel {
   flex: 0 0 auto;
-  font-size: 0.72rem;
+  font-size: 12px;
   color: var(--ink-muted);
   background: transparent;
   border: 1px solid transparent;
@@ -3608,7 +3630,7 @@ textarea {
 .figure-block .figure-annotation {
   display: inline-flex;
   align-items: center;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
@@ -3617,7 +3639,7 @@ textarea {
   cursor: default;
   user-select: none;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
 }
 
@@ -3630,7 +3652,7 @@ textarea {
   align-items: center;
   gap: 2px;
   padding: 0 2px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .figure-block .figure-annotation-numbered-toggle {
@@ -3641,7 +3663,7 @@ textarea {
   min-width: 13px;
   height: 13px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   font-weight: 600;
 }
@@ -3698,7 +3720,7 @@ textarea {
   border: none;
   border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
   outline: none;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
@@ -3715,7 +3737,7 @@ textarea {
   display: inline-block;
   margin-left: 0.5em;
   color: var(--danger-muted);
-  font-size: 0.62rem;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
@@ -3728,7 +3750,7 @@ textarea {
   min-width: 14px;
   height: 14px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-size: 0.95rem;
   line-height: 1;
   color: var(--heading-annotation-color, #6b9ac4);
@@ -3922,7 +3944,7 @@ textarea {
   color: var(--ink-muted);
   cursor: pointer;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
 }
 
@@ -3992,21 +4014,19 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  font-size: 0.9rem;
+  font-size: 13px;
 }
 
 .figure-popover-label {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.75rem;
+  font-size: 12px;
   color: var(--ink-muted);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .figure-popover-input {
   width: 100%;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.85rem;
+  font-size: 13px;
   padding: 0.4em 0.5em;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -4022,7 +4042,7 @@ textarea {
 }
 
 .figure-popover-hint {
-  font-size: 0.72rem;
+  font-size: 11px;
   color: var(--ink-muted);
 }
 
@@ -4047,7 +4067,7 @@ textarea {
 .linked-anchor {
   --link-anchor-color: #fbbf24; /* amber fallback for unrecognised kinds */
   background: transparent;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) ease-out;
 }
 /* The `var(…, <hex>)` fallback reproduces the shipped DEFAULT_PANEL_COLORS
@@ -4193,7 +4213,7 @@ textarea {
   line-height: 0;
   color: var(--footnote-color, #b45757);
   background: var(--footnote-bg, #fef2f2);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   cursor: pointer;
   font-weight: 600;
@@ -4263,7 +4283,7 @@ textarea {
 .footnote-marker[data-card-hovered="true"],
 .footnote-marker[data-card-selected="true"] {
   box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* Citation — lock the :hover yellow on, for both hover-from-card and
@@ -4437,7 +4457,7 @@ textarea {
   color: var(--note-color, #15803d);
   background: var(--note-bg, #f0fdf4);
   border: 1.5px solid var(--note-marker-border, #86efac);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base);
   line-height: 1;
@@ -4471,7 +4491,7 @@ textarea {
 /* RichTextField mini-editor (Tiptap-backed footnote/note bodies) */
 .rtf-content {
   padding: 0.25rem 0;
-  font-size: 0.875rem;
+  font-size: 13px;
   line-height: 1.5;
   min-height: 2.5rem;
   color: #44403c;
@@ -4567,7 +4587,7 @@ textarea {
   align-items: stretch;
   color: var(--latex-comment-color, #7191b0);
   background: var(--latex-comment-bg, #f0f5fa);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
   font-style: italic;
@@ -4600,7 +4620,7 @@ textarea {
   width: 6px;
   min-width: 6px;
   background: var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   cursor: pointer;
   flex-shrink: 0;
   transition: background var(--motion-base);
@@ -4765,7 +4785,7 @@ body.perf-contain .static-borrowed-text {
   border-radius: 1px;
 }
 .dropmode-bar-vertical {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 @media (prefers-reduced-motion: no-preference) {
   .dropmode-bar-gap,
@@ -4865,7 +4885,7 @@ body.perf-contain .static-borrowed-text {
 .citation-node {
   display: inline;
   background: var(--citation-bg, #ffffff);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   border: 1px solid var(--citation-border-color);
@@ -4893,7 +4913,7 @@ body.perf-contain .static-borrowed-text {
 .citation-highlight-bib {
   background: var(--amber-highlight-wash-active);
   box-shadow: 0 0 0 2px var(--amber-highlight-edge);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* RETIRED (task 525): `.citation-node-bar` / `.citation-node-text` — the
@@ -4904,7 +4924,7 @@ body.perf-contain .static-borrowed-text {
 .label-ref-node {
   display: inline;
   background: var(--label-ref-bg, #f0f0f0);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   border: 1px solid var(--label-ref-border-color, #d5d3ce);
@@ -4931,7 +4951,7 @@ body.perf-contain .static-borrowed-text {
 .latex-dynamic-node {
   display: inline;
   background: var(--label-ref-bg, #f0f0f0);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--label-ref-border-color, #d5d3ce);
   padding: 0px 4px;
   color: inherit;
@@ -5001,7 +5021,7 @@ body.perf-contain .static-borrowed-text {
     0 0 0 2px color-mix(in oklab, var(--amber-highlight-edge) 25%, transparent),
     var(--menu-shadow);
   overflow: visible;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 .label-ref-popover-pod {
@@ -5024,11 +5044,9 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-type {
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 500;
-  color: var(--muted, #8a8580);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--muted);
 }
 
 .label-ref-popover-title {
@@ -5038,7 +5056,7 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-unresolved {
-  color: var(--muted, #8a8580);
+  color: var(--muted);
   font-style: italic;
 }
 
@@ -5054,17 +5072,17 @@ body.perf-contain .static-borrowed-text {
   background: var(--accent-light, #f5f0ea);
   margin: -4px -8px;
   padding: 4px 8px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .label-ref-popover-label-key {
-  font-size: 0.7rem;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .label-ref-popover-label-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.78rem;
+  font-size: 12px;
   color: var(--foreground, #1a1a1a);
 }
 
@@ -5076,10 +5094,10 @@ body.perf-contain .static-borrowed-text {
 .label-ref-popover-input {
   width: 100%;
   border: 1px solid var(--border, #e5e2dd);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 4px 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.78rem;
+  font-size: 12px;
   outline: none;
   background: var(--surface);
   color: var(--foreground, #1a1a1a);
@@ -5143,13 +5161,13 @@ body.perf-contain .static-borrowed-text {
 
 .label-ref-option-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.76rem;
+  font-size: 12px;
   color: var(--foreground, #1a1a1a);
 }
 
 .label-ref-option-info {
-  font-size: 0.66rem;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -5167,10 +5185,8 @@ body.perf-contain .static-borrowed-text {
 
 .label-ref-popover-group-heading {
   padding: 4px 8px 2px;
-  font-size: 0.64rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
   background: transparent;
   border-bottom: 1px solid var(--border, #e5e2dd);
 }
@@ -5186,11 +5202,11 @@ body.perf-contain .static-borrowed-text {
   flex: 1;
   padding: 2px 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
@@ -5454,7 +5470,7 @@ body.perf-contain .static-borrowed-text {
    fallback background (so no stray yellow when a caller forgets a color) and
    no border-bottom (the highlight itself is the signal). */
 .tiptap mark {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 1px;
   border-bottom: none;
   background-color: transparent;
@@ -5476,7 +5492,7 @@ body.perf-contain .static-borrowed-text {
    footnote marker would land this padding/border on the ATOM's element and
    outrank `.citation-node` / `.footnote-marker`. */
 .tiptap .virgil-transient-highlight {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 1px;
   border-bottom: none;
 }
@@ -5527,7 +5543,7 @@ body.perf-contain .static-borrowed-text {
   background-color: transparent;
   border: 1px solid transparent;
   background-clip: padding-box;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -5896,7 +5912,7 @@ body.perf-contain .static-borrowed-text {
   font-size: 0.85em;
   line-height: 1.4;
   padding: 0 0.4em;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: var(--code-bg, #f0eeeb);
   border: 1px solid var(--border);
   color: var(--ink-strong, #292524);
@@ -6681,7 +6697,7 @@ body.perf-contain .static-borrowed-text {
   /* The Outline's voice: the UI sans at text-sm — stated here because the
      pane around the gutter speaks the paper's serif. */
   font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-size: 13px;
   line-height: 1.375;
   color: var(--foreground);
 }
@@ -6754,10 +6770,8 @@ body.perf-contain .static-borrowed-text {
   gap: 6px;
   padding: 2px 6px 2px 2px;
   border-radius: var(--radius-sm, 4px);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--panel-header-text-color, var(--muted));
 }
 .tool-gutter-count {

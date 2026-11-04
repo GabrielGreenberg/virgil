@@ -131,7 +131,7 @@ function PinToggle({
     <Checkbox
       checked={pinned}
       onChange={onChange}
-      className="text-[11px] text-ink-muted hover:text-ink-body mt-1.5"
+      className="text-2xs text-ink-muted hover:text-ink-body mt-1.5"
     >
       {label}
     </Checkbox>
@@ -197,7 +197,7 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
       >
         <div className="flex items-baseline gap-2">
           <h2 id={FONTS_TITLE_ID} className="text-sm font-medium text-ink-body">Fonts</h2>
-          <span className="text-[11px] text-ink-muted">main text</span>
+          <span className="text-2xs text-ink-muted">main text</span>
         </div>
         <button
           type="button"

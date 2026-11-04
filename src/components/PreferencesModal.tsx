@@ -98,7 +98,7 @@ function TransformSlider({
     <Field label={label} className="flex-1 min-w-0 relative">
       {({ id }) => (
         <>
-          <span className="absolute right-0 top-0 text-[10px] text-ink-muted tabular-nums w-8 text-right">
+          <span className="absolute right-0 top-0 text-2xs text-ink-muted tabular-nums w-8 text-right">
             {value > 0 ? `+${value}` : value}
           </span>
           <input

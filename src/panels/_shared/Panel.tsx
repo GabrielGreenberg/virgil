@@ -25,7 +25,7 @@ export interface PanelProps {
   kind: PanelKind;
   /** Optional count badge in the header. */
   count?: number;
-  /** A short uppercase label rendered BESIDE the count, naming a non-default
+  /** A short label rendered BESIDE the count, naming a non-default
    *  view the panel is currently under ("ARCHIVES" / "ALL"). When present the
    *  count renders even at ZERO — with a filter on, "0" is the fact, and a
    *  suppressed badge makes the header identical to a genuinely empty panel's

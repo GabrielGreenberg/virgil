@@ -88,7 +88,7 @@ export function OpenEntryLink({
       // bare — its one class-passing caller (`CitationCard`) spells none.
       className={withFocusIndicator(
         className ??
-          "inline-flex items-center gap-1 text-[10px] text-ink-muted hover:text-ink-body transition-colors",
+          "inline-flex items-center gap-1 text-2xs text-ink-muted hover:text-ink-body transition-colors",
       )}
     >
       <ExternalLinkIcon size={11} />

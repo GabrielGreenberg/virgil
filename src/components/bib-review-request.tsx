@@ -190,7 +190,7 @@ export function ReviewRequestChip({
       type="button"
       data-review-request-chip={type}
       onClick={(e) => { e.stopPropagation(); composer.toggle(type); }}
-      className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+      className={`ml-auto flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded transition-colors ${
         pending || composing
           ? AMBER_PENDING_CHIP
           : "text-ink-muted hover:text-ink-body hover-on-light"

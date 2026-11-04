@@ -292,7 +292,7 @@ function ClearButton({ onClear }: ClearButtonProps) {
         alignItems: "center",
         justifyContent: "center",
         color: "var(--ink-muted)",
-        fontSize: 14,
+        fontSize: 13,
         lineHeight: 1,
       }}
     >

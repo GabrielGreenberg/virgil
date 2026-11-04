@@ -3139,7 +3139,7 @@ export default function EditorLayout() {
                               <IconErrors active={false} />
                               {errorCount > 0 && (
                                 <span
-                                  className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
+                                  className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-2xs leading-[14px] tabular-nums text-white text-center"
                                   style={{ backgroundColor: "var(--danger)" }}
                                 >
                                   {errorCount > 99 ? "99+" : errorCount}

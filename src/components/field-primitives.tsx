@@ -53,7 +53,7 @@ export type FieldTone = "surface" | "muted" | "transparent";
 
 /** Text color. Same rule as `tone`, and the same reason it is a PROP rather
  *  than something a call site appends — `text-ink-subtle` next to a baked
- *  `text-ink-body` is a coin flip, not an override. (`text-xs`/`text-[10px]`
+ *  `text-ink-body` is a coin flip, not an override. (`text-xs`/`text-2xs`
  *  are font SIZE and compose fine; the box stays the caller's.) */
 export type FieldInk = "body" | "subtle" | "strong";
 
@@ -249,8 +249,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
 export type FieldLabelRegister = "section" | "row";
 
 const FIELD_LABEL_REGISTER: Record<FieldLabelRegister, string> = {
-  section: "text-[11px] font-medium text-ink-subtle uppercase tracking-wide",
-  row: "text-[11px] text-ink-subtle",
+  section: "text-2xs font-medium text-ink-subtle",
+  row: "text-2xs text-ink-subtle",
 };
 
 /** `stack` puts the label above the control; `inline` beside it. */
@@ -336,7 +336,7 @@ export function Field({
   const labelBlock = descriptionId ? (
     <div className={columnClass}>
       {labelEl}
-      <span id={descriptionId} className="block text-[10px] text-ink-muted leading-tight">
+      <span id={descriptionId} className="block text-2xs text-ink-muted leading-tight">
         {description}
       </span>
     </div>

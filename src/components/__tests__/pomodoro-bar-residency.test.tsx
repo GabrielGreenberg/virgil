@@ -346,7 +346,7 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
     expect(residents).toContain("PomodoroTimer");
     expect(residents.length).toBeGreaterThan(3);
 
-    const SHAPE = ["inline-flex", "items-center", "py-0.5", "rounded-full", "text-[11px]"];
+    const SHAPE = ["inline-flex", "items-center", "py-0.5", "rounded-full", "text-2xs"];
     let pills = 0;
     for (const name of residents) {
       const src = withStrings(`src/components/${name}.tsx`);

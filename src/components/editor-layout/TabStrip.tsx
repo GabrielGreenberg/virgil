@@ -241,7 +241,7 @@ function TabStripImpl(props: TabStripProps) {
             >
               <IconLibrary />
               <span
-                className="text-[13px] leading-4"
+                className="text-sm leading-4"
                 style={{ marginRight: LIBRARY_FOLDER_LABEL_TRAIL }}
               >
                 Library
@@ -306,7 +306,7 @@ function TabStripImpl(props: TabStripProps) {
             >
               <span
                 {...TAB_LABEL_ATTRS}
-                className="text-[13px] leading-4 truncate min-w-0"
+                className="text-sm leading-4 truncate min-w-0"
                 style={{ fontFamily: FONT_MONO, maxWidth: TAB_LABEL_MAX_PX }}
               >
                 {citekey}
@@ -430,7 +430,7 @@ function TabStripImpl(props: TabStripProps) {
               <IconLibrary />
               <span
                 {...TAB_LABEL_ATTRS}
-                className="text-[13px] leading-4 truncate min-w-0"
+                className="text-sm leading-4 truncate min-w-0"
                 style={{ maxWidth: TAB_LABEL_MAX_PX }}
               >
                 {label}
@@ -527,7 +527,7 @@ function TabStripImpl(props: TabStripProps) {
             ) : (
               <span
                 {...TAB_LABEL_ATTRS}
-                className="text-[13px] leading-4 truncate min-w-0"
+                className="text-sm leading-4 truncate min-w-0"
                 // The bar-wide label cap (task 395). `max-width` clamps the
                 // span's max-content CONTRIBUTION, so the tab's
                 // `calc-size(max-content, …)` width follows it — an active tab

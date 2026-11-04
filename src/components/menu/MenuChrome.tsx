@@ -39,7 +39,7 @@ export interface MenuSectionLabelProps {
   padding?: string;
 }
 
-/** Small uppercase caption above a cluster of rows ("Display", "Sort by").
+/** Small caption above a cluster of rows ("Display", "Sort by").
  *  Wears `.section-caption` — the same class as a panel-body caption. */
 export function MenuSectionLabel({ children, padding = "px-3 pt-1 pb-0.5" }: MenuSectionLabelProps) {
   return (

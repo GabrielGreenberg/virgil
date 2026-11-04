@@ -132,7 +132,7 @@ function defaultTriggerStyle(disabled: boolean): CSSProperties {
     fontSize: 16,
     lineHeight: 1,
     fontFamily: "inherit",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",

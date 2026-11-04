@@ -9,7 +9,7 @@ import { commentsStripped, cssCommentsStripped, trackedFiles } from "@/lib/__tes
 /**
  * Radius-scale SSOT contract (task 2026-07-03-013).
  *
- * Corner radii flow from ONE six-step token scale defined in globals.css and
+ * Corner radii flow from ONE five-step token scale defined in globals.css and
  * mapped onto Tailwind's `rounded-*` namespace. These tests lock:
  *   1. the scale tokens exist with their canonical values,
  *   2. the Tailwind `@theme` mapping aliases `rounded-lg`/`rounded-xl` onto the
@@ -22,11 +22,10 @@ const globals = readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
 
 describe("radius scale tokens", () => {
   it.each([
-    ["--radius-xs", "3px"],
     ["--radius-sm", "4px"],
-    ["--radius-md", "6px"],
-    ["--pod-radius", "8px"],
-    ["--panel-radius", "14px"],
+    ["--radius-md", "8px"],
+    ["--pod-radius", "10px"],
+    ["--panel-radius", "12px"],
     ["--radius-pill", "9999px"],
     ["--library-manila-radius", "10px"],
   ])("defines %s = %s in :root", (token, value) => {
@@ -35,7 +34,7 @@ describe("radius scale tokens", () => {
 
   it("maps the Tailwind radius namespace onto the scale", () => {
     // rounded-lg / rounded-xl must alias the canonical pod/panel tokens, not
-    // hard-code 8px/14px — that keeps them single-sourced.
+    // hard-code 10px/12px — that keeps them single-sourced.
     expect(globals).toMatch(/--radius-lg:\s*var\(--pod-radius\)/);
     expect(globals).toMatch(/--radius-xl:\s*var\(--panel-radius\)/);
     // xs/sm/md/pill self-reference the :root values (emitted, unlayered-wins).
@@ -52,7 +51,7 @@ describe("radius scale tokens", () => {
     expect(globals).toMatch(/--radius-sm:\s*4px\s*;/);
   });
 
-  it.each(["2xl", "3xl", "4xl"])(
+  it.each(["xs", "2xl", "3xl", "4xl"])(
     "clears the unowned --radius-%s tier rather than inheriting a vendor value",
     (tier) => {
       // `@theme` MERGES into Tailwind's default theme; `initial` is v4's only
@@ -131,7 +130,7 @@ describe("radius-token guard reach", () => {
 
   it.each([
     ["a token", `el.style.cssText = "border-radius: var(--radius-md);";`],
-    ["a token with a fallback", `el.style.borderRadius = "var(--radius-xs,3px)";`],
+    ["a token with a fallback", `el.style.borderRadius = "var(--radius-sm,3px)";`],
     ["a token-valued ternary", `const s = { borderRadius: hot ? "var(--pod-radius)" : undefined };`],
     ["a hairline bar", `el.style.cssText = "border-radius: 1px;";`],
     ["a perfect circle", `const s = { borderRadius: "50%" };`],
@@ -310,7 +309,7 @@ describe("emitted rounded-* CSS", () => {
     // already invisible to the build — the census and the compiler share one
     // blind spot, which is the alignment you want.
     const css = compiler.build([
-      "rounded", "rounded-t", "rounded-xs", "rounded-sm", "rounded-md", "rounded-lg",
+      "rounded", "rounded-t", "rounded-sm", "rounded-md", "rounded-lg",
       "rounded-xl", "rounded-pill", "rounded-full", "rounded-none",
       ...["2xl", "3xl", "4xl"].map((t) => `rounded-${t}`),
     ]);
@@ -331,7 +330,7 @@ describe("emitted rounded-* CSS", () => {
     expect(at("rounded-t")).toContain("var(--radius-sm)");
   });
 
-  it.each(["xs", "sm", "md", "lg", "xl", "pill"])(
+  it.each(["sm", "md", "lg", "xl", "pill"])(
     "emits rounded-%s from a token, never a literal",
     async (tier) => {
       const at = await emitted;
@@ -340,7 +339,7 @@ describe("emitted rounded-* CSS", () => {
     },
   );
 
-  it.each(["2xl", "3xl", "4xl"])("does not emit rounded-%s at all", async (tier) => {
+  it.each(["xs", "2xl", "3xl", "4xl"])("does not emit rounded-%s at all", async (tier) => {
     const at = await emitted;
     // `initial` removes the key, so the utility has no value to resolve and
     // Tailwind emits nothing. Silent — which is why the coverage leg above is
@@ -391,7 +390,7 @@ describe("radius roles wear the tier the guide assigns them", () => {
     [".source-pod-derived", "var(--pod-radius)"],
     [".source-pod-static-source", "var(--pod-radius)"],
     // Annotation chips are the xs tier, like their heading-annotation siblings.
-    [".source-pod-chip", "var(--radius-xs)"],
+    [".source-pod-chip", "var(--radius-sm)"],
     // Menus reach the pod tier through --menu-radius, never by naming it.
     [".menu-surface", "var(--menu-radius)"],
     // The one stated exception: the surface="none" label-ref popover sits on
@@ -490,7 +489,7 @@ describe("radius tier tokens are never redefined outside :root", () => {
   });
 
   it("print flattens the editor pod through its own name, and the pod chrome reads it", () => {
-    expect(globals).toMatch(/--editor-pod-radius:\s*var\(--pod-radius\)\s*;/);
+    expect(globals).toMatch(/--editor-pod-radius:\s*var\(--panel-radius\)\s*;/);
     const print = cssCommentsStripped(globals).match(/@media print\s*\{[\s\S]*?:root\s*\{([^}]*)\}/);
     expect(print, "expected a :root block inside @media print").not.toBeNull();
     expect(print![1]).toMatch(/--editor-pod-radius:\s*0\s*!important/);

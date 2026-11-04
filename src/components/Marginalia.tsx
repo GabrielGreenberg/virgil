@@ -555,7 +555,7 @@ function OverflowPill({
           width: MARGINALIA_ICON_SIZE,
           height: MARGINALIA_ICON_SIZE,
           border: "1.5px solid var(--edge-strong)",
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: 600,
           lineHeight: 1,
           padding: 0,
@@ -633,7 +633,7 @@ export function MarkerMenuRow({
       style={menuRowRovingStyle(active, false)}
     >
       <MarkerButton m={m} dragEnabled={dragEnabled} onActivated={onActivated} />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-muted">
+      <span className="min-w-0 flex-1 truncate text-2xs text-ink-muted">
         {m.title || MARKER_META[m.type].label}
       </span>
     </div>

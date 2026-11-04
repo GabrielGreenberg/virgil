@@ -157,7 +157,7 @@ function FigureCardPreview({
       : firstSource?.path || "[graphic]";
     return (
       <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
-        <div className="figure-card-preview-stub inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-mono">
+        <div className="figure-card-preview-stub inline-flex items-center gap-1.5 px-2 py-0.5 text-2xs font-mono">
           <span className="text-[var(--ink-muted)]">
             {isFigure ? "Figure" : "Graphic"}:
           </span>

@@ -55,7 +55,7 @@ const ACCENT_BAR_STYLE: CSSProperties = {
   bottom: 4,
   width: 3,
   background: "var(--accent)",
-  borderRadius: "var(--radius-xs)",
+  borderRadius: "var(--radius-sm)",
   pointerEvents: "none",
 };
 

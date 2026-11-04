@@ -32,7 +32,7 @@ export default function CollabClaimPill({ holder, color, focusedAt }: CollabClai
 
   return (
     <span
-      className={chromeOnly("inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0")}
+      className={chromeOnly("inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-2xs font-medium shrink-0")}
       style={{
         background: `${color}22`,
         color,

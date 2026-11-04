@@ -103,7 +103,7 @@ export default function CollaboratorIdentityDialog({
       <SystemDialogBody>
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] text-ink-subtle">Display name</span>
+            <span className="text-2xs text-ink-subtle">Display name</span>
             <Input
               ref={nameRef}
               value={name}
@@ -120,7 +120,7 @@ export default function CollaboratorIdentityDialog({
             />
           </label>
           <div className="flex flex-col gap-1">
-            <span id={colorLabelId} className="text-[11px] text-ink-subtle">
+            <span id={colorLabelId} className="text-2xs text-ink-subtle">
               Color
             </span>
             {/* A pick-one row, so it is a radio group (task 1216): the chosen

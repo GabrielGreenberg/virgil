@@ -70,11 +70,11 @@ export default function DocumentClassMismatchDialog({
       <SystemDialogBody>
         <p className="text-xs text-ink-body leading-relaxed">
           This document uses{" "}
-          <code className="font-mono text-[11px] bg-surface-muted px-1 py-0.5 rounded">
+          <code className="font-mono text-2xs bg-surface-muted px-1 py-0.5 rounded">
             {formatCommands(mismatch.offenders)}
           </code>
           , which{" "}
-          <code className="font-mono text-[11px] bg-surface-muted px-1 py-0.5 rounded">
+          <code className="font-mono text-2xs bg-surface-muted px-1 py-0.5 rounded">
             {`\\documentclass{${mismatch.currentClass}}`}
           </code>{" "}
           doesn&apos;t support. LaTeX will fail with &ldquo;Undefined control sequence.&rdquo;
