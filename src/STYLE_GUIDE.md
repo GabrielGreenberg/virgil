@@ -3578,12 +3578,21 @@ warm-black tint over the canvas, no backdrop blur — and `--stack-strip-hint`
 COMPOSITED band (≥ 4.5:1); light-on-dark ink here was chosen for a dark 0.82
 band this section once documented but the code never shipped, and read ~1.4:1.
 
+## LaTeX comments
+
+A `%` comment is always on screen when the View menu says so, and it must read
+as a note to yourself, not as paper. Three things do that: the chrome font, a
+warm wash derived from `latexCommentColor`, and a `%` hanging left of the text
+edge, so the words stay on the paper's column. No coloured bar and no mono
+italic: those made it the loudest thing on the page. The grab area for
+node-selecting the whole comment is the wash's left edge, `.latex-comment-handle`.
+
 ## Editor inlines
 
 Eight kinds, each with its own token group:
 
 - Footnote marker (superscript red), citation (warm-yellow brackets),
-  LaTeX comment (steel-blue %), comment Mode B (sky underline), inline
+  LaTeX comment (warm wash, hanging %), comment Mode B (sky underline), inline
   math (purple KaTeX glyphs — `--math-color`, live since task 326; this
   line described the intended look for a year while the rendered math
   inherited the body ink), AI request marker (sky star), suggestion mark
@@ -3680,6 +3689,10 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
   (`BlockFrame.chevronRight`) so the handle lane can RESERVE it. Reserved per
   ROW and gated on the block's KIND (`FOLD_CHEVRON_NODE_TYPES`), so a prose row
   — which renders no chevron — keeps its full halo.
+- `--margin-col-label` (default `52px`) — the **block-label column**: Title,
+  Author, Date, a heading's type and `\label`, a figure's and an example's
+  label. It sits outboard of the chevron, right-aligned, so labels stay off the
+  paper and out of flow. See "Block labels" below.
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
@@ -4286,6 +4299,25 @@ Five rules:
   move operations. (The empty-state placeholder keeps its own X — a
   half-made block's quick bail before it has any content to grab.)
 
+### Block labels — off the paper
+
+A label names a block for the editor; it is not part of the paper, so it never
+sits in the text column. `useMarginLabelMode` stamps `data-margin-labels` on the
+prose pod from the MEASURED margin (`marginLabelsFit`), and the mode decides
+where every label goes:
+
+| Mode | When | Where |
+|---|---|---|
+| `side` | the margin holds the column | a right-aligned column at `--margin-col-label`, quiet `--heading-annotation-color` text with no box |
+| `hover` | code split, a narrow margin, or left-side markers in use | a raised pill above the block, on hover or keyboard focus |
+
+Both are out of flow, so a label cannot move the text and the mode can flip
+without a reflow. Floats and card editors sit outside the pod, carry no
+attribute, and keep the label in flow. An example's pod stays hidden until it
+has a label or the example is hovered, because the number already says what it
+is. A wrapped figure keeps its label in flow: its float position leaves no
+stable column. Everything here is chrome-only, so none of it prints.
+
 ## Marginalia
 
 Two margins (left wider for the heading-fold chevron, right narrower).
@@ -4295,6 +4327,13 @@ paragraph UUIDs.
 Seven types in `MARKER_META`: `quote`, `note`, `archive`, `revision`,
 `cut`, `todo`, `error`. Each derives its color quartet from the
 matching panel theme accent via `markerPaletteFromAccent()`.
+
+**A note anchor is a soft tile.** The kind's glyph (14px) on a pale 14% tint of
+its colour, no outline, deepening to 25% on hover. It has to stay recognisable
+and draggable without competing with the text, so identity comes from the glyph
+and the grab from the area: the 22px tile keeps the grid cell, and `::after`
+widens the grab to 24px. Markers wrap after two columns, because the grid is
+pod-anchored and its reserved margin is sized for two.
 
 Click → opens panel + selects card + scrolls. Cmd-click → opens
 without scrolling. Hover → highlights linked text range.

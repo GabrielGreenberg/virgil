@@ -380,6 +380,9 @@
      silently collapses the distance.
      See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
+  /* The block-label column's right edge, left of the text edge: past the
+     chevron column plus a gap. MARGIN_LABEL_INSET in marginalia.ts. */
+  --margin-col-label: 52px;
   --margin-col-chevron-width: 14px;
   --margin-col-handle-inset: 22px;
   /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
@@ -498,7 +501,7 @@
      --note-marker-border — are promoted prefs; the fills below are not. */
   --comment-bg: rgba(147, 197, 253, 0.25);
   --comment-border: rgba(96, 165, 250, 0.5);
-  --latex-comment-bg: #f0f5fa;
+  --latex-comment-bg: #efece8;
   --citation-bg: #ffffff;
   /* Cream fill of the citation drag-ghost card (CitationCard / BibEntryCard).
      Distinct from --citation-bg (the in-text cite pill fill, #ffffff): the
@@ -825,8 +828,8 @@
   --tab-bg: #ede3de;
   --library-bg: #ede3de;
   --virgil-bar-text: #625a53;
-  --heading-annotation-color: #6b9ac4;
-  --heading-annotation-border: #a8c4de;
+  --heading-annotation-color: #625a53;
+  --heading-annotation-border: #dcd3cb;
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
   --blockquote-border: #d4cfc8;
@@ -838,7 +841,7 @@
   --background: #ede3de;
   --surface: #ffffff;
   --comment-color: #93c5fd;
-  --latex-comment-color: #7191b0;
+  --latex-comment-color: #7c5e3c;
   --citation-color: #6b6245;
   --citation-border-color: #e0d5a8;
   --label-ref-color: #555555;
@@ -1940,7 +1943,7 @@ textarea {
    block is folded. Reads as a quiet shadow of the real editor. */
 .source-pod-preview {
   position: relative; /* stacks above .source-pod-row-sensor in overlap */
-  border: 1px dashed var(--heading-annotation-border, #a8c4de);
+  border: 1px dashed var(--heading-annotation-border);
   border-radius: var(--pod-radius);
   background: var(--code-block-bg);
   padding: 8px 12px;
@@ -2001,8 +2004,8 @@ textarea {
   line-height: 1.25;
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--background) 85%, transparent);
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  color: var(--heading-annotation-color, #6b9ac4);
+  border: 1px solid var(--heading-annotation-border);
+  color: var(--heading-annotation-color);
   font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
   user-select: none;
   pointer-events: none;
@@ -2017,7 +2020,7 @@ textarea {
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: color-mix(in srgb, var(--background) 85%, transparent);
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--motion-base), border-color var(--motion-base), color var(--motion-base);
@@ -2029,7 +2032,7 @@ textarea {
   opacity: 1;
 }
 .source-pod-mode-toggle:hover {
-  border-color: var(--heading-annotation-border, #a8c4de);
+  border-color: var(--heading-annotation-border);
   color: var(--accent);
 }
 
@@ -2048,7 +2051,7 @@ textarea {
    ground) so switching modes moves nothing but the content. */
 .source-pod-derived {
   position: relative;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  border: 1px solid var(--heading-annotation-border);
   border-radius: var(--pod-radius);
   background: var(--code-block-bg);
   padding: 14px 70px 14px 16px;
@@ -2092,7 +2095,7 @@ textarea {
 .source-pod-static-source {
   margin: 0;
   padding: 6px 10px;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  border: 1px solid var(--heading-annotation-border);
   border-radius: var(--pod-radius);
   background: var(--code-block-bg);
   color: var(--ink-strong);
@@ -2248,15 +2251,11 @@ textarea {
   align-items: center;
   font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
   margin-bottom: 1.2em;
   cursor: default;
   user-select: none;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
 }
 
 .heading-annotation-type-chip {
@@ -2269,7 +2268,7 @@ textarea {
 }
 
 .heading-annotation-type-chip:hover {
-  background: var(--heading-annotation-border, #a8c4de);
+  background: var(--heading-annotation-border);
   color: #fff;
 }
 
@@ -2293,7 +2292,7 @@ textarea {
 }
 
 .heading-annotation-numbered-toggle:hover {
-  background: var(--heading-annotation-border, #a8c4de);
+  background: var(--heading-annotation-border);
   color: #fff;
 }
 
@@ -2318,7 +2317,7 @@ textarea {
   display: none;
   margin-left: 0.5em;
   cursor: pointer;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 .heading-label-add:hover {
@@ -2348,7 +2347,7 @@ textarea {
   border-radius: var(--radius-sm);
   font-size: 0.95rem;
   line-height: 1;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 .heading-annotation:hover .heading-annotation-delete,
@@ -2364,11 +2363,11 @@ textarea {
 .heading-label-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
+  border-bottom: 1px solid var(--heading-annotation-color);
   outline: none;
   font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   padding: 0;
@@ -2390,6 +2389,140 @@ textarea {
 
 .hide-heading-labels .heading-annotation {
   display: none;
+}
+
+/* A note anchor is a SOFT TILE: the kind's glyph on a pale tint of its colour,
+   no outline, so it can be recognised and grabbed without shouting. The 22px
+   tile keeps the marginalia grid cell; `::after` widens the grab to 24px. */
+.marginalia-marker {
+  border: none;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--marker-tint) 14%, transparent);
+}
+.marginalia-marker:not(.absolute) {
+  position: relative;
+}
+.marginalia-marker::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+}
+.marginalia-marker:hover,
+.marginalia-marker[data-card-hovered="true"],
+.marginalia-marker[data-card-selected="true"] {
+  background: color-mix(in oklab, var(--marker-tint) 25%, transparent);
+}
+
+/* ── Block labels off the paper ───────────────────────────────────────
+   Title, Author, Date, a heading's type and \\label, a figure's and an
+   example's label are editor chrome. `data-margin-labels` on the prose pod
+   (useMarginLabelMode) says where they go:
+     side  — a right-aligned column in the left margin, outboard of the fold
+             chevron (--margin-col-label).
+     hover — the margin cannot hold a column (a code split, a narrow margin):
+             a raised pill above the block, on hover or keyboard focus.
+   Both are out of flow, so a label can never move the text. Surfaces outside
+   the pod (floats, card editors) carry no attribute and keep them in flow. */
+[data-margin-labels] .heading-wrapper {
+  margin-bottom: 1em;
+}
+
+[data-margin-labels="side"] .heading-annotation,
+[data-margin-labels="side"] .title-field-annotation {
+  position: absolute;
+  right: calc(100% + var(--margin-col-label));
+  top: 0.4em;
+  width: max-content;
+  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  margin: 0;
+  line-height: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Type on the first line, the \\label under it; # and × arrive on hover. */
+[data-margin-labels="side"] .heading-annotation:not(.expex-label-annotation, .expex-item-label-annotation) {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  justify-content: end;
+  justify-items: end;
+  column-gap: 4px;
+}
+[data-margin-labels="side"] .heading-annotation-type-chip { grid-area: 1 / 3; }
+[data-margin-labels="side"] .heading-annotation-numbered-toggle { grid-area: 1 / 2; margin: 0; opacity: 0; }
+[data-margin-labels="side"] .heading-annotation-delete { grid-area: 1 / 1; margin: 0; }
+[data-margin-labels="side"] .heading-annotation-sep { display: none; }
+[data-margin-labels="side"] :is(.heading-label-input, .figure-label-input) {
+  width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  text-align: right;
+}
+[data-margin-labels="side"] :is(.heading-label-text, .heading-label-warning) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-margin-labels="side"] :is(.heading-label-text, .heading-label-add, .heading-label-input, .heading-label-warning) {
+  grid-column: 1 / -1;
+}
+[data-margin-labels="side"] .heading-wrapper:hover .heading-annotation-numbered-toggle,
+[data-margin-labels="side"] .heading-annotation:focus-within .heading-annotation-numbered-toggle {
+  opacity: 1;
+}
+[data-margin-labels="side"] .heading-wrapper:hover .heading-label-add,
+[data-margin-labels="side"] .heading-wrapper:hover .heading-annotation-delete {
+  opacity: 1;
+}
+
+[data-margin-labels="hover"] .heading-annotation,
+[data-margin-labels="hover"] .title-field-annotation {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  width: max-content;
+  margin: 0;
+  padding: 2px 8px;
+  background: var(--menu-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--menu-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) ease;
+}
+[data-margin-labels="hover"] .heading-wrapper:hover > .heading-annotation,
+[data-margin-labels="hover"] .title-field-wrapper:hover > .title-field-annotation,
+[data-margin-labels="hover"] .heading-annotation:focus-within,
+[data-margin-labels="hover"] .title-field-annotation:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* An example's pod says nothing the number does not, until it has a label. */
+[data-margin-labels] :is(.expex-label-annotation, .expex-item-label-annotation) {
+  position: absolute;
+  margin: 0;
+  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) {
+  right: calc(100% + var(--margin-col-label));
+  left: auto;
+  top: auto;
+  bottom: auto;
+  transform: translateY(-1.4em);
+}
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) > span:first-child,
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) > span:nth-child(2):not(.heading-label-text, .heading-label-add) {
+  display: none;
+}
+[data-margin-labels] :is(.expex-label-annotation, .expex-item-label-annotation):not([data-labelled]):not(:focus-within) {
+  opacity: 0;
+}
+[data-margin-labels] .expex-item:hover > .expex-item-label-annotation,
+[data-margin-labels] .expex-block:hover > .expex-label-annotation {
+  opacity: 1;
 }
 
 /* Paragraph title annotations — shown in gap above paragraph */
@@ -3144,18 +3277,15 @@ textarea {
 /* Title field blocks */
 .title-field-wrapper {
   display: block;
+  position: relative;
 }
 
 .title-field-annotation {
   display: inline-block;
   font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
   margin-bottom: 0.2em;
   user-select: none;
 }
@@ -3632,15 +3762,29 @@ textarea {
   align-items: center;
   font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
   margin: 0.4em auto 0.6em;
   cursor: default;
   user-select: none;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
+}
+
+[data-margin-labels="side"] .figure-block:not(.figure-block-wrapped) .figure-annotation {
+  position: absolute;
+  right: calc(100% + var(--margin-col-label));
+  top: 0;
+  width: max-content;
+  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  margin: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: 4px;
+  line-height: 14px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+[data-margin-labels="side"] .figure-block:not(.figure-block-wrapped) .figure-annotation-sep {
+  display: none;
 }
 
 .figure-block.figure-block-wrapped {
@@ -3669,7 +3813,7 @@ textarea {
 }
 
 .figure-block .figure-annotation-numbered-toggle:hover {
-  background: var(--heading-annotation-border, #a8c4de);
+  background: var(--heading-annotation-border);
   color: #fff;
 }
 
@@ -3708,7 +3852,7 @@ textarea {
 .figure-block .figure-label-add {
   margin-left: 0.5em;
   cursor: pointer;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 .figure-block .figure-label-add:hover {
@@ -3718,11 +3862,11 @@ textarea {
 .figure-block .figure-label-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
+  border-bottom: 1px solid var(--heading-annotation-color);
   outline: none;
   font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   padding: 0;
@@ -3753,7 +3897,7 @@ textarea {
   border-radius: var(--radius-sm);
   font-size: 0.95rem;
   line-height: 1;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 /* Hover for the mouse, focus-within for the keyboard — the heading strip's
@@ -4574,23 +4718,24 @@ textarea {
    discarding all along. Same palette and family as the block so the two read
    as one construct; no chip background, since it sits mid-sentence. */
 .latex-comment-tail {
-  color: var(--latex-comment-color, #7191b0);
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  color: var(--latex-comment-color);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   font-size: 0.85em;
-  font-style: italic;
-  opacity: 0.9;
 }
 
-/* LaTeX comments */
+/* LaTeX comments: always on screen, plainly not paper. The chrome font and the
+   warm wash say "a note to yourself", and the `%` hangs left of the text edge so
+   the words themselves stay on the paper's column. */
 .latex-comment {
+  position: relative;
   display: flex;
   align-items: stretch;
-  color: var(--latex-comment-color, #7191b0);
-  background: var(--latex-comment-bg, #f0f5fa);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  margin-inline: -1.5em -0.6em;
+  color: var(--latex-comment-color);
+  background: var(--latex-comment-bg);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   font-size: 0.85em;
-  font-style: italic;
   transition: background var(--motion-base), outline-color var(--motion-base);
 }
 
@@ -4598,7 +4743,7 @@ textarea {
   /* Derived from `latexCommentColor` (preferences-tree DERIVED_CSS), so the
    * hover wash follows a comment recolor instead of staying frozen blue —
    * task 193, the task-175 `--footnote-bg-hover` class. */
-  background: var(--latex-comment-bg-hover, #e8f0f8);
+  background: var(--latex-comment-bg-hover);
 }
 
 /* Node-selection feedback (grab-handle / arrow-nav), matching the block-node
@@ -4608,35 +4753,31 @@ textarea {
  * (Task 2026-07-03-024: the atom-era `.latex-comment.selected` chrome is retired
  * in favor of PM-native selection.) */
 .latex-comment.ProseMirror-selectednode {
-  outline: 2px solid var(--heading-annotation-border, #a8c4de);
+  outline: 2px solid var(--heading-annotation-border);
   outline-offset: -1px;
   /* Node-selection wash, one derive step darker than :hover — likewise tracks
    * `latexCommentColor` (task 193). The outline stays on the shared
    * heading-annotation chrome token (see the handle note below). */
-  background: var(--latex-comment-bg-active, #e0ecf5);
+  background: var(--latex-comment-bg-active);
 }
 
 .latex-comment-handle {
-  width: 6px;
-  min-width: 6px;
-  background: var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 1.2em;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
   cursor: pointer;
-  flex-shrink: 0;
   transition: background var(--motion-base);
 }
 
 .latex-comment-handle:hover {
-  /* The handle chrome (rest bg, selectednode outline, prefix) is deliberately
-   * the shared heading-annotation blue, NOT the comment's text color — so its
-   * hover darkens THAT token rather than deriving from `latexCommentColor`,
-   * keeping the handle on one ray with its own rest state. Was a frozen
-   * `#7fa8c8`; now tracks a `headingAnnotationBorder` recolor (task 193). */
-  background: color-mix(in oklab, var(--heading-annotation-border, #a8c4de) 82%, #000);
+  background: var(--latex-comment-bg-active);
 }
 
 .latex-comment-content {
-  padding: 0.35em 0.75em;
+  position: relative;
+  padding: 0.35em 0.7em 0.35em 1.75em;
   flex: 1;
   min-width: 0;
   /* Editable content now holds a real caret — read as text, not a click target. */
@@ -4648,8 +4789,10 @@ textarea {
 }
 
 .latex-comment-prefix {
-  color: var(--heading-annotation-border, #a8c4de);
-  font-style: normal;
+  position: absolute;
+  left: 0.6em;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  pointer-events: none;
 }
 
 /* ── Drop mode ────────────────────────────────────────────────────────
@@ -4945,19 +5088,19 @@ body.perf-contain .static-borrowed-text {
   color: var(--amber-highlight-ink);
 }
 
-/* A computed-text command chip (`\today`, task 1335) — the `\ref` chip's
-   quiet frame, with the prose ink: it reads as part of the sentence (a date),
-   not as a link. Nothing opens on click, so no hover wash. */
+/* A computed-text command (`\today`, task 1335): plain prose at rest, because
+   it reads as part of the sentence (a date), not as a link or a field. The wash
+   appears under the pointer, so it can still be found and grabbed. */
 .latex-dynamic-node {
   display: inline;
-  background: var(--label-ref-bg, #f0f0f0);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--label-ref-border-color, #d5d3ce);
-  padding: 0px 4px;
   color: inherit;
   /* The base every atom keeps (atom-grab-affordance census): upgraded to
      `grab` where the gesture is live — the chip moves with the text. */
   cursor: pointer;
+}
+.latex-dynamic-node:hover {
+  background: var(--label-ref-bg);
 }
 
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base

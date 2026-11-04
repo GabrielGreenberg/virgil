@@ -305,7 +305,7 @@ function InlineLabel({
           className={`text-2xs leading-tight mt-0.5 bg-transparent outline-none border-b w-full ${
             conflict
               ? "text-danger-muted border-danger-muted"
-              : "text-[var(--heading-annotation-color,#6b9ac4)] border-[var(--heading-annotation-color,#6b9ac4)]"
+              : "text-[var(--heading-annotation-color)] border-[var(--heading-annotation-color)]"
           }`}
           placeholder="label key"
         />
@@ -322,7 +322,7 @@ function InlineLabel({
     return (
       <button
         type="button"
-        className="block max-w-full text-left text-2xs text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate cursor-text hover:underline rounded focus-ring"
+        className="block max-w-full text-left text-2xs text-[var(--heading-annotation-color)] leading-tight mt-0.5 truncate cursor-text hover:underline rounded focus-ring"
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         data-hint="Edit label"
         data-hint-pos="above"
@@ -338,7 +338,7 @@ function InlineLabel({
   return (
     <button
       type="button"
-      className="text-2xs text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer select-none rounded focus-ring"
+      className="text-2xs text-[var(--heading-annotation-color)] leading-tight mt-0.5 pl-px opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer select-none rounded focus-ring"
       data-iconbtn-exempt="outline label +: a glyph on the label's own type line, sized by the row's text by design"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
       {...iconHint({ label: "Add label", pos: "above" })}
@@ -709,7 +709,7 @@ function OutlineNode({
           ) : node.heading.label ? (
             // Task 710: a host that offers no label edit (the Library Reader)
             // still SHOWS the label — just not the click-to-edit / "+" chrome.
-            <div className="text-2xs text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate">
+            <div className="text-2xs text-[var(--heading-annotation-color)] leading-tight mt-0.5 truncate">
               {node.heading.label}
             </div>
           ) : null)}

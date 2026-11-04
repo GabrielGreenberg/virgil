@@ -393,8 +393,9 @@ export function MarkerButton({
   const accent = overridden ? getPanelColor(themeKey) : DEFAULT_PANEL_COLORS[themeKey];
 
   // Hover OR selected paint the same quiet 1.5px ring — no heavy selected halo.
-  // The marker's colored badge (bg + 1.5px border) carries persistent kind
-  // identity; selection stays visible because the ring persists while selected.
+  // The soft tile (`.marginalia-marker`: a pale tint of the kind colour, no
+  // outline) carries persistent kind identity; selection stays visible because
+  // the ring persists while selected.
   // Mirrors the panel-card change (selected collapsed to hover weight).
   // The ring is the ONE selection halo (`selectionHaloRing`, task 1179) — the
   // selected panel card wears the identical ring, from the same accent.
@@ -442,10 +443,9 @@ export function MarkerButton({
         width: MARGINALIA_ICON_SIZE,
         height: MARGINALIA_ICON_SIZE,
         color: palette.color,
-        background: palette.bg,
-        border: `1.5px solid ${palette.border}`,
+        ["--marker-tint" as string]: palette.color,
         boxShadow: interactionShadow,
-        transition: "box-shadow var(--motion-fast) ease-out",
+        transition: "box-shadow var(--motion-fast) ease-out, background var(--motion-fast) ease-out",
         opacity: m.muted ? 0.4 : undefined,
         cursor: grabHint ? "grab" : "pointer",
         padding: 0,
@@ -554,7 +554,7 @@ function OverflowPill({
           top: group.cell.y,
           width: MARGINALIA_ICON_SIZE,
           height: MARGINALIA_ICON_SIZE,
-          border: "1.5px solid var(--edge-strong)",
+          ["--marker-tint" as string]: "var(--ink-muted)",
           fontSize: 11,
           fontWeight: 600,
           lineHeight: 1,

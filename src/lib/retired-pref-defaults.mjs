@@ -36,6 +36,11 @@ export const RETIRED_PREF_DEFAULTS = Object.freeze({
   borderLight: ["#c6cbcd"],
   mutedColor: ["#8a8580"],
   panelHeaderTextColor: ["#8a8580"],
+  // Block labels leave the blue chip for quiet margin text, and % comments go
+  // warm so they read as editor notes rather than a foreign colour.
+  headingAnnotationColor: ["#6b9ac4"],
+  headingAnnotationBorder: ["#a8c4de"],
+  latexCommentColor: ["#7191b0"],
 });
 
 /**

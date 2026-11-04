@@ -699,7 +699,7 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
     // token out of its rule so this cannot drift into a second opinion.
     const twin = ruleBody(".heading-label-input");
     expect(twin).toMatch(/--heading-annotation-color/);
-    expect(outline).toContain("text-[var(--heading-annotation-color,#6b9ac4)]");
+    expect(outline).toContain("text-[var(--heading-annotation-color)]");
     expect(outline).not.toMatch(/text-blue-|border-blue-/);
   });
 

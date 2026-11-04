@@ -343,6 +343,7 @@ import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
 import { PanelChromeProvider, useCycle } from "./panel-primitives";
 import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { useMarginLabelMode } from "@/lib/editor-geometry/use-margin-label-mode";
 import { useToolGutterState } from "@/lib/tool-gutter-store";
 import { ToolGutter } from "./editor-layout/tool-gutter/ToolGutter";
 import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
@@ -5615,6 +5616,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Task 1440 — the cards-right / tools-left layout. Read once per render
   // (one localStorage read; a flip takes effect on reload like every flag).
   const gutterLayout = gutterLayoutOn();
+  const marginLabelMode = useMarginLabelMode(editor, gutterLayout || !marginaliaLane.hosted);
   const toolGutterState = useToolGutterState();
   const visiblePanels = useMemo<PanelKind[]>(
     () =>
@@ -7606,6 +7608,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               <DocumentInterruptionBanner docId={docId} />
             )}
             <div
+              data-margin-labels={marginLabelMode}
               className="editor-pane-pod"
               {...{ [MARGINALIA_HOST_ATTR]: "" }}
               style={{

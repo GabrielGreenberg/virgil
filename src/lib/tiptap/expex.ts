@@ -127,6 +127,8 @@ function createExampleLabelPod(params: {
     rendered = label;
     editing = false;
     labelAnnot.innerHTML = "";
+    // Read by the stylesheet: an unlabelled pod stays hidden until hovered.
+    labelAnnot.toggleAttribute("data-labelled", Boolean(label));
     const typeSpan = document.createElement("span");
     typeSpan.textContent = typeText;
     labelAnnot.appendChild(typeSpan);
