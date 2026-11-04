@@ -48,6 +48,7 @@ import {
   type HandoffTarget,
 } from "@/lib/multi-window/handoff";
 import { subscribe, type BusEvent } from "@/lib/multi-window/bus";
+import { onTabReturn } from "@/lib/tab-hidden";
 import { useSystemDialog } from "@/components/system-dialog-host";
 
 /** A surfaced skill-bundle sync failure for the open paper folder. Drives
@@ -85,6 +86,12 @@ async function claimEach(ids: readonly string[]): Promise<string[]> {
   return claimed;
 }
 
+/** Same rows, same fields, same order — the equality bail that keeps a
+ *  peer's no-news re-stamp from handing every `docs` consumer a new array. */
+function sameDocList(a: readonly FsaDocMeta[], b: readonly FsaDocMeta[]): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
+}
+
 /**
  * Manages the workspace tabs and the doc index.
  *
@@ -98,7 +105,19 @@ async function claimEach(ids: readonly string[]): Promise<string[]> {
  *     insert at index ≥ 1; close paths refuse the singleton id.
  */
 export function useFiles() {
-  const [docs, setDocs] = useState<FsaDocMeta[]>([]);
+  const [docs, setDocsState] = useState<FsaDocMeta[]>([]);
+  // Every edit THIS window makes to `docs` goes through here, so the peer
+  // re-read (`refreshDocs`, task 1460) can tell that a local door changed the
+  // list while its read was in flight — and read again rather than land a
+  // snapshot taken before that door's own index write.
+  const docsEpochRef = useRef(0);
+  const setDocs = useCallback(
+    (next: FsaDocMeta[] | ((prev: FsaDocMeta[]) => FsaDocMeta[])) => {
+      docsEpochRef.current++;
+      setDocsState(next);
+    },
+    [],
+  );
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
   const [activePane, setActivePaneState] = useState<ActivePaneKind>("doc");
@@ -365,6 +384,89 @@ export function useFiles() {
     [removeFromOuterOrder],
   );
 
+  // ── The paper index across windows (task 1460) ──────────────────────────
+  // `docs` is this window's snapshot of a list every window shares, and the
+  // index lives in IndexedDB, which raises no `storage` event. So a row a peer
+  // removed, created or renamed used to stay stale here until reload — and
+  // opening a removed one claimed its id and admitted the stale meta.
+  //
+  // `refreshDocs` is the ONE re-read: storage is the truth, the result
+  // replaces `docs` (equality-bailed), and a row that VANISHED while its paper
+  // is open here leaves this window through `retireOpenDoc` — the departing-doc
+  // door — rather than staying mounted against a forgotten identity. (A peer's
+  // removal of a paper open here is normally refused by task 1105's gate; this
+  // is the residue: a window that was frozen, or a row dropped by a reset.)
+  // Concurrent calls coalesce into one trailing re-read, and a local door that
+  // edited `docs` mid-read (`docsEpochRef`) forces another, so a snapshot
+  // older than this window's own write never lands. Resolves with the list it
+  // settled on, or `null` when storage could not be read (nothing changes).
+  const refreshInFlightRef = useRef<Promise<FsaDocMeta[] | null> | null>(null);
+  const refreshAgainRef = useRef(false);
+  const refreshDocs = useCallback((): Promise<FsaDocMeta[] | null> => {
+    if (refreshInFlightRef.current) {
+      refreshAgainRef.current = true;
+      return refreshInFlightRef.current;
+    }
+    const run = (async () => {
+      let settled: FsaDocMeta[] | null = null;
+      try {
+        for (let pass = 0; pass < 4; pass++) {
+          refreshAgainRef.current = false;
+          const epoch = docsEpochRef.current;
+          const next = await listDocs();
+          if (
+            (epoch !== docsEpochRef.current || refreshAgainRef.current) &&
+            pass < 3
+          ) {
+            continue;
+          }
+          settled = next;
+          break;
+        }
+      } catch (err) {
+        console.error("Failed to re-read the paper index:", err);
+        return null;
+      } finally {
+        refreshInFlightRef.current = null;
+      }
+      if (!settled) return null;
+      const next = settled;
+      const prev = docsRef.current;
+      if (!sameDocList(prev, next)) {
+        docsRef.current = next;
+        setDocs(next);
+      }
+      const kept = new Set(next.map((d) => d.id));
+      for (const d of prev) {
+        if (!kept.has(d.id) && openTabIdsRef.current.includes(d.id)) {
+          retireOpenDoc(d.id);
+        }
+      }
+      return next;
+    })();
+    refreshInFlightRef.current = run;
+    return run;
+  }, [retireOpenDoc, setDocs]);
+
+  // A peer's write through `mutateIndex` announces itself (our own does too,
+  // but this window already applied it); the return edge and the
+  // back/forward-cache return (below) cover announcements a frozen or
+  // throttled window missed. Nothing here runs per keystroke.
+  useEffect(() => {
+    const unsub = subscribe((e: BusEvent) => {
+      if (e.type !== "doc-index-changed") return;
+      if (e.windowId === getWindowId() || !hydratedRef.current) return;
+      void refreshDocs();
+    });
+    const unreturn = onTabReturn(() => {
+      if (hydratedRef.current) void refreshDocs();
+    });
+    return () => {
+      unsub();
+      unreturn();
+    };
+  }, [refreshDocs]);
+
   /** Acquire the cross-window lock for a doc, prompting handoff if it
    *  is currently owned by a peer window. Returns true when this
    *  window owns the doc afterward. Brand-new docs always succeed
@@ -428,7 +530,14 @@ export function useFiles() {
           }
         }
       }
-      const meta = docs.find((d) => d.id === id);
+      // Read the row from STORAGE, not this window's snapshot (task 1460): a
+      // peer may have forgotten the paper since `docs` was last refreshed,
+      // and admitting the stale meta would claim a dead identity. The re-read
+      // also drops the row from Recents. An unreadable index falls back to
+      // the snapshot — the open itself will say what is wrong.
+      const fresh = await refreshDocs();
+      if (fresh && !fresh.some((d) => d.id === id)) return;
+      const meta = (fresh ?? docsRef.current).find((d) => d.id === id);
       // Acquire the cross-window lock through the ONE handoff door
       // (`claimDocWithHandoff`) — it prompts, asks the peer to release,
       // re-claims, and tells the user about every failure. Even when this
@@ -438,7 +547,7 @@ export function useFiles() {
       if (!owned) return;
       await admitDoc(id, meta);
     },
-    [admitDoc, claimWithHandoff, docs],
+    [admitDoc, claimWithHandoff, refreshDocs],
   );
 
   const closeTab = useCallback(
@@ -491,6 +600,8 @@ export function useFiles() {
     };
     const onShow = (e: PageTransitionEvent) => {
       if (!e.persisted) return;
+      // Index announcements published while this page was frozen were lost.
+      void refreshDocs();
       void (async () => {
         await releasing;
         const shown = openTabIdsRef.current;
@@ -506,7 +617,7 @@ export function useFiles() {
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("pageshow", onShow);
     };
-  }, [retireOpenDoc]);
+  }, [retireOpenDoc, refreshDocs]);
 
   // ── Sync-conflict scan (task 363) ────────────────────────────────────────
   // Notice what a cloud-sync daemon did to this paper's `virgil/` folder. Keyed
@@ -884,10 +995,14 @@ export function useFiles() {
     try {
       await renameDocStorage(id, name);
       setDocs((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
+      // The rename is a no-op in storage when a peer already forgot the row
+      // (task 1460) — settle on what storage now holds rather than keep
+      // showing a name nothing persisted.
+      void refreshDocs();
     } catch (err) {
       console.error("Failed to rename file:", err);
     }
-  }, []);
+  }, [refreshDocs, setDocs]);
 
   const currentDoc = docs.find((d) => d.id === currentDocId) || null;
   // Memoized so its identity is stable across renders where neither the open

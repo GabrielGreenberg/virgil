@@ -26,6 +26,8 @@ import { clearMirror, clearMirrorOffers } from "@/lib/emergency-mirror";
 import { deleteLocalSidecar } from "@/lib/local-sidecar";
 import { clearRecoveryOffer } from "@/lib/mirror-recovery";
 import { LOCAL_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
+import { publish } from "@/lib/multi-window/bus";
+import { getWindowId } from "@/lib/multi-window/window-id";
 import { isDevStorage } from "@/lib/storage-mode";
 
 const store = createStore("virgil", "kv");
@@ -161,20 +163,32 @@ export async function readIndex(): Promise<FsaDocIndex> {
  *
  * `writeIndex` no longer exists; `doc-index-mutation-door.test.ts` holds
  * the census.
+ *
+ * THE CHANGE CHANNEL (task 1460). Every window renders the index from a
+ * snapshot it read itself (`useFiles`), and IndexedDB raises no `storage`
+ * event — so a row a peer removed, added or renamed stayed stale here until
+ * reload. Because this is the one door, it is also the one publisher: when
+ * `fn` actually changed the index, the committed transaction is announced as
+ * `doc-index-changed` (an INVALIDATION — peers re-read storage, the task-868
+ * shape). A no-op mutation (touching a row that is gone) announces nothing.
  */
 export async function mutateIndex<R>(
   fn: (idx: FsaDocIndex) => R,
 ): Promise<R> {
   let result: R | undefined;
+  let changed = false;
   await update<FsaDocIndex>(
     INDEX_KEY,
     (old) => {
       const idx = normalizeIndex(old);
+      const before = JSON.stringify(idx);
       result = fn(idx);
+      changed = JSON.stringify(idx) !== before;
       return idx;
     },
     store,
   );
+  if (changed) publish({ type: "doc-index-changed", windowId: getWindowId() });
   return result as R;
 }
 
