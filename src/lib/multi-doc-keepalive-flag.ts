@@ -10,16 +10,14 @@
  *
  * **Default ON** (proven: tsc + full suite green, two adversarial-verification
  * workflows greenlit, live-validated); the localStorage key is the OPT-OUT
- * escape hatch. Declared in `src/lib/feature-flags.ts`.
+ * escape hatch. Declared in `src/lib/feature-flags.ts`. A suite that needs the
+ * OFF branch calls `setFlagOverride("virgil:multi-doc-keepalive", false)`
+ * directly — the module once published a wrapper for that which nothing ever
+ * called (task 1466).
  */
-import { readFlag, setFlagOverride } from "@/lib/feature-flags";
+import { readFlag } from "@/lib/feature-flags";
 
 /** True when multi-doc keep-alive (capacity > 1) is enabled. Default ON. */
 export function isMultiDocKeepAliveOn(): boolean {
   return readFlag("virgil:multi-doc-keepalive");
-}
-
-/** Force the flag (tests, or an explicit toggle). `undefined` clears it. */
-export function setMultiDocKeepAliveFlag(value: boolean | undefined): void {
-  setFlagOverride("virgil:multi-doc-keepalive", value);
 }
