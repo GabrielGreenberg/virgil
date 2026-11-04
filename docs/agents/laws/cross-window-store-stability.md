@@ -871,3 +871,20 @@ nonce under a declared non-flag key, which peers hear through
 carries no data. Never hold such a fact in one component's `useState` — a
 second mounted surface then keeps reading and writing the old value.
 CI: `library/hooks/__tests__/library-root-shared.test.tsx`.
+
+### The paper-index half: the one write door is also the one announcer (task 1460)
+
+The paper index (`doc-index.ts`) is IndexedDB too, and every window renders it
+from its own snapshot (`useFiles`'s `docs`). `mutateIndex` — already the ONE
+write door (task 601) — therefore publishes `doc-index-changed` on the bus after
+a transaction that actually changed the index (a no-op mutation announces
+nothing), so every future writer is covered by construction. Receivers re-read
+through ONE function, `useFiles`'s `refreshDocs`: storage is the truth,
+equality-bailed, concurrent calls coalesce, and a local door that edited `docs`
+mid-read (an epoch bump in the `setDocs` wrapper) forces another read so a
+snapshot older than this window's own write never lands. A row that vanished
+while its paper is open here leaves through `retireOpenDoc`. Missed
+announcements (frozen / bfcached / throttled windows) are covered by the
+tab-return edge and the `pageshow(persisted)` return; `openFile` reads the row
+from storage before claiming, so a stale Recents click claims nothing.
+CI: `src/hooks/__tests__/useFiles-index-cross-window.test.tsx`.
