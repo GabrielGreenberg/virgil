@@ -129,7 +129,11 @@ import {
   type BibFamily,
 } from "@/lib/bib-family";
 import { declaredBibFiles, pickDeclaredBibFile } from "@/lib/bib-resources";
-import { DocUnreachableError, probeDocFolder } from "@/lib/doc-load-failure";
+import {
+  DocUnreachableError,
+  classifyDocLoadFailure,
+  probeDocFolder,
+} from "@/lib/doc-load-failure";
 import { figureCandidatePaths } from "@/lib/figures/graphics-path";
 
 // ---------------------------------------------------------------------------
@@ -936,7 +940,8 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
   // document (which the load-writeback below would then write into the folder
   // as if it were the paper). Library-paper docs keep the tolerant read: their
   // folder may legitimately be mid-index.
-  if (!isLibraryPaperDoc(docId)) {
+  const probed = !isLibraryPaperDoc(docId);
+  if (probed) {
     const unreachable = await probeDocFolder(docHandle, meta.texFilename);
     if (unreachable) {
       throw new DocUnreachableError(
@@ -953,12 +958,23 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
   // bytes' hash, blinding the watcher to it). If the load-writeback fires below
   // it supersedes this stamp — correct, the writeback is the newer on-disk
   // state. A missing .tex falls back to DEFAULT_LATEX and stamps nothing.
-  const latex = await safeReadTrackedText(
-    docId,
-    docHandle,
-    meta.texFilename,
-    DEFAULT_LATEX,
-  );
+  //
+  // Task 1459: once the probe has found the folder, the `.tex` read is STRICT
+  // — a NotFound now (the file removed between probe and read) is the paper's
+  // `.tex` going missing, never the folder, and never a blank default.
+  let latex: string;
+  try {
+    latex = probed
+      ? await readRequiredTrackedText(docId, docHandle, meta.texFilename)
+      : await safeReadTrackedText(docId, docHandle, meta.texFilename, DEFAULT_LATEX);
+  } catch (err) {
+    if (!probed || err instanceof DocUnreachableError) throw err;
+    const { kind } = classifyDocLoadFailure(err, "file");
+    throw new DocUnreachableError(
+      kind,
+      `Paper ${docId} is unreachable (${kind}): ${meta.folderName}/${meta.texFilename}`,
+    );
+  }
   // Task 357: retain what this document was LOADED with, so an automatic write
   // that lands before the user has genuinely edited can be measured against the
   // bytes rather than against Virgil's own re-stamped output.
@@ -2829,6 +2845,16 @@ async function safeReadText(
 
 /** `safeReadText` through the ledger (`readTrackedText`): one `getFile()`
  *  serves bytes + stamp. Not-found → `fallback`, stamping nothing. */
+/** `safeReadTrackedText` without the fallback: a missing file THROWS. */
+async function readRequiredTrackedText(
+  docId: string,
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+): Promise<string> {
+  const fh = await dir.getFileHandle(filename);
+  return readTrackedText(docId, filename, fh);
+}
+
 async function safeReadTrackedText(
   docId: string,
   dir: FileSystemDirectoryHandle,

@@ -18,7 +18,7 @@
  * the API surface is the same.
  */
 
-type PermState = "granted" | "denied" | "prompt";
+export type PermState = "granted" | "denied" | "prompt";
 
 interface HandleWithPerms {
   queryPermission(d?: { mode?: "read" | "readwrite" }): Promise<PermState>;
