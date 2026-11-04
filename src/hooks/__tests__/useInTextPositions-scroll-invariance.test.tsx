@@ -325,4 +325,54 @@ describe("task 1425 — committed tops are a function of document geometry only"
     }
     s.unmount();
   });
+
+  // Task 1464 — the carry assumed no anchor changed ORDER while out of band.
+  // The anchors here are the items' own pos (no `resolvePos`), so moving an
+  // anchor is mutating `item.pos` — exactly what the live snapshot reports
+  // after an Outline reorder or a sidecar re-target.
+  it("two off-band sections SWAP places (total height unchanged) — every moved card lands at its new anchor's exact top", async () => {
+    const s = setup({ hidden: null });
+    await s.pass();
+    const far = s.items.filter((it) => it.pos * PX_PER_POS > VIEW_BOTTOM + 2000);
+    // Two equal-length runs of cards, far below the band.
+    const A = far.slice(0, 4);
+    const B = far.slice(8, 12);
+    const offset = B[0].pos - A[0].pos;
+    for (const it of A) it.pos += offset;
+    for (const it of B) it.pos -= offset;
+    await s.pass();
+    const after = s.naturals();
+    for (const it of [...A, ...B])
+      expect(after.get(it.id)).toBeCloseTo(it.pos * PX_PER_POS, 5);
+    s.unmount();
+  });
+
+  it("an off-band card RE-ANCHORED to a far off-band block lands at that block's exact top", async () => {
+    const s = setup({ hidden: null });
+    await s.pass();
+    const far = s.items.filter((it) => it.pos * PX_PER_POS > VIEW_BOTTOM + 2000);
+    // (i) across other cards; (ii) within its own gap, so ORDER is unchanged
+    // and only the position check can see it.
+    const across = far[1];
+    across.pos = far[far.length - 2].pos + 7;
+    const within = far[4];
+    within.pos += 30;
+    await s.pass();
+    const after = s.naturals();
+    expect(after.get(across.id)).toBeCloseTo(across.pos * PX_PER_POS, 5);
+    expect(after.get(within.id)).toBeCloseTo(within.pos * PX_PER_POS, 5);
+    s.unmount();
+  });
+
+  it("the order check costs no reads in the rigid case — an unchanged document carries every off-band card", async () => {
+    const s = setup({ hidden: null });
+    await s.pass();
+    s.coordsSpy.mockClear();
+    await s.pass();
+    const read = new Set(s.coordsSpy.mock.calls.map((c) => c[0] as number));
+    const far = s.items.filter((it) => it.pos * PX_PER_POS > VIEW_BOTTOM + 2000);
+    expect(far.length).toBeGreaterThan(3);
+    for (const it of far) expect(read.has(it.pos)).toBe(false);
+    s.unmount();
+  });
 });

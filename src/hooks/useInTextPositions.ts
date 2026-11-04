@@ -233,6 +233,11 @@ const SHIFT_AGREE_EPSILON_PX = 0.5;
  * cards lumped as their passage left the viewport and jumped back when it
  * returned (task 1425). No estimate is made here at all.
  *
+ * SOUND ONLY IF NOTHING CHANGED ORDER while out of band — each held item must
+ * still sit between the neighbours it sat between last pass. That is not
+ * assumed: the caller runs `checkCarryInvariant` (task 1464) first and passes
+ * only the items, and anchors, that survive it.
+ *
  * `held` and `anchors` must be sorted by pos; `anchors` must start at −∞ and
  * end at +∞. `read` returns the item's exact raw top, or null if it cannot be
  * read (that item then rides its left anchor's delta).
@@ -267,6 +272,106 @@ export function resolveHeldTops(
     i = j;
   }
   return out;
+}
+
+/** An exact read this pass, as the carry's invariant check sees it: where it
+ *  was last pass (`prevTop`, raw) and how far its anchor's document position
+ *  shifted since (`posShift`). The two document edges take `prevTop` −∞ / +∞
+ *  (they bound everything and can never be out of order) and `posShift` 0 /
+ *  the doc-size change. */
+export interface CheckedAnchor extends ShiftAnchor {
+  prevTop: number;
+  posShift: number;
+}
+
+/** A held item plus the document position its `prevTop` was taken at. */
+export interface CheckedHeld extends HeldItem {
+  prevPos: number;
+}
+
+/** How far a previous top may run AGAINST document order before it counts as
+ *  an inversion. Not sub-pixel: two anchors on one visual line legitimately
+ *  differ by a few px (a superscript citation sits higher than the text after
+ *  it), and an inversion that matters is a moved block — at least a line. */
+const ORDER_INVERSION_TOLERANCE_PX = 8;
+
+/**
+ * THE CARRY'S INVARIANT, CHECKED (task 1464). `resolveHeldTops` carries a held
+ * item by the shift of its NEIGHBOURS, which is only sound if the item is still
+ * between the same neighbours it was between last pass — i.e. if nothing moved
+ * in document ORDER while out of band. Two ways that fails, two checks, both
+ * O(items) with zero DOM reads:
+ *
+ * 1. ORDER. Walk anchors + held merged in NEW pos order; their previous tops
+ *    must be non-decreasing. Every member of an inversion is suspect — an
+ *    off-band section reorder inverts exactly the moved sections' cards, and a
+ *    card re-anchored across others inverts against them. A suspect HELD item
+ *    is demoted to an exact read; a suspect ANCHOR still committed its exact
+ *    read but its delta measures its own move, not the document's, so it is
+ *    dropped as a shift anchor.
+ * 2. POSITION. A held item between two anchors moved, in document position, by
+ *    an amount between theirs (an edit in the run shifts the items after it by
+ *    the right anchor's amount, the items before it by the left's). A pos shift
+ *    outside that range is a re-anchor or a moved block that happened to land
+ *    in order — demoted.
+ *
+ * The rigid case — scrolling, typing, a card-body edit — inverts nothing and
+ * shifts every pos within its run's range, so it costs nothing (the zero-read
+ * contract of task 1425 holds).
+ *
+ * Accepted residual: two compensating height changes inside one held run (one
+ * block +N, another −N) leave both end deltas equal and the order intact, so
+ * the run between them is carried rigidly when it moved. Neither check can see
+ * that without a read; the next pass that reads the region corrects it.
+ *
+ * Both inputs must be sorted by pos; `anchors` must start at −∞ and end at +∞.
+ */
+export function checkCarryInvariant(
+  held: ReadonlyArray<CheckedHeld>,
+  anchors: ReadonlyArray<CheckedAnchor>,
+): { demoted: Set<string>; anchors: ShiftAnchor[] } {
+  type Entry = { prevTop: number; held: number; anchor: number };
+  const merged: Entry[] = [];
+  let i = 0;
+  for (let a = 0; a < anchors.length; a++) {
+    while (i < held.length && held[i].pos < anchors[a].pos)
+      merged.push({ prevTop: held[i].prevTop, held: i++, anchor: -1 });
+    merged.push({ prevTop: anchors[a].prevTop, held: -1, anchor: a });
+  }
+  const suffixMin = new Array<number>(merged.length + 1);
+  suffixMin[merged.length] = Infinity;
+  for (let k = merged.length - 1; k >= 0; k--)
+    suffixMin[k] = Math.min(merged[k].prevTop, suffixMin[k + 1]);
+
+  const demoted = new Set<string>();
+  const kept: CheckedAnchor[] = [];
+  let prefixMax = -Infinity;
+  for (let k = 0; k < merged.length; k++) {
+    const e = merged[k];
+    const inverted =
+      prefixMax > e.prevTop + ORDER_INVERSION_TOLERANCE_PX ||
+      suffixMin[k + 1] < e.prevTop - ORDER_INVERSION_TOLERANCE_PX;
+    prefixMax = Math.max(prefixMax, e.prevTop);
+    if (e.held >= 0) {
+      if (inverted) demoted.add(held[e.held].id);
+    } else if (!inverted) {
+      kept.push(anchors[e.anchor]);
+    }
+  }
+
+  let a = 0;
+  for (const h of held) {
+    if (demoted.has(h.id)) continue;
+    while (a + 1 < kept.length - 1 && kept[a + 1].pos <= h.pos) a++;
+    const lo = Math.min(kept[a].posShift, kept[a + 1].posShift);
+    const hi = Math.max(kept[a].posShift, kept[a + 1].posShift);
+    const shift = h.pos - h.prevPos;
+    if (shift < lo || shift > hi) demoted.add(h.id);
+  }
+  return {
+    demoted,
+    anchors: kept.map(({ pos, delta }) => ({ pos, delta })),
+  };
 }
 
 const DEFAULT_ENTRY = (id: string) => linkCardIdSelector(id);
@@ -564,12 +669,16 @@ export function useInTextPositions(
   // top — an exact read, or a provably-exact rigid carry (`resolveHeldTops`).
   // Never an estimate (task 1425): this is what makes the deck a function of
   // document geometry rather than of where the viewport was at the last pass.
-  // Committed with the naturals, cleared with them.
-  const rawTopRef = useRef<Map<string, number>>(new Map());
+  // Committed with the naturals, cleared with them. `pos` is the anchor's
+  // document position the top was taken at — what lets the next pass SEE an
+  // anchor that moved while out of band (`checkCarryInvariant`, task 1464).
+  const rawTopRef = useRef<Map<string, { top: number; pos: number }>>(new Map());
   // The document's pod-relative top/bottom edges at the last committed pass —
-  // the outermost shift anchors. `null` ⇒ no baseline, so the next pass reads
-  // every item exactly.
-  const prevEdgesRef = useRef<{ top: number; bottom: number } | null>(null);
+  // the outermost shift anchors — and its content size then. `null` ⇒ no
+  // baseline, so the next pass reads every item exactly.
+  const prevEdgesRef = useRef<{ top: number; bottom: number; size: number } | null>(
+    null,
+  );
   // Set by font-ready: the next pass reads every item exactly (a glyph-metric
   // swap moves every line by a different amount — no region to shift).
   const fullPassPendingRef = useRef(false);
@@ -949,9 +1058,11 @@ export function useInTextPositions(
     // already taken. They are the outermost shift anchors: an edit anywhere
     // moves the bottom edge, so a held run that ends at the document's end can
     // only ride rigidly if the end moved with it.
+    const docSize = editor.state.doc.content.size;
     const edges = {
       top: editorRect.top - podRect.top,
       bottom: editorRect.bottom - podRect.top,
+      size: docSize,
     };
     const prevEdges = prevEdgesRef.current;
     // A width change re-wraps every line, and a font swap re-measures every
@@ -963,11 +1074,11 @@ export function useInTextPositions(
       widthAtPassStart !== editorDom.clientWidth;
 
     const next = new Map<string, NaturalEntry>();
-    const nextRaw = new Map<string, number>();
+    const nextRaw = new Map<string, { top: number; pos: number }>();
     const raws: RawMeasure[] = [];
     // Anchors carry the measured shift since the last pass at an exact read.
-    const anchors: ShiftAnchor[] = [];
-    const held: HeldItem[] = [];
+    const anchors: CheckedAnchor[] = [];
+    const held: CheckedHeld[] = [];
 
     /** The ONE exact read (anchor `coordsAtPos` + the in-zone card rect). */
     const readExact = (id: string, pos: number): number | null => {
@@ -1001,7 +1112,7 @@ export function useInTextPositions(
       );
 
       raws.push({ preClampTop, height, pos });
-      nextRaw.set(id, preClampTop);
+      nextRaw.set(id, { top: preClampTop, pos });
       // The committed natural retains the historical ≥0 clamp (negative
       // values legitimately appear when an unanchored block sits just above
       // the pod). The degeneracy guard below — which reads the *pre-clamp*
@@ -1021,35 +1132,59 @@ export function useInTextPositions(
       // track their anchor as plain typing shifts content; fall back to the
       // captured pos for kinds the resolver doesn't cover.
       const livePos = resolvePos?.(item.id);
-      const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
-      const prevTop = rawTopRef.current.get(item.id);
+      const pos = Math.min(livePos ?? item.pos, docSize);
+      const prev = rawTopRef.current.get(item.id);
       if (
         !fullPass &&
-        prevTop !== undefined &&
+        prev !== undefined &&
         (pos < band.start || pos > band.end)
       ) {
-        held.push({ id: item.id, pos, prevTop });
+        held.push({ id: item.id, pos, prevTop: prev.top, prevPos: prev.pos });
         continue;
       }
       const top = readExact(item.id, pos);
-      if (top !== null && prevTop !== undefined)
-        anchors.push({ pos, delta: top - prevTop });
+      if (top !== null && prev !== undefined)
+        anchors.push({
+          pos,
+          delta: top - prev.top,
+          prevTop: prev.top,
+          posShift: pos - prev.pos,
+        });
     }
 
     if (held.length > 0 && prevEdges !== null) {
-      anchors.push({ pos: -Infinity, delta: edges.top - prevEdges.top });
-      anchors.push({ pos: Infinity, delta: edges.bottom - prevEdges.bottom });
+      anchors.push({
+        pos: -Infinity,
+        delta: edges.top - prevEdges.top,
+        prevTop: -Infinity,
+        posShift: 0,
+      });
+      anchors.push({
+        pos: Infinity,
+        delta: edges.bottom - prevEdges.bottom,
+        prevTop: Infinity,
+        posShift: docSize - prevEdges.size,
+      });
       anchors.sort((a, b) => a.pos - b.pos);
       held.sort((a, b) => a.pos - b.pos);
-      const carried = resolveHeldTops(held, anchors, (h) => {
+      // The carry assumes nothing changed ORDER while out of band; check it
+      // (task 1464). A held item that fails is read exactly — it simply joins
+      // the exact loop; its delta measures its own move, so it is no anchor.
+      const gate = checkCarryInvariant(held, anchors);
+      const carryable: HeldItem[] = [];
+      for (const h of held) {
+        if (gate.demoted.has(h.id)) readExact(h.id, h.pos);
+        else carryable.push(h);
+      }
+      const carried = resolveHeldTops(carryable, gate.anchors, (h) => {
         const top = readExact(h.id, h.pos);
         // `readExact` committed it; a failed read rides its neighbours.
         return top;
       });
       for (const h of held) {
-        if (next.has(h.id)) continue; // bisection read it exactly
+        if (next.has(h.id)) continue; // demoted or bisected: read exactly
         const top = carried.get(h.id) ?? h.prevTop;
-        nextRaw.set(h.id, top);
+        nextRaw.set(h.id, { top, pos: h.pos });
         next.set(
           h.id,
           committed(
