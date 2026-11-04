@@ -92,6 +92,13 @@ function sameDocList(a: readonly FsaDocMeta[], b: readonly FsaDocMeta[]): boolea
   return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** A door's claim on admitting one paper (task 1463): `stillWanted` is false
+ *  once the paper has been retired from this window since the ticket. */
+interface AdmitTicket {
+  id: string;
+  stillWanted: () => boolean;
+}
+
 /**
  * Manages the workspace tabs and the doc index.
  *
@@ -352,6 +359,22 @@ export function useFiles() {
     );
   }, []);
 
+  // ── Admit tickets (task 1463) ───────────────────────────────────────────
+  // An open door awaits twice before the paper is shown — the claim, then the
+  // outgoing doc's drain inside `admitDoc` — and the paper can LEAVE this
+  // window in between: a peer's "Move it here" (`doc-handoff-request`), a
+  // close, a delete. Each of those goes through `retireOpenDoc`, which already
+  // released the lock. Admitting afterwards would make the paper current in a
+  // window that no longer holds it. So every retirement bumps the paper's
+  // epoch, a door takes a ticket just BEFORE its claim, and `admitDoc`
+  // re-validates the ticket after its own: a retirement since wins, and
+  // nothing is admitted.
+  const retireEpochRef = useRef(new Map<string, number>());
+  const admitTicket = useCallback((id: string): AdmitTicket => {
+    const epoch = retireEpochRef.current.get(id) ?? 0;
+    return { id, stillWanted: () => (retireEpochRef.current.get(id) ?? 0) === epoch };
+  }, []);
+
   /**
    * "An open doc leaves this window" — the ONE answer for close, forget
    * (delete) and a peer window's handoff (task 602). Drops `id` from the
@@ -367,6 +390,7 @@ export function useFiles() {
    */
   const retireOpenDoc = useCallback(
     (id: string) => {
+      retireEpochRef.current.set(id, (retireEpochRef.current.get(id) ?? 0) + 1);
       setOpenTabIds((prev) => {
         const next = prev.filter((t) => t !== id);
         if (id === currentDocIdRef.current) {
@@ -486,7 +510,9 @@ export function useFiles() {
    * runs exactly this, in this order:
    *
    *   1. drain the OUTGOING doc's pending writes before its pipeline ends
-   *      (see `flushOutgoing` for why this is load-bearing under keep-alive);
+   *      (see `flushOutgoing` for why this is load-bearing under keep-alive),
+   *      then re-validate the door's ticket — a paper retired since the
+   *      claim (handed off, closed, deleted) is not admitted (task 1463);
    *   2. register the meta in `docs` if it is new to this window;
    *   3. add the tab (open set + outer order), make it current, show the doc;
    *   4. bump its recents timestamp.
@@ -498,9 +524,13 @@ export function useFiles() {
    * door cannot forget it.
    */
   const admitDoc = useCallback(
-    async (id: string, meta?: FsaDocMeta) => {
+    async (ticket: AdmitTicket, meta?: FsaDocMeta) => {
+      const { id } = ticket;
       const prev = currentDocIdRef.current;
       if (prev && prev !== id) await drainDoc(prev);
+      // Retired since the door took its ticket (task 1463) — the lock is
+      // already released, so the departure wins.
+      if (!ticket.stillWanted()) return;
       if (meta) {
         setDocs((ds) => (ds.some((d) => d.id === id) ? ds : [...ds, meta]));
       }
@@ -543,11 +573,12 @@ export function useFiles() {
       // re-claims, and tells the user about every failure. Even when this
       // window holds the doc: the claim is free then, and for a paper whose
       // close is still draining it is what keeps the lock (task 1454).
+      const ticket = admitTicket(id);
       const owned = await claimWithHandoff(meta ?? { id });
       if (!owned) return;
-      await admitDoc(id, meta);
+      await admitDoc(ticket, meta);
     },
-    [admitDoc, claimWithHandoff, refreshDocs],
+    [admitDoc, admitTicket, claimWithHandoff, refreshDocs],
   );
 
   const closeTab = useCallback(
@@ -690,8 +721,9 @@ export function useFiles() {
       try {
         const meta = await createDocFromPicker(name, templateId);
         // Brand-new doc — claim is uncontested.
+        const ticket = admitTicket(meta.id);
         await claimDoc(meta.id);
-        await admitDoc(meta.id, meta);
+        await admitDoc(ticket, meta);
         return meta;
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return null;
@@ -699,7 +731,7 @@ export function useFiles() {
         throw err;
       }
     },
-    [admitDoc],
+    [admitDoc, admitTicket],
   );
 
   // De-dup paper-folder skill syncs across StrictMode double-mounts and
@@ -825,11 +857,12 @@ export function useFiles() {
    *  another window. */
   const activateDoc = useCallback(
     async (meta: FsaDocMeta) => {
+      const ticket = admitTicket(meta.id);
       const owned = await claimWithHandoff(meta);
       if (!owned) return;
-      await admitDoc(meta.id, meta);
+      await admitDoc(ticket, meta);
     },
-    [admitDoc, claimWithHandoff],
+    [admitDoc, admitTicket, claimWithHandoff],
   );
 
   /**
