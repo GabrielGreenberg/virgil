@@ -18,8 +18,10 @@
  *   - OPFS cleared, IndexedDB intact (dead handle) → re-seed files +
  *     re-`setDocHandle`.
  *
- * Re-seed policy (data-loss-safe): files are written ONLY when no seed
- * marker is present (cold start / wiped OPFS). On a `seedVersion` BUMP over
+ * Re-seed policy (data-loss-safe): files are written ONLY when no readable
+ * seed marker is present (cold start / wiped OPFS / failed marker write), and
+ * then ONLY the files that are absent — an existing file is never
+ * overwritten outside `resetExample()`. On a `seedVersion` BUMP over
  * an existing sandbox we adopt the new version marker WITHOUT clobbering the
  * user's edits / AI sidecars — updated shipped content reaches an existing
  * sandbox only through the explicit `resetExample()` path.
@@ -109,13 +111,55 @@ async function readSeedMarker(
     const text = await (await fh.getFile()).text();
     return (JSON.parse(text) as { seedVersion?: string }).seedVersion ?? null;
   } catch {
-    return null; // absent / unreadable → treat as "not seeded"
+    // Absent OR unreadable (corrupt JSON, transient read failure) — the two
+    // need no telling apart, because the remedy below is non-destructive:
+    // it fills only the files that are missing, never overwrites one.
+    return null;
   }
 }
 
-// In-window dedupe: two empty-state clicks (or a StrictMode double-invoke)
-// share one seed pass rather than racing two writers into the same dir.
-let inflight: Promise<FsaDocMeta> | null = null;
+/** Whether `path` (relative to `dir`) is DEFINITELY absent. Only a
+ *  NotFoundError says so; any other failure answers "not absent", so an
+ *  unreadable file is left alone rather than overwritten. */
+async function isAbsent(
+  dir: FileSystemDirectoryHandle,
+  path: string,
+): Promise<boolean> {
+  const segments = path.split("/").filter(Boolean);
+  const filename = segments.pop();
+  if (!filename) return false;
+  try {
+    let cursor = dir;
+    for (const seg of segments) cursor = await cursor.getDirectoryHandle(seg);
+    await cursor.getFileHandle(filename);
+    return false;
+  } catch (e) {
+    return e instanceof DOMException && e.name === "NotFoundError";
+  }
+}
+
+// The ONE in-window slot for work on the example's directory — a seed or a
+// reset. Two empty-state clicks (or a StrictMode double-invoke) share one
+// seed pass; an open during a reset waits for the reset's pristine seed; a
+// second reset joins the first. Cleared COMPARE-AND-CLEAR, so a pass that
+// settles after it was superseded can never clear its successor's entry.
+let inflight: { promise: Promise<FsaDocMeta>; isReset: boolean } | null = null;
+
+function occupy(
+  isReset: boolean,
+  run: () => Promise<FsaDocMeta>,
+): Promise<FsaDocMeta> {
+  const entry = { isReset, promise: null as unknown as Promise<FsaDocMeta> };
+  entry.promise = (async () => {
+    try {
+      return await run();
+    } finally {
+      if (inflight === entry) inflight = null;
+    }
+  })();
+  inflight = entry;
+  return entry.promise;
+}
 
 /**
  * Ensure the example exists in OPFS and is registered in the index, healing
@@ -124,15 +168,8 @@ let inflight: Promise<FsaDocMeta> | null = null;
  */
 export async function ensureExampleSeeded(): Promise<FsaDocMeta> {
   if (isDevStorage || !opfsAvailable()) throw new ExampleUnavailableError();
-  if (inflight) return inflight;
-  inflight = (async () => {
-    try {
-      return await seedImpl();
-    } finally {
-      inflight = null;
-    }
-  })();
-  return inflight;
+  if (inflight) return inflight.promise;
+  return occupy(false, seedImpl);
 }
 
 async function seedImpl(): Promise<FsaDocMeta> {
@@ -141,10 +178,15 @@ async function seedImpl(): Promise<FsaDocMeta> {
   const marker = await readSeedMarker(dir);
 
   if (marker === null) {
-    // Cold start or wiped OPFS: write the full tree, marker LAST as the
-    // commit point (a crash mid-seed leaves no marker → next call re-seeds).
+    // No readable marker: a cold start, a wiped OPFS, an interrupted seed —
+    // or a sandbox whose marker write failed (quota) after its files landed
+    // and the user then edited. So write ONLY the files that are absent,
+    // marker LAST as the commit point (a crash mid-seed leaves no marker →
+    // the next call fills the rest). An empty dir gets the full tree; an
+    // edited one keeps every edit.
     const files: SeedFile[] = [];
     for (const entry of manifest.files) {
+      if (!(await isAbsent(dir, entry.path))) continue;
       const resp = await fetch(bundleUrl(entry.path), { cache: "no-store" });
       if (!resp.ok) {
         throw new Error(`example asset fetch failed: ${entry.path} ${resp.status}`);
@@ -212,17 +254,22 @@ async function ensureIndexRowAndHandle(
  */
 export async function resetExample(): Promise<FsaDocMeta> {
   if (isDevStorage || !opfsAvailable()) throw new ExampleUnavailableError();
-  // Orphan any in-flight seed so the re-seed at the end starts FRESH AFTER the
-  // wipe. Otherwise the trailing `ensureExampleSeeded()` would return a stale
-  // mid-flight promise that could write into the just-deleted OPFS dir.
-  inflight = null;
-  await drainDoc(EXAMPLE_DOC_ID);
-  await removeOpfsDocDir(EXAMPLE_FOLDER_NAME);
-  await mutateIndex((idx) => {
-    idx.docs = idx.docs.filter((d) => d.id !== EXAMPLE_DOC_ID);
+  if (inflight?.isReset) return inflight.promise;
+  // Take the slot (so an open during the reset waits for its pristine seed),
+  // then let any seed already running SETTLE before the wipe: a seed that
+  // outlived the wipe would write into the deleted dir through its stale
+  // handle and push its index row across the purge below.
+  const prior = inflight?.promise;
+  return occupy(true, async () => {
+    await prior?.catch(() => {});
+    await drainDoc(EXAMPLE_DOC_ID);
+    await removeOpfsDocDir(EXAMPLE_FOLDER_NAME);
+    await mutateIndex((idx) => {
+      idx.docs = idx.docs.filter((d) => d.id !== EXAMPLE_DOC_ID);
+    });
+    // A RESET, not a removal: the fixed id is re-seeded below, so it keeps
+    // its place in the user's "My Papers" list (purgeDoc's census).
+    await purgeDoc(EXAMPLE_DOC_ID, "reset");
+    return seedImpl();
   });
-  // A RESET, not a removal: the fixed id is re-seeded below, so it keeps
-  // its place in the user's "My Papers" list (purgeDoc's census).
-  await purgeDoc(EXAMPLE_DOC_ID, "reset");
-  return ensureExampleSeeded();
 }
