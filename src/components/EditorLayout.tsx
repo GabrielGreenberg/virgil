@@ -848,24 +848,32 @@ export default function EditorLayout() {
     () => (isMultiDocKeepAliveOn() ? DOC_KEEP_ALIVE_CAPACITY : 1),
     [],
   );
+  // Slot eligibility = open tab ∧ not failed-to-load, defined ONCE (task 1456):
+  // the LRU prunes its ORDER by it (so capacity counts only live papers — a
+  // closed tab or failed load can no longer evict a warm paper to hold a slot)
+  // and the render block filters by it. A slot whose paper failed to load
+  // YIELDS (task 1102): it unmounts, so the gate shows instead of a contentless
+  // pane, and a successful Locate/Try again (which clears the failure)
+  // remounts it fresh — a fresh load. The predicate's identity is the LRU's
+  // live-set change signal, so it is memoized on exactly what it reads.
+  const loadFailureRevision = useDocLoadFailureRevision();
+  const isKeepAliveSlotLive = useCallback(
+    (id: string) => openTabs.some((t) => t.id === id) && !hasDocLoadFailure(id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFailureRevision is the registry's change signal
+    [openTabs, loadFailureRevision],
+  );
   const docKeepAliveEntries = useDocKeepAliveLRU(
     grantedActiveDocId,
     docKeepAliveCapacity,
+    isKeepAliveSlotLive,
   );
-  // The actually-rendered keep-alive slots = LRU order ∩ open tabs (a just-closed
-  // id can linger in the LRU order; filter it out). Derived once so the render
-  // block and the DiskWatcher's live-set reconciliation agree on the set.
-  // A slot whose paper failed to load YIELDS (task 1102): it unmounts, so the
-  // gate shows instead of a contentless pane, and a successful Locate/Try again
-  // (which clears the failure) remounts it fresh — a fresh load.
-  const loadFailureRevision = useDocLoadFailureRevision();
+  // The actually-rendered keep-alive slots. The LRU never holds a dead id
+  // except the active one (never pruned while shown), so this filter is the
+  // same predicate applied to that one remaining case. Derived once so the
+  // render block and the DiskWatcher's live-set reconciliation agree.
   const renderedKeepAliveEntries = useMemo(
-    () =>
-      docKeepAliveEntries.filter(
-        (e) => openTabs.some((t) => t.id === e.id) && !hasDocLoadFailure(e.id),
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFailureRevision is the registry's change signal
-    [docKeepAliveEntries, openTabs, loadFailureRevision],
+    () => docKeepAliveEntries.filter((e) => isKeepAliveSlotLive(e.id)),
+    [docKeepAliveEntries, isKeepAliveSlotLive],
   );
   const keepAliveDocIds = renderedKeepAliveEntries.map((e) => e.id);
 
@@ -2928,15 +2936,15 @@ export default function EditorLayout() {
           KeepAliveSlot publishes the visibility context the §2 measurement
           followers read to go INERT while hidden (keystroke sanctity).
 
-          MEMBERSHIP = the LRU order ∩ openTabs. `grantedActiveDocId` keeps an
+          MEMBERSHIP = the LRU order, pruned by `isKeepAliveSlotLive` (open tab
+          ∧ not failed-to-load). `grantedActiveDocId` keeps an
           ungranted active doc OUT of the set, so the editor never mounts before
           its folder is granted (its hooks read disk on mount → NotAllowedError);
           the standalone DocPermissionGate above shows alone until the user grants,
           then the doc joins the set and mounts fresh. Filtering on `openTabs`
           unmounts a closed tab promptly (→ DocPipeline cleanup flush +
-          pruneDocMaps). A just-closed id can briefly linger in the LRU order
-          (render-filtered out, harmless); we intentionally don't extend the shared
-          primitive to prune it in v1. */}
+          pruneDocMaps). The LRU prunes dead ids from its ORDER (task 1456), so a
+          closed or failed paper never spends a slot a live warm paper needs. */}
       {renderedKeepAliveEntries.map((entry) => {
           const slotDocId = entry.id;
           const isActive = slotDocId === currentDocId;
