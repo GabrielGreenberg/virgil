@@ -36,6 +36,10 @@ type Scope =
   | "visible"
   /** Gated on the event's `docId`. */
   | "doc"
+  /** Gated on the event naming THIS pane (`PaneRootContext` id) as its
+   *  producer's owner — stricter than visibility, which two Library Readers
+   *  on screen at once both pass (task 1453). */
+  | "owner"
   /** Bails unless the event target is inside this pane's own DOM. */
   | "target"
   /** Armed on a gesture's start and removed on its end, inside the pane the
@@ -64,6 +68,7 @@ interface Row {
 const SCOPE_TEETH: Record<Scope, RegExp> = {
   visible: /\b(?:useIsVisibleRef|usePaneScopedListener|isVisibleRef|visibleRef)\b|\bif\s*\(\s*!visible\b/,
   doc: /\bdocId\s*!==|!==\s*docId\b|\bdocId\b\s*\)\s*return/,
+  owner: /\.ownerPane\s*!==\s*paneRootId\b/,
   target: /\.contains\(/,
   gesture: /removeEventListener\(/,
   "open-state": /removeEventListener\(/,
@@ -75,9 +80,9 @@ const SCOPE_TEETH: Record<Scope, RegExp> = {
 
 const LEDGER: Record<string, Row> = {
   "components/EditorPane.tsx": {
-    scope: "visible",
+    scope: "owner",
     events: ["window.virgil-stack-drop"],
-    why: "the float→Stack drop is app-global; only the shown pane captures it",
+    why: "the float→Stack drop names the pane that mounts the float; only that pane captures it (visibility alone let two visible Readers both answer — task 1453)",
   },
   "components/FloatingPanel.tsx": {
     scope: "gesture",

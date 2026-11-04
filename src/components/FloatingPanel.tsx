@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -39,6 +40,7 @@ import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/d
 import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 import { DOCKED_POD_Z } from "@/components/editor-layout/constants";
+import { PaneRootContext } from "@/components/editor-layout/pane-dom";
 import {
   paneDockSlot,
   usePaneRoot,
@@ -552,8 +554,16 @@ function FloatingPanelInner({
   // `useImperativeHandle` with an empty dep list, so both would otherwise read
   // the MOUNT-time popout key — and the stack-capture capability must be
   // resolved from the same key the release then reports.
-  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode, cardKey });
-  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode, cardKey };
+  //
+  // `ownerPane` rides along for the stack drop (task 1453): the release is a
+  // window event, and every visible pane listens — two Library Readers can be
+  // on screen at once, and a per-doc card key can resolve in both. The float is
+  // mounted by exactly one pane (its `FloatHost`), so the drop names THAT pane
+  // and only it answers. `null` outside any pane (a shell with no `cardKey`
+  // never dispatches a capture anyway).
+  const ownerPane = useContext(PaneRootContext);
+  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode, cardKey, ownerPane });
+  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode, cardKey, ownerPane };
 
   // Sync local pos when the parent's float rect changes (e.g. on
   // undock the parent calls onUndock which writes a new floatPosition;
@@ -1015,6 +1025,7 @@ function FloatingPanelInner({
             new CustomEvent("virgil-stack-drop", {
               detail: {
                 cardKey: dropKey,
+                ownerPane: handlersRef.current.ownerPane,
                 clientX: cursor?.x ?? finalRect.x,
                 clientY: cursor?.y ?? finalRect.y,
               },
