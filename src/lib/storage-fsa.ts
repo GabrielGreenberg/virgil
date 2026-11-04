@@ -2267,13 +2267,119 @@ function resolveTemplate(id?: string): DocumentTemplate {
 async function writeTemplateFiles(
   docHandle: FileSystemDirectoryHandle,
   template: DocumentTemplate,
+  ledger: CreateLedger,
 ): Promise<void> {
   for (const [filename, content] of Object.entries(template.files)) {
     const fh = await docHandle.getFileHandle(filename, { create: true });
+    // Recorded the moment the entry exists, before its bytes: a write that
+    // throws mid-file still leaves a (possibly empty) file this call made.
+    ledger.files.push(filename);
     await writeTextToHandle(fh, content);
   }
-  // Pre-create virgil/ so the gate sees a valid layout immediately.
+  // Pre-create virgil/ so the gate sees a valid layout immediately. In the
+  // in-folder path it may already exist (the user's own folder) — only a
+  // virgil/ THIS call created is ours to remove.
+  const hadVirgil = await hasEntry(docHandle, VIRGIL_SUBDIR);
   await docHandle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
+  if (!hadVirgil) ledger.virgilDir = true;
+}
+
+// ---------------------------------------------------------------------------
+// Creation is all-or-nothing (task 1462)
+//
+// A create is several writes — the folder, each template file, the handle
+// slot, the index row — and both collision checks refuse a name that already
+// exists. So a create that failed half-way used to strand its own leftovers
+// and the retry refused on them ("A folder named X already exists"). Each
+// create therefore keeps a LEDGER of exactly what it made, and a throw
+// anywhere removes exactly that, then rethrows the original error. Never
+// anything that pre-existed: the collision check already proved every name
+// in the ledger absent before this call began.
+// ---------------------------------------------------------------------------
+
+interface CreateLedger {
+  /** Template files this call created inside the doc folder. */
+  files: string[];
+  /** This call created the doc folder's `virgil/` subdirectory. */
+  virgilDir: boolean;
+  /** The doc-handle slot this call stored, if it got that far. */
+  handleId: string | null;
+}
+
+/**
+ * Populate `docHandle` from the template and register the doc — or, on any
+ * throw, undo what this call made and rethrow. `removeContainer`, when given,
+ * removes the doc folder itself (the picker path created it); without it the
+ * folder is the user's own and only the ledger's entries inside it go.
+ * Compensation is best-effort: a failed undo is logged, and the ORIGINAL error
+ * is what reaches the caller.
+ */
+async function populateAndRegister(args: {
+  docHandle: FileSystemDirectoryHandle;
+  template: DocumentTemplate;
+  name: string;
+  folderName: string;
+  removeContainer?: () => Promise<void>;
+}): Promise<FsaDocMeta> {
+  const { docHandle, template, name, folderName, removeContainer } = args;
+  const ledger: CreateLedger = { files: [], virgilDir: false, handleId: null };
+  try {
+    await writeTemplateFiles(docHandle, template, ledger);
+
+    const now = new Date().toISOString();
+    const meta: FsaDocMeta = {
+      id: generateEntityId().slice(0, 8),
+      name,
+      texFilename: template.mainTexFilename,
+      folderName,
+      createdAt: now,
+      lastModifiedAt: now,
+      lastAccessedAt: now,
+    };
+
+    await setDocHandle(meta.id, docHandle);
+    ledger.handleId = meta.id;
+    // The index row is the LAST write: once it lands the doc exists, and
+    // nothing after it can fail into a half-created paper.
+    await mutateIndex((idx) => {
+      idx.docs.push(meta);
+    });
+    return meta;
+  } catch (e) {
+    await rollbackCreate(docHandle, ledger, removeContainer);
+    throw e;
+  }
+}
+
+async function rollbackCreate(
+  docHandle: FileSystemDirectoryHandle,
+  ledger: CreateLedger,
+  removeContainer?: () => Promise<void>,
+): Promise<void> {
+  const attempt = async (what: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      if (isNotFound(err)) return;
+      console.warn(`[storage] create rollback: could not remove ${what}:`, err);
+    }
+  };
+  if (ledger.handleId) {
+    const id = ledger.handleId;
+    await attempt(`handle slot ${id}`, () => deleteDocHandle(id));
+  }
+  if (removeContainer) {
+    await attempt("the new folder", removeContainer);
+    return;
+  }
+  for (const filename of ledger.files) {
+    await attempt(filename, () => docHandle.removeEntry(filename));
+  }
+  if (ledger.virgilDir) {
+    await attempt(`${VIRGIL_SUBDIR}/`, () =>
+      docHandle.removeEntry(VIRGIL_SUBDIR, { recursive: true }),
+    );
+  }
 }
 
 /**
@@ -2310,25 +2416,15 @@ export async function createDocFromPicker(
     create: true,
   });
 
-  await writeTemplateFiles(docHandle, template);
-
-  const now = new Date().toISOString();
-  const meta: FsaDocMeta = {
-    id: generateEntityId().slice(0, 8),
+  // The folder is this call's own (the check above proved it absent), so a
+  // failure removes all of it — the retry then sees a clean location.
+  return populateAndRegister({
+    docHandle,
+    template,
     name,
-    texFilename: template.mainTexFilename,
     folderName,
-    createdAt: now,
-    lastModifiedAt: now,
-    lastAccessedAt: now,
-  };
-
-  await setDocHandle(meta.id, docHandle);
-  await mutateIndex((idx) => {
-    idx.docs.push(meta);
+    removeContainer: () => parent.removeEntry(folderName, { recursive: true }),
   });
-
-  return meta;
 }
 
 /**
@@ -2356,25 +2452,14 @@ export async function createDocInFolder(
     }
   }
 
-  await writeTemplateFiles(handle, template);
-
-  const now = new Date().toISOString();
-  const meta: FsaDocMeta = {
-    id: generateEntityId().slice(0, 8),
+  // The folder is the user's: a failure removes only the files this call
+  // wrote into it, never the folder or anything already there.
+  return populateAndRegister({
+    docHandle: handle,
+    template,
     name,
-    texFilename: template.mainTexFilename,
     folderName: handle.name,
-    createdAt: now,
-    lastModifiedAt: now,
-    lastAccessedAt: now,
-  };
-
-  await setDocHandle(meta.id, handle);
-  await mutateIndex((idx) => {
-    idx.docs.push(meta);
   });
-
-  return meta;
 }
 
 // ---------------------------------------------------------------------------
