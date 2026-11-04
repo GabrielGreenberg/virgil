@@ -43,6 +43,7 @@ import {
   ERROR_MARKER_CLICK_EVENT,
   FOOTNOTE_CLICK_EVENT,
   LINKED_ANCHOR_CLICK_EVENT,
+  paneRootForDoc,
   resolveClickOrigin,
   type CitationClickDetail,
   type ClickOrigin,
@@ -50,6 +51,7 @@ import {
   type FootnoteClickDetail,
   type LinkedAnchorClickDetail,
 } from "@/lib/pane-click-origin";
+import type { PaneScope } from "../pane-dom";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`), DERIVED from the registry — never hand-listed (task
@@ -95,8 +97,14 @@ interface AnchorClickEnv {
   getPrefs: () => ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
+  tryScrollOmniEntry: (key: string, targetY?: number, scope?: PaneScope) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
+  /** The ORIGIN pane's root, read at call time (task 1458) — the scope every
+   *  card lookup this click makes resolves in. A per-doc card id can be
+   *  mounted by two VISIBLE Readers at once, and the read-only Reader need not
+   *  take DOM focus on a click, so neither the visible nor the focused rung
+   *  can say which pane's card the click meant. */
+  getPaneRoot: () => HTMLElement | null;
   /** Resolve the routed doc's interaction store at CLICK time. A getter (not a
    *  captured instance) because this bridge is shell-mounted above the per-doc
    *  CardStoreProvider and its listener effect doesn't re-subscribe on doc
@@ -174,6 +182,7 @@ function routeCardClick(
       // skipScroll: alignment is the selection-alignment door's
       // (`placeSelectedCard`), which moves the CARD, so the document stays put.
       skipScroll: true,
+      scope: env.getPaneRoot,
     },
     {
       prefs: env.getPrefs(),
@@ -192,6 +201,7 @@ function routeCardClick(
       entrySelector,
       viewportY: clickY,
       store: env.getActiveCardStore(),
+      scope: env.getPaneRoot,
     });
   }
 }
@@ -216,7 +226,7 @@ export function useMarkerClickBridges(deps: {
   prefsRef: MutableRefObject<ViewPrefs>;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
+  tryScrollOmniEntry: (key: string, targetY?: number, scope?: PaneScope) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   /** Error selection setter. Now routes to the per-doc owner in EditorPane
    *  (bubbled up via `paneState.setSelectedErrorId`); the shell passes a stable
@@ -268,8 +278,15 @@ export function useMarkerClickBridges(deps: {
   // in task 1252): the editor's current doc takes the shell's store + persisted
   // prefs; a click from another pane (the Library Reader, on its own ephemeral
   // prefs) routes into THAT pane's host. `drop` is answered by the caller.
+  //
+  // Either way the env names the ORIGIN pane's root (task 1458): the shell's
+  // doc resolves its pane through its own registered host (every EditorPane
+  // with view prefs registers one), a foreign pane hands its root directly.
   const envFor = useCallback(
-    (origin: Exclude<ClickOrigin, { route: "drop" }>): AnchorClickEnv =>
+    (
+      origin: Exclude<ClickOrigin, { route: "drop" }>,
+      docId: string | null | undefined,
+    ): AnchorClickEnv =>
       origin.route === "shell"
         ? {
             getPrefs: () => prefsRef.current,
@@ -278,19 +295,20 @@ export function useMarkerClickBridges(deps: {
             tryScrollOmniEntry,
             getOmniEnabled,
             getActiveCardStore,
+            getPaneRoot: () => paneRootForDoc(docId ?? getActiveDocId()),
           }
         : {
             getPrefs: origin.host.getPrefs,
             setActiveLeft: origin.host.setActiveLeft,
             setActiveRight: origin.host.setActiveRight,
-            // The omni DOM helpers are pane-agnostic: they resolve the
-            // VISIBLE pane's entry first (task 873), which is the pane the
-            // user just clicked in.
+            // The omni DOM helpers are pane-agnostic; the env's own
+            // `getPaneRoot` scopes them to THIS pane (task 1458).
             tryScrollOmniEntry,
             getOmniEnabled: origin.host.getOmniEnabled,
             getActiveCardStore: () => origin.host.cardStore,
+            getPaneRoot: origin.host.getPaneRoot,
           },
-    [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, getActiveCardStore],
+    [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, getActiveCardStore, getActiveDocId],
   );
 
   // Inline-atom marker clicks (Footnote / Citation NodeViews). They name their
@@ -306,7 +324,7 @@ export function useMarkerClickBridges(deps: {
       routeCardClick(
         ATOM_CLICK_ROUTES.footnote,
         { kind: "footnote", entityId: detail.footnoteId, clickY: detail.clickY },
-        envFor(origin),
+        envFor(origin, detail.docId),
       );
     };
     const onCitation = (e: Event) => {
@@ -317,7 +335,7 @@ export function useMarkerClickBridges(deps: {
       routeCardClick(
         ATOM_CLICK_ROUTES.citation,
         { kind: "citation", entityId: detail.citationId, clickY: detail.clickY },
-        envFor(origin),
+        envFor(origin, detail.docId),
       );
     };
     window.addEventListener(FOOTNOTE_CLICK_EVENT, onFootnote);
@@ -487,7 +505,7 @@ export function useMarkerClickBridges(deps: {
       // and the shell's store/prefs are not its to touch.
       const origin = resolveClickOrigin(detail.docId, getActiveDocId());
       if (origin.route === "drop") return;
-      routeAnchorClick(detail, envFor(origin));
+      routeAnchorClick(detail, envFor(origin, detail.docId));
     };
     window.addEventListener(LINKED_ANCHOR_CLICK_EVENT, handler);
     return () => window.removeEventListener(LINKED_ANCHOR_CLICK_EVENT, handler);

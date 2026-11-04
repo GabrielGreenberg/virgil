@@ -22,7 +22,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
+import { paneRootOf, resolvePaneMarker } from "@/components/editor-layout/pane-dom";
 import { resolveLink } from "../links";
 import { alignEntryToYIfNeeded } from "@/components/editor-layout/layout-scroll";
 import { cardPopKey } from "@/panels/panel-registry";
@@ -80,20 +80,19 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     // effect ran first, and stranded by a no-op select.
     if (store.isPlacementSuppressed(selection)) return;
 
-    // Locate the card element. Multiple matches are possible (popped
-    // float + native panel mount); pick the first that's actually
-    // rendered (`isPaneElementVisible` — the keep-alive visible rung).
+    // Locate the card element IN THIS EDITOR'S PANE (task 1458): card keys
+    // are per-document, so another visible Reader can mount the same one, and
+    // measuring ITS card would scroll this editor to match a stranger. Inside
+    // the pane's territory (root + its popped floats) the visible match wins —
+    // a popped float and a native list can both mount the card.
     const cardKey = cardKeyForEntity(selection);
     if (!cardKey) return;
-    const cardCandidates = document.querySelectorAll<HTMLElement>(
+    const cardEl = resolvePaneMarker(
       `[data-card-key="${cardKey}"]`,
+      "fail-open",
+      paneRootOf(editor.view.dom),
     );
-    if (cardCandidates.length === 0) return;
-    let cardEl: HTMLElement | null = null;
-    for (const el of cardCandidates) {
-      if (isPaneElementVisible(el)) { cardEl = el; break; }
-    }
-    if (!cardEl) cardEl = cardCandidates[0];
+    if (!cardEl) return;
     const cardY = cardEl.getBoundingClientRect().top;
 
     // Find every in-editor anchor for this card.

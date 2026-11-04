@@ -73,6 +73,9 @@ export interface SelectedCardPlacement {
   /** The doc's interaction store — the slide's OWNER, and its release
    *  signal (a selection change). */
   store: CardStore;
+  /** The ORIGIN pane's root, read at call time (task 1458) — the card is
+   *  looked up in THAT pane, never in another visible Reader sharing its id. */
+  scope?: () => HTMLElement | null;
 }
 
 /**
@@ -94,19 +97,22 @@ export function placeSelectedCard(p: SelectedCardPlacement): void {
 /** One placement attempt. Returns whether a host for the card was found
  *  (whether or not anything then had to move). */
 function placeNow(p: SelectedCardPlacement): boolean {
+  const scope = p.scope?.();
   const wrapper = resolvePaneMarker(
     omniEntrySelector(p.omniKey, "data-omni-entry-wrapper"),
     "fail-closed",
+    scope,
   );
   if (wrapper) {
     requestOmniCardPlacement(
       p.omniKey,
       { viewportY: p.viewportY },
       "selection-alignment",
+      scope,
     );
     return true;
   }
-  const entry = resolvePaneMarker(p.entrySelector, "fail-closed");
+  const entry = resolvePaneMarker(p.entrySelector, "fail-closed", scope);
   if (!entry) return false;
   slideListEntry(entry, p.viewportY, p.store);
   return true;

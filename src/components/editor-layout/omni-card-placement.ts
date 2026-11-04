@@ -44,6 +44,7 @@ import {
   DATA_OMNI_NATURAL_TOP,
 } from "./omni-pin-store";
 import { findOmniEntry } from "./event-bridges/open-for-card";
+import type { PaneScope } from "./pane-dom";
 import { resolveAlignScroll } from "./layout-scroll";
 import { mayReposition, type RepositionIntent } from "@/lib/reposition-policy";
 
@@ -198,7 +199,7 @@ function holdIsNeeded(r: Resolved, desiredPodTop: number): boolean {
  *  its element passes it; only the two event-driven publishers, which have
  *  nothing but a key, take the lookup. */
 function publish(
-  target: HTMLElement | { key: string },
+  target: HTMLElement | { key: string; scope: PaneScope },
   desired: DesiredCardTop | "hold",
   intent: RepositionIntent = "necessity",
 ): void {
@@ -208,7 +209,7 @@ function publish(
       target instanceof HTMLElement
         ? resolveFrom(target, target.dataset.omniEntryWrapper ?? "")
         : resolveFrom(
-            findOmniEntry(target.key, "data-omni-entry-wrapper"),
+            findOmniEntry(target.key, "data-omni-entry-wrapper", target.scope),
             target.key,
           );
     if (!r) {
@@ -278,8 +279,12 @@ export function requestOmniCardPlacement(
   cardKey: string,
   desired: DesiredCardTop,
   intent: RepositionIntent = "necessity",
+  /** The publisher's own pane (task 1458) — a key is per-document, so two
+   *  visible Readers can both mount it. Absent takes the pane-dom ladder; the
+   *  pane-dom census's ownership block makes every production caller say. */
+  scope?: PaneScope,
 ): void {
-  publish({ key: cardKey }, desired, intent);
+  publish({ key: cardKey, scope }, desired, intent);
 }
 
 /**

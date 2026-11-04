@@ -128,6 +128,7 @@ import { useRefActions } from "./editor-layout/card-actions/ref";
 import type { ActiveRef } from "@/lib/tiptap/label";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
+import type { PaneScope } from "./editor-layout/pane-dom";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
@@ -1023,10 +1024,17 @@ export default function EditorLayout() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { omniKey?: string; pinTop?: number }
+        | { omniKey?: string; pinTop?: number; paneRoot?: HTMLElement | null }
         | undefined;
       if (!detail?.omniKey || typeof detail.pinTop !== "number") return;
-      requestOmniCardPlacement(detail.omniKey, { podTop: detail.pinTop });
+      // Pinned in the jump's OWN pane (task 1458), never another visible
+      // Reader's card under the same per-document key.
+      requestOmniCardPlacement(
+        detail.omniKey,
+        { podTop: detail.pinTop },
+        "necessity",
+        detail.paneRoot,
+      );
     };
     window.addEventListener("virgil-card-jumped", handler);
     return () => window.removeEventListener("virgil-card-jumped", handler);
@@ -1865,11 +1873,13 @@ export default function EditorLayout() {
   // every case (left omni, right omni, both, neither) without the
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
-    (key: string, targetY?: number): boolean => {
+    (key: string, targetY?: number, scope?: PaneScope): boolean => {
       // Prefix-or-exact (the shared omni matcher): a fully-qualified `@<pid>`
       // key lands on its own row; a bare key still finds a multi-anchor card's
       // first row (e.g. "float:card:note:id" → "float:card:note:id@<pid>").
-      const entry = findOmniEntry(key, "data-omni-entry");
+      // `scope` is the click's origin pane (task 1458); without one, the
+      // pane-dom ladder.
+      const entry = findOmniEntry(key, "data-omni-entry", scope);
       if (!entry) return false;
       requestAnimationFrame(() => {
         if (typeof targetY === "number") {

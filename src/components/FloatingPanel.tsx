@@ -40,7 +40,7 @@ import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/d
 import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 import { DOCKED_POD_Z } from "@/components/editor-layout/constants";
-import { PaneRootContext } from "@/components/editor-layout/pane-dom";
+import { PANE_OWNER_ATTR, PaneRootContext } from "@/components/editor-layout/pane-dom";
 import {
   paneDockSlot,
   usePaneRoot,
@@ -1389,6 +1389,9 @@ function FloatingPanelInner({
     <div
       ref={rootRef}
       data-floating-panel="true"
+      // Portalled OUTSIDE the pane root, so it names its pane: a scoped card
+      // lookup searches the pane's whole territory (pane-dom, task 1458).
+      {...(ownerPane ? { [PANE_OWNER_ATTR]: ownerPane } : {})}
       data-panel-shell-mode={mode}
       data-panel-shell-id={panelId}
       // The float's SURFACE as a stated fact (task 1246): the popped-card

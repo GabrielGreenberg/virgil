@@ -390,6 +390,7 @@ describe("Omni host", () => {
       "float:card:note:n1@p2",
       { viewportY: 222 },
       "selection-alignment",
+      undefined, // no scope given → the pane-dom ladder (task 1458)
     );
   });
 
