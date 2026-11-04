@@ -220,8 +220,6 @@ const EMPTY_ERR_SET: Set<string> = new Set();
 const EMPTY_ERR_MAP: Map<string, string> = new Map();
 const EMPTY_LATEX_ERRORS_L: LatexError[] = [];
 import { hasFsaSupport } from "@/lib/fsa-support";
-import { queryRW } from "@/lib/fsa-permissions";
-import { getDocHandle } from "@/lib/doc-index";
 import { CompilePaneStatus, PdfPaneOverlay } from "@/components/CompilePaneStatus";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { asBibFamily } from "@/lib/bib-family";
@@ -231,12 +229,13 @@ import { DocPermissionGate } from "./DocPermissionGate";
 import { DocUnreachableGate } from "./DocUnreachableGate";
 import {
   hasDocLoadFailure,
-  probeDocFolder,
   publishDocLoadFailure,
   useDocLoadFailure,
   useDocLoadFailureRevision,
 } from "@/lib/doc-load-failure";
 import { relocateDoc } from "@/lib/storage";
+import { resolveDocAccessView } from "@/lib/doc-access-view";
+import { useDocAccessCheck } from "@/hooks/useDocAccessCheck";
 import { RecentPapersList } from "./RecentPapersList";
 import { InstallPwaPrompt } from "./InstallPwaPrompt";
 import { LibraryTabView } from "./library/LibraryTabView";
@@ -319,12 +318,16 @@ export default function EditorLayout() {
     | null
   >(null);
 
-  // Per-doc permission gate state. We query (without prompting) when
-  // the active doc changes; if it isn't already granted we show the
-  // gate, which calls requestRW from inside its click handler.
-  type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
-  const [docPermState, setDocPermState] = useState<DocPermState>("loading");
-  const [activeDocHandle, setActiveDocHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  // Per-doc access check (task 1459: `useDocAccessCheck`). We query (without
+  // prompting) when the active doc changes; if it isn't already granted the
+  // permission gate calls requestRW from inside its click handler. What the
+  // pane shows is ONE total function of this state — `docAccessView` below.
+  const {
+    docPermState,
+    setDocPermState,
+    handle: activeDocHandle,
+    recheck: retryDocAccess,
+  } = useDocAccessCheck(currentDocId, currentDoc?.texFilename ?? null);
 
   // EditorPane bubbles its per-doc state here via `onPaneStateChange` so the
   // Virgil bar can read editor / compile / view-switch / AI-dot status against
@@ -416,8 +419,17 @@ export default function EditorLayout() {
   // folder that is not there. One per-doc registry carries the outcome, fed by
   // the access check below (before mount) and by `useDocument`'s load (after).
   const activeLoadFailure = useDocLoadFailure(currentDocId);
+  // Task 1459: the ONE answer to "what does the active paper's pane show?" —
+  // exhaustive over the access state, so no state renders a blank pane. The
+  // gates, the hooks' doc id and the keep-alive lead all read it.
+  const docAccessView = resolveDocAccessView({
+    hasDoc: currentDocId !== null,
+    docPermState,
+    handle: activeDocHandle,
+    loadFailure: activeLoadFailure,
+  });
   const docIdForHooks: string | null =
-    docPermState === "granted" && !activeLoadFailure ? currentDocId : null;
+    docAccessView.kind === "editor" ? currentDocId : null;
 
   // Per-doc write pipeline lifecycle is now owned by the `<DocPipeline
   // key={currentDocId}>` boundary that wraps the EditorPane mount below
@@ -836,7 +848,7 @@ export default function EditorLayout() {
   // permission test in here is what lets `docPermState` stay a single
   // active-doc state — no per-doc permission effects needed.
   const grantedActiveDocId =
-    activePane === "doc" && docPermState === "granted" && !activeLoadFailure
+    activePane === "doc" && docAccessView.kind === "editor"
       ? currentDocId
       : null;
   // Flag-gated capacity. Default ON → keep the last N papers warm so a
@@ -1704,79 +1716,22 @@ export default function EditorLayout() {
     setFsaSupported(hasFsaSupport());
   }, []);
 
-  // Whenever the active doc changes, look up its handle in idb and
-  // query (don't request) readwrite permission. The result drives the
-  // gate vs editor render decision below.
-  // In dev-storage mode we skip the FSA permission dance entirely.
-  const activeTexFilename = currentDoc?.texFilename ?? null;
-  const [docAccessCheck, setDocAccessCheck] = useState(0);
-  useEffect(() => {
-    if (!currentDocId) {
-      setDocPermState("no-handle");
-      setActiveDocHandle(null);
-      return;
-    }
-    if (isDevStorage) {
-      // No folder to probe: a check (incl. "Try again") clears any standing
-      // load failure and lets the pane remount and load afresh.
-      publishDocLoadFailure(currentDocId, null);
-      setDocPermState("granted");
-      return;
-    }
-    let cancelled = false;
-    setDocPermState("loading");
-    (async () => {
-      try {
-        const handle = await getDocHandle(currentDocId);
-        if (cancelled) return;
-        if (!handle) {
-          setActiveDocHandle(null);
-          setDocPermState("no-handle");
-          return;
-        }
-        setActiveDocHandle(handle);
-        const state = await queryRW(handle);
-        if (cancelled) return;
-        if (state === "granted" && activeTexFilename) {
-          // Task 1102: a stale handle can still answer `granted` for a folder
-          // that is gone. Ask whether the paper is still THERE before the
-          // pane mounts; an answer either way overwrites any standing
-          // failure, so "Try again" after a Finder fix clears the gate.
-          const unreachable = await probeDocFolder(handle, activeTexFilename);
-          if (cancelled) return;
-          publishDocLoadFailure(
-            currentDocId,
-            unreachable ? { kind: unreachable, detail: "" } : null,
-          );
-        }
-        setDocPermState(state === "granted" ? "granted" : "needs-grant");
-      } catch (err) {
-        console.error("Failed to query doc permission:", err);
-        if (!cancelled) setDocPermState("needs-grant");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentDocId, activeTexFilename, docAccessCheck]);
-
   // The unreachable-paper gate's three doors (task 1102).
-  const retryDocAccess = useCallback(() => {
-    setDocAccessCheck((n) => n + 1);
-  }, []);
   const locateActiveDoc = useCallback(async () => {
     if (!currentDocId) return;
     const id = currentDocId;
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     await relocateDoc(id, handle);
     publishDocLoadFailure(id, null);
-    setDocAccessCheck((n) => n + 1);
-  }, [currentDocId]);
+    retryDocAccess();
+  }, [currentDocId, retryDocAccess]);
   const removeActiveDoc = useCallback(async () => {
     if (!currentDocId) return;
     const id = currentDocId;
-    await deleteFile(id);
-    publishDocLoadFailure(id, null);
+    // Task 1459: only a removal that HAPPENED takes the gate down. A refused
+    // one (a peer window has the paper open) leaves the paper current and its
+    // folder still unreachable — the refusal dialog explains; the gate stays.
+    if (await deleteFile(id)) publishDocLoadFailure(id, null);
   }, [currentDocId, deleteFile]);
 
   const {
@@ -2908,10 +2863,10 @@ export default function EditorLayout() {
           tab strip with the gate so the user clicks once and the editor
           mounts. The tabs themselves stay visible so the user can still
           switch papers. */}
-      {currentDoc && docPermState === "needs-grant" && activeDocHandle && (
+      {currentDoc && docAccessView.kind === "permission" && (
         <DocPermissionGate
           docName={currentDoc.name}
-          handle={activeDocHandle}
+          handle={docAccessView.handle}
           onGranted={handleDocPermissionGranted}
         />
       )}
@@ -2920,13 +2875,13 @@ export default function EditorLayout() {
           sibling, same slot. The paper's folder or `.tex` is gone, or its load
           failed: say so, and offer Locate / Try again / Remove instead of the
           blank pane a contentless editor used to leave. */}
-      {currentDoc && docPermState === "granted" && activeLoadFailure && (
+      {currentDoc && docAccessView.kind === "unreachable" && (
         <DocUnreachableGate
           docName={currentDoc.name}
           folderName={currentDoc.folderName}
           texFilename={currentDoc.texFilename}
-          kind={activeLoadFailure.kind}
-          detail={activeLoadFailure.detail || undefined}
+          kind={docAccessView.failure.kind}
+          detail={docAccessView.failure.detail || undefined}
           onLocate={devStorage ? undefined : locateActiveDoc}
           onRetry={retryDocAccess}
           onRemove={removeActiveDoc}
@@ -3176,7 +3131,7 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
           />
         </div>
-      ) : currentDoc && (docPermState !== "granted" || activeLoadFailure) ? null : currentDocId ? null : (
+      ) : docAccessView.kind !== "none" ? null : (
         <div className="flex flex-1 items-center justify-center canvas-paint">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-xl">
             {docs.length > 0 ? (

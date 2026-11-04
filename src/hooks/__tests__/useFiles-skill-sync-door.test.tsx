@@ -40,6 +40,7 @@ const h = vi.hoisted(() => ({
   pick: null as unknown,
   syncSkillBundle: vi.fn(),
   releaseDoc: vi.fn(),
+  retireOk: true,
 }));
 
 vi.mock("@/lib/storage", () => ({
@@ -103,9 +104,11 @@ vi.mock("@/lib/multi-window/handoff", () => ({
     if (h.claimOk) h.owned.add(t.id);
     return h.claimOk;
   }),
-  // Single-window harness: no peer ever holds a doc, so the retire runs.
+  // Single-window harness: no peer ever holds a doc, so the retire runs —
+  // unless a leg sets `retireOk = false` (a peer has it open: REFUSED).
   retireDocUnlessOpenElsewhere: vi.fn(
     async (_t: unknown, _d: unknown, retire: () => Promise<void>) => {
+      if (!h.retireOk) return false;
       await retire();
       return true;
     },
@@ -263,6 +266,26 @@ describe("the active doc leaves: one answer (task 602)", () => {
     expect(result.current.openTabs.map((d) => d.id)).toEqual(["a", "c"]);
     expect(result.current.outerOrder).not.toContain("b");
     expect(h.releaseDoc).toHaveBeenCalledWith("b");
+  });
+
+  it("deleteFile SAYS whether the paper was forgotten (task 1459): a refused retire is false and leaves it current", async () => {
+    const { result } = await threeOpen();
+    h.retireOk = false;
+    let out: boolean | undefined;
+    try {
+      await act(async () => {
+        out = await result.current.deleteFile("b");
+      });
+    } finally {
+      h.retireOk = true;
+    }
+    expect(out).toBe(false);
+    expect(result.current.currentDocId).toBe("b");
+    await act(async () => {
+      out = await result.current.deleteFile("b");
+    });
+    expect(out).toBe(true);
+    expect(result.current.currentDocId).toBe("c");
   });
 
   it("a peer's handoff hands activity to the neighbour", async () => {

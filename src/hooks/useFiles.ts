@@ -850,8 +850,11 @@ export function useFiles() {
    * Forget a paper from the workspace. Does NOT touch the folder on
    * disk — the user's files are theirs.
    */
+  // Resolves whether the paper was actually forgotten (task 1459): a removal
+  // REFUSED because a peer window has it open, or one that threw, is `false`,
+  // so a caller that tears down UI on success (the unreachable gate) can tell.
   const deleteFile = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<boolean> => {
       try {
         // Drain pending writes for this doc before removing it from
         // the index — otherwise an autosave could land after the
@@ -865,11 +868,13 @@ export function useFiles() {
           dialog,
           () => deleteDocFromIndex(id),
         );
-        if (!retired) return;
+        if (!retired) return false;
         setDocs((prev) => prev.filter((d) => d.id !== id));
         retireOpenDoc(id);
+        return true;
       } catch (err) {
         console.error("Failed to remove file from workspace:", err);
+        return false;
       }
     },
     [retireOpenDoc, dialog],

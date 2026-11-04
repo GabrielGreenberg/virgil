@@ -64,12 +64,29 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+/**
+ * WHERE a load error was raised (task 1459). A `NotFoundError` means "the
+ * folder is gone" only when it came from the FOLDER; raised by a file lookup
+ * inside a folder known to be there, it means that file is gone. Same for
+ * `TypeMismatchError` (the `.tex` name is a directory) — the probe's own
+ * reading, now the classifier's too.
+ */
+export type DocLoadPhase = "folder" | "file";
+
 /** Map any load error to a kind. A `DocUnreachableError` states its own. */
-export function classifyDocLoadFailure(err: unknown): DocLoadFailure {
+export function classifyDocLoadFailure(
+  err: unknown,
+  phase: DocLoadPhase = "folder",
+): DocLoadFailure {
   const detail = errorMessage(err);
   if (err instanceof DocUnreachableError) return { kind: err.kind, detail };
   const name = errorName(err);
-  if (name === "NotFoundError") return { kind: "folder-missing", detail };
+  if (name === "NotFoundError") {
+    return { kind: phase === "file" ? "tex-missing" : "folder-missing", detail };
+  }
+  if (name === "TypeMismatchError" && phase === "file") {
+    return { kind: "tex-missing", detail };
+  }
   if (name === "NotAllowedError" || name === "SecurityError") {
     return { kind: "permission", detail };
   }
@@ -96,17 +113,15 @@ export async function probeDocFolder(
     const it = handle.values();
     await it.next();
   } catch (err) {
-    const kind = classifyDocLoadFailure(err).kind;
-    return kind === "unreadable" ? "folder-missing" : kind;
+    // Task 1459: an enumeration error we can't name (a transient
+    // AbortError / InvalidStateError) stays `unreadable` — "Try again" is
+    // its remedy — rather than claiming the folder is gone.
+    return classifyDocLoadFailure(err, "folder").kind;
   }
   try {
     await handle.getFileHandle(texFilename);
   } catch (err) {
-    const name = errorName(err);
-    if (name === "NotFoundError" || name === "TypeMismatchError") {
-      return "tex-missing";
-    }
-    return classifyDocLoadFailure(err).kind;
+    return classifyDocLoadFailure(err, "file").kind;
   }
   return null;
 }
