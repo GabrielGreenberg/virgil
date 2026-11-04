@@ -750,3 +750,22 @@ takes the session ctx's owner too and refuses an editor registered under
 another pane (`dropTargetOwner(editor) !== ctxOwner`), so a payload of paper A
 never lands in paper B's prose even with both on screen. Suite:
 `locate-atom-pane-owner.test.ts`.
+
+### The FORGET half: a per-doc registry forgets its doc's IDENTITY (task 1465)
+
+A registry keyed by docId outlives a pane close by design (the compile record
+SHOULD still describe the paper when it is reopened). It must not outlive the
+doc's IDENTITY: `purgeDoc` (delete, or "Reset example" re-seeding under the
+same fixed id) is the one door, and the pristine example used to reopen
+showing the discarded version's PDF as current because task 1277's compile
+record was added outside `purgeDoc`'s hand-written list. The in-memory half is
+now DERIVED: each module registers its own forget beside the map
+(`registerDocForget`, `src/lib/doc-forget.ts`) and `purgeDoc` runs
+`forgetDocInMemory`. A store that outlives a reset on purpose (a monotonic
+salt, a subscriber's listeners, a lock shadow, a fingerprint-keyed cache) is
+EXCLUDED with its reason. A run in flight across the forget is fenced by the
+compile record's identity epoch (`compileEpoch` → `recordCompileResult` /
+`markCompileEnded`), so its result is dropped rather than published into the new
+identity. Guard: `doc-forget-census.test.ts` classifies every empty,
+string-keyed module-level `Map`/`Set` in `src/`, so the next new per-doc store
+cannot skip the question.

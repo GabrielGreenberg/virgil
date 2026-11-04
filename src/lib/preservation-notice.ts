@@ -53,6 +53,8 @@
  * nothing is persisted and nothing can go stale.
  */
 
+import { registerDocForget } from "@/lib/doc-forget";
+
 /** Which gate refused. The FIRST refusal's source is the one recorded — it is
  *  the one that describes what went wrong (a load refusal means the parse
  *  could not represent the file; a write refusal means the model shrank; a
@@ -197,3 +199,7 @@ export function clearPreservationNotice(docId?: string): void {
   }
   emit();
 }
+// Task 1465: a notice — and above all its `acknowledged` "save anyway" — was
+// given for the identity's content; carried to a reset paper, it would hold the
+// gate open for bytes the user never saw.
+registerDocForget("preservation-notice", (docId) => clearPreservationNotice(docId));

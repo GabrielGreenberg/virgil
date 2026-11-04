@@ -37,6 +37,7 @@
  */
 
 import type { SyncConflictReport } from "@/lib/sync-conflict";
+import { registerDocForget } from "@/lib/doc-forget";
 
 export interface SyncConflictNotice extends SyncConflictReport {
   docId: string;
@@ -135,3 +136,6 @@ export function clearSyncConflictNotices(docId?: string): void {
   }
   emit();
 }
+// Task 1465: a notice (and its dismissal) describes the identity's folder, not
+// the id — a reset paper starts with neither.
+registerDocForget("sync-conflict-notice", (docId) => clearSyncConflictNotices(docId));

@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
+import { registerDocForget } from "@/lib/doc-forget";
 
 export type PreviewDir = "suggested" | "original";
 
@@ -83,6 +84,17 @@ export function setPreviewDir(
 export function resetPreviewDir(docId: PreviewDocKey, id: string): void {
   setPreviewDir(docId, id, "suggested");
 }
+
+/** Task 1465 (`purgeDoc`): card ids are minted per paper and a re-seeded
+ *  example reuses them, so a surviving "original" toggle would apply to the
+ *  reset paper's card of the same id. Each stored card is told it is back on
+ *  `"suggested"`; listeners are their subscribers' to remove. */
+registerDocForget("pending-preview", (docId) => {
+  const doc = dirs.get(docId);
+  if (!doc) return;
+  dirs.delete(docId);
+  for (const id of doc.keys()) emit(docId, id);
+});
 
 function subscribe(
   docId: PreviewDocKey,

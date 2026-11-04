@@ -24,10 +24,12 @@
  * Retention: the last PDF's bytes stay in the record for the session, one per
  * compiled document — that is what lets a pane mounted after the run show the
  * PDF the run produced, even when no write pipeline was open to persist it. A
- * page load clears the map (like `compile-progress`).
+ * page load clears the map (like `compile-progress`), and so does `purgeDoc`
+ * for one doc (task 1465 — `registerDocForget` below).
  */
 
 import type { LatexError } from "@/lib/latex-errors";
+import { registerDocForget } from "@/lib/doc-forget";
 
 export interface CompileRecord {
   /** A run for this doc is in flight (from the click to the last write). */
@@ -58,8 +60,18 @@ const EMPTY_COMPILE_RECORD: CompileRecord = Object.freeze({
 
 const byDoc = new Map<string, CompileRecord>();
 const listeners = new Set<() => void>();
-/** Per-doc run counter — the diagnostics salt (see `nextCompileSalt`). */
+/** Per-doc run counter — the diagnostics salt (see `nextCompileSalt`).
+ *  NOT forgotten with the doc: it is monotonic for the session by design, and
+ *  a salt that never repeats is harmless to a fresh identity under the same id. */
 const runCounter = new Map<string, number>();
+/**
+ * Per-doc IDENTITY epoch (task 1465): bumped when `purgeDoc` forgets the doc.
+ * A run captures it at start (`compileEpoch`); a result or an end carrying an
+ * older epoch belongs to the identity that was reset away, so it is dropped
+ * rather than published as the fresh paper's PDF. Monotonic and never
+ * forgotten — the same reason as `runCounter`.
+ */
+const epochByDoc = new Map<string, number>();
 
 function emit(): void {
   for (const fn of listeners) fn();
@@ -103,8 +115,20 @@ export function markCompileStarted(docId: string): boolean {
   return true;
 }
 
-export function markCompileEnded(docId: string): void {
+/** The doc's identity epoch — capture it when a run starts and hand it to
+ *  `recordCompileResult` / `markCompileEnded`. */
+export function compileEpoch(docId: string): number {
+  return epochByDoc.get(docId) ?? 0;
+}
+
+/**
+ * The run ended. Always clears `running` (the re-entry guard must not stick).
+ * Returns false when the run's `epoch` is stale — the doc was forgotten while
+ * it ran — so the caller can retire whatever else that run left behind.
+ */
+export function markCompileEnded(docId: string, epoch?: number): boolean {
   update(docId, { running: false });
+  return epoch === undefined || epoch === compileEpoch(docId);
 }
 
 /**
@@ -120,11 +144,14 @@ export function nextCompileSalt(docId: string): string {
   return `r${n}:`;
 }
 
-/** Publish a finished run's result. A `pdf` bumps the PDF generation. */
+/** Publish a finished run's result. A `pdf` bumps the PDF generation. A
+ *  result whose `epoch` is stale (the doc was forgotten mid-run) is dropped. */
 export function recordCompileResult(
   docId: string,
   result: { log: string; status: number; errors: LatexError[]; pdf?: Uint8Array | null },
+  epoch?: number,
 ): void {
+  if (epoch !== undefined && epoch !== compileEpoch(docId)) return;
   const prev = getCompileRecord(docId);
   const patch: Partial<CompileRecord> = {
     log: result.log,
@@ -139,9 +166,27 @@ export function recordCompileResult(
   update(docId, patch);
 }
 
+/**
+ * Forget a doc's record — its identity was removed or reset (`purgeDoc`, task
+ * 1465). The result (log, diagnostics, PDF) goes; the epoch bumps so a run in
+ * flight cannot publish into the new identity. `running` is KEPT while a run
+ * is in flight: the engine really is busy with it, and dropping the guard
+ * would let a second run start beside the first.
+ */
+function forgetCompileRecord(docId: string): void {
+  epochByDoc.set(docId, compileEpoch(docId) + 1);
+  const prev = byDoc.get(docId);
+  if (!prev) return;
+  if (prev.running) byDoc.set(docId, { ...EMPTY_COMPILE_RECORD, running: true });
+  else byDoc.delete(docId);
+  emit();
+}
+registerDocForget("compile-record", forgetCompileRecord);
+
 /** Test-only: drop every record. */
 export function __resetAllCompileRecords(): void {
   byDoc.clear();
   runCounter.clear();
+  epochByDoc.clear();
   emit();
 }

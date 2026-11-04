@@ -135,6 +135,7 @@ import {
   probeDocFolder,
 } from "@/lib/doc-load-failure";
 import { figureCandidatePaths } from "@/lib/figures/graphics-path";
+import { registerDocForget } from "@/lib/doc-forget";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -551,6 +552,14 @@ export async function readSidecarBundle(docId: string): Promise<void> {
 export function invalidateSidecarBundle(docId: string): void {
   sidecarCache.delete(docId);
 }
+
+// Task 1465 (`purgeDoc`): every per-doc cache here describes the identity's
+// folder — its sidecars, its tex delimiters, its last snapshot time.
+registerDocForget("storage-fsa", (docId) => {
+  invalidateSidecarBundle(docId);
+  delimiterCacheByDoc.delete(docId);
+  lastSnapshotAtByDoc.delete(docId);
+});
 
 /**
  * The DIRECT disk read of one sidecar — no bundle cache, `null` on absent,

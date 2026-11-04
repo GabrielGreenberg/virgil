@@ -22,6 +22,8 @@
  * with an empty ledger; the load path re-stamps the baseline immediately.
  */
 
+import { registerDocForget } from "@/lib/doc-forget";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -85,6 +87,9 @@ export function clearDiskLedger(docId: string): void {
   ledger.delete(docId);
   inFlight.delete(docId);
 }
+// Task 1465 (`purgeDoc`): the fingerprints are of the identity's files; the
+// reset paper's load re-stamps its own baseline.
+registerDocForget("disk-ledger", (docId) => clearDiskLedger(docId));
 
 // ---------------------------------------------------------------------------
 // In-flight own writes (task 1130)

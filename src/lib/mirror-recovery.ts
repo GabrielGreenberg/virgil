@@ -33,6 +33,7 @@
  */
 
 import type { EmergencyMirrorEntry } from "@/lib/emergency-mirror";
+import { registerDocForget } from "@/lib/doc-forget";
 
 export interface MirrorRecoveryOffer {
   docId: string;
@@ -91,6 +92,10 @@ export function clearRecoveryOffer(docId?: string): void {
   }
   emit();
 }
+// `purgeDoc`'s in-memory half (task 604, re-homed by task 1465): an offer to
+// "restore" the identity's edits must not survive into a reset paper.
+// `actions` are deliberately kept — token-registered by the pane, removed by it.
+registerDocForget("mirror-recovery", (docId) => clearRecoveryOffer(docId));
 
 /** Token-matched register/unregister — a stale registration must not evict the
  *  live one (the `pending-saves` / `doc-pipeline` shape). */
