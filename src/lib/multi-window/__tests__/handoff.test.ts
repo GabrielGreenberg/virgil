@@ -28,11 +28,13 @@ beforeEach(() => {
 });
 
 describe("claimDocWithHandoff", () => {
-  it("already owned: no claim, no dialog", async () => {
+  it("already owned: still CLAIMS (a reopen mid-drain cancels the release — task 1454), no dialog", async () => {
     ownsDoc.mockReturnValue(true);
+    claimDoc.mockResolvedValue({ owned: true });
     const dialog = makeDialog();
     expect(await claimDocWithHandoff({ id: "d1" }, dialog)).toBe(true);
-    expect(claimDoc).not.toHaveBeenCalled();
+    expect(claimDoc).toHaveBeenCalledWith("d1");
+    expect(ownsDoc).not.toHaveBeenCalled();
     expect(dialog.confirm).not.toHaveBeenCalled();
   });
 

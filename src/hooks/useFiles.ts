@@ -429,14 +429,13 @@ export function useFiles() {
         }
       }
       const meta = docs.find((d) => d.id === id);
-      // Already open in this window — no claim needed. Otherwise acquire the
-      // cross-window lock through the ONE handoff door
+      // Acquire the cross-window lock through the ONE handoff door
       // (`claimDocWithHandoff`) — it prompts, asks the peer to release,
-      // re-claims, and tells the user about every failure.
-      if (!ownsDoc(id)) {
-        const owned = await claimWithHandoff(meta ?? { id });
-        if (!owned) return;
-      }
+      // re-claims, and tells the user about every failure. Even when this
+      // window holds the doc: the claim is free then, and for a paper whose
+      // close is still draining it is what keeps the lock (task 1454).
+      const owned = await claimWithHandoff(meta ?? { id });
+      if (!owned) return;
       await admitDoc(id, meta);
     },
     [admitDoc, claimWithHandoff, docs],

@@ -16,8 +16,13 @@ vi.mock("idb-keyval", () => ({
   createStore: () => ({}),
   get: async (k: string) => idb.get(k),
   set: async (k: string, v: unknown) => void idb.set(k, v),
-  del: async (k: string) => void idb.delete(k),
+  del: async (k: string) => {
+    if (delGate) await delGate;
+    idb.delete(k);
+  },
 }));
+/** When set, the owner-record clear parks on it — the RELEASING span. */
+let delGate: Promise<void> | null = null;
 
 let nextWindowId = 0;
 vi.mock("../bus", () => ({
@@ -76,6 +81,7 @@ async function newWindow(id: number): Promise<Ownership> {
 
 beforeEach(() => {
   idb.clear();
+  delGate = null;
   locks = new FakeLockManager();
   Object.defineProperty(globalThis.navigator, "locks", {
     value: locks,
@@ -194,6 +200,119 @@ describe("releaseDoc ordering", () => {
     expect(drained.sort()).toEqual(["d1", "d2"]);
     expect(A.ownsDoc("d1")).toBe(false);
     expect(A.ownsDoc("d2")).toBe(false);
+  });
+});
+
+/** A drain hook parked until the test lets it go. */
+function parkedDrain(): { hook: (id: string) => Promise<void>; finish: () => void; started: Promise<void> } {
+  let finish!: () => void;
+  let markStarted!: () => void;
+  const gate = new Promise<void>((r) => (finish = r));
+  const started = new Promise<void>((r) => (markStarted = r));
+  return {
+    hook: async () => {
+      markStarted();
+      await gate;
+    },
+    finish,
+    started,
+  };
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+describe("the claim/release state machine (task 1454)", () => {
+  it("leg 1: a reopen mid-drain CANCELS the release — the open doc keeps its lock", async () => {
+    const A = await newWindow(1);
+    const B = await newWindow(2);
+    await A.claimDoc("d1");
+    const drain = parkedDrain();
+    A.registerDocDrain(drain.hook);
+
+    const released = A.releaseDoc("d1"); // closeTab: not awaited
+    await drain.started;
+    // The reopen, mid-drain (Recents / undo a mis-click).
+    expect(await A.claimDoc("d1")).toEqual({ owned: true });
+    drain.finish();
+    await released;
+    await flush();
+
+    expect(A.ownsDoc("d1")).toBe(true);
+    // A peer is refused — it must be offered the handoff, not the lock.
+    expect(await B.claimDoc("d1")).toMatchObject({ owned: false });
+  });
+
+  it("leg 1 refutation: without the reopen, the same drain hands the lock back", async () => {
+    const A = await newWindow(1);
+    const B = await newWindow(2);
+    await A.claimDoc("d1");
+    const drain = parkedDrain();
+    A.registerDocDrain(drain.hook);
+    const released = A.releaseDoc("d1");
+    await drain.started;
+    drain.finish();
+    await released;
+    await flush();
+    expect(A.ownsDoc("d1")).toBe(false);
+    expect(await B.claimDoc("d1")).toEqual({ owned: true });
+  });
+
+  it("close → reopen → close, all mid-drain: the LAST gesture wins and the lock is released", async () => {
+    const A = await newWindow(1);
+    const B = await newWindow(2);
+    await A.claimDoc("d1");
+    const drain = parkedDrain();
+    A.registerDocDrain(drain.hook);
+    const first = A.releaseDoc("d1");
+    await drain.started;
+    await A.claimDoc("d1");
+    const second = A.releaseDoc("d1");
+    drain.finish();
+    await Promise.all([first, second]);
+    await flush();
+    expect(A.ownsDoc("d1")).toBe(false);
+    expect(await B.claimDoc("d1")).toEqual({ owned: true });
+  });
+
+  it("leg 2: two concurrent claims in one window are ONE claim — one lock request, both owned", async () => {
+    const A = await newWindow(1);
+    const before = locks.requests;
+    const [x, y] = await Promise.all([A.claimDoc("d1"), A.claimDoc("d1")]);
+    expect(x).toEqual({ owned: true });
+    expect(y).toEqual({ owned: true });
+    expect(locks.requests - before).toBe(1);
+    expect(A.ownsDoc("d1")).toBe(true);
+  });
+
+  it("leg 3: a reopen after the hold is dropped but before the lock is back waits out our OWN release", async () => {
+    const A = await newWindow(1);
+    await A.claimDoc("d1");
+    let openDel!: () => void;
+    delGate = new Promise<void>((r) => (openDel = r));
+    const released = A.releaseDoc("d1");
+    // No drain hook: the hold drops at once, and the owner-record clear parks.
+    await Promise.resolve();
+    expect(A.ownsDoc("d1")).toBe(false);
+
+    const reopened = A.claimDoc("d1");
+    openDel();
+    await released;
+    // Not a false "open in another window" — our own lock was never a peer's.
+    expect(await reopened).toEqual({ owned: true });
+    expect(A.ownsDoc("d1")).toBe(true);
+    expect(await A.currentOwner("d1")).toBe("win-1");
+  });
+
+  it("a close racing its own open releases the hold rather than leaking it", async () => {
+    const A = await newWindow(1);
+    const B = await newWindow(2);
+    const claimed = A.claimDoc("d1");
+    const released = A.releaseDoc("d1");
+    await claimed;
+    await released;
+    await flush();
+    expect(A.ownsDoc("d1")).toBe(false);
+    expect(await B.claimDoc("d1")).toEqual({ owned: true });
   });
 });
 

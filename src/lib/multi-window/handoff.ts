@@ -17,7 +17,6 @@
 
 import {
   claimDoc,
-  ownsDoc,
   requestHandoff,
   withDocIfUnclaimed,
 } from "./doc-ownership";
@@ -59,7 +58,9 @@ export async function claimDocWithHandoff(
   target: HandoffTarget,
   dialog: HandoffDialog,
 ): Promise<boolean> {
-  if (ownsDoc(target.id)) return true;
+  // Always claim, even when this window already holds the doc: a claim of
+  // a held doc is free, and a claim of a doc whose close is still draining
+  // is what CANCELS that release (task 1454). `ownsDoc` here would skip it.
   let result = await claimDoc(target.id);
   if (result.owned) return true;
 
