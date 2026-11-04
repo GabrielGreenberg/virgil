@@ -3767,6 +3767,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // sanctity for every consuming card body.
   const pendingController = useMemo<PendingChangeController>(
     () => ({
+      docId,
       canProduce: canProducePendingChanges() && !!editor,
       canResolve: !!editor,
       apply: (family, id) => {

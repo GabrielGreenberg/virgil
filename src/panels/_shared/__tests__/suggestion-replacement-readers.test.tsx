@@ -64,6 +64,7 @@ function makeCard(over: Partial<Fixture> = {}): Fixture {
 }
 
 const controller = {
+  docId: "doc-test",
   canProduce: true,
   canResolve: true,
   keep: vi.fn(),

@@ -159,6 +159,7 @@ function pendingCutBase(): CutterSuggestionCardData {
 /** A controller with all eight verbs spied. */
 function makeController(canProduce = true) {
   return {
+    docId: "doc-test",
     canProduce,
     canResolve: true,
     apply: vi.fn(),

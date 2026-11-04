@@ -107,6 +107,7 @@ function makePending(
 
 function makeController(canProduce = true) {
   return {
+    docId: "doc-test",
     canProduce,
     canResolve: true,
     keep: vi.fn(),

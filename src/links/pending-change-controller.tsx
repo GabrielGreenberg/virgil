@@ -38,6 +38,11 @@ import type { PendingChangeFamily } from "@/links/apply-suggestion";
  * stays flat.
  */
 export interface PendingChangeController {
+  /** The paper this controller resolves changes in — the OWNER key of the
+   *  applied-suggestion preview store (task 1455). A card body reads its
+   *  Original/Suggested direction under this key, the same key the verbs
+   *  write it under, so two warm papers sharing a card id never share it. */
+  docId: string | null;
   /** MAY A NEW PENDING CHANGE BE PRODUCED? — `canProducePendingChanges() && an
    *  editor is mounted`. Gates the PRODUCING verbs only: {@link apply} and
    *  {@link insertBelow}, plus the pending card's choice between the flag-ON

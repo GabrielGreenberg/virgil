@@ -643,7 +643,7 @@ export function PendingActionRow({
  *  longer fall back to the legacy field-view. When no controller is present or
  *  it cannot RESOLVE (no editor), the controls render disabled (defensive) —
  *  never on the rollout flag, see task 716. The active preview segment
- *  reflects `usePreviewDir(id)` (a transient store, never persisted). `panelKey`
+ *  reflects `usePreviewDir(docId, id)` (a transient store, never persisted). `panelKey`
  *  picks the per-panel body typography; `family` tags every action so the
  *  controller tokens the right in-text mark.
  *
@@ -671,7 +671,9 @@ export function AppliedRecordBody({
   family: PendingChangeFamily;
 }) {
   const controller = usePendingChangeController();
-  const previewDir = usePreviewDir(id);
+  // Keyed by the controller's paper (task 1455): a card id is unique only
+  // within one paper, and N papers are warm at once.
+  const previewDir = usePreviewDir(controller?.docId ?? null, id);
   const [showOriginal, setShowOriginal] = useState(false);
   // RESOLUTION, not production (task 716): these controls finish a change that
   // ALREADY landed, so they ask `canResolve` (an editor is mounted) and never

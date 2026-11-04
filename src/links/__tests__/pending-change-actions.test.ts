@@ -139,7 +139,9 @@ beforeEach(() => {
   removeLinkedAnchor.mockClear();
   // The preview store is a REAL module-level store (not mocked) — reset the
   // test card so each case starts on the default "suggested" direction.
-  resetPreviewDir("c1");
+  resetPreviewDir("doc-9", "c1");
+  resetPreviewDir("doc-A", "c1");
+  resetPreviewDir("doc-B", "c1");
 });
 
 describe("keepSuggestion", () => {
@@ -227,9 +229,9 @@ describe("dismissSuggestion (dismiss-PRESERVES)", () => {
   });
 
   it("resets the preview direction back to suggested", () => {
-    setPreviewDir("c1", "original");
+    setPreviewDir("doc-9", "c1", "original");
     dismissSuggestion(editor, "c1", "doc-9", makeDeps(true));
-    expect(getPreviewDir("c1")).toBe("suggested");
+    expect(getPreviewDir("doc-9", "c1")).toBe("suggested");
   });
 });
 
@@ -264,13 +266,13 @@ describe("settleAppliedChangeForLifecycle", () => {
   });
 
   it("keep reconciles from appliedChange when mid-preview on the original", () => {
-    setPreviewDir("c1", "original");
+    setPreviewDir("doc-9", "c1", "original");
     settleAppliedChangeForLifecycle(editor, "c1", "doc-9", makeDeps(true), "keep");
     // Same determinism rule as Check: re-apply the suggested view from the
     // canonical descriptor BEFORE keeping, never from the transient doc text.
     expect(applyPendingChange).toHaveBeenCalledTimes(1);
     expect(keepPendingChange).toHaveBeenCalledTimes(1);
-    expect(getPreviewDir("c1")).toBe("suggested");
+    expect(getPreviewDir("doc-9", "c1")).toBe("suggested");
   });
 
   it("no-ops when the card carries no appliedChange", () => {
@@ -302,7 +304,7 @@ describe("previewOriginal / previewSuggested (non-committing)", () => {
     previewOriginal(editor, "c1", "doc-9", deps);
 
     expect(revertPendingChange).toHaveBeenCalledTimes(1);
-    expect(getPreviewDir("c1")).toBe("original");
+    expect(getPreviewDir("doc-9", "c1")).toBe("original");
     expect(flushPendingForDoc).toHaveBeenCalledWith("doc-9");
     // Non-committing: no status / archived / appliedChange change.
     expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
@@ -311,7 +313,7 @@ describe("previewOriginal / previewSuggested (non-committing)", () => {
   });
 
   it("previewSuggested re-applies the suggested splice + records the dir, WITHOUT touching card state", () => {
-    setPreviewDir("c1", "original");
+    setPreviewDir("doc-9", "c1", "original");
     const deps = makeDeps(true);
     previewSuggested(editor, "c1", "doc-9", deps);
 
@@ -325,12 +327,12 @@ describe("previewOriginal / previewSuggested (non-committing)", () => {
       anchorId: "anc-1",
       family: "revision-suggestion",
     });
-    expect(getPreviewDir("c1")).toBe("suggested");
+    expect(getPreviewDir("doc-9", "c1")).toBe("suggested");
     expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
   });
 
   it("previewOriginal no-ops when already previewing the original (no double-splice)", () => {
-    setPreviewDir("c1", "original");
+    setPreviewDir("doc-9", "c1", "original");
     previewOriginal(editor, "c1", "doc-9", makeDeps(true));
     expect(revertPendingChange).not.toHaveBeenCalled();
   });
@@ -340,7 +342,7 @@ describe("previewOriginal / previewSuggested (non-committing)", () => {
     previewOriginal(editor, "c1", "doc-9", deps); // suggested → original
     previewSuggested(editor, "c1", "doc-9", deps); // original → suggested
     previewOriginal(editor, "c1", "doc-9", deps); // suggested → original
-    expect(getPreviewDir("c1")).toBe("original");
+    expect(getPreviewDir("doc-9", "c1")).toBe("original");
     expect(revertPendingChange).toHaveBeenCalledTimes(2);
     expect(applyPendingChange).toHaveBeenCalledTimes(1);
     expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
@@ -351,7 +353,7 @@ describe("previewOriginal / previewSuggested (non-committing)", () => {
 // ── SESSION 4 — mid-preview commit determinism ─────────────────────────────
 describe("commit determinism reads appliedChange, not the transient preview", () => {
   it("Check while previewing ORIGINAL re-applies the suggested view BEFORE keeping (replace)", () => {
-    setPreviewDir("c1", "original");
+    setPreviewDir("doc-9", "c1", "original");
     const deps = makeDeps(true);
     keepSuggestion(editor, "c1", "doc-9", deps);
 
@@ -359,7 +361,7 @@ describe("commit determinism reads appliedChange, not the transient preview", ()
     expect(applyPendingChange).toHaveBeenCalledTimes(1);
     expect(keepPendingChange).toHaveBeenCalledTimes(1);
     expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
-    expect(getPreviewDir("c1")).toBe("suggested");
+    expect(getPreviewDir("doc-9", "c1")).toBe("suggested");
   });
 
   it("Check while previewing SUGGESTED does NOT re-apply (no reconcile needed)", () => {
@@ -371,7 +373,7 @@ describe("commit determinism reads appliedChange, not the transient preview", ()
   });
 
   it("Cross while previewing ORIGINAL still restores the original deterministically (delete mode)", () => {
-    setPreviewDir("c1", "original");
+    setPreviewDir("doc-9", "c1", "original");
     const deps = makeDeps(true, deleteAc);
     dismissSuggestion(editor, "c1", "doc-9", deps);
 
@@ -383,7 +385,47 @@ describe("commit determinism reads appliedChange, not the transient preview", ()
       anchorId: "anc-1",
     });
     expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "rejected");
-    expect(getPreviewDir("c1")).toBe("suggested");
+    expect(getPreviewDir("doc-9", "c1")).toBe("suggested");
+  });
+});
+
+// ── Task 1455 — the preview direction belongs to ONE paper ─────────────────
+// Card ids are unique only within a paper (a duplicated folder shares them),
+// and N papers are warm at once. With a bare-id store, A's "original" read as
+// B's; B's Check re-applied over already-suggested text and CLEARED the id, so
+// A's Check then skipped the reconcile and finalized A's ORIGINAL text.
+describe("task 1455 — preview direction is keyed by (paper, card id)", () => {
+  it("a direction set in paper A is invisible to paper B under the same card id", () => {
+    setPreviewDir("doc-A", "c1", "original");
+    expect(getPreviewDir("doc-A", "c1")).toBe("original");
+    expect(getPreviewDir("doc-B", "c1")).toBe("suggested");
+    expect(getPreviewDir(null, "c1")).toBe("suggested");
+    resetPreviewDir("doc-B", "c1");
+    expect(getPreviewDir("doc-A", "c1")).toBe("original");
+  });
+
+  it("A previews Original, B checks, A checks — BOTH finalize the suggested text", () => {
+    const depsA = makeDeps(true);
+    const depsB = makeDeps(true);
+    previewOriginal(editor, "c1", "doc-A", depsA);
+    expect(revertPendingChange).toHaveBeenCalledTimes(1);
+
+    // B's own Original toggle is NOT a no-op — B is still on suggested.
+    expect(getPreviewDir("doc-B", "c1")).toBe("suggested");
+
+    // B's Check: B is on suggested → no reconcile re-apply.
+    keepSuggestion(editor, "c1", "doc-B", depsB);
+    expect(applyPendingChange).not.toHaveBeenCalled();
+    expect(keepPendingChange).toHaveBeenCalledTimes(1);
+    // …and it must not have cleared A's direction.
+    expect(getPreviewDir("doc-A", "c1")).toBe("original");
+
+    // A's Check: A is on original → re-apply the suggestion BEFORE keeping.
+    keepSuggestion(editor, "c1", "doc-A", depsA);
+    expect(applyPendingChange).toHaveBeenCalledTimes(1);
+    expect(keepPendingChange).toHaveBeenCalledTimes(2);
+    expect(depsA.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
+    expect(getPreviewDir("doc-A", "c1")).toBe("suggested");
   });
 });
 
