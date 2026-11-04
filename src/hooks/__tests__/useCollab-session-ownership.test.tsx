@@ -85,6 +85,50 @@ describe("useCollab — pen ownership per holding session (task 1213)", () => {
     expect(derivePen(onDisk().pen).status).toBe("stale");
   });
 
+  it("a HIDDEN pane runs no 1 Hz label tick; showing it re-derives the labels at once (task 1457)", async () => {
+    let renders = 0;
+    const hook = renderHook(
+      ({ visible }) => {
+        renders++;
+        return useCollab("doc-1", { visible });
+      },
+      { initialProps: { visible: false } },
+    );
+    await waitFor(() => expect(hook.result.current.sidecar.enabled).toBe(true));
+    // A partner holds the pen (written on disk; picked up by the poll).
+    const t = new Date().toISOString();
+    disk.value = {
+      ...freePen(),
+      participants: [
+        ...freePen().participants,
+        { name: "Bea", color: "#445566", firstSeen: t },
+      ],
+      pen: { holder: "Bea", since: t, lastHeartbeat: t, lastActivity: t, requestedBy: [] },
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(COLLAB_TIMINGS.pollMs + 10);
+    });
+    expect(hook.result.current.sidecar.pen.holder).toBe("Bea");
+    const idleBefore = hook.result.current.pen.idleSec ?? 0;
+
+    // Hidden: 4 more seconds (inside one poll period) cause zero re-renders.
+    const before = renders;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(renders).toBe(before);
+
+    // Shown: the very render that shows it carries fresh idle labels.
+    hook.rerender({ visible: true });
+    expect(hook.result.current.pen.idleSec).toBeGreaterThan(idleBefore);
+    // ...and the live tick resumes while visible.
+    const shown = renders;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+    expect(renders).toBeGreaterThan(shown);
+  });
+
   it("unmounting the holding pane releases the pen", async () => {
     const hook = renderHook(() => useCollab("doc-1"));
     await waitFor(() => expect(hook.result.current.sidecar.enabled).toBe(true));
