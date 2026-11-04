@@ -1828,6 +1828,17 @@ AI-request row via `EditableCard`'s `aiRequest` prop / `AiRequestRow`
 `cardBodyPlaceholder(kind)`, and the bib card's pending-request amber via
 the `amber-attention` tokens.
 
+**The same rule on the float body (task 1452).** A `FloatingPanel`'s body
+wrapper (`data-float-drag-surface`) drags the WINDOW on press — except over
+any `WINDOW_DRAG_BLOCK_SELECTOR` descendant (the interactive controls +
+`[data-card]`), where the press belongs to the control or lifts the card. The
+grab hand is therefore not an inline style over the whole body: `globals.css`
+paints `grab` on the surface and lifts it to `auto` under a `:where()` list
+that IS that selector, in `@layer components` so any control's own cursor
+utility still wins. The hand shows exactly where a window drag starts. Pinned
+by `components/__tests__/float-drag-cursor-parity.test.tsx` (list equality +
+per-target press/cursor parity).
+
 **The same rule in CSS: the in-text atom grab (task 524).** The four
 inline atoms (footnote marker, citation, `\ref`, inline math) upgrade
 their base `cursor: pointer` to `grab` — but only under

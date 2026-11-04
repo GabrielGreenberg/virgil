@@ -4393,6 +4393,27 @@ textarea {
  * reconciler stamps it upward at write time (perf Wave 0, plan P5.1). */
 /* The projection sits ON the FloatingPanel root itself (it portals out of the
  * pane), hence the compound selector rather than a descendant one. */
+/* THE FLOAT WINDOW-DRAG CURSOR (task 1452). FloatingPanel's body wrapper
+ * (`data-float-drag-surface`) arms the window drag on mousedown — EXCEPT where
+ * the press lands in a `WINDOW_DRAG_BLOCK_SELECTOR` descendant (src/lib/
+ * drag-blocklist.ts: the interactive controls + `[data-card]`), which
+ * `onHeaderMouseDown` refuses so the card lifts / the control works. The grab
+ * hand used to be an inline style over the whole body, so a popped card's
+ * entire surface (and every plain Tailwind-v4 button, which has no preflight
+ * `cursor:pointer`) promised a window drag that never came. The cursor is now
+ * derived from the SAME list: the `:where()` below is that selector verbatim
+ * (CI: float-drag-cursor-parity.test.ts). `:where()` + `@layer components`
+ * keep it the weakest cursor statement on the page, so a control's own
+ * `cursor-pointer` / a draggable root's `cursor-grab` utility still wins. */
+@layer components {
+  [data-float-drag-surface] {
+    cursor: grab;
+  }
+  [data-float-drag-surface] :where(button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag], [data-card]) {
+    cursor: auto;
+  }
+}
+
 /* POPPED CARD ONLY (task 1246). A whole panel floated from the strip is the
  * same FloatingPanel root in `floating` mode, carries the same view-pref
  * projection, and the reconciler stamps `data-contains-active-card` on it for
