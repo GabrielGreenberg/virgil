@@ -435,6 +435,26 @@ window B open the same paper and click "Move it here"; it must move on the FIRST
 click and A's last keystrokes must be on disk. Multi-window + FSA is the masked
 class.
 
+**Half 3 — the transitions have ONE owner (task 1454).** A release that drains
+is a release IN FLIGHT, and an open door that consults `ownsDoc` mid-flight
+reads "held" and skips the claim — so reopening a paper while its close was
+still draining left it open with the drain about to drop the lock under it, and
+a peer could claim it and write beside us. `doc-ownership.ts` now runs a
+per-doc state machine (free → CLAIMING → HELD → DRAINING → RELEASING): a
+`claimDoc` during DRAINING cancels the release (the hold is kept, nothing is
+published); during RELEASING it waits out our own hand-back rather than read our
+lock as a peer's; concurrent claims in one window share one promise; a
+`releaseDoc` lands an in-flight claim first and joins an in-flight drain (last
+gesture wins). The rule for doors: **"open" means "claimed"** — every door that
+shows a paper calls `claimDoc` (free when held), never `ownsDoc` as a stand-in.
+`ownsDoc` stays for the peer handoff-request listener, which only releases.
+Legs 1–3 + a close-races-open leg in
+[doc-ownership-release-ordering.test.ts](../../../src/lib/multi-window/__tests__/doc-ownership-release-ordering.test.ts)
+(the concurrent-claim leg makes the fake grant asynchronously, as a browser
+does; the bare fake grants inside `request` and hides the race). **Owed:** a
+two-window real-PWA eyeball — close then immediately reopen in window 1, then
+open in window 2: window 2 must be offered the handoff, not silently granted.
+
 ### The ORIGIN half: a fallback may supply the app-global APIs, never the POSITION (task 642)
 
 The rule above closed the registry: `editor-actions-bridge` is a real
