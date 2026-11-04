@@ -379,7 +379,7 @@ import {
 } from "./PendingChangePill";
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
-import { PANE_ROOT_ATTR, PaneRootContext } from "./editor-layout/pane-dom";
+import { PANE_ROOT_ATTR, PaneRootContext, paneRootById } from "./editor-layout/pane-dom";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import {
   OmniFilterMenu,
@@ -3414,6 +3414,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // render nor hands the bridge a stale prefs snapshot. A pane mounted with no
   // view-prefs bundle registers nothing: its clicks are dropped after the local
   // select, which is the honest answer when there is nowhere to open a card.
+  // The pane's identity for `[data-pane-root]` (task 1393) — stable for the
+  // pane's lifetime, so a caller can find THIS pane's root by id at call time.
+  // The click host hands it to the bridge as the scope for every card lookup
+  // a click from this pane makes (task 1458).
+  const paneRootId = useId();
   const clickHostDepsRef = useRef({ viewPrefs, setSelectedErrorId });
   clickHostDepsRef.current = { viewPrefs, setSelectedErrorId };
   const hasViewPrefs = viewPrefs != null;
@@ -3427,8 +3432,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setActiveRight: (id) => live().setActiveRight(id),
       getOmniEnabled: (side) => live().getOmniEnabled(side),
       setSelectedErrorId: (id) => clickHostDepsRef.current.setSelectedErrorId(id),
+      getPaneRoot: () => paneRootById(paneRootId),
     });
-  }, [docId, cardStoreInst, hasViewPrefs]);
+  }, [docId, cardStoreInst, hasViewPrefs, paneRootId]);
 
   // ── Marginalia markers — THE live margin-marker builder ───────────
   // Walks every card hook (notes, reports, archive, todos, cutter,
@@ -4954,9 +4960,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const editorColRef = useRef<HTMLDivElement | null>(null);
   const rowScrollRef = useRef<HTMLElement | null>(null);
   const editorPaneRootRef = useRef<HTMLDivElement | null>(null);
-  // The pane's identity for `[data-pane-root]` (task 1393) — stable for the
-  // pane's lifetime, so a caller can find THIS pane's root by id at call time.
-  const paneRootId = useId();
+  // (`paneRootId`, the pane's `[data-pane-root]` identity, is minted above —
+  // the click host needs it too.)
   useLayoutEffect(() => {
     const root = editorPaneRootRef.current;
     if (!root) {

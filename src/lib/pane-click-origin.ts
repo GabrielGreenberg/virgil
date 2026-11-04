@@ -112,6 +112,11 @@ export interface PaneClickHost {
   setActiveRight: (id: PanelId) => void;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   setSelectedErrorId: (id: string | null) => void;
+  /** This pane's root (`[data-pane-root]`), read at call time — the SCOPE every
+   *  card-key lookup the click makes resolves in (task 1458). Two Library
+   *  Readers can both be visible and share a per-doc card id, so visibility
+   *  cannot say which pane's card a click meant; ownership can. */
+  getPaneRoot: () => HTMLElement | null;
 }
 
 const hosts = new Map<string, PaneClickHost>();
@@ -129,6 +134,12 @@ export function registerPaneClickHost(docId: string, host: PaneClickHost): () =>
 
 export function getPaneClickHost(docId: string): PaneClickHost | null {
   return hosts.get(docId) ?? null;
+}
+
+/** The root of the pane that registered for `docId`, or null (no host, or a
+ *  pre-1093 detail with no doc) — the caller then takes the pane-dom ladder. */
+export function paneRootForDoc(docId: string | null | undefined): HTMLElement | null {
+  return docId ? (hosts.get(docId)?.getPaneRoot() ?? null) : null;
 }
 
 /** The answer the bridge acts on: the shell's own path, a foreign pane's host,

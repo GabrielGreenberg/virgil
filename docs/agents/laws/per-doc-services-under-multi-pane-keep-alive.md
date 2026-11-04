@@ -177,6 +177,23 @@ Five rules it earned:
   the FOCUSED pane (the same rung `pickActiveByEditor` takes), then visible.
   CI: `pane-dom-ownership.test.tsx` (two VISIBLE panes) + the census's
   ownership block (a scope-less door call must be on its reasoned allowlist).
+- **Per-CARD lookups are scoped too, and a pane's territory includes its
+  floats (task 1458).** Card ids are unique only per document, so two visible
+  Readers can mount the same `note:n1`, and the read-only Reader need not take
+  focus on a click — so the marker click's open/scroll/pin, `placeSelectedCard`,
+  `tryScrollOmniEntry`, the `virgil-card-jumped` pin, `jumpToLink`'s card end and
+  `usePlacement`'s card Y all acted on the OTHER Reader's card. Each now names
+  its owner: the bridge's env reads `PaneClickHost.getPaneRoot` (the shell's own
+  doc resolves through its registered host, `paneRootForDoc`), and an
+  editor-holding caller takes `paneRootOf(editor.view.dom)`. Because a
+  `FloatingPanel` is portalled OUTSIDE the root, it stamps `[data-pane-owner]`
+  with its pane id: `paneRootOf` reads it from inside a float, and a scoped
+  lookup searches root + owned portals, preferring a visible match inside them.
+  The census's `SCOPED_DOORS` now covers `resolvePaneMarker`,
+  `resolvePaneMarkers`, `findOmniEntry` and `requestOmniCardPlacement`. Still a
+  declared residual: the visibility-gated listeners in
+  `usePanelCardHoverBridge` / `usePristineCardManager` (the paragraph above).
+  CI: `card-key-ownership.test.tsx`.
 
 CI: [pane-dom-multipane.test.tsx](../../../src/components/editor-layout/__tests__/pane-dom-multipane.test.tsx)
 builds TWO panes — the hidden one FIRST, as production renders them — and drives

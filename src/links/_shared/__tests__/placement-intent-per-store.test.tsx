@@ -34,7 +34,9 @@ import { createCardStore, type AnchoredCardRef, type CardStore } from "../anchor
 import { cardKeyForEntity } from "../entity-hover";
 
 const alignMock = vi.mocked(alignEntryToYIfNeeded);
-const editor = { isDestroyed: false, isInitialized: true } as never;
+// `view.dom` outside any pane root → the pane-dom ladder (task 1458 scopes the
+// card lookup to `paneRootOf(editor.view.dom)`).
+const editor = { isDestroyed: false, isInitialized: true, view: { dom: document.body } } as never;
 
 function Host({ store, tick }: { store: CardStore; tick: number }) {
   // `collections` is a fresh literal each render, exactly as at the real call

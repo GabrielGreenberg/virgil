@@ -638,6 +638,13 @@ describe("pane-dom census — ownership (task 1393)", () => {
     paneStrip: 2,
     measureOmniGap: 2,
     readDockGeometry: 1,
+    // Task 1458 — the generic resolver and the per-CARD doors. Card ids are
+    // unique only per document, so two visible Readers can mount the same one:
+    // a card lookup with an owner in hand must pass it.
+    resolvePaneMarker: 3,
+    resolvePaneMarkers: 2,
+    findOmniEntry: 3,
+    requestOmniCardPlacement: 4,
   };
   /** `file → door`: scope-less on purpose. */
   const LADDER_ONLY: Record<string, string> = {
@@ -646,6 +653,14 @@ describe("pane-dom census — ownership (task 1393)", () => {
       "(floatOpen ← openInMode ← openPanel/togglePanel), which marker clicks " +
       "and programmatic opens call with no pane in hand — the focused rung " +
       "answers the pane the user just clicked in.",
+    "components/editor-layout/pane-dom.ts → resolvePaneMarker":
+      "panePrintPage — print isolation is reached from the shell's File → " +
+      "Print door with no pane in hand; fail-closed, and the focused rung " +
+      "answers the pane the user is printing from.",
+    "components/editor-layout/layout-scroll.ts → resolvePaneMarker":
+      "findRowScroll — the row-scroll marker is the pane's ANCESTOR, and its " +
+      "callers (link jumps, align-to-Y) take findRowScrollFor(el) when they " +
+      "hold an element; this bare form is the no-element fallback.",
   };
 
   function scopeLessCalls(): string[] {
@@ -689,6 +704,13 @@ describe("pane-dom census — ownership (task 1393)", () => {
       ["components/editor-layout/drag-drop.tsx", "paneStrip(side, scope)"],
       ["components/EditorPane.tsx", "[PANE_ROOT_ATTR]: paneRootId"],
       ["components/EditorPane.tsx", "<PaneRootContext.Provider value={paneRootId}>"],
+      // Task 1458 — the per-card lookups name their origin pane.
+      ["components/EditorPane.tsx", "getPaneRoot: () => paneRootById(paneRootId)"],
+      ["components/FloatingPanel.tsx", "[PANE_OWNER_ATTR]: ownerPane"],
+      ["components/editor-layout/event-bridges/marker-clicks.ts", "scope: env.getPaneRoot"],
+      ["components/editor-layout/event-bridges/marker-clicks.ts", "getPaneRoot: origin.host.getPaneRoot"],
+      ["links/_shared/usePlacement.ts", "paneRootOf(editor.view.dom)"],
+      ["links/links.ts", "paneRootOf(editor.view.dom)"],
     ];
     for (const [file, needle] of expected) {
       const code = CODE.get(path.join(SRC, ...file.split("/")));

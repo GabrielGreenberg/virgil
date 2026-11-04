@@ -8,7 +8,7 @@ import {
   scrollEntryIntoView,
   scrollPanelEntryAfterMount,
 } from "../layout-scroll";
-import { resolvePaneMarker } from "../pane-dom";
+import { resolvePaneMarker, type PaneScope } from "../pane-dom";
 
 /**
  * Routing helper used by every main-text click that wants to "show me
@@ -31,7 +31,7 @@ export interface OpenForCardDeps {
   prefs: ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
+  tryScrollOmniEntry: (key: string, targetY?: number, scope?: PaneScope) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
 }
 
@@ -52,6 +52,11 @@ export interface OpenForCardArgs {
    *  anchor override that pulls the card to the click without scrolling
    *  the document). */
   skipScroll?: boolean;
+  /** The ORIGIN pane's root, read at call time (task 1458): every lookup this
+   *  open makes resolves in that pane. Card ids are per-document, so two
+   *  visible Readers can both mount this card; only ownership tells them
+   *  apart. Absent → the pane-dom ladder (focused, then first visible). */
+  scope?: () => HTMLElement | null;
 }
 
 /**
@@ -80,18 +85,23 @@ export function omniEntrySelector(key: string, attr = "data-omni-entry"): string
  *  pane, and a bare `document.querySelector` takes whichever pane comes first
  *  in DOM order. Visibility outranks exactness — a visible prefix row beats a
  *  hidden exact one — and only when no pane shows the card does it fall open
- *  to the first match, the pre-873 answer. */
+ *  to the first match, the pre-873 answer.
+ *
+ *  `scope` is the caller's own pane (task 1458): with it, the lookup never
+ *  answers with another visible pane's card. The pane-dom census's ownership
+ *  block makes every production caller pass it (or name why it cannot). */
 export function findOmniEntry(
   key: string,
   attr = "data-omni-entry",
+  scope?: PaneScope,
 ): HTMLElement | null {
   const exact = `[${attr}="${key}"]`;
   const prefix = `[${attr}^="${key}@"]`;
   return (
-    resolvePaneMarker(exact, "fail-closed") ??
-    resolvePaneMarker(prefix, "fail-closed") ??
-    resolvePaneMarker(exact, "fail-open") ??
-    resolvePaneMarker(prefix, "fail-open")
+    resolvePaneMarker(exact, "fail-closed", scope) ??
+    resolvePaneMarker(prefix, "fail-closed", scope) ??
+    resolvePaneMarker(exact, "fail-open", scope) ??
+    resolvePaneMarker(prefix, "fail-open", scope)
   );
 }
 
@@ -100,7 +110,7 @@ function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Si
 }
 
 export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void {
-  const { omniKey, entrySelector, panelId, targetY, skipScroll } = args;
+  const { omniKey, entrySelector, panelId, targetY, skipScroll, scope } = args;
   const {
     prefs,
     setActiveLeft,
@@ -114,9 +124,9 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   // FAIL-CLOSED: a card hosted only by a hidden keep-alive pane's Omni is not
   // "already showing" — answering yes would return without opening anything.
   if (skipScroll) {
-    const entry = resolvePaneMarker(omniEntrySelector(omniKey), "fail-closed");
+    const entry = resolvePaneMarker(omniEntrySelector(omniKey), "fail-closed", scope?.());
     if (entry) return;
-  } else if (tryScrollOmniEntry(omniKey, targetY)) {
+  } else if (tryScrollOmniEntry(omniKey, targetY, scope?.())) {
     return;
   }
 
@@ -130,7 +140,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   // `skipScroll`, so a marker click got a "nearest" scroll here AND the
   // caller's own placement).
   if (isActive) {
-    if (!skipScroll) scrollPanelEntryAfterMount(entrySelector, { targetY });
+    if (!skipScroll) scrollPanelEntryAfterMount(entrySelector, { targetY, scope });
     return;
   }
 
@@ -153,10 +163,11 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   // alignment itself.
   if (skipScroll) return;
   requestAnimationFrame(() => {
+    const own = scope?.();
     const omniEntry =
-      target === "omni" ? findOmniEntry(omniKey) : null;
+      target === "omni" ? findOmniEntry(omniKey, "data-omni-entry", own) : null;
     const entry =
-      omniEntry ?? resolvePaneMarker(entrySelector, "fail-open");
+      omniEntry ?? resolvePaneMarker(entrySelector, "fail-open", own);
     if (!entry) return;
     if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
     else scrollEntryIntoView(entry);
