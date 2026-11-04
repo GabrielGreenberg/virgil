@@ -124,15 +124,6 @@ function poppedValue(): PoppedCardsValue {
   };
 }
 
-/** Every background colour painted anywhere in the document. `FloatingPanel`
- *  PORTALS to `document.body`, so RTL's `container` is empty here — a leg that
- *  read it would pass vacuously (the trap the audit's own first draft hit). */
-function paintedBackgrounds(): string[] {
-  return [...document.body.querySelectorAll<HTMLElement>("*")]
-    .map((el) => el.style.backgroundColor)
-    .filter((c) => c && c !== "transparent");
-}
-
 /** The float root's `--link-anchor-color` — what `FloatingPanel` stamps from
  *  `accentTint` so the `:has()` window-ring rules resolve the kind accent
  *  (bug #34). This is M2, one field over from the header strip. */
@@ -159,7 +150,7 @@ beforeEach(() => {
 });
 
 describe("an OPEN card float follows a live panel-colour override (M1 + M2)", () => {
-  it("re-tints its header strip and its window ring, with no other render", () => {
+  it("re-tints its window ring, with no other render", () => {
     render(
       <PoppedCardsContext.Provider value={poppedValue()}>
         <FloatHost keys={[NOTE_KEY]} cardCtx={cardCtx()} />
@@ -170,9 +161,6 @@ describe("an OPEN card float follows a live panel-colour override (M1 + M2)", ()
     expect(document.body.textContent).toContain("Note");
     expect(windowRingAccent()).not.toBeNull();
 
-    const before = paintedBackgrounds();
-    const defaultStrip = hexToRgb(CARD_THEMES.note.headerDefault);
-    expect(before).toContain(defaultStrip);
     expect(windowRingAccent()).toBe(CARD_THEMES.note.accent);
 
     // The ONLY thing that happens: the store bumps. No keystroke, no click, no
@@ -180,14 +168,9 @@ describe("an OPEN card float follows a live panel-colour override (M1 + M2)", ()
     act(() => setPanelColor("note", PURPLE));
 
     const overridden = themeFromAccent(getPanelColor("note"));
-    expect(overridden.headerDefault).not.toBe(CARD_THEMES.note.headerDefault);
+    expect(overridden.accent).not.toBe(CARD_THEMES.note.accent);
 
-    // M1 — the header strip moved.
-    const after = paintedBackgrounds();
-    expect(after).toContain(hexToRgb(overridden.headerDefault));
-    expect(after).not.toContain(defaultStrip);
-
-    // M2 — the window ring accent moved with it.
+    // M2 — the window ring accent moved.
     expect(windowRingAccent()).toBe(overridden.accent);
   });
 
@@ -196,20 +179,20 @@ describe("an OPEN card float follows a live panel-colour override (M1 + M2)", ()
     function DockedProbe() {
       renders++;
       const theme = useCardKindTheme("note");
-      return <div data-testid="docked" style={{ backgroundColor: theme.headerDefault }} />;
+      return <div data-testid="docked" style={{ backgroundColor: theme.accent }} />;
     }
     const { getByTestId } = render(<DockedProbe />);
 
     expect(renders).toBe(1);
     expect(getByTestId("docked").style.backgroundColor).toBe(
-      hexToRgb(CARD_THEMES.note.headerDefault),
+      hexToRgb(CARD_THEMES.note.accent),
     );
 
     act(() => setPanelColor("note", PURPLE));
 
     expect(renders).toBeGreaterThan(1);
     expect(getByTestId("docked").style.backgroundColor).toBe(
-      hexToRgb(themeFromAccent(PURPLE).headerDefault),
+      hexToRgb(themeFromAccent(PURPLE).accent),
     );
   });
 
@@ -219,13 +202,12 @@ describe("an OPEN card float follows a live panel-colour override (M1 + M2)", ()
         <FloatHost keys={[NOTE_KEY]} cardCtx={cardCtx()} />
       </PoppedCardsContext.Provider>,
     );
-    const defaultStrip = hexToRgb(CARD_THEMES.note.headerDefault);
-    expect(paintedBackgrounds()).toContain(defaultStrip);
+    expect(windowRingAccent()).toBe(CARD_THEMES.note.accent);
 
     act(() => setPanelColor("todo", PURPLE));
     clearPanelColor("todo");
 
-    expect(paintedBackgrounds()).toContain(defaultStrip);
+    expect(windowRingAccent()).toBe(CARD_THEMES.note.accent);
   });
 });
 

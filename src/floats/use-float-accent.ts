@@ -18,6 +18,10 @@ export interface FloatAccent {
 
 const NEUTRAL: FloatAccent = {};
 
+/** A card float's strip stands on the paper's white in every kind, the same
+ *  white as the card body under it. */
+export const CARD_FLOAT_STRIP = "var(--surface)";
+
 /**
  * Resolve a float's accent LIVE (task 493).
  *
@@ -54,7 +58,7 @@ export function useFloatAccent(themeKey: PanelThemeKey | undefined): FloatAccent
  * The DERIVATION half of `useFloatAccent`, without the subscription.
  *
  * Exported ONLY so a test can state the producer contract ("a note float's
- * declared key resolves to the note theme's `headerDefault`") without restating
+ * declared key resolves to the note theme's `accent`") without restating
  * the accent → theme derivation, which is the fork this task exists to close.
  * **Production code must not call it** — a live read with no subscription is
  * precisely the pre-493 defect, and the census in
@@ -66,5 +70,5 @@ export function resolveFloatAccent(
 ): FloatAccent {
   if (!themeKey) return NEUTRAL;
   const theme = themeFromAccent(getPanelColor(themeKey));
-  return { headerTint: theme.headerDefault, accentTint: theme.accent };
+  return { headerTint: CARD_FLOAT_STRIP, accentTint: theme.accent };
 }

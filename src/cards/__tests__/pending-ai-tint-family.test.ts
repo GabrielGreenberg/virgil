@@ -47,16 +47,17 @@ describe("pending-AI tint family (task 1066)", () => {
 
   /** Every chrome site that frames an applied AI change. A new navigator joins
    *  this list; it does not pick its own blue. */
-  const NAVIGATORS: { file: string; marker: string }[] = [
-    { file: "src/components/PendingChangePill.tsx", marker: "PendingChangePillBody" },
-    { file: "src/panels/Omni/OmniViewPanel.tsx", marker: "Pending change navigator" },
+  const NAVIGATORS: { file: string; marker: string; framed: boolean }[] = [
+    { file: "src/components/PendingChangePill.tsx", marker: "PendingChangePillBody", framed: true },
+    // Text in the gutter's notice strip: nothing to frame, still no palette blue.
+    { file: "src/panels/Omni/OmniViewPanel.tsx", marker: "Pending change navigator", framed: false },
   ];
 
-  for (const { file, marker } of NAVIGATORS) {
-    it(`${file}: the pending-change navigator reads --pending-ai-edge, no palette blue`, () => {
+  for (const { file, marker, framed } of NAVIGATORS) {
+    it(`${file}: the pending-change navigator reads no palette blue`, () => {
       const src = read(file);
       expect(src, `${file} no longer contains its navigator marker`).toContain(marker);
-      expect(src).toContain("border-[var(--pending-ai-edge)]");
+      if (framed) expect(src).toContain("border-[var(--pending-ai-edge)]");
       expect(src).not.toMatch(/\b(?:border|bg|text|ring)-(?:sky|blue|cyan)-\d{2,3}\b/);
     });
   }

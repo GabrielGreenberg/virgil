@@ -201,8 +201,8 @@ export function FloatChromeContent(props: FloatChromeContentProps) {
 
 export interface FloatChromeProps extends FloatChromeShape, FloatChromeHandlers {
   /** Header-strip background (`Floatable.headerTint`) — card floats pass
-   *  their kind's `theme.headerDefault` so the strip matches the docked
-   *  card header (pop-out continuity #20). Absent → the neutral
+   *  the card's own white, because a docked card has no band to continue
+   *  (pop-out continuity #20). Absent → the neutral
    *  `--surface-muted-strong` (text-object floats; the same value
    *  `.lifted-text-overlay__header` paints, so the preview and the release
    *  agree on the strip color too). */

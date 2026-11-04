@@ -338,7 +338,7 @@ export function OmniFilterMenu({
  *     sticky band frame, so the bins stack directly below any docked band by
  *     flex ORDER and ride the frame's sticky pin. Reachable at every scroll
  *     position; never under a docked pod. The slot owns the z rung and the
- *     horizontal inset, so here the stack is a plain flex column.
+ *     horizontal inset, so here the stack is a plain strip.
  *   - `host="pod"` — the fallback when no column publishes a slot (a bare
  *     mount, unit fixtures). An `absolute; inset: 0` zero-flow wrapper spans
  *     the whole cascade pod with pointer events OFF, and a `position: sticky`
@@ -354,26 +354,20 @@ export function OmniFilterMenu({
  * from the top of the whole paper, gone on any scrolled document and painted
  * under a docked band at scroll 0.
  *
- * Laying the bins out in normal flow inside this column is the task-127 fix:
- * the outside-focus bin sits directly BELOW the unanchored bin whether the
- * latter is collapsed or expanded, so expanding the unanchored bin can no
- * longer paint its opaque list over the outside-focus pill or swallow its
- * clicks.
+ * Laying the bins out in normal flow inside this strip is the task-127 fix:
+ * the outside-focus bin follows the unanchored bin whether the latter is
+ * collapsed or expanded, so expanding the unanchored bin can no longer paint
+ * its opaque list over the outside-focus pill or swallow its clicks. The
+ * applied-change navigator rides the same strip (first), so the two can't pin
+ * over each other and a card can't show between them.
  */
 export function OmniBinStack({
   children,
   host = "pod",
   occupantRef,
-  belowNavigator = false,
 }: {
   children: ReactNode;
   host?: "frame" | "pod";
-  /** Frame host only (task 1440): this column also carries the applied-change
-   *  navigator, which is sticky at the column's top — the same spot the bin
-   *  slot pins to. Step the bins down under it (its 32px box + 8px margin)
-   *  rather than let the two pin over each other. A prop, not a `:has()`
-   *  rule — globals.css carries none (editor-observer / css-invalidation). */
-  belowNavigator?: boolean;
   /** In-pod host only: receives the STICKY inner — the element that is both
    *  the pinned chrome and its own last painted pixel — so the cascade can
    *  floor its first card under it (task 544, `cascadeFloorForStickyOccupant`).
@@ -386,10 +380,9 @@ export function OmniBinStack({
       <div
         data-omni-bin-stack=""
         data-omni-bin-host="frame"
-        className="flex flex-col gap-1"
-        // Below the right gutter's head row (`--omni-sticky-top`, task 1440)
-        // and, when the navigator is up, below that too.
-        style={{ paddingTop: `calc(var(--omni-sticky-top, 0px) + ${belowNavigator ? 40 : 0}px)` }}
+        className="omni-notices"
+        // Below the right gutter's head row (`--omni-sticky-top`, task 1440).
+        style={{ paddingTop: "var(--omni-sticky-top, 0px)" }}
       >
         {children}
       </div>
@@ -404,10 +397,10 @@ export function OmniBinStack({
       <div
         ref={occupantRef}
         data-omni-bin-sticky=""
-        className="flex flex-col gap-1"
+        className="omni-notices"
         // `--omni-sticky-top`: the right gutter's head row (task 1440) sets
         // it so the sticky chrome pins below the row, not under it.
-        style={{ position: "sticky", top: "calc(var(--pod-gap) + var(--omni-sticky-top, 0px))", marginLeft: 8, marginRight: 8, pointerEvents: "auto" }}
+        style={{ position: "sticky", top: "calc(var(--pod-gap) + var(--omni-sticky-top, 0px))", pointerEvents: "auto" }}
       >
         {children}
       </div>
@@ -463,22 +456,24 @@ export function OmniBinPill({
   const [expanded, setExpanded] = useState(false);
   if (count === 0) return null;
   return (
-    <div {...rest}>
+    // An open bin takes a line of its own, so its list runs the column's width
+    // and pushes what follows down (task 127).
+    <div {...rest} className={expanded ? "basis-full min-w-0" : "min-w-0"}>
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-2xs font-medium focus-ring"
+        className="omni-bin-pill flex items-center gap-1.5 px-1 py-0.5 rounded-sm text-xs focus-ring"
         data-omni-bin-tone={tone}
         data-hint={expanded ? hintExpanded : hintCollapsed}
         aria-expanded={expanded}
       >
         <span aria-hidden="true">{glyph}</span>
         <span>{label}</span>
-        <span className="ml-auto flex" aria-hidden="true"><Chevron expanded={expanded} /></span>
+        <span className="flex" aria-hidden="true"><Chevron expanded={expanded} /></span>
       </button>
       {expanded && (
         <div
-          className="panel-scroll mt-1 space-y-2 rounded bg-surface/95 backdrop-blur-sm border border-edge-subtle p-2"
+          className="panel-scroll mt-1 space-y-2 rounded-lg bg-card shadow-[var(--card-shadow-ambient)] p-2"
           style={{ maxHeight: "var(--dock-slot-frame-h, 80vh)" }}
         >
           {children}
@@ -517,9 +512,10 @@ function ParkedGlyph() {
  * is what the pod-header fallback chip has always said, so the one affordance
  * reads the same wherever it is drawn.
  *
- * It renders inside the shared `OmniBinStack` column above the outside-focus
+ * It renders inside the shared `OmniBinStack` strip ahead of the outside-focus
  * bin, so expanding it pushes what follows down rather than painting over it
- * (task 127).
+ * (task 127). `contents`, so the open pill's own wrapper is the strip's flex
+ * item and can take the full line.
  */
 export function OmniUnanchoredBin({
   free,
@@ -536,7 +532,7 @@ export function OmniUnanchoredBin({
   if (count === 0) return null;
   const anyOrphaned = orphaned.length > 0;
   return (
-    <div data-omni-unanchored-bin="" className="flex flex-col gap-1">
+    <div data-omni-unanchored-bin="" className="contents">
       <OmniBinPill
         data-omni-unanchored-pill=""
         count={count}
@@ -596,8 +592,8 @@ export function OmniUnanchoredBin({
  * Rather than drop them (silent data loss — the user's note just vanishes),
  * they collect here in a collapsed count pill, expandable to a bounded list.
  * The cards render only when expanded, so no live editors mount by default.
- * Sits directly below the unanchored bin in the shared `OmniBinStack` flex
- * column whether that bin is collapsed or expanded (task 127).
+ * Follows the unanchored bin in the shared `OmniBinStack` strip whether that
+ * bin is collapsed or expanded (task 127).
  */
 export function OmniOutsideFocusBin({
   items,
@@ -681,10 +677,7 @@ function NavArrow({
 function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
   return (
     <div
-      className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-[var(--pending-ai-edge)] bg-surface px-2 py-1.5 shadow-[var(--card-shadow-ambient)]"
-      // Pins below the right gutter's head row where one is mounted
-      // (`--omni-sticky-top`, task 1440); `top-0` otherwise.
-      style={{ top: "var(--omni-sticky-top, 0px)" }}
+      className="flex items-center gap-0.5"
       role="group"
       aria-label="Pending change navigator"
       data-omni-bulk-pending={bulk.count}
@@ -696,12 +689,10 @@ function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
         label="changes"
       />
       <NavArrow dir="down" onClick={bulk.onNext} disabled={bulk.count === 0} />
-      <div className="ml-auto">
-        <ItemMenu align="right">
-          <MenuArchive label="Keep all" onClick={bulk.onKeepAll} />
-          <MenuDelete label="Dismiss all" onClick={bulk.onDismissAll} />
-        </ItemMenu>
-      </div>
+      <ItemMenu align="right">
+        <MenuArchive label="Keep all" onClick={bulk.onKeepAll} />
+        <MenuDelete label="Dismiss all" onClick={bulk.onDismissAll} />
+      </ItemMenu>
     </div>
   );
 }
@@ -950,6 +941,17 @@ function OmniViewPanel({
   // the cardId differs). Untying it from selection means collapse-toggling
   // a pinned card no longer snaps it back to its cascaded position — pin
   // stays put. New marker/card-jump interactions still replace cleanly.
+  // What needs a look, as one strip: both hosts hold the same three.
+  const notices = (
+    <>
+      {bulkPendingChanges && bulkPendingChanges.count > 0 && (
+        <OmniBulkPendingHeader bulk={bulkPendingChanges} />
+      )}
+      <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
+      <OmniOutsideFocusBin items={outsideFocus} />
+    </>
+  );
+
   return (
     <CardDisplayProvider value={{ compressedLines: OMNI_COMPRESSED_LINES }}>
     <div
@@ -966,9 +968,6 @@ function OmniViewPanel({
         }
       }}
     >
-      {bulkPendingChanges && bulkPendingChanges.count > 0 && (
-        <OmniBulkPendingHeader bulk={bulkPendingChanges} />
-      )}
       {/* `enabledCategories` is empty for two different reasons, and the
           sentence must name the right one (task 918): nothing is PLACED here
           (the filter menu has no rows to offer — the way in is a placement
@@ -1011,20 +1010,11 @@ function OmniViewPanel({
       >
         {binSlot ? (
           createPortal(
-            <OmniBinStack
-              host="frame"
-              belowNavigator={!!bulkPendingChanges && bulkPendingChanges.count > 0}
-            >
-              <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
-              <OmniOutsideFocusBin items={outsideFocus} />
-            </OmniBinStack>,
+            <OmniBinStack host="frame">{notices}</OmniBinStack>,
             binSlot,
           )
         ) : (
-          <OmniBinStack host="pod" occupantRef={setPodOccupant}>
-            <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
-            <OmniOutsideFocusBin items={outsideFocus} />
-          </OmniBinStack>
+          <OmniBinStack host="pod" occupantRef={setPodOccupant}>{notices}</OmniBinStack>
         )}
         {anchored.map((item) => {
           const isPinned = pinRequest?.cardId === item.id;

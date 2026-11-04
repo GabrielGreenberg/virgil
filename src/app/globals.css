@@ -601,6 +601,7 @@
   /* Surfaces & overlays */
   --surface-muted: #fafaf9;          /* list-hover, subpod resting bg (≈ stone-50) */
   --surface-muted-strong: #f5f5f4;   /* icon-button hover, chip bg (≈ stone-100) */
+  --card-surface: #fbf7f3;           /* a card at rest, one step behind the paper */
   /* The keyboard-roving "selection square" in action menus — the highlight the
      L/R/U/D arrow cursor moves. A darker, blue-tinted surface (derived from
      --accent-blue #2563eb) so the active item reads clearly against both the
@@ -628,14 +629,14 @@
   --edge-strong: #a8a29e;   /* input focus border (≈ stone-400) */
 
   /* Text scale */
-  --ink-faint: #d6d3d1;     /* disabled, resting card grips (≈ stone-300) */
+  --ink-faint: #d6d3d1;     /* disabled (≈ stone-300) */
   --ink-muted: #625a53;     /* placeholders, default icons, timestamps (≈ stone-500) */
   --ink-subtle: #625a53;    /* subtitles (≈ stone-500) */
   --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
   --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
 
   /* Drag-handle ink. Two grips share one ladder: the card grip
-     (`.card-drag-handle`, rest `--ink-faint` → hover `--ink-subtle`) and the
+     (`.card-drag-handle`, `--ink-subtle`, shown with the card's hover) and the
      margin grab handle (`.text-object-grab-handle`, rest `--muted`, the META
      tier `iconbtn-meta` rests on). Both go to `--ink-body` when hovered,
      pressed or menu-open — the iconbtn hover ink (task 2026-10-23-1261). */
@@ -938,6 +939,7 @@ body[data-zen-mode="on"] {
   --color-accent-light: var(--accent-light);
   --color-btn-primary: var(--btn-primary);
   --color-surface: var(--surface);
+  --color-card: var(--card-surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-muted-strong: var(--surface-muted-strong);
   --color-menu-roving: var(--menu-roving-bg);
@@ -1158,26 +1160,47 @@ body[data-zen-mode="on"] {
 /* ── Omni "collected cards" bin pill ──────────────────────────────
    Shared recipe for the faint count-pill controls that collect cards
    which can't cascade inline: the outside-focus band and the unanchored
-   bin (OmniOutsideFocusBin / OmniUnanchoredBin). Both were a white chip
-   on the white Omni column with a ~1:1 border — effectively invisible.
-   This reads as a solid, clearly-bounded control: a tinted resting bg
-   that separates from the white column, a perceptible stone-300 edge,
-   and readable ink-body text. Hover deepens one step (bg + border) so
-   the feedback survives the already-tinted resting state (the hover
-   trap: don't rest at the same token .hover-on-light hovers to). The
-   leading glyph stays per-bin (◎ vs a BadgeOrphaned badge). */
+   bin (OmniOutsideFocusBin / OmniUnanchoredBin). Text on the gutter's own
+   ground, like the rest of the gutter, with a wash on hover; the leading
+   glyph stays per-bin (◎ vs a BadgeOrphaned badge). */
 .omni-bin-pill {
-  color: var(--ink-body);
-  background-color: var(--surface-muted);
-  border: 1px solid var(--edge-hover);
-  box-shadow: var(--card-shadow-ambient);
+  color: var(--ink-muted);
   transition:
     background-color var(--motion-fast) ease-out,
-    border-color var(--motion-fast) ease-out;
+    color var(--motion-fast) ease-out;
 }
 .omni-bin-pill:hover {
-  background-color: var(--surface-muted-strong);
-  border-color: var(--edge-strong);
+  color: var(--ink-body);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* What needs a look, on one strip: the pending-change navigator and the bins.
+   It spans the slot's horizontal inset and paints the gutter's ground, so a
+   card passes under it instead of showing between its parts, and the lower
+   edge dissolves. Empty, it paints nothing and only keeps its top offset. */
+.omni-notices {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  margin-inline: -8px;
+  padding-inline: 8px;
+  padding-bottom: 4px;
+}
+.omni-notices:not(:empty) {
+  background: var(--background);
+}
+.omni-notices:not(:empty)::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: linear-gradient(to bottom, var(--background), transparent);
+  pointer-events: none;
 }
 
 /* Timing/property list shared with .hover-on-light above. */
@@ -3178,6 +3201,55 @@ textarea {
    survive. Float-scoped (`.par-float-body`) → cannot touch the main editor. */
 .par-float-body .tiptap > [class*="heading-wrapper-l"]:first-child::before {
   content: none;
+}
+
+/* A card at rest shows its kind and its content. The dot is the only colour it
+   wears; the grip and the header controls come up with the card. */
+.card-kind-mark {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 6px;
+  height: 14px;
+}
+.card-kind-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  transition: opacity var(--motion-fast) ease-out;
+}
+.card-kind-mark .card-drag-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease-out;
+}
+[data-card]:hover > [data-card-header] .card-drag-handle,
+[data-card] .card-drag-handle.is-pressed {
+  opacity: 1;
+}
+[data-card]:hover > [data-card-header] .card-kind-mark[data-liftable] .card-kind-dot {
+  opacity: 0;
+}
+[data-card] .card-reveal {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease-out;
+}
+[data-card]:hover .card-reveal,
+[data-card]:focus-within .card-reveal,
+[data-card][data-selected] .card-reveal,
+[data-card] .card-reveal:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  [data-card] .card-reveal,
+  .card-kind-mark .card-drag-handle {
+    opacity: 1;
+  }
 }
 
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
@@ -6333,26 +6405,16 @@ body.perf-contain .static-borrowed-text {
  * the cascade reads as a quiet gallery that lights up under the pointer.
  *
  * Selected cards are exempt via `:not([data-selected])` (PanelCard stamps
- * `data-selected` on the same root) so selection keeps its bright surface +
- * header tint + outline chrome. `transition-colors` (CARD_BASE) animates both
- * directions. All values are TOKENS so the effect tracks the active theme.
- *
- * Tuning knobs (the resting "recede"): the two declarations below. The resting
- * fill is `--surface-muted-strong` (one step beyond today's hover bg
- * `--surface-muted`) for a slightly-more-pronounced recede; the resting BORDER
- * is the faint `--edge-subtle` (the same light edge the editor sheet / inputs
- * use) so a quiet card reads recessed in BOTH fill and outline — never heavier
- * than the page outline. Hover firms the edge up to `--edge-hover` as the fill
- * brightens to `--surface`. Specificity (≥0,4,0 with `:hover`) beats Tailwind's
- * `hover:bg-surface-muted/50` / `bg-surface`; unselected cards carry no inline
- * background, so no `!important` is needed. */
+ * `data-selected` on the same root) so selection keeps its bright surface.
+ * CARD_BASE's transition animates both directions. Both values are TOKENS so
+ * the effect tracks the active theme, and specificity (≥0,4,0 with `:hover`)
+ * beats Tailwind's `bg-surface`; unselected cards carry no inline background,
+ * so no `!important` is needed. */
 [data-omni-dim="true"] [data-omni-entry]:not([data-selected]) {
-  background-color: var(--surface-muted-strong);
-  border-color: var(--edge-subtle);
+  background-color: var(--card-surface);
 }
 [data-omni-dim="true"] [data-omni-entry]:not([data-selected]):hover {
   background-color: var(--surface);
-  border-color: var(--edge-hover);
 }
 
 /* ── PrintAppendices: hidden in live UI, revealed in print media ──── */
@@ -6835,14 +6897,26 @@ body.perf-contain .static-borrowed-text {
   overflow-y: auto;
   scrollbar-width: thin;
   /* The column runs to the window edge (no strip column), so the gutter
-     carries its own edge inset. */
-  padding: 6px 4px 16px 6px;
+     carries its own edge inset. The bottom is `::after`'s. */
+  padding: 6px 4px 0 6px;
   /* The Outline's voice: the UI sans at text-sm — stated here because the
      pane around the gutter speaks the paper's serif. */
   font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.375;
   color: var(--foreground);
+}
+/* The gutter's bottom edge. In flow it reserves room below the last row, so the
+   Stack button never sits on a list; stuck to the scrollport it dissolves the
+   list before it reaches that button. */
+.tool-gutter::after {
+  content: "";
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 56px;
+  background: linear-gradient(to bottom, transparent, var(--background) 62%);
+  pointer-events: none;
 }
 .tool-gutter-tools {
   display: flex;

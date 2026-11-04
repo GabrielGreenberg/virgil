@@ -596,23 +596,16 @@ export function makeCompressedSummary(content: JSONContent | unknown, lines: num
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
+// The border is kept, transparent, so a card's box never changes size between
+// states; the parked cue is the one state that paints it. A card's identity
+// comes from its shadow + gap, not an edge.
 const CARD_BASE =
-  "rounded-lg border transition-colors overflow-hidden";
-// Resting edge softened onto `border-edge-subtle` (task 026 §3a) so cards
-// adopt the panel-subtle look by default — the card's identity comes from its
-// shadow + gap (panel look), not a hard edge. Hover keeps the retint/brighten
-// (a neutral edge-strengthen + muted bg); the COLORED hover/select outline is
+  "rounded-lg border border-transparent transition-colors overflow-hidden";
+// Hover draws the edge. Elevation stays with the tier (STYLE_GUIDE "Depth"), so
+// a hovered card never lifts. The omni cascade also rests one step behind the
+// paper while `omniDimResting` is on (globals.css). The COLORED hover outline is
 // separate (globals.css, gated behind the `card-outline-chrome` pref).
-//
-// hover-on-light-exempt: a CARD-scale WASH, not a control hover (task 502).
-// `.hover-on-light` is calibrated for a ~20px control; the same 5% grey across
-// a whole card reads as a selection, which is a different state. So this rests
-// one step FAINTER on purpose (`surface-muted/50` ≈ #fcfcfc) and pairs with the
-// border retint that carries the actual affordance. It aligns to the neutral
-// family — same hue ramp, half the strength — and is the one surface in the
-// app whose hover is deliberately weaker than the SSOT.
-const CARD_DEFAULT =
-  "bg-surface border-edge-subtle hover:border-edge-strong hover:bg-surface-muted/50";
+const CARD_DEFAULT = "bg-surface hover:border-edge-hover";
 
 /**
  * Call from arrow-key handlers to clear the stale CSS :hover on the
@@ -706,10 +699,9 @@ export const NEUTRAL_SELECTED_BORDER = "var(--edge-strong)";
  *  ring is the same light 1.5px/50% outline as hover (the `[data-card-key]`
  *  rule in globals.css — an `outline`, a disjoint property, so it composes
  *  with the box-shadow rather than contending for it); its persistent
- *  identity — the cue that survives the pointer leaving — is the quiet
- *  `borderSelected` 1px border tint applied here, plus the header tint
- *  PanelCard sets from `headerSelected`. So the box-shadow is the ambient
- *  lift, for selected and unselected alike.
+ *  identity — the cue that survives the pointer leaving — is the selection
+ *  halo layered here. So the box-shadow is the ambient lift, for selected and
+ *  unselected alike.
  *
  *  `dropTarget` composes {@link CARD_DROP_TARGET_RING} ON TOP of that lift —
  *  the ring is a transient state ABOUT the card, not a replacement for its
@@ -733,6 +725,9 @@ export function themedCardStyle(
     return {
       borderRadius: 0,
       borderWidth: 0,
+      // A float stands on the paper's white whatever its state, the same
+      // white as the title strip above it.
+      backgroundColor: "var(--surface)",
       ...(options.dropTarget ? { boxShadow: CARD_DROP_TARGET_RING } : {}),
     };
   }
@@ -747,9 +742,7 @@ export function themedCardStyle(
   if (selected && theme) layers.push(selectionHaloRing(theme.accent));
   layers.push("var(--card-shadow-ambient)");
   return {
-    ...(selected
-      ? { borderColor: theme ? theme.borderSelected : NEUTRAL_SELECTED_BORDER }
-      : {}),
+    ...(selected && !theme ? { borderColor: NEUTRAL_SELECTED_BORDER } : {}),
     boxShadow: layers.join(", "),
   };
 }
@@ -865,15 +858,10 @@ export const CARD_THEMES: Record<PanelThemeKey, CardTheme> = Object.fromEntries(
 
 /* ── Shared badge classes ────────────────────────────────────────── */
 
-const BADGE_BASE = "inline-flex items-center justify-center w-[18px] h-[18px] rounded text-2xs font-semibold shrink-0";
-
-/** Anchored badge with a label (e.g. number or letter). */
-export function BadgeLabel({ label, theme }: { label: string | number; theme: CardTheme }) {
-  return (
-    <span className={BADGE_BASE} style={{ background: theme.badgeBg, color: theme.badgeColor, border: `1.5px solid ${theme.badgeBorder}` }}>
-      {label}
-    </span>
-  );
+/** The number or letter a card carries beside its kind label ("Footnote 1"):
+ *  plain text in the same line, not a box of its own. */
+export function BadgeLabel({ label }: { label: string | number }) {
+  return <span className="card-meta-label tabular-nums shrink-0">{label}</span>;
 }
 
 /** Tiny header label for an anchored card: "selection · 14 words" or
@@ -901,8 +889,7 @@ export function AnchorBadge({
 
 /** Orphaned/unanchored badge — a small faded color dot-squircle (~10px).
  *  Matches the "outside focus" ◎ dot; the data-hint/aria-label carry the
- *  "no anchor" meaning (no cross-out glyph). Deliberately NOT BADGE_BASE —
- *  it is smaller than the 18px count badge it sits beside. */
+ *  "no anchor" meaning (no cross-out glyph). */
 export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   return (
     <span
@@ -926,6 +913,11 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
  *  {@link UnanchoredCardCue} prop, which also carries the `cardKey` — see that
  *  type for why the look and the mechanism must be one declaration. */
 const UNANCHORED_CARD_CLASS = "border-dashed opacity-80";
+
+/** The parked cue's edge colour. Stated inline because the frame's own
+ *  `border-transparent` is a utility on the same element, where two colour
+ *  utilities resolve by stylesheet order rather than intent. */
+const UNANCHORED_CARD_EDGE = "var(--edge-hover)";
 
 /** Tooltip copy for an unanchored/parked card — the string SSOT, paired with
  *  the private cue class by {@link PanelCard}. Exported for the contract suites
@@ -1110,7 +1102,7 @@ function CardKindDropdown({
       trigger={() => (
         <>
           {labelOverride ?? cardTypeLabel(kind)}
-          <MenuCaret size={9} className={chromeOnly("")} />
+          <MenuCaret size={9} className={chromeOnly("card-reveal")} />
         </>
       )}
     >
@@ -1251,7 +1243,7 @@ export function CardDropButton({
       // disabled hint ("Add a citation key to anchor") is the only place the
       // user learns WHY it is off, and HintLayer finds it by `pointerover`.
       // (A disabled iconbtn paints no hover fill — globals.css.)
-      className={chromeOnly("iconbtn-xs")}
+      className={chromeOnly("iconbtn-xs card-reveal")}
       style={disabled ? { cursor: "not-allowed", pointerEvents: "auto" } : { cursor: "grab" }}
       {...iconHint({ label: title, hint: disabled ? "Add a citation key to anchor" : title })}
     >
@@ -1321,7 +1313,7 @@ export function CardBodyTitle({
   }, [editing]);
 
   const style: React.CSSProperties | undefined = theme
-    ? { color: theme.titleColor, borderBottomColor: theme.titleColor }
+    ? { color: CARD_TITLE_INK, borderBottomColor: CARD_TITLE_INK }
     : undefined;
 
   if (hasTitle || editing) {
@@ -1382,7 +1374,7 @@ export function CardBodyTitle({
         draggable={false}
         onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         className={chromeOnly("card-title-add")}
-        style={theme ? { color: theme.titleColor } : undefined}
+        style={theme ? { color: CARD_TITLE_INK } : undefined}
         data-hint="Add title"
         data-hint-pos="above"
       >
@@ -1395,6 +1387,9 @@ export function CardBodyTitle({
 /* ── Title input (par-title styling) ─────────────────────────────── */
 
 const TITLE_CLASS = "min-w-0 max-w-full bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
+/** A card's title stays ink in every kind; the kind is the dot's job. */
+const CARD_TITLE_INK = "var(--ink-strong)";
+
 const TITLE_STYLE: React.CSSProperties = {
   fontSize: "var(--par-title-size, 0.78rem)",
   color: "var(--par-title-color, #c45a5a)",
@@ -1404,7 +1399,7 @@ const TITLE_STYLE: React.CSSProperties = {
 };
 
 /** Canonical card-title inline style — the TITLE dialect (the `.par-title-*`
- *  tokens, themed via `theme.titleColor`). Family + weight are the par-title
+ *  tokens, in {@link CARD_TITLE_INK}). Family + weight are the par-title
  *  chain from `@/lib/font-stacks`, so the GLOBAL font prefs (Global Sans,
  *  Par-title family/weight) reach card titles exactly as they reach the
  *  in-document par titles. Design-system-fixed: the per-panel
@@ -1413,7 +1408,7 @@ const TITLE_STYLE: React.CSSProperties = {
  *  `CardTitleInput` and the bespoke title/header lines (citation collapsed
  *  header, bib header). */
 export function cardTitleStyle(theme?: CardTheme): React.CSSProperties {
-  return theme ? { ...TITLE_STYLE, color: theme.titleColor } : { ...TITLE_STYLE };
+  return theme ? { ...TITLE_STYLE, color: CARD_TITLE_INK } : { ...TITLE_STYLE };
 }
 
 /** Standard title input for card headers.
@@ -2048,7 +2043,7 @@ export function EditableCard({
           {bodyTitle?.trim() ? (
             <div
               className="card-title-collapsed"
-              style={theme ? { color: theme.titleColor } : undefined}
+              style={theme ? { color: CARD_TITLE_INK } : undefined}
             >
               {bodyTitle}
             </div>
@@ -2537,7 +2532,7 @@ export function PanelClose() {
 export function CardDragHandle() {
   return (
     <div
-      className={chromeOnly("card-drag-handle cursor-grab p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0")}
+      className={chromeOnly("card-drag-handle cursor-grab p-0.5 rounded text-ink-subtle")}
       data-hint="Drag to pop out"
       data-hint-pos="above"
       aria-hidden="true"
@@ -2848,9 +2843,9 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  multiple kinds (Cutter, Revisions). */
   kindOptions?: CardKind[];
   onKindChange?: (k: CardKind) => void;
-  /** Footnote-only: small letter/number badge at the left of the header.
-   *  Other cards should pass `undefined` — badges are unified out per the
-   *  card-chrome design. */
+  /** Footnote-only: the small letter or number beside the kind label. Other
+   *  cards should pass `undefined` — badges are unified out per the card-chrome
+   *  design. */
   footnoteBadge?: ReactNode;
   /** Narrow slot between the kind label and the jump/X chrome. Use for
    *  status dots, partner-claim pills, AiRequestCheckbox, etc. Avoid
@@ -2865,10 +2860,6 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  empty / keyless draft (it can't produce a `\cite{}` atom yet); footnotes
    *  never disable. Ignored for non-droppable kinds (no button renders). */
   dropDisabled?: boolean;
-  /** Optional placement of the separator line between header and body.
-   *  Defaults to true so the existing visual is preserved; set false to
-   *  suppress (e.g. a card that paints its own divider). */
-  showSeparator?: boolean;
   /** When true, PanelCard renders NO header (and no popout-X) — the body only.
    *  Set by a popped card so the unified header moves up into `FloatChrome`
    *  (the AF window chrome). Only ever true together with `isPoppedOut`; the
@@ -2960,7 +2951,6 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     canJump,
     onJump,
     dropDisabled,
-    showSeparator = true,
     chromeless,
     draggable,
     onKeyDown: callerKeyDown,
@@ -3336,6 +3326,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       )}
       style={{
         ...cardFrameStyle(theme, selected, { isPoppedOut, dropTarget: isDropTarget }),
+        ...(unanchored ? { borderColor: UNANCHORED_CARD_EDGE } : {}),
         ...style,
       }}
       onClick={onClick ? (e) => {
@@ -3375,8 +3366,10 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       {renderUnifiedHeader ? (
         <>
           {/* Unified card header — single source of truth for header layout.
-              Height matches popped-out text headers (h-6 = 24px). Drag
-              handle (10×14 SVG) fits with room to spare.
+              Height matches popped-out text headers (h-6 = 24px). No band: the
+              kind is a dot and a label on the card's own ground, and the
+              negative bottom margin closes the header's lower half onto the
+              body, whose own top padding predates that.
 
               The whole docked header is the disclosure trigger (the per-card
               expand chevron was retired with the ratified click=toggle+select
@@ -3391,8 +3384,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
               as the visual drag hint. Overrides any cursor-pointer/grab the
               card root sets via extraCardClass. */}
           <div
-            className="flex items-center gap-1 px-2 h-6 shrink-0 cursor-default"
-            style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
+            className="flex items-center gap-1.5 pl-3 pr-2 h-6 mt-1 -mb-1 shrink-0 cursor-default"
             // Lets EditableCard's focus-capture auto-activation skip header
             // focus: the header has its own explicit activation (click /
             // Enter / Space, never jump), so Tab landing here must not fire
@@ -3434,16 +3426,24 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           >
             {/* The grip paints iff the lift can land (task 277) — same
                 `canLift` the gesture reads, so the app never offers a drag it
-                will refuse. A card that can't lift simply starts at the badge;
-                a dead grab cursor is worse than a missing one. */}
-            {canLift && <CardDragHandle />}
-            {footnoteBadge}
+                will refuse. It shares the dot's slot and takes over from it on
+                hover, so the header doesn't shift; a card that can't lift keeps
+                its dot. A dead grab cursor is worse than a missing one. */}
+            <span className="card-kind-mark" data-liftable={canLift ? "" : undefined}>
+              <span
+                aria-hidden="true"
+                className="card-kind-dot"
+                style={{ backgroundColor: theme.accent }}
+              />
+              {canLift && <CardDragHandle />}
+            </span>
             <CardKindHeader
               kind={kind!}
               labelOverride={kindLabelOverride}
               options={kindOptions}
               onChange={onKindChange}
             />
+            {footnoteBadge}
             <div className="flex-1" />
             {headerTrailing}
             {/* (Re)anchor drop button — registry-gated (`isDroppable`), so it
@@ -3468,7 +3468,6 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
               <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
             )}
           </div>
-          {showSeparator && <CardSeparator selected={selected} theme={theme} />}
           {/* `display:contents` keeps the body id resolvable for the chevron's
               `aria-controls` without inserting a layout box. */}
           <div id={bodyId} style={{ display: "contents" }}>{children}</div>

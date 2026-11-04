@@ -52,17 +52,13 @@ const FROZEN_THEME_KEYS = [
 ] as const;
 
 /** Every palette field `deriveCardPalette`/`themeFromAccent` must produce —
- *  the fields card headers / badges / titles read. Frozen literal too. */
+ *  the fields card rules / badges read. Frozen literal too. */
 const REQUIRED_PALETTE_FIELDS = [
   "accent",
-  "headerDefault",
-  "headerSelected",
   "separatorSelected",
-  "borderSelected",
   "badgeBg",
   "badgeColor",
   "badgeBorder",
-  "titleColor",
 ] as const;
 
 const HEX6 = /^#[0-9a-f]{6}$/i;

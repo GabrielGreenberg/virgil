@@ -140,10 +140,7 @@ const SILOS = ["src", "library"];
  *
  * The list may only SHRINK. A new icon button belongs on a ring, not here.
  */
-const PERMITTED_UNRINGED_ICON_BUTTONS: Record<string, string> = {
-  "src/components/stack/StackIcon.tsx":
-    "the portal-mounted Stack pill carries its elevation (and its illuminated drag halo) as an INLINE box-shadow, which no stylesheet ring can override — it keeps the UA outline, which is a real indicator, rather than taking a class that would delete one and supply none.",
-};
+const PERMITTED_UNRINGED_ICON_BUTTONS: Record<string, string> = {};
 
 function sources(): { file: string; src: string; raw: string }[] {
   const out: { file: string; src: string; raw: string }[] = [];
@@ -1070,8 +1067,8 @@ describe("the visible-text classifier (self-check)", () => {
  *    `triggerClassName` it is handed — so the block at the end of this file
  *    censuses that flow directly rather than leaving it to this limit.
  *  - **A ring reached as an inline `style` is a different mechanism** and is
- *    not censused here. Inline beats the sheet outright — the caveat
- *    `PERMITTED_UNRINGED_ICON_BUTTONS` above already records for `StackIcon`.
+ *    not censused here. Inline beats the sheet outright, which is why a
+ *    control with an inline `box-shadow` takes the `focus-outline` member.
  */
 
 /** A Tailwind ring utility, variant prefixes included (`hover:ring-2`,
@@ -1265,10 +1262,9 @@ describe("a focus indicator has ONE mechanism", () => {
     // an inline declaration beats every stylesheet rule, so here the ring is
     // the loser — `.focus-ring` supplies `outline: none` and then cannot paint
     // its own box-shadow, leaving a keyboard-reachable control with NO
-    // indicator at all. That is worse than never taking the class, which is
-    // why `PERMITTED_UNRINGED_ICON_BUTTONS` records `StackIcon` as unringed
-    // rather than ringed; `SelectionActionsMenu`'s margin bolt had taken it
-    // anyway (task 503) and is now unringed too.
+    // indicator at all. That is worse than never taking the class;
+    // `SelectionActionsMenu`'s margin bolt had taken it anyway (task 503) and
+    // is now unringed.
     //
     // Allowlist EMPTY. A control whose elevation is genuinely inline drops the
     // class; one whose elevation could live on the CLASS layer moves it there
@@ -1285,10 +1281,9 @@ describe("a focus indicator has ONE mechanism", () => {
     // an inline declaration beats every stylesheet rule, so here the ring is
     // the loser — `.focus-ring` supplies `outline: none` and then cannot paint
     // its own box-shadow, leaving a keyboard-reachable control with NO
-    // indicator at all. That is worse than never taking the class, which is
-    // why `PERMITTED_UNRINGED_ICON_BUTTONS` records `StackIcon` as unringed
-    // rather than ringed; `SelectionActionsMenu`'s margin bolt had taken it
-    // anyway (task 503) and is unringed now too.
+    // indicator at all. That is worse than never taking the class;
+    // `SelectionActionsMenu`'s margin bolt had taken it anyway (task 503) and
+    // is unringed now.
     //
     // Allowlist EMPTY. A control whose elevation is genuinely inline drops the
     // class; one whose elevation could live on the CLASS layer moves it there

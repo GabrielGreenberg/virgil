@@ -109,11 +109,16 @@ describe("pod seam — the width is DERIVED from the shadow it has to hold", () 
     // band seam and the column-edge fade coincide — the ~44px Gabriel
     // photographed. Bound the SUM, not each half: bounding the halves alone is
     // exactly what let three reasonable values add up.
-    const fade = panelColumn.match(
-      /var\(--background\) var\(--pod-seam\), transparent calc\(var\(--pod-seam\) \+ (\d+)px\)/,
-    );
-    expect(fade, "ColumnEdgeFade must ramp from the seam token").not.toBeNull();
-    const fadeVisible = tokenPx("--pod-seam") + parseFloat(fade![1]);
+    expect(
+      panelColumn,
+      "ColumnEdgeFade must ramp from the seam token",
+    ).toMatch(/var\(--background\) var\(--pod-seam\), transparent calc\(var\(--pod-seam\) \+ \$\{ramp\}px\)/);
+    // The long open ramp may only apply with nothing docked, where there is no
+    // band seam to add to.
+    expect(panelColumn).toMatch(/hasStack \? STACKED_FADE_RAMP : OPEN_FADE_RAMP/);
+    const ramp = panelColumn.match(/const STACKED_FADE_RAMP = (\d+);/);
+    expect(ramp, "the stacked ramp is a stated constant").not.toBeNull();
+    const fadeVisible = tokenPx("--pod-seam") + parseFloat(ramp![1]);
     expect(tokenPx("--pod-seam") + fadeVisible).toBeLessThanOrEqual(24);
   });
 });
@@ -215,7 +220,7 @@ describe("column edge fade — its floor IS the clip edge (task 1356)", () => {
   });
 
   it("the flow inset lives on the row just inside the clip box", () => {
-    const fadeTop = panelColumn.indexOf('<ColumnEdgeFade side={side} edge="top" />');
+    const fadeTop = panelColumn.indexOf('<ColumnEdgeFade side={side} edge="top"');
     expect(fadeTop).toBeGreaterThan(-1);
     const row = panelColumn.slice(fadeTop, panelColumn.indexOf("}}", fadeTop));
     expect(row).toMatch(/paddingTop:[^,]*var\(--pod-gap\)/);

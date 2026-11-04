@@ -156,11 +156,12 @@ describe("T2: in-card tier primitives", () => {
     ).toBeUndefined();
   });
 
-  it("cardTitleStyle is the par-title TITLE dialect, themed via titleColor", () => {
+  it("cardTitleStyle is the par-title TITLE dialect, in one ink for every kind", () => {
     const theme = CARD_THEMES.citation;
     const style = cardTitleStyle(theme);
     expect(style.fontSize).toBe("var(--par-title-size, 0.78rem)");
-    expect(style.color).toBe(theme.titleColor);
+    expect(style.color).toBe("var(--ink-strong)");
+    expect(cardTitleStyle(CARD_THEMES.note).color).toBe(style.color);
     // Family + weight answer the same GLOBAL font prefs the in-document par
     // titles read (task 1273): par-title family → Global Sans → next/font sans.
     expect(style.fontFamily).toContain("var(--font-partitle-family,");

@@ -116,7 +116,7 @@ export function FootnoteCard({
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      footnoteBadge={<BadgeLabel label={fn.thanks ? "A" : fn.number} theme={theme} />}
+      footnoteBadge={<BadgeLabel label={fn.thanks ? "A" : fn.number} />}
       bodyTitle={fn.title}
       onBodyTitleChange={onEditTitle ?? undefined}
       onDelete={onDelete}

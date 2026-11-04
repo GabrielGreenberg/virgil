@@ -286,8 +286,8 @@ Three rules the family carries:
 change and an open AI request paint ONE light blue (Gabriel, 2026-07-03), and
 the chrome that frames that signal wears the same hue: `--pending-ai-tint`
 (`#bfdbfe`, the band + request wash; ≡ the TS `PENDING_AI_TINT`, which the band
-stamps into `data-tint-color`), `--pending-ai-edge` (the per-change and bulk
-pending-change navigators' border — derived from the tint), `--pending-ai-ink`
+stamps into `data-tint-color`), `--pending-ai-edge` (the per-change navigator's border — derived from the
+tint), `--pending-ai-ink`
 (`#60a5fa`, the delete-mode strike). A new pending-AI surface reads this family,
 never a `sky-*`/`blue-*` utility — the navigators once wore `sky-200` (h≈231)
 beside a blue-200 band (h≈254). Guard: `src/cards/__tests__/pending-ai-tint-family.test.ts`.
@@ -1251,13 +1251,14 @@ Five states. One implementation each.
   (the pending-change pill, the hint tooltip, the drop-mode Save/Cancel
   chip, the stale-PDF badge and compile-running chip, the label-ref,
   math and figure popovers, every menu, the toast, the floating zap
-  trigger, the portaled stack pill, the Library page-number lozenge, the
-  outline focus-band handles) takes the menu rung,
+  trigger, the Library page-number lozenge, the outline focus-band
+  handles) takes the menu rung,
   `--menu-shadow` — by NAME, even where it equals the pod's today
   (the menu rung aliases `--pod-shadow`); an IN-FLOW chip
-  or sticky header (Omni's pending navigator, `.omni-bin-pill`, outline
-  pod chips) takes the card ambient rung, `--card-shadow-ambient` — ONE
-  token, since they sit among cards (task 1247). No site authors its own:
+  or sticky header (outline pod chips) takes the card ambient rung,
+  `--card-shadow-ambient` — ONE token, since they sit among cards (task
+  1247). Text on the gutter's own ground (the notice strip, the Stack
+  button) takes no rung at all. No site authors its own:
   `shadow-tier-census.test.ts` fails any Tailwind `shadow`/`shadow-sm…2xl`,
   any non-`var()` `shadow-[…]`, and any literal blurred layer outside a
   `:root` token definition — rings (`0 0 0 Npx`) and `inset` seams are
@@ -1273,13 +1274,12 @@ Five states. One implementation each.
   ring's colour is a token read (`--focus-ring-shadow`, or `color-mix`
   over a colour token), never a hand-picked rgba/hex;
   there is not one hover-elevation rule in either silo. Border-color hover
-  *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
-  `edge-strong`) and the omni-bin pill's. The exception is icon buttons
+  *is* sanctioned and prescribed — it is the card rule (transparent →
+  `edge-hover`). The exception is icon buttons
   (`iconbtn-*`, `.topbarbtn`): background and text color only, never a
   border.
 - **Selection.** Always themed. There is no default selection color.
-  Each card kind reads its theme's `borderSelected` and
-  `headerSelected`.
+  Each card kind wears the selection halo in its own theme's tint.
 - **Focus.** `.focus-ring` — or `.iconbtn-*` / `.topbarbtn`, which bake the
   same thing in. **Never a Tailwind `focus-visible:ring-*` utility.** All four
   spellings resolve to ONE declaration block in `globals.css` (`outline: none`
@@ -1443,13 +1443,13 @@ classes for topbar buttons; if you need a new visual state, extend
 
 **Omni bin pill.** The count-pill controls in the Omni cascade that
 collect cards which can't render inline — the outside-focus band and
-the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's a
-solid, clearly-bounded chip against the white Omni column: tinted
-resting bg (`--surface-muted`) so it separates from the column, a
-perceptible stone-300 edge (`--edge-hover`), readable `--ink-body`
-text, hover deepening one step (bg → `--surface-muted-strong`, border →
-`--edge-strong`). Beware the hover trap: never rest a hover-able pill at
-the same token its hover lands on, or the feedback vanishes. The leading
+the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's text
+on the gutter's ground, `--ink-muted`, with a wash and `--ink-body` on
+hover. It rides the **notice strip** (`.omni-notices`) with the
+pending-change navigator, because all of them say the same thing, *this
+needs a look*: one strip across the column, painted in the gutter's own
+ground so a card passes under it, wrapping when the column is narrow. An
+open bin takes the strip's full line. The leading
 glyph stays per-bin (`◎` outside-focus; the no-anchor bin wears a
 `BadgeOrphaned` badge iff any member is orphaned, else the parked `◌`),
 and every pill declares its TONE (`neutral` / `error`, published as
@@ -1537,20 +1537,33 @@ census's reach).
 
 ## Cards & themes
 
-A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
-`headerSelected`, `separatorSelected`. All other values
-(`badgeBg`, `titleColor`, etc.) derive from `accent` via
-`themeFromAccent()` in `src/lib/panel-theme.ts`.
+**A card's kind is a dot.** The header has no band: a 6px dot in the kind's
+accent and the kind label, on the card's own ground. Titles stay ink
+(`--ink-strong`) in every kind, and nothing else on a card at rest takes the
+accent. The grip shares the dot's slot and takes over from it on the card's
+hover, so the header doesn't shift; a card that can't lift keeps its dot. The
+header controls wear `.card-reveal` and come up on hover, on selection and on
+keyboard focus. They stay in the DOM and stay reachable, so the opacity is the
+only thing that changes. A card's number or letter is plain text beside the
+label ("Footnote 1"). Floats follow: a card float's strip is the card's own
+white (`CARD_FLOAT_STRIP`), which is what pop-out continuity asks of a header
+with no band.
+
+**A card has no resting edge.** Its identity is shadow and gap. The border is
+kept, transparent, so the box never changes size; hover paints it `edge-hover`
+and the parked cue paints it dashed. In the omni cascade the default
+`omniDimResting` rests a card on `--card-surface`, one step behind the paper,
+and hover brings it up to `--surface`.
+
+A theme derives from one token, `accent`: `separatorSelected`, `badgeBg`,
+`badgeColor` and `badgeBorder` all come from it via `themeFromAccent()` in
+`src/lib/panel-theme.ts`.
 
 **Every value `themeFromAccent()` emits is a solid `#rrggbb`** — never
-`rgba()`, never a `color-mix(…, transparent)`. Header tints are pre-mixed
-over white (`blendOverWhite`) rather than composited at paint time, and this
-is the one place the Tokens section's `color-mix` advice does *not* apply. A
-theme token is a **surface fill read by more than one parent**:
-`theme.headerDefault` paints the docked card header over `bg-surface` (white)
-and is handed straight through as the float `headerTint` over `--pod-panel`,
-so a translucent value would render the same card two different colors
-depending on whether it is popped out. Alpha still belongs at the
+`rgba()`, never a `color-mix(…, transparent)`. This is the one place the
+Tokens section's `color-mix` advice does *not* apply: a theme token can be read
+by more than one parent, and a translucent value would render the same thing
+two different colors. Alpha still belongs at the
 *consumption* site, over the card's own opaque surface — the hover/select
 ring's `color-mix(in oklab, var(--link-anchor-color) 50%, transparent)` is
 correct. `panel-theme-key-freeze.test.ts` pins the hex format, but only for
@@ -1590,18 +1603,11 @@ a lightness coordinate.** HSL lightness is hue-blind — `l = 0.40` says nothing
 about how bright a color *reads*, and the error is largest exactly where the
 palette offers its most saturated hues. So the derivation measures WCAG
 relative luminance against the surface a value actually lands on
-(`src/lib/color-math.ts`: `contrastRatio`, `inkOn`, `atContrastAgainst`), and
+(`src/lib/color-math.ts`: `contrastRatio`, `inkOn`), and
 moves only lightness to reach it, carrying hue and saturation through:
-
-- **Text ink** (`badgeColor` = `titleColor` = the marginalia glyph — one
-  `accentInk` per accent, not three per-surface inks) clears **4.5:1** against
-  the *darkest* surface it can land on. 10px badges and ~12.5px/500 titles are
-  normal-size text; no large-text exemption applies.
-- **Non-text affordances** (`borderSelected`) target **3:1** against
-  `--surface`. A *target*, not a floor: the point is that a selected Note and a
-  selected Report read as equally selected. An absolute coordinate cannot do
-  that — `atLightness(accent, 0.62)` lightened dark accents and darkened light
-  ones, so the same cue ranged from 1.36:1 to 5.62:1 depending only on hue.
+**text ink** (`badgeColor` = the marginalia glyph — one `accentInk` per accent,
+not two per-surface inks) clears **4.5:1** against the *darkest* surface it can
+land on. These are normal-size text; no large-text exemption applies.
 
 The ink is the accent, darkened only as far as legibility requires — a
 genuinely dark accent is its own ink. **No per-kind exceptions**: a hand-tuned
@@ -1716,7 +1722,7 @@ the registry's own structural facets and requires the labels to agree;
 placeholder literal that restates a registry label.
 
 Card chrome colors come from theme tokens (`theme.accent`,
-`theme.titleColor`, …), never raw Tailwind palette literals
+`theme.badgeColor`, …), never raw Tailwind palette literals
 (`text-sky-500`). This holds for the system themes too (`aiRequest`,
 `error` — non-overridable, but they ride the same accent→palette
 derivation). A literal that happens to match the accent today will
@@ -1760,13 +1766,12 @@ genuinely per-instance hue (the light-blue pending-AI bands), where there is no
 theme to follow. The sentinel also costs nothing at runtime: the override
 repaints live, with no re-stamp pass and no doc walk on a color change.
 
-Selection: border flips to `theme.borderSelected`, header tint flips
-from `headerDefault` to `headerSelected`, separator flips to
+Selection: the card wears the selection halo and any inner rule flips to
 `theme.separatorSelected`. Elevation does NOT change on selection —
 the card keeps its `--card-shadow-ambient` (`themedCardStyle`), since
 elevation is a property of the tier, never of a state. The body never
-tints. Every section rule on a card — PanelCard's header/body rule and any
-inner rule a card body draws — renders through ONE `CardSeparator`
+tints. A card's header has no rule under it; every inner rule a card body
+draws renders through ONE `CardSeparator`
 (`panel-primitives.tsx`), keyed on the same halo the card hands PanelCard as
 `selected` (never the host's `isSelected` alone); `card-separator-census.test.ts`
 pins that no card body re-spells it (task 969).
@@ -2544,7 +2549,7 @@ compile error). The **numeric steppers** (`SizeStepper`,
 `tabular-nums`, and they dropped their rings to match this spec.
 
 Card title input is borderless except a `border-bottom: 1px solid
-theme.titleColor` on focus, transparent bg, sans 0.78rem weight 500.
+var(--ink-strong)` on focus, transparent bg, sans 0.78rem weight 500.
 Don't reuse this style. (It is already its own primitive, `CardTitleInput`
 — the pattern that made the missing ordinary one conspicuous.)
 
@@ -3557,12 +3562,14 @@ ring is an `outline`, a disjoint property, so all three compose.
 
 ## Stack (visual clipboard)
 
-The Stack lives at the bottom-left of the editor pane: a round
-translucent button (3 stacked pages icon) backed by a body-portaled
-strip that opens on click. Items in the strip are compressed cards
-showing kind label, 5-line summary, X-to-remove, and relative date.
-Geometry is exported once and read by every consumer — `STACK_ICON_DIAMETER`
-/ `STACK_INSET_*` from `StackIcon`, `STACK_THUMB_W` / `STACK_THUMB_H` from
+The Stack lives at the bottom-left of the window: a quiet labelled button
+(stacked pages, "Stack") in the gutter's own ground, opaque so it covers what
+scrolls under it, backed by a body-portaled strip that opens on click. The tool
+gutter reserves room for it below its last row and dissolves its lists before
+they reach it, so it never sits on the list. Items in the strip are compressed
+cards showing kind label, 5-line summary, X-to-remove, and relative date.
+Geometry is exported once and read by every consumer — `STACK_ICON_WIDTH`
+/ `STACK_ICON_HEIGHT` / `STACK_INSET_*` from `StackIcon`, `STACK_THUMB_W` / `STACK_THUMB_H` from
 `StackThumbnail` (the strip's width budget reads the same thumb width it lays
 out).
 

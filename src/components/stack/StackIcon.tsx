@@ -23,6 +23,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { STACK_CHROME_Z } from "@/floats/float-policy";
+import { FONT_SANS } from "@/lib/font-stacks";
 import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-target";
 import {
   parkDuringLayoutGesture,
@@ -43,9 +44,10 @@ export interface StackIconProps {
  *  merely wasteful rather than wrong — this makes it neither). */
 const CONTENT_GESTURE = ["content"] as const;
 
-export const STACK_ICON_DIAMETER = 56;
-export const STACK_INSET_LEFT = 12;
-export const STACK_INSET_BOTTOM = 12;
+export const STACK_ICON_WIDTH = 76;
+export const STACK_ICON_HEIGHT = 32;
+export const STACK_INSET_LEFT = 8;
+export const STACK_INSET_BOTTOM = 8;
 
 export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
   const [hover, setHover] = useState(false);
@@ -61,7 +63,7 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
   // a drag whose payload the Stack cannot take offers nothing at all.
   //
   // Edge-only: the bus publishes begin/end edges, never per frame, so a whole
-  // drag costs two renders of a 56px button. Kind-filtered to `content` —
+  // drag costs two renders of one button. Kind-filtered to `content` —
   // a pane-divider drag or an OS window resize moves nothing over this icon,
   // and suppressing hover for them would be a decision nobody made.
   const contentDragActive = useLayoutGestureActive(CONTENT_GESTURE);
@@ -81,12 +83,12 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
     const update = () => {
       const h = window.innerHeight;
       const left = STACK_INSET_LEFT;
-      const top = h - STACK_INSET_BOTTOM - STACK_ICON_DIAMETER;
+      const top = h - STACK_INSET_BOTTOM - STACK_ICON_HEIGHT;
       setStackIconRect(owner, {
         left,
         top,
-        right: left + STACK_ICON_DIAMETER,
-        bottom: top + STACK_ICON_DIAMETER,
+        right: left + STACK_ICON_WIDTH,
+        bottom: top + STACK_ICON_HEIGHT,
       });
     };
     update();
@@ -108,39 +110,34 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
   const illuminated = stackTarget;
 
   // ── Color resolution from Virgil design tokens ─────────────────────
-  // Idle: warm mid-tone pod surface — darker than card chrome so the
-  // icon reads as a discrete affordance against the canvas.
-  // Open: a touch darker still.
-  // Hover: subtle bump toward the darker end.
+  // Idle: the gutter's own ground, opaque, so it reads as text on the
+  // manila and still covers whatever scrolls under it.
+  // Hover and open: the same ground, one and two steps darker.
   // Illuminated (drag target): accent-blue ring, same family as
   // DockOutline + drop-mode indicator.
-  // Resting bg: paper-light. Hover/open warm slightly. The outline
-  // carries the contrast against the canvas: a warm mid-grey (the tone
-  // we used for the previous resting fill).
-  const ringColor =
-    "color-mix(in srgb, var(--pod-dark, #eae6df) 88%, #000 12%)";
   const bg = illuminated
     ? "var(--accent-light, #f5f0ea)"
     : open
-      ? "var(--pod-dark, #eae6df)"
+      ? "color-mix(in srgb, var(--background) 90%, #000)"
       : hover && !contentDragActive
-        ? "var(--pod-toolbar, #f5f3ef)"
-        : "var(--surface, #ffffff)";
-  const borderColor = illuminated ? "var(--accent-blue)" : ringColor;
+        ? "color-mix(in srgb, var(--background) 95%, #000)"
+        : "var(--background)";
+  const borderColor = illuminated ? "var(--accent-blue)" : "transparent";
   const borderWidth = illuminated ? 2 : 1;
   const boxShadow = illuminated
-    ? "0 0 0 4px color-mix(in srgb, var(--accent-blue) 18%, transparent), var(--menu-shadow)"
-    : "var(--menu-shadow)";
+    ? "0 0 0 4px color-mix(in srgb, var(--accent-blue) 18%, transparent)"
+    : "none";
 
   return createPortal(
     <button
-      data-iconbtn-exempt="portal pill: elevation is inline box-shadow (see unringed allowlist)"
       ref={(el) => {
         ref.current = el;
         if (hitRef) hitRef.current = el;
       }}
       type="button"
-      aria-label="Stack"
+      // The outline member of the focus door: the drag halo below owns
+      // `box-shadow` inline, which would beat the ring.
+      className="focus-outline"
       aria-pressed={open}
       data-stack-icon-hit="true"
       onClick={onToggle}
@@ -150,81 +147,48 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
         position: "fixed",
         left: STACK_INSET_LEFT,
         bottom: STACK_INSET_BOTTOM,
-        width: STACK_ICON_DIAMETER,
-        height: STACK_ICON_DIAMETER,
-        borderRadius: "50%",
+        width: STACK_ICON_WIDTH,
+        height: STACK_ICON_HEIGHT,
+        borderRadius: "var(--radius-md)",
         background: bg,
         border: `${borderWidth}px solid ${borderColor}`,
         boxShadow,
+        color: illuminated ? "var(--accent-blue)" : "var(--virgil-bar-text)",
+        fontFamily: FONT_SANS,
+        fontSize: 12,
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        gap: 6,
         zIndex: STACK_CHROME_Z,
         padding: 0,
         transition:
           "background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-fast) ease-out",
       }}
     >
-      <StackGlyph illuminated={illuminated} />
+      <StackGlyph />
+      Stack
     </button>,
     document.body,
   );
 }
 
-/** Three stacked square pages, leaning up-and-to-the-right. Each rect
- *  is 16×16 with a 3px stagger per axis so the layers are clearly
- *  legible at 30px. Stroke + fill come from design tokens. */
-function StackGlyph({ illuminated }: { illuminated: boolean }) {
-  // Stroke matches the muted ink used by L-strip icons — readable
-  // against the warm-tinted button background without going to harsh
-  // black. Fill stays paper-white so each page reads as a discrete
-  // sheet.
-  const stroke = illuminated ? "var(--accent-blue)" : "var(--virgil-bar-text)";
-  const fill = illuminated
-    ? "color-mix(in srgb, var(--accent-blue) 8%, var(--surface, #ffffff))"
-    : "var(--surface, #ffffff)";
+/** Two stacked pages, drawn in the button's own ink. */
+function StackGlyph() {
   return (
     <svg
-      width="30"
-      height="30"
-      viewBox="0 0 30 30"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
       fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
-      {/* Bottom-back page (lower-left) */}
-      <rect
-        x="3"
-        y="10"
-        width="16"
-        height="16"
-        rx="2"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth="1.5"
-      />
-      {/* Middle page */}
-      <rect
-        x="6"
-        y="7"
-        width="16"
-        height="16"
-        rx="2"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth="1.5"
-      />
-      {/* Top page (upper-right) */}
-      <rect
-        x="9"
-        y="4"
-        width="16"
-        height="16"
-        rx="2"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth="1.5"
-      />
+      <rect x="5" y="2.5" width="8.5" height="8.5" rx="2" />
+      <path d="M11 13.5H4.5a2 2 0 0 1-2-2V5" />
     </svg>
   );
 }

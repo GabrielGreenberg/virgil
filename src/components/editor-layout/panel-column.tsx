@@ -60,6 +60,13 @@ export function measureOmniGap(side: Side, scope?: PaneScope): number | undefine
   return Math.max(0, frameRect.bottom - lastRect.bottom);
 }
 
+/** The fade's ramp wherever it can meet a pod seam: the two add up, and that sum
+ *  is bounded (task 329). */
+const STACKED_FADE_RAMP = 10;
+/** The bottom ramp with nothing docked, where the only thing at the edge is
+ *  cards running out of window and a long ramp stops them reading as clipped. */
+const OPEN_FADE_RAMP = 36;
+
 /** Column-edge fade — the manilla→transparent gradient strip pinned to the
  *  top or bottom of a gutter so omni cards scrolling past the scrollport edge
  *  dissolve into the background instead of clipping. Adds ZERO net flow height
@@ -75,11 +82,13 @@ export function measureOmniGap(side: Side, scope?: PaneScope): number | undefine
  *  dissolve, this element's own affordance, and stays a stated constant. They
  *  were one hand-tuned 10+14 pair, which is how this fade could SUM with the
  *  band-bottom seam below a docked pod into ~44px of field. */
-function ColumnEdgeFade({ side, edge }: {
+function ColumnEdgeFade({ side, edge, ramp }: {
   side: "left" | "right";
   edge: "top" | "bottom";
+  ramp: number;
 }) {
   const isTop = edge === "top";
+  const box = ramp + 24;
   return (
     <div
       aria-hidden="true"
@@ -89,14 +98,13 @@ function ColumnEdgeFade({ side, edge }: {
         ...(isTop ? { top: 0 } : { bottom: 0 }),
         alignSelf: 'stretch',
         // Solid for one seam (`--pod-seam`, the SSOT for canvas-over-lane),
-        // then a 10px ramp to transparent — 16px of visible field, down from
-        // the hand-tuned 10+14 = 24px. The box stays 34 tall (and its negative
-        // margin in lockstep, zero net flow height): the surplus past the
-        // gradient is fully transparent, so the box height is a bound, not a
-        // second spelling of the band.
-        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-seam), transparent calc(var(--pod-seam) + 10px))`,
-        height: 34,
-        ...(isTop ? { marginBottom: -34 } : { marginTop: -34 }),
+        // then the ramp to transparent. The box is taller than the two (and
+        // its negative margin in lockstep, zero net flow height): the surplus
+        // past the gradient is fully transparent, so the box height is a
+        // bound, not a second spelling of the band.
+        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-seam), transparent calc(var(--pod-seam) + ${ramp}px))`,
+        height: box,
+        ...(isTop ? { marginBottom: -box } : { marginTop: -box }),
         marginLeft: -4,
         marginRight: -4,
         pointerEvents: 'none',
@@ -510,7 +518,7 @@ export function PanelColumn({
         paddingRight: collapsed ? 0 : 4,
       }}
     >
-      <ColumnEdgeFade side={side} edge="top" />
+      <ColumnEdgeFade side={side} edge="top" ramp={STACKED_FADE_RAMP} />
       <div
         className="flex flex-1 min-h-0 w-full"
         // Layer A (the omni desktop, normal flow) gets a top gap only when a
@@ -643,7 +651,11 @@ export function PanelColumn({
         style={{ ...gutterHandle.style, width: 'var(--pod-gap)' }}
       />
       </div>
-      <ColumnEdgeFade side={side} edge="bottom" />
+      <ColumnEdgeFade
+        side={side}
+        edge="bottom"
+        ramp={hasStack ? STACKED_FADE_RAMP : OPEN_FADE_RAMP}
+      />
     </div>
   );
 }

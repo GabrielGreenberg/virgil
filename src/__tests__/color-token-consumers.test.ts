@@ -233,8 +233,6 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
    *  excuse the next hand-rolled hover added beside them. Each names what it aligns to at
    *  its own site; leg 3 proves the marker is still there. */
   const PERMITTED_HAND_ROLLED_HOVERS: Record<string, string> = {
-    "src/components/panel-primitives.tsx:CARD_DEFAULT":
-      "a CARD-scale wash, deliberately one step FAINTER than the control SSOT and paired with a border retint",
     "src/components/Button.tsx:BUTTON_VARIANT.secondary":
       "BUTTON_BASE owns `transition-all` (transform + filter), which is BROADER than the utility's property list",
     "src/components/Button.tsx:BUTTON_VARIANT.ghost":
@@ -354,12 +352,8 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
 
   it("keeps every exemption's reason AT THE SITE, not only in this list", () => {
     // Read RAW (markers are comments). An exemption whose marker has been
-    // deleted is an allowlist entry excusing nothing.
-    const raw = readFileSync(path.join(REPO_ROOT, "src/components/panel-primitives.tsx"), "utf8");
-    expect(raw.match(/hover-on-light-exempt:/g) ?? []).toHaveLength(1);
-    expect(raw).toMatch(/hover-on-light-exempt:[\s\S]{0,200}CARD-scale WASH/);
-    // The `<Button>` primitive's marker moved with it into its leaf module
-    // (task 827).
+    // deleted is an allowlist entry excusing nothing. The `<Button>` primitive's
+    // marker moved with it into its leaf module (task 827).
     const button = readFileSync(path.join(REPO_ROOT, "src/components/Button.tsx"), "utf8");
     expect(button.match(/hover-on-light-exempt:/g) ?? []).toHaveLength(1);
     expect(button).toMatch(/hover-on-light-exempt:[\s\S]{0,200}BUTTON_BASE/);

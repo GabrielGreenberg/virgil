@@ -37,7 +37,6 @@ import {
   hexToRgb,
   rgbToHex,
   inkOn,
-  atContrastAgainst,
 } from "./color-math";
 
 /** Base hex used to seed each panel's palette by default. */
@@ -186,14 +185,11 @@ function tint(hex: string, amount: number): string {
  * But two of the transforms used to reason in **HSL lightness as a stand-in
  * for perceived contrast**, which is hue-blind: `readableOnWhite` passed any
  * accent under `l < 0.45` through undarkened (teal `#14b8a6` shipped as body
- * text at **2.22:1**) and `borderSelected` sat at the absolute coordinate
- * `atLightness(accent, 0.62)`, so the strength of the same "this card is
- * selected" cue varied from 1.36:1 to 5.62:1 depending only on which hue the
- * picker happened to offer.
+ * text at **2.22:1**).
  *
- * Both are now **contrast targets measured against the surface the value
- * actually lands on** (`inkOn` / `atContrastAgainst` in `color-math.ts`), which
- * is what the old comments already claimed to do. Hue and saturation are still
+ * The ink is now a **contrast target measured against the surface the value
+ * actually lands on** (`inkOn` in `color-math.ts`), which is what the old
+ * comments already claimed to do. Hue and saturation are still
  * carried through untouched — the ink is the accent, moved along its own
  * lightness axis only as far as legibility requires.
  *
@@ -209,37 +205,23 @@ function tint(hex: string, amount: number): string {
  * so the next preset cannot be added by eye.
  */
 
-/** WCAG AA for normal-size text. Not a large-text surface: badges are 10px
- *  (`panel-primitives.tsx` BADGE_BASE) and card titles ~12.5px/500
- *  (`TITLE_STYLE`), both under every large-text exemption. */
+/** WCAG AA for normal-size text. Not a large-text surface: the marginalia
+ *  glyph and the AI window's kind chips are both under every large-text
+ *  exemption. */
 export const TEXT_CONTRAST_MIN = 4.5;
 
-/** WCAG's non-text floor, used as the selected-card border's TARGET: every
- *  kind's selection cue meets it and exceeds it by as little as the 8-bit
- *  quantization allows, so they all read with the same strength. A floor first
- *  and a target second — `atContrastAgainst` will not round below it. */
-export const AFFORDANCE_CONTRAST_TARGET = 3;
-
-/** The page surface a card and its border sit on (`--surface`, globals.css). */
+/** The white paper surface (`--surface`, globals.css). */
 const SURFACE = "#ffffff";
 
 /* ── Derived palettes ────────────────────────────────────────────── */
 
 export interface DerivedCardPalette {
-  /** Always-on header tint. Solid hex, pre-mixed with white. */
-  headerDefault: string;
-  /** Intensified header tint when card selected. Solid hex. */
-  headerSelected: string;
   /** Separator color (border) when card selected. Solid hex. */
   separatorSelected: string;
-  /** Card wrapper border color when selected. Solid hex. */
-  borderSelected: string;
   /** Badge fill / text / border. */
   badgeBg: string;
   badgeColor: string;
   badgeBorder: string;
-  /** Card title text color. */
-  titleColor: string;
 }
 
 export interface DerivedMarkerPalette {
@@ -253,14 +235,6 @@ export interface DerivedMarkerPalette {
   border: string;
 }
 
-/** Compose a tinted hex over white at a given alpha — produces a solid hex. */
-function blendOverWhite(tintHex: string, alpha: number): string {
-  const [r, g, b] = hexToRgb(tintHex);
-  const W = 255;
-  const mix = (c: number) => Math.round(c * alpha + W * (1 - alpha));
-  return rgbToHex(mix(r), mix(g), mix(b));
-}
-
 /** Every field an accent paints that themed TEXT can land on, stated ONCE.
  *
  *  The palette fills read from here and so does the ink's contrast search, so
@@ -271,22 +245,20 @@ function blendOverWhite(tintHex: string, alpha: number): string {
  *  described in two places.) */
 function inkSurfaces(baseHex: string) {
   return {
-    badgeBg:        tint(baseHex, 0.88),
-    headerDefault:  blendOverWhite(tint(baseHex, 0.85), 0.35),
-    headerSelected: blendOverWhite(tint(baseHex, 0.82), 0.7),
-    markerBg:       tint(baseHex, 0.92),
+    badgeBg:  tint(baseHex, 0.88),
+    markerBg: tint(baseHex, 0.92),
   };
 }
 
-/** THE ink for an accent — one value for badge text, card titles and the
- *  marginalia glyph alike.
+/** THE ink for an accent — one value for badge text and the marginalia glyph
+ *  alike.
  *
  *  One ink rather than three per-surface inks: they are the same identity seen
  *  in three places, and a per-surface search would make the marker glyph read
  *  measurably brighter than the badge text beside it for no reason a user could
  *  name. So the search targets the darkest surface in the set and every lighter
- *  one clears by construction. `SURFACE` joins the list because a themed title
- *  can also sit on the plain white card body. */
+ *  one clears by construction. `SURFACE` joins the list because a badge can
+ *  also sit on the plain white paper. */
 export function accentInk(baseHex: string): string {
   return inkOn(
     baseHex,
@@ -323,31 +295,21 @@ const cardPaletteCache = new Map<string, DerivedCardPalette>();
 const markerPaletteCache = new Map<string, DerivedMarkerPalette>();
 const themeCache = new Map<string, CardTheme>();
 
-/** Derive the full card palette from a base hex.
- *  Header tints are pre-mixed with white into solid hexes (no rgba),
- *  so they apply cleanly via inline style without compositing surprises
- *  on tinted parents. */
+/** Derive the full card palette from a base hex. */
 export function deriveCardPalette(baseHex: string): DerivedCardPalette {
   return memoByAccent(cardPaletteCache, baseHex, () =>
     Object.freeze(computeCardPalette(baseHex)));
 }
 
 function computeCardPalette(baseHex: string): DerivedCardPalette {
-  const { badgeBg, headerDefault, headerSelected } = inkSurfaces(baseHex);
+  const { badgeBg } = inkSurfaces(baseHex);
   const badgeBorder = tint(baseHex, 0.35);
   const badgeColor = accentInk(baseHex);
   return {
-    headerDefault,
-    headerSelected,
     separatorSelected: tint(baseHex, 0.55),
-    // A contrast TARGET against the surface the border sits on, not an
-    // absolute lightness coordinate — so the selected state reads with the
-    // same strength for a near-black accent and a neon one alike.
-    borderSelected:   atContrastAgainst(baseHex, SURFACE, AFFORDANCE_CONTRAST_TARGET),
     badgeBg,
     badgeColor,
     badgeBorder,
-    titleColor: badgeColor,
   };
 }
 

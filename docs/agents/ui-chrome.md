@@ -109,9 +109,9 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
   the dock it replaces, one `localStorage` key (`virgil:tool-gutter`) re-read on
   the `storage` event via `subscribeToStorageKey`.
 - **Shared top of the right column.** With every omni surface on the right, the
-  applied-change navigator and the "N unanchored" bin would pin to one spot;
-  `OmniViewPanel` passes `belowNavigator` to the frame-host `OmniBinStack`,
-  which steps the bins down 40px (a prop, never a `:has()` rule).
+  applied-change navigator and the "N unanchored" bin would pin to one spot, so
+  they are one notice strip: `OmniViewPanel` hands all of them to `OmniBinStack`
+  (`.omni-notices`), which wraps when the column is narrow.
 
 Tests: `tool-gutter-store.test.ts`, `gutter-layout-side.test.ts`,
 `tool-gutter/__tests__/gutter-rows.test.ts`, `tool-gutter/__tests__/ToolGutter.test.tsx`.
@@ -379,7 +379,7 @@ per-doc facts the chrome needs are read from the owning pane through the
 terminal registry's ladder ([src/lib/stack/stack-terminal.ts](../../src/lib/stack/stack-terminal.ts)),
 and the click-away lives in the host for the same reason — through `useMenuDismiss` since task 862 (pointerdown press, icon excluded by ref; Escape closes the strip but yields to a live drop session). Two components:
 
-- **`StackIcon`** ([src/components/stack/StackIcon.tsx](../../src/components/stack/StackIcon.tsx)) — 56px round button, three stacked pages glyph, slightly translucent (`backdrop-filter: blur(4px)`). Click to toggle the strip. Marked with `data-stack-icon-hit="true"`. It hosts **no HTML5 `dragover`/`drop` door** — task 590 deleted it, because every Stack producer is an in-app gesture (the float-header drag and the grab-handle lift, both routed through the capture terminal below). Its ordinary hover darken is **suppressed while a `content` layout gesture is live** (`useLayoutGestureActive(["content"])`, edge-only so a whole drag costs two renders) — the lift overlay is click-through, so the button kept receiving `mouseenter` and painted a drop affordance nothing had offered (task 456).
+- **`StackIcon`** ([src/components/stack/StackIcon.tsx](../../src/components/stack/StackIcon.tsx)) — a quiet 76×32 labelled button (stacked pages, "Stack") on the gutter's own opaque ground. Click to toggle the strip. Marked with `data-stack-icon-hit="true"`. It hosts **no HTML5 `dragover`/`drop` door** — task 590 deleted it, because every Stack producer is an in-app gesture (the float-header drag and the grab-handle lift, both routed through the capture terminal below). Its ordinary hover darken is **suppressed while a `content` layout gesture is live** (`useLayoutGestureActive(["content"])`, edge-only so a whole drag costs two renders) — the lift overlay is click-through, so the button kept receiving `mouseenter` and painted a drop affordance nothing had offered (task 456).
 - **`StackStrip`** ([src/components/stack/StackStrip.tsx](../../src/components/stack/StackStrip.tsx)) — horizontal scrollable bar, ~60% editor-pane width, with `StackThumbnail` cards (each named by its `CARD_REGISTRY` / `TEXT_OBJECT_REGISTRY` label, task 861). Surface on the `--stack-strip-*` tokens (task 860).
 
 State + persistence: `useStack()` hook ([src/hooks/useStack.ts](../../src/hooks/useStack.ts)) reads/writes a versioned envelope at localStorage key `virgil-stack-v1`. Window-global / cross-document. Cross-tab sync via the standard `storage` event. **The cap is a BUDGET in two halves** (task 591), applied together by `fitStackItems` ([src/lib/stack/budget.ts](../../src/lib/stack/budget.ts)): `STACK_MAX_ITEMS` (200) *and* `STACK_MAX_CHARS`, FIFO-evicting oldest-first but never at the expense of the item being added. `addStackItem(item, bib)` therefore **returns a boolean** — a write that could not be persisted even after evicting everything older reports the failure to its caller instead of being swallowed, and both producers surface it.
