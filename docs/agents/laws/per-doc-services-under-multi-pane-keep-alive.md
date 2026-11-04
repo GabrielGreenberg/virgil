@@ -575,11 +575,14 @@ type is recognised inline, by a `…Listener` name, or through a local alias.
 Re-adding a module bus to `run-event.ts` fails 2 of its 6 legs. The first neuter
 slipped past a `type L = …` alias, which is why aliases are now resolved.
 
-**Residual (declared, not blessed):** `links/pending-preview-store.ts`, the
-applied-suggestion Original/Suggested toggle, is keyed by card id alone. Two open
-papers that share an id share its display state. It sits in the census as
-`residual-per-paper-key` until a doc or pane key is threaded through
-`pending-change-actions.ts`.
+**The residual, retired (task 1455).** `links/pending-preview-store.ts`, the
+applied-suggestion Original/Suggested toggle, was keyed by card id alone. It was
+worse than shared display state: A's "original" made B's Check re-apply over
+suggested text and CLEAR the id, so A's Check then finalized A's ORIGINAL text.
+The store is now `Map<docId, Map<cardId, dir>>`; the verbs pass the `docId` they
+already had, and the card reads `PendingChangeController.docId`. The census's
+`residual-per-paper-key` scope is DELETED, not just emptied: a collection keyed
+by a per-paper id alone is the defect, so there is no scope to declare it under.
 
 ### The popup half (task 750)
 

@@ -149,6 +149,7 @@ function makeCard(
 
 function makeController() {
   return {
+    docId: "doc-test",
     canProduce: true,
     canResolve: true,
     keep: vi.fn(),

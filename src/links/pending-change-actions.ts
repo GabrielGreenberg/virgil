@@ -158,7 +158,7 @@ function commitAppliedChange<TStatus extends string>(
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
   if (resolution === "keep") {
-    if (getPreviewDir(id) === "original") reapplySuggested(editor, id, ac, deps);
+    if (getPreviewDir(docId, id) === "original") reapplySuggested(editor, id, ac, deps);
     keepPendingChange(editor, {
       anchorUuid: ac.anchorUuid,
       mode: ac.mode,
@@ -175,7 +175,7 @@ function commitAppliedChange<TStatus extends string>(
       anchorId: ac.anchorId,
     });
   }
-  resetPreviewDir(id);
+  resetPreviewDir(docId, id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
   deps.setSuggestionStatus(
     id,
@@ -259,7 +259,7 @@ export function previewOriginal<TStatus extends string>(
 ): void {
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
-  if (getPreviewDir(id) === "original") return;
+  if (getPreviewDir(docId, id) === "original") return;
   revertPendingChange(editor, {
     anchorUuid: ac.anchorUuid,
     originalText: ac.originalText,
@@ -267,7 +267,7 @@ export function previewOriginal<TStatus extends string>(
     mode: ac.mode,
     anchorId: ac.anchorId,
   });
-  setPreviewDir(id, "original");
+  setPreviewDir(docId, id, "original");
   if (docId) void flushPendingForDoc(docId).catch(() => {});
 }
 
@@ -285,9 +285,9 @@ export function previewSuggested<TStatus extends string>(
 ): void {
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
-  if (getPreviewDir(id) === "suggested") return;
+  if (getPreviewDir(docId, id) === "suggested") return;
   reapplySuggested(editor, id, ac, deps);
-  setPreviewDir(id, "suggested");
+  setPreviewDir(docId, id, "suggested");
   if (docId) void flushPendingForDoc(docId).catch(() => {});
 }
 
@@ -379,7 +379,7 @@ export function insertSuggestionBelow<TStatus extends string>(
   }
   // Symmetric with keep/dismiss: clear any transient preview-direction state for
   // this id before it archives, so the three landing verbs leave no residue.
-  resetPreviewDir(id);
+  resetPreviewDir(docId, id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
   deps.setSuggestionStatus(id, deps.acceptedStatus);
   deps.setArchived(id, true);

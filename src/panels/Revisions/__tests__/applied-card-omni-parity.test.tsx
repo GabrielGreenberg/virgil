@@ -94,6 +94,7 @@ function makeApplied(
 // previewSuggested/insertBelow), each a spy. `canResolve` toggles the defensive disable.
 function makeController(canResolve = true) {
   return {
+    docId: "doc-test",
     canProduce: true,
     canResolve,
     keep: vi.fn(),
