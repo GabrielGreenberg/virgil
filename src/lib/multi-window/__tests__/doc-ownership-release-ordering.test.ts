@@ -276,6 +276,14 @@ describe("the claim/release state machine (task 1454)", () => {
 
   it("leg 2: two concurrent claims in one window are ONE claim — one lock request, both owned", async () => {
     const A = await newWindow(1);
+    // A real browser grants asynchronously; the bare fake grants inside the
+    // request call, which would hide the race (both claims reach the
+    // manager before either has set its hold).
+    const grantNow = locks.request.bind(locks);
+    locks.request = async (...args: Parameters<FakeLockManager["request"]>) => {
+      await Promise.resolve();
+      return grantNow(...args);
+    };
     const before = locks.requests;
     const [x, y] = await Promise.all([A.claimDoc("d1"), A.claimDoc("d1")]);
     expect(x).toEqual({ owned: true });
