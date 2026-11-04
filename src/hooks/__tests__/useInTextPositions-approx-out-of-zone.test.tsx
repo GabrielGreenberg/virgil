@@ -32,6 +32,9 @@ import {
 import {
   useInTextPositions,
   resolveHeldTops,
+  checkCarryInvariant,
+  type CheckedAnchor,
+  type CheckedHeld,
   type PositionItem,
   type HeldItem,
   type ShiftAnchor,
@@ -153,6 +156,73 @@ describe("resolveHeldTops — the scroll-invariant carry (task 1425)", () => {
   it("a failed read rides its left neighbour rather than vanishing", () => {
     const out = resolveHeldTops(held, edges(0, 10), () => null);
     for (const h of held) expect(out.has(h.id)).toBe(true);
+  });
+});
+
+describe("checkCarryInvariant — the carry's order invariant, checked (task 1464)", () => {
+  const edges = (sizeDelta = 0): CheckedAnchor[] => [
+    { pos: -Infinity, delta: 0, prevTop: -Infinity, posShift: 0 },
+    { pos: Infinity, delta: 0, prevTop: Infinity, posShift: sizeDelta },
+  ];
+  const withEdges = (mid: CheckedAnchor[], sizeDelta = 0) => {
+    const [lo, hi] = edges(sizeDelta);
+    return [lo, ...mid, hi];
+  };
+  const run = (): CheckedHeld[] =>
+    [10, 20, 30, 40, 50, 60].map((p) => ({
+      id: `h${p}`,
+      pos: p,
+      prevPos: p,
+      prevTop: p * 10,
+    }));
+
+  it("an unchanged document demotes nothing and keeps every anchor", () => {
+    const anchors = withEdges([{ pos: 5, delta: 0, prevTop: 50, posShift: 0 }]);
+    const out = checkCarryInvariant(run(), anchors);
+    expect(out.demoted.size).toBe(0);
+    expect(out.anchors.map((a) => a.pos)).toEqual(anchors.map((a) => a.pos));
+  });
+
+  it("typing above the run (every later pos shifts by n, the doc end agrees) demotes nothing", () => {
+    const held = run().map((h) => ({ ...h, pos: h.pos + 3 }));
+    const out = checkCarryInvariant(
+      held,
+      withEdges([{ pos: 5, delta: 0, prevTop: 50, posShift: 3 }], 3),
+    );
+    expect(out.demoted.size).toBe(0);
+  });
+
+  it("two sections that swapped places are demoted — the moved items and what lies between them, nothing outside", () => {
+    // [h20,h30] and [h50,h60] trade positions; h10 and h40 stay put. h40 sits
+    // between the swapped runs, inverted against both, so it is read too; h10
+    // is outside the disorder and is carried.
+    const held = run();
+    const move: Record<string, number> = { h20: 50, h30: 60, h50: 20, h60: 30 };
+    for (const h of held) if (move[h.id] !== undefined) h.pos = move[h.id];
+    held.sort((a, b) => a.pos - b.pos);
+    const out = checkCarryInvariant(held, edges());
+    expect([...out.demoted].sort()).toEqual(["h20", "h30", "h40", "h50", "h60"]);
+  });
+
+  it("a re-anchor that lands IN ORDER is still caught by its position shift", () => {
+    const held = run();
+    held[2].pos = 35; // h30 → between h30 and h40: order intact, pos jumped
+    const out = checkCarryInvariant(held, edges());
+    expect([...out.demoted]).toEqual(["h30"]);
+  });
+
+  it("an exact read whose previous top is out of order is no shift anchor", () => {
+    // An in-band card re-anchored from far below: its delta measures its own
+    // move, not the document's.
+    const anchors = withEdges([{ pos: 5, delta: -550, prevTop: 900, posShift: 0 }]);
+    const out = checkCarryInvariant(run(), anchors);
+    expect(out.anchors.map((a) => a.pos)).toEqual([-Infinity, Infinity]);
+  });
+
+  it("anchors on one visual line a few px apart are not an inversion", () => {
+    const held = run();
+    held[1].prevTop = held[0].prevTop - 3; // superscript-height wobble
+    expect(checkCarryInvariant(held, edges()).demoted.size).toBe(0);
   });
 });
 
