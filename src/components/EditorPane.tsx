@@ -6084,15 +6084,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // a switch, so a captured value would freeze at its mount-time answer. A pane
   // outside any keep-alive provider (the Library reader) reads `true` and
   // behaves exactly as before.
+  //
+  // OWNER GATE (task 1453): visibility alone is not ownership. The Library can
+  // show TWO Reader panes at once (task 1393), both visible, and a per-doc key
+  // (a footnote / citation id) can resolve in both — so both captured the item
+  // and both closed a popout, one in the doc the user never dragged from. The
+  // float is mounted by exactly one pane's `FloatHost`, and `FloatingPanel`
+  // names that pane (`PaneRootContext`) in the detail; a drop that names
+  // another pane — or none — is not this pane's to answer.
   useEffect(() => {
     const onDrop = (raw: Event) => {
       if (!isVisibleRef.current) return;
       const detail = (raw as CustomEvent<{
         cardKey: string;
+        ownerPane: string | null;
         clientX: number;
         clientY: number;
       }>).detail;
       if (!detail || typeof detail.cardKey !== "string") return;
+      if (detail.ownerPane !== paneRootId) return;
       const cardKey = detail.cardKey;
       // Nothing captured → leave the user holding their float, and leave the
       // Stack strip closed. The drag can no longer OFFER a capture this branch
@@ -6110,7 +6120,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return () => {
       window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
     };
-  }, [viewPrefs, captureKeyToStack]);
+  }, [viewPrefs, captureKeyToStack, paneRootId]);
 
   // ── Bubble per-doc state up to the shell ────────────────────────
   // Step 7.1 (Path A): emit a synthesized `PaneState` so EditorLayout's
