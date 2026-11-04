@@ -1496,7 +1496,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   const { config: wcConfig } = useWordCountConfig();
 
   // (The bespoke outside-click closer that used to live here went with the
-  //  hand-rolled dropdown — `MenuProvider` owns dismissal now. See `headerLeading`.)
+  //  hand-rolled dropdown — `MenuProvider` owns dismissal now. See `headerMenu`.)
 
   const outline = useMemo(() => extractHeadings(content), [content]);
   const { headings, preambleTitles } = outline;
@@ -1614,15 +1614,15 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
    * onto `ItemMenu` retires the clip (body-portaled at OPEN_CHROME_MENU_Z),
    * the missing viewport flip/clamp, the missing Escape + menu ARIA, and the
    * un-ringed trigger in one move — all five were properties of not being on the
-   * primitive. `align="left"` also auto-injects `PanelTextSizeRow` when the
+   * primitive. `panelHeader` also auto-injects `PanelTextSizeRow` when the
    * enclosing panel has a body key; Outline has no card-body typography, so
    * `bodyKey` is null and nothing is injected (see `panel-typography.ts:176`).
    *
    * `keepMenuOpen` on every row: `ItemMenu` closes on any bubbled click, and
    * these five are independent checkboxes the user commonly flips in a run —
    * closing after each one would be a regression against the old dropdown. */
-  const headerLeading = (
-    <ItemMenu align="left" hint="View options">
+  const headerMenu = (
+    <ItemMenu panelHeader hint="View options">
       <MenuToggleRow
         id="outline-show-numbers"
         label="Show section numbers"
@@ -1762,7 +1762,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   return (
     <Panel
       kind="outline"
-      headerLeading={headerLeading}
+      headerMenu={headerMenu}
       headerTitleAfter={headerTitleAfter}
       variant="raw"
       panelExtras={<div className="mx-3 h-px bg-[var(--border)] shrink-0" />}

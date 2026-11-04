@@ -36,7 +36,7 @@ describe("card separator census (task 969)", () => {
   });
 
   it("the primitive is read: the card bodies render CardSeparator", () => {
-    for (const rel of ["panels/Examples/ExampleCard.tsx", "panels/Citations/CitationCard.tsx"]) {
+    for (const rel of ["panels/Citations/CitationCard.tsx"]) {
       const t = readFileSync(join(SRC, rel), "utf8");
       expect(t, rel).toMatch(/<CardSeparator selected=\{isHaloed\}/);
     }

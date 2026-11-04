@@ -40,8 +40,8 @@ function ExamplesPanel(props: ExamplesPanelProps) {
   return (
     <CardListPanel
       kind="examples"
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["example"]} />
         </ItemMenu>
       }

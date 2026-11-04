@@ -2,7 +2,7 @@
 
 import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useEditor,
   EditorContent,
@@ -16,7 +16,6 @@ import type { ExampleInfo, EditorHandle } from "@/components/Editor";
 import { linkCardKey } from "@/links/link-dom-contract";
 import {
   CardEmptyText,
-  CardSeparator,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -48,14 +47,7 @@ import {
   type SourceRange,
 } from "@/lib/float-source-range";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
-import { iconHint } from "@/components/Hint";
 import { InlineError } from "@/components/InlineError";
-import {
-  EXAMPLE_DIALECT_HELP,
-  type ExampleDialect,
-  type HelpSegment,
-} from "@/lib/example-dialect";
-import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -451,51 +443,13 @@ function ExampleCardEditor({
 /** Panel card for a single `\ex` / `\pex` block. The body mounts the real
  *  expex editor (directly editable, identical to main text) when an editor
  *  context is available; in bare contexts (tests / no provider) it falls
- *  back to a read-only projection. A footer exposes a "?" help popover. */
+ *  back to a read-only projection. */
 /** The collapsed preview's one line: the body (or first item) flattened to a
  *  single whitespace-normalized line, `""` when empty. Shared by the static
  *  far tier and the bare-mount fallback. */
 function firstBodyLine(example: ExampleInfo): string {
   const text = example.bodyText || example.items[0]?.text || "";
   return text.replace(/\s+/g, " ").trim();
-}
-
-/** The "?" help pane — renders `EXAMPLE_DIALECT_HELP` for the example's own
- *  dialect (task 1341), so the help never teaches a package the paper does
- *  not use. */
-function ExampleDialectHelpPane({
-  id,
-  dialect,
-}: {
-  id: string;
-  dialect: ExampleDialect;
-}) {
-  const help = EXAMPLE_DIALECT_HELP[dialect];
-  const renderSegments = (segments: HelpSegment[]) =>
-    segments.map((seg, i) =>
-      "code" in seg ? (
-        <span key={i} className="card-mono">
-          {seg.code}
-        </span>
-      ) : (
-        <span key={i}>{seg.text}</span>
-      ),
-    );
-  return (
-    <div
-      id={id}
-      data-example-help={dialect}
-      className={`${AMBER_ATTENTION_STRIP} text-2xs leading-snug text-ink-body`}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <p className="mb-1">{renderSegments(help.intro)}</p>
-      <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
-        {help.lines.map((line, i) => (
-          <li key={i}>{renderSegments(line)}</li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 export function ExampleCard({
@@ -517,8 +471,6 @@ export function ExampleCard({
   });
   const isHaloed = ac.selected || isSelected;
 
-  const [showHelp, setShowHelp] = useState(false);
-  const helpId = useId();
 
   // The directly-editable expex body needs the main editor (to seed + write
   // back). Self-sourced from context so the card body is identical in every
@@ -697,35 +649,6 @@ export function ExampleCard({
           <CardEmptyText label="Empty example" />
         )}
       </div>
-
-      {/* ── Footer: Help ─────────────────────────────────────────── */}
-      <CardSeparator selected={isHaloed} theme={theme} />
-      <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-muted/30">
-        <button
-          data-iconbtn-exempt="bordered control: its border/fill is the affordance, not a hover lozenge"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowHelp((v) => !v);
-          }}
-          className="text-2xs px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold focus-ring"
-          aria-expanded={showHelp}
-          aria-controls={helpId}
-          {...iconHint({ label: showHelp ? "Hide help" : "Help", pos: "above" })}
-        >
-          ?
-        </button>
-        <div className="flex-1" />
-      </div>
-
-      {/* ── Help panel: how to write an example, in ITS dialect ──
-          Read from the per-dialect table (task 1341) — a linguex example
-          must never be taught expex syntax its paper does not define. */}
-      {showHelp && (
-        <>
-          <CardSeparator selected={isHaloed} theme={theme} />
-          <ExampleDialectHelpPane id={helpId} dialect={example.dialect} />
-        </>
-      )}
       </>
       )}
     </PanelCard>

@@ -177,10 +177,6 @@ export function toggleGutterTool(tool: GutterTool): void {
   commit({ ...s, tool: s.tool === tool ? null : tool });
 }
 
-export function closeGutterTool(): void {
-  commit({ ...current(), tool: null });
-}
-
 /** Make `section` present AND unfolded (adds a More section if absent). */
 export function revealGutterSection(section: GutterSection): void {
   const s = current();

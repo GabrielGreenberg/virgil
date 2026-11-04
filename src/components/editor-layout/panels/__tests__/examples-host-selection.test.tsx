@@ -81,7 +81,6 @@ function makeExample(id: string, number: number): ExampleInfo {
     label: "",
     preview: `example ${number}`,
     subLabelRange: "",
-    dialect: "expex",
     bodyText: `example ${number}`,
     bodyContent: null,
     items: [],

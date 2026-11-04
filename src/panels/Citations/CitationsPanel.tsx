@@ -318,8 +318,8 @@ function CitationsPanel({
       onAdd={() => {
         onStartCreate();
       }}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["citation"]} />
           {/* Row migration (task 477): both groups were bare `<button>`s, so this
               kebab's registry was empty and the shared keyboard controller

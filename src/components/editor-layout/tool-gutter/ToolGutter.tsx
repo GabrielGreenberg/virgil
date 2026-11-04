@@ -39,7 +39,6 @@ import { PANEL_ICONS } from "../panel-icons";
 import { iconHint } from "@/components/Hint";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
-import { PanelChromeProvider } from "@/components/panel-primitives";
 import { PodDisclosure } from "@/components/PodDisclosure";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -48,7 +47,6 @@ import {
   GUTTER_TOOLS,
   MORE_SECTIONS,
   STANDING_SECTIONS,
-  closeGutterTool,
   removeGutterSection,
   revealGutterSection,
   toggleGutterSectionFold,
@@ -190,9 +188,7 @@ export function ToolGutter(p: ToolGutterProps) {
 
       {activeTool && (
         <div className="tool-gutter-tool" data-gutter-tool={activeTool}>
-          <PanelChromeProvider value={{ onClose: closeGutterTool }}>
-            {p.renderTool(activeTool)}
-          </PanelChromeProvider>
+          {p.renderTool(activeTool)}
         </div>
       )}
 

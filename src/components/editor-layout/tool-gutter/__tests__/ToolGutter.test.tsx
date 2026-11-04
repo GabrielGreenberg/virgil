@@ -15,12 +15,6 @@ const jumpToCard = vi.fn();
 const setSelectedFootnoteId = vi.fn();
 const setSelectedTodoId = vi.fn();
 
-// The panel primitives transitively reach the `@/lib/storage` barrel (the
-// known vitest resolver gotcha). The gutter only needs the chrome provider,
-// which a tool body reads for its close X.
-vi.mock("@/components/panel-primitives", () => ({
-  PanelChromeProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
 vi.mock("../../contexts/editor-ref", () => ({
   useEditorRefContext: () => ({
     editorRef: { current: { scrollToFootnote, jumpToCard, scrollToExample: vi.fn(), scrollToCitation: vi.fn() } },

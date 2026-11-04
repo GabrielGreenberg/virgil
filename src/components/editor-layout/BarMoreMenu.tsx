@@ -1,19 +1,13 @@
 "use client";
 
 /**
- * The Virgil bar's Help menu ("?") and its Commands sub-menu — on the `<Menu>`
- * primitive since task 1361.
+ * The Virgil bar's ⋯ menu: everything the bar does not keep out, and the one
+ * trailing control it has. The bar shows the view switch, Compile and AI
+ * requests; the rest of the tools live here, and when the tabs need the room
+ * those three fold in as well, so a tool is never out of reach.
  *
- * Before, this was the last census-declared HOLDOUT in the bar: its open state
- * and anchor rect lived in `EditorLayout` (the app root, re-rendered by every
- * anchor refresh), it closed through a hand-rolled `window` click listener,
- * Escape did nothing (the Escape-means-cancel law), it carried no menu ARIA
- * and no roving nav — and its Commands sub-menu opened on HOVER only, as an
- * `absolute left-full` child with no horizontal escape, so a keyboard user
- * could not reach it at all and, the "?" sitting at the window's right edge,
- * a mouse user got it half off-screen.
- *
- * Now:
+ * Built on the `<Menu>` primitive since task 1361 (as the Help menu, which this
+ * grew out of):
  *   - the trigger, its rect, re-anchoring, flip, click-outside, Escape and the
  *     activedescendant host are `AnchoredMenu`'s, stated once there;
  *   - Commands is a NESTED `MenuProvider` (the R6 stack: only the innermost
@@ -21,8 +15,7 @@
  *     Commands row and placed `right-of` → `left-of`, so it escapes sideways;
  *   - it opens on hover, on click, on Enter/Space and on ArrowRight; ArrowLeft
  *     and Escape close it and hand the keyboard back to the parent;
- *   - Helper mode is a `MenuToggleRow` (a real `menuitemcheckbox`), not a
- *     hand-drawn ✓.
+ *   - the on/off tools are `MenuToggleRow`s (real `menuitemcheckbox`es).
  */
 
 import {
@@ -36,12 +29,16 @@ import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { iconHint } from "@/components/Hint";
 import {
   AnchoredMenu,
+  MenuActionRow,
   MenuProvider,
   MenuSeparator,
   MenuToggleRow,
   useMenuItem,
 } from "@/components/menu";
 import { useMenuContext } from "@/components/menu/context";
+import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
+import { PomodoroMenuRow, PomodoroStatusDot } from "@/components/PomodoroTimer";
+import { useCollabContext } from "@/hooks/useCollab";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 import {
   menuRowRovingStyle,
@@ -62,7 +59,18 @@ const SUBMENU_PLACEMENTS: FloatingMenuPlacement[] = [
   { side: "left-of", align: "end" },
 ];
 
-export interface HelpMenuProps {
+/** The bar's view switch: what the right-hand pane shows beside the text. */
+export type BarView = "text" | "code" | "pdf";
+
+/** The tools the bar keeps out, as data, so the switch and the menu rows that
+ *  stand in for it when the tools fold state them once. */
+export const BAR_VIEW_LABEL: Record<BarView, string> = {
+  text: "Text",
+  code: "Code",
+  pdf: "PDF",
+};
+
+export interface BarMoreMenuProps {
   appVersion: string;
   /** A paper is open — "Refresh skills" is only meaningful then. */
   hasDoc: boolean;
@@ -72,13 +80,37 @@ export interface HelpMenuProps {
   helperOn: boolean;
   onHelperToggle: () => void;
   onInsertVirgilCommand: (name: string) => void;
+
+  zenOn: boolean;
+  onToggleZen: () => void;
+  onOpenStyle: () => void;
+  /** Why the row is greyed; absent while it can run. */
+  styleBlocked?: string;
+  onOpenPrint: () => void;
+  printBlocked?: string;
+  onOpenPreferences: () => void;
+  onEnableCollab: () => void;
+  onDisableCollab: () => void;
+  /** Per-machine dev tool; the row is absent without it. */
+  onOpenBugReport?: () => void;
+
+  /** The bar's tools are folded away (by the user or the occupancy rule), so
+   *  their rows stand in here. */
+  toolsCollapsed: boolean;
+  onToggleTools: () => void;
+  view: BarView;
+  onViewChange: (view: BarView) => void;
+  pdfBlocked?: string;
+  onCompile: () => void;
+  compileBlocked?: string;
+  onOpenAiRequests: () => void;
 }
 
 /** How the sub-menu was opened: a keyboard open lands the cursor on its
  *  first row, a pointer open leaves it unset (the house pointer rule). */
 type SubOpen = "closed" | "pointer" | "keyboard";
 
-export function HelpMenu(props: HelpMenuProps) {
+export function BarMoreMenu(props: BarMoreMenuProps) {
   const [subOpen, setSubOpen] = useState<SubOpen>("closed");
   const onArrowHorizontal = useCallback(
     (dir: "left" | "right", activeId: string | null) => {
@@ -88,23 +120,27 @@ export function HelpMenu(props: HelpMenuProps) {
   );
   return (
     <AnchoredMenu
-      ariaLabel="Help"
+      ariaLabel="More"
+      triggerAriaLabel="More"
       align="end"
       wrapperClassName="relative"
-      triggerClassName="topbarbtn"
-      triggerHint={iconHint({ label: "Help" })["data-hint"]}
+      triggerClassName="topbarbtn relative"
+      triggerHint={iconHint({ label: "More" })["data-hint"]}
       menuClassName="text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
       onArrowHorizontal={onArrowHorizontal}
       trigger={() => (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M9.5 9a2.75 2.75 0 0 1 5.25 1.1c0 1.6-2.25 2.4-2.75 3.4" />
-          <path d="M12 17h.01" />
-        </svg>
+        <>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <circle cx="3" cy="8" r="1.25" />
+            <circle cx="8" cy="8" r="1.25" />
+            <circle cx="13" cy="8" r="1.25" />
+          </svg>
+          <PomodoroStatusDot />
+        </>
       )}
     >
       {({ close, triggerEl }) => (
-        <HelpMenuBody
+        <BarMoreMenuBody
           {...props}
           close={() => {
             setSubOpen("closed");
@@ -119,7 +155,7 @@ export function HelpMenu(props: HelpMenuProps) {
   );
 }
 
-function HelpMenuBody({
+function BarMoreMenuBody({
   appVersion,
   hasDoc,
   skillSyncNotice,
@@ -128,17 +164,43 @@ function HelpMenuBody({
   helperOn,
   onHelperToggle,
   onInsertVirgilCommand,
+  zenOn,
+  onToggleZen,
+  onOpenStyle,
+  styleBlocked,
+  onOpenPrint,
+  printBlocked,
+  onOpenPreferences,
+  onEnableCollab,
+  onDisableCollab,
+  onOpenBugReport,
+  toolsCollapsed,
+  onToggleTools,
+  view,
+  onViewChange,
+  pdfBlocked,
+  onCompile,
+  compileBlocked,
+  onOpenAiRequests,
   close,
   triggerEl,
   subOpen,
   setSubOpen,
-}: HelpMenuProps & {
+}: BarMoreMenuProps & {
   close: () => void;
   triggerEl: HTMLElement | null;
   subOpen: SubOpen;
   setSubOpen: (s: SubOpen) => void;
 }) {
   const { registry } = useMenuContext();
+  // Read here, not through a prop, so a collab pen/presence tick never reaches
+  // the bar's memoized cluster: this body exists only while the menu is open.
+  const collab = useCollabContext();
+  /** Run a row's action and dismiss the menu. */
+  const pick = (run: () => void) => () => {
+    close();
+    run();
+  };
   // The parent menu closing (click-away, Escape at the top level) unmounts
   // this body; the sub-menu's open state lives one level up, so it is reset
   // here rather than surviving into the next open.
@@ -160,22 +222,70 @@ function HelpMenuBody({
   };
 
   return (
-    <div onMouseOver={onMouseOver}>
-      <div className="px-3 py-2" role="presentation">
-        <div className="font-medium text-ink-body mb-0.5">Version</div>
-        <div>Virgil v{appVersion}</div>
-      </div>
+    // A column: the rows are buttons, inline by default, so two adjacent action
+    // rows would otherwise share a line and the second would run off the menu.
+    <div className="flex flex-col" onMouseOver={onMouseOver}>
+      {toolsCollapsed && !zenOn && (
+        <>
+          <MenuRadioGroup
+            idPrefix="more-view-"
+            ariaLabel="View"
+            options={(Object.keys(BAR_VIEW_LABEL) as BarView[]).map((v) => ({
+              value: v,
+              label: BAR_VIEW_LABEL[v],
+              disabled: v === "pdf" && !!pdfBlocked,
+              hint: v === "pdf" ? pdfBlocked : undefined,
+            }))}
+            value={view}
+            onPick={(v) => pick(() => onViewChange(v))()}
+          />
+          <MenuActionRow
+            id="more-compile"
+            label="Compile"
+            disabledReason={compileBlocked}
+            onSelect={pick(onCompile)}
+          />
+          <MenuActionRow
+            id="more-ai-requests"
+            label="AI requests"
+            onSelect={pick(onOpenAiRequests)}
+          />
+          <MenuSeparator />
+        </>
+      )}
+      <MenuActionRow
+        id="more-style"
+        label="Document style…"
+        disabledReason={styleBlocked}
+        onSelect={pick(onOpenStyle)}
+      />
+      <MenuActionRow
+        id="more-print"
+        label="Print…"
+        disabledReason={printBlocked}
+        onSelect={pick(onOpenPrint)}
+      />
+      <MenuSeparator />
+      <MenuToggleRow
+        id="more-zen"
+        label="Zen mode"
+        checked={zenOn}
+        onToggle={pick(onToggleZen)}
+      />
+      <PomodoroMenuRow />
+      <MenuToggleRow
+        id="more-collab"
+        label="Collaborator mode"
+        checked={!!collab.enabled}
+        onToggle={pick(collab.enabled ? onDisableCollab : onEnableCollab)}
+      />
       <MenuSeparator />
       <CommandsRow
         subOpen={subOpen}
         setSubOpen={setSubOpen}
         triggerEl={triggerEl}
-        onInsert={(name) => {
-          close();
-          onInsertVirgilCommand(name);
-        }}
+        onInsert={(name) => pick(() => onInsertVirgilCommand(name))()}
       />
-      <MenuSeparator />
       {/* Refresh skills — the manual re-sync (formerly a persistent top-bar
           icon). An edge action: auto-sync runs on doc-open, so this is only
           for force-refresh or re-granting FSA permission after a revoked
@@ -199,11 +309,30 @@ function HelpMenuBody({
         id="help-helper-mode"
         label="Helper mode"
         checked={helperOn}
-        onToggle={() => {
-          onHelperToggle();
-          close();
-        }}
+        onToggle={pick(onHelperToggle)}
       />
+      <MenuSeparator />
+      <MenuActionRow
+        id="more-preferences"
+        label="Preferences…"
+        onSelect={pick(onOpenPreferences)}
+      />
+      {onOpenBugReport && (
+        <MenuActionRow
+          id="more-bug-report"
+          label="Report a bug…"
+          onSelect={pick(onOpenBugReport)}
+        />
+      )}
+      <MenuActionRow
+        id="more-toolbar"
+        label={toolsCollapsed ? "Show toolbar" : "Hide toolbar"}
+        onSelect={pick(onToggleTools)}
+      />
+      <MenuSeparator />
+      <div className="px-3 pt-1 pb-1.5 text-2xs text-ink-muted" role="presentation">
+        Virgil v{appVersion}
+      </div>
     </div>
   );
 }
@@ -307,7 +436,7 @@ function CommandsRow({
           excludeRefs={[rowEl]}
           getActiveDescendantHost={() => triggerEl}
           // Escape closes only the sub-menu, so focus returns to the row that
-          // opened it, not the Help trigger (task 1388; WAI-ARIA sub-menu).
+          // opened it, not the ⋯ trigger (task 1388; WAI-ARIA sub-menu).
           returnFocusOnCancel={() => registry.refFor(COMMANDS_ROW_ID)}
           onArrowHorizontal={(dir) => {
             if (dir === "left") closeSub();

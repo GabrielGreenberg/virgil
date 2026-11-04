@@ -98,8 +98,8 @@ export default function NotesPanel({
     <CardListPanel<NoteCardItem>
       kind="notes"
       onAddOptions={onAddOptions}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["note", "highlight"]} />
           <CardViewModeMenuItems kind="notes" />
         </ItemMenu>

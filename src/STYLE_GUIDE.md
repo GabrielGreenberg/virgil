@@ -457,9 +457,8 @@ Both ways of ignoring the boundary fail **silently**:
   get a color: the wrong one. `--amber-50` is the repo's warm `#fef9e7`;
   Tailwind v4's `amber-50` is a cooler `#fffbeb`. This spelling satisfies both
   rules above (it *is* a utility, and it is *not* a hex literal) while
-  bypassing the token — which is why it has drifted twice and earned two
-  bespoke guards (`examples-amber-token.test.ts`,
-  `bibliography-amber-strip-convergence.test.ts`).
+  bypassing the token — which is why it has drifted twice and earned a bespoke
+  guard (`bibliography-amber-strip-convergence.test.ts`).
 
 There is a third silent failure on the same axis, and it is the loudest-looking
 of the three while being the quietest in practice: **a `var(--token)` naming a
@@ -1441,6 +1440,12 @@ the accent tint. Don't author bespoke padding, hover, or active
 classes for topbar buttons; if you need a new visual state, extend
 `.topbarbtn` so every sibling stays in sync.
 
+**The bar keeps four controls out**: the Text/Code/PDF switch, Compile, AI
+requests and ⋯. Compile is the one filled control (`.topbarbtn-primary`). A tool
+used now and then is a row in ⋯ (`BarMoreMenu`), not another icon, and an off-
+switch for a state the user is in (the Zen button, a mode chip) is the only
+reason to add to the bar.
+
 **Omni bin pill.** The count-pill controls in the Omni cascade that
 collect cards which can't render inline — the outside-focus band and
 the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's text
@@ -2022,8 +2027,10 @@ the right.
 Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is
 real: [src/__tests__/token-contract.test.ts](__tests__/token-contract.test.ts)
 fails if this prose and `globals.css` disagree). Header
-slots, in order: leading menu/swatch, title + count, after-title tool,
-add button, extras, close X. Order is fixed even when slots are absent.
+slots, in order: title + count, after-title tool, add button, extras, the ⋮
+menu, close X. Order is fixed even when slots are absent. The × exists only in
+a docked pod, whose `PanelChromeProvider` supplies it: a tool in the tool gutter
+is closed by its own button in the tools row, so it has none.
 (AI requests are per-**card** — the `AiRequestCheckbox` — not a panel-header
 slot.)
 
@@ -2441,12 +2448,13 @@ it in task 827).
 
 **The SHAPE may be hand-rolled; the "on" PALETTE never is.** Every toggle
 "on" state in the app reads the `--control-selected*` family, on one of two
-paths: **solid** (`--control-selected` fill + white label — filled segments:
-Outline Edit/Focus, PrintDialog font size) or **tint**
+paths: **solid** (`--control-selected` fill + white label: Outline Edit/Focus)
+or **tint**
 (`--control-selected-tint` background + `--control-selected-ink` text/icon,
 AA-verified at 5.6:1 — what `.topbarbtn[aria-pressed="true"]` and
 `.iconbtn-toggle[aria-pressed="true"]` paint, and what an outlined mini-chip
-like the Search panel's `Aa`/`W` mode toggles takes). A toggle never wears
+like the Search panel's `Aa`/`W` mode toggles takes). A segmented choice is its
+own primitive, below. A toggle never wears
 `--accent`: that token is the user-overridable link / selection / mark / CTA
 accent, so a retint would move the toggles that borrowed it and no others —
 its own declaration says the toggle aesthetic is decoupled from it on
@@ -2461,7 +2469,9 @@ Tailwind amber + `--accent`, and were pinned by a directory census —
 ([components/SegmentedToggle.tsx](components/SegmentedToggle.tsx), task 950).
 "Pick exactly one of N" — a search scope, a preview direction, a font size, a
 view switch — is a named `role="group"` of `aria-pressed` segments painted on
-the SOLID `--control-selected` path, `rounded-md` on the outer ends, a
+a recessed `--segment-track`, the selected segment a white tile on it,
+`rounded-md` on the track and `rounded-sm` on a segment, so a choice stays
+quieter than the one filled action near it. A
 `.focus-ring` per segment (lifted above its neighbours; no `overflow-hidden`
 clipping it), and a disabled segment whose hint says WHY (`disabledHint`, also
 its `aria-description`). Four sites had hand-rolled it and drifted four ways
@@ -3108,7 +3118,7 @@ for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
   border, shadow and radius, each from the `--menu-*` tier in `globals.css`
   (see **Menu surface** below).
 
-**Sub-menus** (task 1361; reference: `HelpMenu.tsx`'s Commands). A sub-menu is
+**Sub-menus** (task 1361; reference: `BarMoreMenu.tsx`'s Commands). A sub-menu is
 a NESTED `MenuProvider` mounted by its row inside the parent menu, anchored to
 that row and placed `right-of` → `left-of` (so it escapes sideways at a window
 edge), never an `absolute left-full` child. The R6 provider stack does the rest:
@@ -3212,7 +3222,7 @@ the panel's box*. A docked band clamps to `MIN_BAND_PX` (140), which leaves
 ~110px below the header, so any menu taller than that loses its last rows
 **unreachably**: they render outside the clip with nothing to scroll. This was
 OutlinePanel's hand-rolled `absolute … z-30` kebab (task 180), the last one;
-every panel-header kebab now goes through `ItemMenu align="left"`.
+every panel-header kebab now goes through `ItemMenu panelHeader`.
 
 **Checkbox/toggle rows use `<MenuToggleRow>`** (`src/components/menu/`) — one
 row implementation for MenuBar's ViewMenu and every panel kebab: label left,
@@ -4471,14 +4481,16 @@ measurements by `useBarOccupancy`:
 
 1. **PROTECTED STATUS** — every row of `BAR_STATUS_ORDER`
    ([bar-status-policy.ts](lib/bar-status-policy.ts) is the list; it is not
-   restated here, so it cannot drift), and the collapse chip itself. Never
+   restated here, so it cannot drift), and the ⋯ menu itself. Never
    yields. That is not a
    layout preference: a data-integrity notice must not be hideable (see the save
-   badge's tier rule), and the chip is what makes a collapse reversible.
+   badge's tier rule), and ⋯ is what keeps a folded tool reachable and a
+   collapse reversible. Its own width never depends on the verdict.
 2. **TABS** — Gabriel's decision (2026-08-19): *"text tabs should occlude the
    tools in this case."* Tabs outrank the collapsible tools.
-3. **COLLAPSIBLE TOOLS** — the `topbarRightCollapsed` group. Auto-collapses
-   behind the chip when tiers 1+2 need the room, so the tools stay REACHABLE.
+3. **COLLAPSIBLE TOOLS** — the `topbarRightCollapsed` group: the view switch,
+   Compile and AI requests. Auto-collapses into ⋯ when tiers 1+2 need the room,
+   so the tools stay REACHABLE: their rows appear in the menu while they are out.
    Collapse beats bare z-order for exactly that reason: a tool hidden under a tab
    is unclickable with no affordance to reach it. An explicit user toggle
    outranks the rule in both directions — the rule governs the DEFAULT.

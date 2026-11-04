@@ -134,7 +134,7 @@ export interface CardListPanelProps<T> {
     onClick: (anchorRect?: DOMRect) => void;
     disabled?: boolean;
   }[];
-  headerLeading?: ReactNode;
+  headerMenu?: ReactNode;
   headerExtras?: ReactNode;
   panelExtras?: ReactNode;
   footer?: ReactNode;
@@ -160,7 +160,7 @@ export function CardListPanel<T>({
   listTrailing,
   onAdd,
   onAddOptions,
-  headerLeading,
+  headerMenu,
   headerExtras,
   panelExtras,
   footer,
@@ -338,7 +338,7 @@ export function CardListPanel<T>({
       countLabel={archivable ? archiveViewBadgeLabel(view) : undefined}
       onAdd={handleAdd}
       onAddOptions={handleAddOptions}
-      headerLeading={headerLeading}
+      headerMenu={headerMenu}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
       footer={footer}

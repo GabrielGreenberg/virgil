@@ -632,8 +632,8 @@ function BibliographyPanel({
   // nav) rather than a live control with a `cursor-not-allowed` class and no
   // handler. All three still dismiss the kebab on pick — none passes
   // `keepMenuOpen` — which is what they did before through the bubbled click.
-  const headerLeading = (
-    <ItemMenu align="left">
+  const headerMenu = (
+    <ItemMenu panelHeader>
       <PanelThemeMenuRow keys={["bib"]} />
       <MenuSeparator />
       <MenuSectionLabel>Display</MenuSectionLabel>
@@ -924,7 +924,7 @@ function BibliographyPanel({
     <CardListPanel
       kind="bibliography"
       onAddOptions={addOptions}
-      headerLeading={headerLeading}
+      headerMenu={headerMenu}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
       items={displayedEntries}

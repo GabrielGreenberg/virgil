@@ -338,21 +338,17 @@ function statusProps(
     onEditIdentity: noop,
     onDisableCollab: noop,
     onToggleZen: noop,
-    preferencesOpen: false,
     setPreferencesOpen: noop,
     bugReportEnabled: false,
-    bugReportOpen: false,
     setBugReportOpen: noop,
     appVersion: "0.0.0-test",
     onInsertVirgilCommand: noop,
     currentDocId: DOC.id,
     codeView: false,
     pdfView: false,
-    printOpen: false,
     setPrintOpen: noop,
     aiWindowOpen: false,
     setAiWindowOpen: noop,
-    manageStylesOpen: false,
     setManageStylesOpen: noop,
     onToggleCodeView: noop,
     onTogglePdfView: noop,
@@ -361,10 +357,21 @@ function statusProps(
 
 /** A tool that lives INSIDE the collapsible group; reachable ⟺ expanded. */
 const toolsReachable = () =>
-  screen.queryByRole("button", { name: "Zen" }) !== null;
+  screen.queryByRole("button", { name: "AI requests" }) !== null;
 /** A TIER-1 protected occupant: never hidden, whatever the rule decides. */
-const chipReachable = () =>
-  screen.queryByRole("button", { name: /toolbar/i }) !== null;
+const moreReachable = () =>
+  screen.queryByRole("button", { name: "More" }) !== null;
+
+/** The user's collapse: the Hide/Show toolbar row in ⋯. */
+const toggleToolbar = () => {
+  act(() => { fireEvent.click(screen.getByRole("button", { name: "More" })); });
+  // By its text: the surface stays `visibility: hidden` until it has been
+  // measured, which empties the accessible name a role query would read.
+  const row = [...document.querySelectorAll('[role="menuitem"]')].find((el) =>
+    /toolbar/i.test(el.textContent ?? ""),
+  ) as HTMLElement;
+  act(() => { fireEvent.click(row); });
+};
 
 function mount(over: Partial<{ userCollapsed: boolean }> = {}) {
   const setUserCollapsed = vi.fn();
@@ -422,16 +429,16 @@ describe("the REAL bar under compression", () => {
     mount();
     deliver({ "tab-strip": 800, tabs: 300, "status-tools": 200 });
     expect(toolsReachable()).toBe(true);
-    expect(chipReachable()).toBe(true);
+    expect(moreReachable()).toBe(true);
   });
 
-  it("a narrow bar collapses the TOOLS — and keeps them reachable behind the chip", () => {
+  it("a narrow bar collapses the TOOLS — and keeps them reachable in ⋯", () => {
     mount();
     deliver({ "tab-strip": 250, tabs: 300, "status-tools": 200 });
     expect(toolsReachable(), "the tools must yield to the tabs").toBe(false);
     expect(
-      chipReachable(),
-      "collapse beats bare z-order only if the chip survives it",
+      moreReachable(),
+      "collapse beats bare z-order only if ⋯ survives it",
     ).toBe(true);
   });
 
@@ -476,9 +483,7 @@ describe("the REAL bar under compression", () => {
     // later one.
     mount();
     deliver({ "tab-strip": 250, tabs: 300, "status-tools": 200 });
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /toolbar/i }));
-    });
+    toggleToolbar();
     expect(toolsReachable()).toBe(true);
     deliver({ "tab-strip": 700 }); // roomy again: the crowding is over
     expect(toolsReachable()).toBe(true);
@@ -489,7 +494,7 @@ describe("the REAL bar under compression", () => {
     ).toBe(false);
   });
 
-  it("a chip round trip at a ROOMY width leaves no override behind", () => {
+  it("a toolbar round trip at a ROOMY width leaves no override behind", () => {
     // The override out-ranks the auto rule, so it may only be minted when the
     // auto rule is the thing being out-ranked. Minted on every expand, it has
     // no expiry (the drop fires on the auto TRUE→FALSE edge, which never comes
@@ -498,10 +503,9 @@ describe("the REAL bar under compression", () => {
     // and the tab row is clipped instead of the tools yielding.
     render(<StatefulHarness />);
     deliver({ "tab-strip": 800, tabs: 300, "status-tools": 200 });
-    const chip = () => screen.getByRole("button", { name: /toolbar/i });
-    act(() => { fireEvent.click(chip()); });   // user collapses
+    toggleToolbar();                           // user collapses
     expect(toolsReachable()).toBe(false);
-    act(() => { fireEvent.click(chip()); });   // …and changes their mind
+    toggleToolbar();                           // …and changes their mind
     expect(toolsReachable()).toBe(true);
     deliver({ "tab-strip": 250 });             // now the window narrows
     expect(
@@ -510,13 +514,11 @@ describe("the REAL bar under compression", () => {
     ).toBe(false);
   });
 
-  it("the chip is never a dead control: expanding out of an AUTO collapse works", () => {
+  it("the row is never a dead control: expanding out of an AUTO collapse works", () => {
     mount();
     deliver({ "tab-strip": 250, tabs: 300, "status-tools": 200 });
     expect(toolsReachable()).toBe(false);
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /toolbar/i }));
-    });
+    toggleToolbar();
     expect(
       toolsReachable(),
       "the user asked for the tools; the rule governs the DEFAULT, not the user",
@@ -531,7 +533,7 @@ describe("the REAL bar under compression", () => {
 describe("collapsing the tool group", () => {
   afterEach(cleanup);
 
-  const zen = () => screen.queryByRole("button", { name: "Zen" });
+  const tool = () => screen.queryByRole("button", { name: "AI requests" });
 
   it("REMOUNTS its children, which is what unmounting used to give them", () => {
     // The reason this matters is not tidiness: `visibility: hidden` cannot
@@ -542,30 +544,30 @@ describe("collapsing the tool group", () => {
     const { rerender } = render(
       <StatusCluster {...statusProps(false, noop)} />,
     );
-    const before = zen();
+    const before = tool();
     expect(before).not.toBeNull();
     rerender(<StatusCluster {...statusProps(true, noop)} />);
     rerender(<StatusCluster {...statusProps(false, noop)} />);
-    expect(zen()).not.toBeNull();
+    expect(tool()).not.toBeNull();
     expect(
-      zen(),
+      tool(),
       "the group's children survived the collapse, so their open menus do too",
     ).not.toBe(before);
   });
 
-  it("hands focus to the chip rather than dropping it into a hidden subtree", () => {
+  it("hands focus to ⋯ rather than dropping it into a hidden subtree", () => {
     const { rerender } = render(
       <StatusCluster {...statusProps(false, noop)} />,
     );
-    const inside = zen()!;
+    const inside = tool()!;
     inside.focus();
     expect(document.activeElement).toBe(inside);
     rerender(<StatusCluster {...statusProps(true, noop)} />);
     expect(
       document.activeElement,
       "focus was left in an aria-hidden subtree (or dropped to <body>) — the " +
-        "chip is TIER 1 and is what brings the group back",
-    ).toBe(screen.getByRole("button", { name: /toolbar/i }));
+        "⋯ is TIER 1 and holds the folded tools",
+    ).toBe(screen.getByRole("button", { name: "More" }));
   });
 });
 

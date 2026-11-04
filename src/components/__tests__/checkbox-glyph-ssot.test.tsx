@@ -358,7 +358,7 @@ describe("nobody re-authors the glyph (the leg with teeth)", () => {
    * checkbox: take `Checkbox`, or be a declared holdout below. */
   it("no boolean-keyed tick glyph stands in for a checkbox", () => {
     // EMPTY since task 1361: the Help menu's "Helper mode" row — the last
-    // holdout — is a `MenuToggleRow` (in `HelpMenu.tsx`) now, not a hand-drawn
+    // holdout — is a `MenuToggleRow` (in `BarMoreMenu.tsx`) now, not a hand-drawn
     // tick. A new entry needs a stated owner, or it shelters the next one.
     const HOLDOUTS: string[] = [];
     const TICK = /\?\s*"(?:\\u2713|\u2713)"\s*:\s*""/;

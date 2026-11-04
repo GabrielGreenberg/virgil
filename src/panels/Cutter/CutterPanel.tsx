@@ -118,8 +118,8 @@ export default function CutterPanel({
     <CardListPanel<Item>
       kind="cutter"
       onAddOptions={onAddOptions}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["cut"]} />
           <CardViewModeMenuItems kind="cutter" />
         </ItemMenu>

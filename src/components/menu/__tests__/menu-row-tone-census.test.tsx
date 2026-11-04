@@ -251,7 +251,7 @@ describe("menu row tones — consumer census (task 986)", () => {
       "components/SlashCommandPopup.tsx",
       "components/FontPicker.tsx",
       "components/library/MyPapersPod.tsx",
-      "components/editor-layout/HelpMenu.tsx",
+      "components/editor-layout/BarMoreMenu.tsx",
     ]) {
       expect(rels, must).toContain(must);
     }

@@ -52,7 +52,7 @@ Four rules it earned:
   minted only where there is something to out-rank.** The auto rule never writes
   the persisted `topbarRightCollapsed` pref, and expanding out of an AUTO
   collapse sets a session override dropped on the auto TRUE→FALSE edge, so the
-  chip is never a control that does nothing (the false-affordance class). The
+  ⋯ menu's toolbar row is never a control that does nothing (the false-affordance class). The
   half worth carrying forward is the *mint* condition, which the first cut got
   wrong: `setExpandOverride(autoRef.current)`, never a bare `true`. An override
   created while nothing was crowding has no expiry — its drop fires on an edge
@@ -78,9 +78,9 @@ Four rules it earned:
   open into a flip-flop), because `visibility: hidden` cannot reach a child that
   body-PORTALS its dropdown and a remount closes every such menu for every
   portal owner present and future, where a per-child gate closes it for the one
-  somebody remembered; (b) focus moves to the chip, since `aria-hidden` over a
-  focused element is forbidden and the chip is the affordance that brings the
-  group back — tracked as focus-WITHIN on the group, because `activeElement` has
+  somebody remembered; (b) focus moves to ⋯, since `aria-hidden` over a
+  focused element is forbidden and ⋯ is what holds the folded tools — tracked
+  as focus-WITHIN on the group, because `activeElement` has
   already fallen to `<body>` by the time any effect can ask, and asking
   "is it body?" would steal focus whenever the bar collapsed with nothing
   focused; (c) the clip is CONDITIONAL — an unconditional `overflow: hidden`

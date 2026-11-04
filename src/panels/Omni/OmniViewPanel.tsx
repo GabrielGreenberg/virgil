@@ -689,7 +689,7 @@ function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
         label="changes"
       />
       <NavArrow dir="down" onClick={bulk.onNext} disabled={bulk.count === 0} />
-      <ItemMenu align="right">
+      <ItemMenu>
         <MenuArchive label="Keep all" onClick={bulk.onKeepAll} />
         <MenuDelete label="Dismiss all" onClick={bulk.onDismissAll} />
       </ItemMenu>

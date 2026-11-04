@@ -121,11 +121,12 @@ describe("a segmented choice is spelled ONCE", () => {
     }
   });
 
-  it("the primitive is the one speller — group, aria-pressed, solid control-selected", () => {
+  it("the primitive is the one speller — group, aria-pressed, a white tile on its track", () => {
     const leaf = commentsStripped(readFileSync(join(ROOT, LEAF), "utf8"));
     expect(/role="group"/.test(leaf)).toBe(true);
     expect(/aria-pressed=\{active\}/.test(leaf)).toBe(true);
-    expect(/--control-selected\)/.test(leaf)).toBe(true);
+    expect(/--segment-track\)/.test(leaf)).toBe(true);
+    expect(/--segment-tile-edge\)/.test(leaf)).toBe(true);
     expect(/--accent/.test(leaf)).toBe(false);
     expect(/focus-ring/.test(leaf)).toBe(true);
   });

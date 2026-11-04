@@ -3512,7 +3512,7 @@ export function PanelHeader({
   countLabel,
   onAdd,
   onAddOptions,
-  leading,
+  menu,
   titleAfter,
   children,
 }: {
@@ -3541,9 +3541,8 @@ export function PanelHeader({
      *  `disabled` from it (task 998). */
     disabledReason?: string;
   }[];
-  /** Content rendered at the far left of the header, before the title.
-   *  Typical use: the panel's three-dots options menu. */
-  leading?: ReactNode;
+  /** The panel's three-dots options menu, at the right end of the header. */
+  menu?: ReactNode;
   /** Content rendered immediately after the count (before add buttons).
    *  Use for inline mode toggles that cluster with the title — e.g.
    *  Outline's Edit/Focus/Lock buttons. */
@@ -3552,8 +3551,7 @@ export function PanelHeader({
 }) {
   return (
     <div className={`${PANEL.header} flex items-center gap-1.5`}>
-      {leading}
-      <h3 className={`panel-header-title text-2xs font-semibold leading-none${leading ? " -ml-1" : ""}`}>
+      <h3 className="panel-header-title text-2xs font-semibold leading-none">
         {title}
       </h3>
       {countLabel != null && (
@@ -3582,6 +3580,7 @@ export function PanelHeader({
       )}
       <div className="flex-1" />
       {children}
+      {menu}
       <PanelClose />
     </div>
   );
@@ -3781,25 +3780,25 @@ export function BandDivider({
 
 export function ItemMenu({
   children,
-  align = "right",
+  panelHeader = false,
   hint = "Options",
 }: {
   children: ReactNode;
-  /** Which edge of the button the dropdown aligns to. Use "left" for
-   *  menu buttons near the left edge of a panel (dropdown drops right),
-   *  "right" (default) for buttons near the right edge of a card. */
-  align?: "left" | "right";
+  /** A panel's own header menu, rather than a card's: a lighter trigger and
+   *  the panel text-size widget. Both kinds sit at the right end of their row,
+   *  so the dropdown always aligns to the button's right edge. */
+  panelHeader?: boolean;
   /** Trigger tooltip. Defaults to the generic "Options"; override when the
    *  menu's contents are narrower than that (Outline's is "View options"). */
   hint?: string;
 }) {
   // Auto-injected text-size widget for any panel-header menu inside a Panel.
-  // Card-level menus (align="right") are skipped. The widget is appended
+  // Card-level menus are skipped. The widget is appended
   // INTO the first child of the menu (the standard color-swatch + view-toggle
   // row) so it renders on the same line. If the first child isn't a row, the
   // widget falls back to its own row at the top.
   const bodyKey = useEnclosingPanelBodyKey();
-  const injectTextSize = align === "left" && bodyKey != null;
+  const injectTextSize = panelHeader && bodyKey != null;
   const enhancedChildren = useMemo<ReactNode>(() => {
     if (!injectTextSize || !bodyKey) return children;
     const arr = Children.toArray(children);
@@ -3825,10 +3824,6 @@ export function ItemMenu({
     );
   }, [children, injectTextSize, bodyKey]);
 
-  // Panel-header menus sit at the far left and use a bare button (no
-  // rounded lozenge / hover background) for a lighter-weight look.
-  // Card-level menus keep the button-style treatment.
-  const isPanelHeader = align === "left";
   return (
     // Folded onto the canonical `<Menu>` primitive in task 180 (retiring a
     // hand-rolled `fixed z-[9999]` portal + bespoke mousedown listener that was
@@ -3847,11 +3842,11 @@ export function ItemMenu({
     // added `maxHeight` clamp.
     <AnchoredMenu
       ariaLabel="Options"
-      align={align === "left" ? "start" : "end"}
+      align="end"
       gap={4}
       triggerHint={hint}
-      triggerClassName={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
-      wrapperClassName={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}
+      triggerClassName={panelHeader ? "iconbtn-sm" : "iconbtn-md"}
+      wrapperClassName="relative shrink-0"
       menuClassName="min-w-[100px]"
       closeOnInsideClick
       // The clamp is ON — the shell's default — as of task 181, and the reason
@@ -3869,7 +3864,7 @@ export function ItemMenu({
       // non-portaled absolute popup as a kebab row would silently re-break this
       // — put it on the primitive instead.
       trigger={() => (
-        <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <svg width={panelHeader ? 14 : 16} height={panelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />
           <circle cx="12" cy="12" r="2" />
           <circle cx="12" cy="19" r="2" />
