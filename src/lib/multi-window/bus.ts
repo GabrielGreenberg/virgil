@@ -35,6 +35,11 @@ export type BusEvent =
    *  list (`readMyPapers`). Two windows' events can arrive out of write
    *  order; storage, behind `mutateMyPapers`, is the one serialized truth. */
   | { type: "my-papers-changed"; windowId: string }
+  /** Task 1460 — the paper index changed (a row added, removed, renamed or
+   *  re-stamped). Published by `mutateIndex`, the index's one write door,
+   *  after its transaction commits; an INVALIDATION like the one above —
+   *  receivers re-read `listDocs()`. */
+  | { type: "doc-index-changed"; windowId: string }
   /** Task 610 — "is any of your work off disk?", asked by the window about to
    *  post `SKIP_WAITING`, whose activation reloads EVERY window. See
    *  `reload-door.ts`, "The multi-window half". */
