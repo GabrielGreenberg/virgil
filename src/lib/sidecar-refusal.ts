@@ -64,6 +64,8 @@
  * doc is closed.
  */
 
+import { registerDocForget } from "@/lib/doc-forget";
+
 /** Why a sidecar read or write did not land. */
 export type SidecarRefusalReason =
   /** No active write handle for this doc — nothing to write through. */
@@ -169,6 +171,8 @@ export function clearSidecarRefusal(docId: string | null | undefined): void {
   if (!byDoc.delete(docId)) return;
   emit();
 }
+// Task 1465: a refusal belongs to the identity it was recorded against.
+registerDocForget("sidecar-refusal", (docId) => clearSidecarRefusal(docId));
 
 /** Drop every refusal — doc teardown and test isolation. */
 export function resetSidecarRefusals(): void {

@@ -24,6 +24,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { registerDocForget } from "@/lib/doc-forget";
 
 export type DocLoadFailureKind =
   /** The folder itself is gone (moved, renamed, deleted) or no handle is stored. */
@@ -154,6 +155,10 @@ export function publishDocLoadFailure(
   }
   notify();
 }
+// Task 1465: a load failure is the identity's; a re-seeded folder loads afresh.
+registerDocForget("doc-load-failure", (docId) => {
+  if (failures.has(docId)) publishDocLoadFailure(docId, null);
+});
 
 export function getDocLoadFailure(docId: string | null): DocLoadFailure | null {
   if (!docId) return null;

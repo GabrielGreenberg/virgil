@@ -70,6 +70,8 @@
  * relationship to it.
  */
 
+import { registerDocForget } from "@/lib/doc-forget";
+
 /* ── The vocabulary, mirrored from editor/scripts/_common.py ─────────── */
 
 /**
@@ -336,6 +338,8 @@ export function clearCoworkPen(docId?: string): void {
   }
   emit();
 }
+// Task 1465: the pen and its release trace are the identity's folder's.
+registerDocForget("cowork-pen", (docId) => clearCoworkPen(docId));
 
 /* ── The release trace, and the writer question ──────────────────────── */
 

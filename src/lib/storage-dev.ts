@@ -95,6 +95,7 @@ import {
   planSidecarCleanup,
   type SidecarCleanupReceipt,
 } from "@/lib/sync-conflict-cleanup";
+import { registerDocForget } from "@/lib/doc-forget";
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
@@ -491,6 +492,8 @@ export async function readSidecarBundle(docId: string): Promise<void> {
 export function invalidateSidecarBundle(docId: string): void {
   sidecarCache.delete(docId);
 }
+// Task 1465 (`purgeDoc`): the cached sidecars are the identity's.
+registerDocForget("storage-dev", (docId) => invalidateSidecarBundle(docId));
 
 export async function readSidecar<T>(
   docId: string,

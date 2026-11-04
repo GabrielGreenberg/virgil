@@ -80,6 +80,7 @@ import {
   type PreservationRefusalDetail,
 } from "@/lib/preservation-notice";
 import type { Transaction } from "@tiptap/pm/state";
+import { registerDocForget } from "@/lib/doc-forget";
 
 /** Per-region word counts of the bytes a doc was LOADED from. */
 export interface RetainedCounts {
@@ -163,6 +164,9 @@ export function clearRetained(docId?: string): void {
   if (docId === undefined) byDoc.clear();
   else byDoc.delete(docId);
 }
+// Task 1465: the baseline (and its `userEdited`) is of the bytes the identity
+// was loaded from; the reset paper's load retains its own.
+registerDocForget("write-preservation", (docId) => clearRetained(docId));
 
 export interface WriteVerdict {
   ok: boolean;

@@ -39,8 +39,13 @@ import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { makeErrorId, type LatexError } from "@/lib/latex-errors";
 import { LATEX_RULE } from "@/lib/latex-rules";
 import { compileService } from "@/lib/compile/compile-service";
-import { beginCompile, finishCompile } from "@/lib/compile/compile-progress";
 import {
+  beginCompile,
+  finishCompile,
+  forgetCompileProgress,
+} from "@/lib/compile/compile-progress";
+import {
+  compileEpoch,
   markCompileEnded,
   markCompileStarted,
   nextCompileSalt,
@@ -78,6 +83,10 @@ export interface RunCompileDeps {
  */
 export async function runCompileForDoc(docId: string, deps: RunCompileDeps): Promise<void> {
   if (!markCompileStarted(docId)) return;
+  // Task 1465: the identity this run compiles. A `purgeDoc` mid-run (a delete,
+  // or "Reset example" re-seeding the same id) bumps it, and the result below
+  // is then dropped rather than shown as the fresh paper's PDF.
+  const epoch = compileEpoch(docId);
   const { onDocumentClassMismatch, alert } = deps;
   const salt = nextCompileSalt(docId);
   // Task 1091: the record speaks from the CLICK, not from when the service
@@ -209,7 +218,7 @@ export async function runCompileForDoc(docId: string, deps: RunCompileDeps): Pro
         status: numericStatus,
         errors,
         pdf: pdfBytes,
-      });
+      }, epoch);
 
       // A degraded compile still produced a PDF; warn (but don't alert as
       // an error) when a later pass failed, the bibtex stage broke, or a
@@ -226,7 +235,7 @@ export async function runCompileForDoc(docId: string, deps: RunCompileDeps): Pro
     }
 
     // No usable PDF. Distinguish the failure kinds for a clear message.
-    recordCompileResult(docId, { log: result.log ?? "", status: numericStatus, errors });
+    recordCompileResult(docId, { log: result.log ?? "", status: numericStatus, errors }, epoch);
     // A cancelled compile is the user's choice: nothing to log as an error,
     // and the outcome vocabulary raises no dialog for it (task 855).
     if (result.status === "cancelled") return;
@@ -257,7 +266,9 @@ export async function runCompileForDoc(docId: string, deps: RunCompileDeps): Pro
       tone: "danger",
     });
   } finally {
-    markCompileEnded(docId);
+    // A run the doc's identity did not outlive: its terminal progress record
+    // describes the discarded paper, so the fresh one goes back to idle.
+    if (!markCompileEnded(docId, epoch)) forgetCompileProgress(docId);
   }
 }
 
