@@ -1397,7 +1397,11 @@ function FloatingPanelInner({
     >
       <div
         onMouseDown={onHeaderMouseDown}
-        style={{ cursor: "grab" }}
+        // The grab cursor is NOT inline (task 1452): globals.css paints it on
+        // this attribute and lifts it off every WINDOW_DRAG_BLOCK_SELECTOR
+        // descendant — the same predicate `onHeaderMouseDown` refuses on — so
+        // the hand shows exactly where a press starts the window drag.
+        data-float-drag-surface=""
         className="flex flex-col min-h-0 flex-1"
       >
         {children}
