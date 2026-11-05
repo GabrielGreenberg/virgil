@@ -70,16 +70,111 @@ from _tools import (
     upsert_catalog_entry,
     write_catalog,
     write_paper_bib_entry,
+    DEEP_INDEX_STEP5_INDEXED_KEYS,
+    DEEP_INDEX_STEP5_WARNING_KINDS,
+    merge_indexed_warnings,
+    replace_owned_keys,
+    undeclared_warning_heads,
 )
 from _bib_parse import BibSpliceRefused
 from pgmark import detect_print_pages
-from pgmark_validate import validate as pgmark_validate
+from pgmark_validate import (
+    validate as pgmark_validate,
+    CONTINUITY_FINDING_KINDS,
+    PGMARK_WARNING_PREFIX,
+    SCOPE_WARNING_HEAD,
+)
 from extract import extract_to_json, _ocr_if_needed, _classify_pdf
 import extract_docx
 from tex_emit import emit
 from bib_auth import authenticate, assert_title_clean
 from _bib_types import apply_type_retirement  # task 1040
-from fuse_alternate import fuse_pgmarks_into, FuseResult, FUSION_FAILED_HEAD
+from fuse_alternate import (
+    fuse_pgmarks_into, FuseResult, FUSION_FAILED_HEAD, fusion_warning_heads,
+)
+
+
+# ── What this indexer OWNS on a catalog row (task 1469) ──────────────────
+#
+# The indexer RE-OBSERVES the source each run, so its `pdf` and `indexed`
+# blocks are not patches: a key it does not produce this pass means "no such
+# thing any more", and must be cleared, not left standing from the previous
+# extraction. Every key here is set-or-popped by `write_index_row`; every
+# key NOT here belongs to some other writer and is never touched.
+
+#: `pdf` — the whole block describes the held source this run resolved.
+INDEX_PAPER_PDF_KEYS: tuple[str, ...] = (
+    "present", "filename", "sha256", "format", "pageCount", "alternates",
+)
+
+#: `indexed` — the extraction's own facts, plus the deep-index stamps a
+#: fresh extraction retires (the text they describe is gone).
+INDEX_PAPER_INDEXED_KEYS: tuple[str, ...] = (
+    "state", "lastIndexedAt", "extractor", "pgmarkCount", "pgmarkPosition",
+    "pgmarkSource", "footnoteCount",
+    *DEEP_INDEX_STEP5_INDEXED_KEYS,
+)
+
+
+def index_warning_kinds() -> tuple[str, ...]:
+    """Every `indexed.warnings` head a fresh extraction RECOMPUTES.
+
+    The pgmark validator's family (scope + one per continuity kind) and the
+    fusion family (derived, never hand-listed — task 373) describe main.tex,
+    which this run rewrote; deep-index step 5's kinds describe the text a
+    re-extract retires. Everything else on the row — another pass's kinds,
+    and every operator `<kind>-false-positive:` suppression — survives,
+    because `merge_indexed_warnings` drops by EXACT head.
+    """
+    heads = (
+        SCOPE_WARNING_HEAD,
+        *(f"{PGMARK_WARNING_PREFIX}{k}" for k in CONTINUITY_FINDING_KINDS),
+        *fusion_warning_heads(),
+        *DEEP_INDEX_STEP5_WARNING_KINDS,
+    )
+    return tuple(dict.fromkeys(heads))
+
+
+def write_index_row(entry: dict, *, pdf: dict, indexed: dict,
+                    warnings: list) -> dict:
+    """Write this extraction's `pdf` / `indexed` blocks onto a catalog row.
+
+    Owned keys are REPLACED (set, or popped when this pass did not produce
+    them); `indexed.warnings` is recomputed per KIND for exactly
+    `index_warning_kinds()`. Before task 1469 both blocks went through
+    `upsert_catalog_entry`'s deep-merge — a PATCH channel — so a re-extract
+    kept stale `pgmarkSource` / `pageCount` / `alternates` / `exampleCount`,
+    while its list-replace wiped the operator's verified suppressions.
+
+    Refuses (`ValueError`) a fresh warning whose head is not declared (it
+    would never be cleared) and a row whose stored warnings are not a list.
+    """
+    kinds = index_warning_kinds()
+    undeclared = undeclared_warning_heads(warnings, kinds)
+    if undeclared:
+        raise ValueError(
+            "index_paper produced warning lines outside index_warning_kinds(): "
+            f"{', '.join(undeclared)}"
+        )
+    pdf_block = entry.get("pdf")
+    if not isinstance(pdf_block, dict):
+        pdf_block = entry["pdf"] = {}
+    replace_owned_keys(pdf_block, INDEX_PAPER_PDF_KEYS, pdf)
+    indexed_block = entry.get("indexed")
+    if not isinstance(indexed_block, dict):
+        indexed_block = entry["indexed"] = {}
+    current = indexed_block.get("warnings")
+    if current is None:
+        current = []
+    if not isinstance(current, list):
+        raise ValueError(
+            f"catalog.json: indexed.warnings for {entry.get('citekey')!r} is a "
+            f"{type(current).__name__}, not a list — refusing to merge into a "
+            "malformed row"
+        )
+    replace_owned_keys(indexed_block, INDEX_PAPER_INDEXED_KEYS, indexed)
+    indexed_block["warnings"] = merge_indexed_warnings(current, kinds, warnings)
+    return entry
 
 
 # Source-format priority. Spelled ONCE, on the stdlib-only leaf
@@ -745,7 +840,6 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         "pgmarkPosition": layout_position,
         **({"pgmarkSource": pgmark_source} if pgmark_source else {}),
         "footnoteCount": sum(1 for b in extracted["blocks"] if b.get("kind") == "footnote"),
-        "warnings": pgmark_warnings,
     }
     # The F#4 write gate, asked here as everywhere else. It answers True by
     # construction — step 1 resolved a source at exactly the path
@@ -777,10 +871,10 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             authors=[a.strip() for a in authors.split(" and ") if a.strip()],
             year=int(year) if year.isdigit() else year,
             doi=fields.get("doi") or None,
-            pdf=source_status,
-            indexed=indexed_block,
             **({"duplicateOf": duplicate_of} if duplicate_of else {}),
         )
+        write_index_row(entry, pdf=source_status, indexed=indexed_block,
+                        warnings=pgmark_warnings)
         entry["bib"] = bib_status
         write_catalog(library, catalog)
 
