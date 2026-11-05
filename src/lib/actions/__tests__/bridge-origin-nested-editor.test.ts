@@ -61,6 +61,10 @@ import {
   __resetEditorActionsRegistry,
 } from "@/lib/actions/editor-actions-bridge";
 import { resolveActionOrigin } from "@/lib/actions/action-origin";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
+import { runAction } from "@/lib/actions/action-registry";
+import { commitSlashCommand } from "@/lib/tiptap/commands";
+import { slashCommandEnabled } from "@/lib/tiptap/slash-applicability";
 import { owningEditor } from "@/lib/tiptap/owning-editor";
 
 // ---------------------------------------------------------------------------
@@ -119,15 +123,15 @@ function mountMain(first: "paragraph" | "codeBlock"): Editor {
 /** A real NESTED card-body editor — the extension stack `RichTextField` builds
  *  at the default `"card"` scope, which mounts `Citation` (and therefore its
  *  typed `\cite{}` input rule) unconditionally. */
-function mountCardBody(text: string): Editor {
+function mountCardBody(text: string, scope: "card" | "excerpt" = "card"): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   const editor = new Editor({
     element,
     editable: true,
     extensions: [
-      StarterKit.configure(starterKitConfigForScope("card")),
-      ...buildCardBodySchema("card", { includeLabelRef: true }),
+      StarterKit.configure(starterKitConfigForScope(scope)),
+      ...buildCardBodySchema(scope, { includeLabelRef: true }),
     ],
     content: {
       type: "doc",
@@ -178,6 +182,7 @@ function citationAtoms(editor: Editor): Array<{ citationId: string; command: str
 // ---------------------------------------------------------------------------
 
 let createCitation: ReturnType<typeof vi.fn>;
+let createFootnote: ReturnType<typeof vi.fn>;
 let seenCtx: ActionContext[];
 
 function publishPaneHandle(paneEditor: Editor): void {
@@ -185,21 +190,22 @@ function publishPaneHandle(paneEditor: Editor): void {
     runAction(id: ActionId, seed) {
       const spec = VIRGIL_ACTION_REGISTRY[id];
       if (!spec) return "no-row";
-      if (!paneEditor.isEditable) return "read-only";
       const { view, editor, ref } = resolveActionOrigin(paneEditor, seed.origin);
+      // Task 1480: the read-only gate asks the ORIGIN view (as EditorPane does).
+      if (!surfaceEditableNow(view)) return "read-only";
       const ctx: ActionContext = {
         editor,
         view,
         ref,
         surface: seed.surface,
-        canEdit: paneEditor.isEditable,
-        cardCreation: { createCitation } as unknown as ActionContext["cardCreation"],
+        canEdit: surfaceEditableNow(view),
+        cardCreation: { createCitation, createFootnote } as unknown as ActionContext["cardCreation"],
         payload: seed.payload,
       };
       if (spec.applies(ctx) === "disabled") return "disabled";
       seenCtx.push(ctx);
-      void spec.run(ctx);
-      return "ran";
+      // THE run door, as EditorPane calls it (task 1299).
+      return runAction(spec, ctx);
     },
   };
   registerEditorActionsHandle(paneEditor, handle);
@@ -207,6 +213,7 @@ function publishPaneHandle(paneEditor: Editor): void {
 
 beforeEach(() => {
   createCitation = vi.fn(() => ({ id: "cit-ref" }));
+  createFootnote = vi.fn();
   seenCtx = [];
 });
 
@@ -377,5 +384,103 @@ describe("a dropped dispatch is never silent (task 642, M2)", () => {
     });
     expect(outcome).toBe("ran");
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 1480 — the commit's OFFER and the bridge's GATE ask ONE surface
+// ---------------------------------------------------------------------------
+
+/** Type `\name` at the body's caret and commit it through the slash door —
+ *  what Enter (or a popup pick) does. Returns the door's answer. */
+function commitTyped(editor: Editor, name: string): boolean {
+  const view = editor.view;
+  const from = view.state.selection.from;
+  view.dispatch(view.state.tr.insertText(`\\${name}`));
+  return commitSlashCommand(view, name, from, view.state.selection.from);
+}
+
+describe("a bridge-routed slash command in a card body, partner holding MAIN's pen (task 1480)", () => {
+  it("\\textbf: offered lit, the typed name is replaced by the mark — never deleted + nothing", () => {
+    const main = mountMain("paragraph");
+    publishPaneHandle(main);
+    main.setEditable(false); // the partner holds the main-text pen
+    const body = mountCardBody("as ");
+
+    expect(slashCommandEnabled(body.view, "textbf")).toBe(true);
+    expect(commitTyped(body, "textbf")).toBe(true);
+    // The typed `\textbf` is gone AND the toggle ran (a stored bold mark the
+    // next character picks up).
+    expect(body.state.doc.textContent).toBe("as ");
+    body.view.dispatch(body.state.tr.insertText("X"));
+    let bold = false;
+    body.state.doc.descendants((n) => {
+      if (n.isText && n.text === "X") bold = n.marks.some((m) => m.type.name === "bold");
+      return true;
+    });
+    expect(bold).toBe(true);
+  });
+
+  it("\\quote: the block row lands in an excerpt body", () => {
+    const main = mountMain("paragraph");
+    publishPaneHandle(main);
+    main.setEditable(false);
+    const body = mountCardBody("as ", "excerpt");
+    expect(slashCommandEnabled(body.view, "quote")).toBe(true);
+
+    expect(commitTyped(body, "quote")).toBe(true);
+    expect(body.state.doc.textContent).toBe("as ");
+    expect(body.state.doc.firstChild?.type.name).toBe("blockquote");
+  });
+
+  it("\\footnote in an excerpt body: the atom AND its card land (no orphan atom)", () => {
+    const main = mountMain("paragraph");
+    publishPaneHandle(main);
+    main.setEditable(false);
+    const body = mountCardBody("as ", "excerpt");
+    expect(body.schema.nodes.footnote).toBeTruthy();
+    expect(commitTyped(body, "footnote")).toBe(true);
+    let atoms = 0;
+    body.state.doc.descendants((n) => {
+      if (n.type.name === "footnote") atoms++;
+      return true;
+    });
+    expect(atoms).toBe(1);
+    expect(createFootnote).toHaveBeenCalledTimes(1);
+  });
+
+  it("a READ-ONLY body greys the offer and the commit leaves the doc byte-identical", () => {
+    const main = mountMain("paragraph");
+    publishPaneHandle(main);
+    const body = mountCardBody("as ");
+    const view = body.view;
+    const from = view.state.selection.from;
+    view.dispatch(view.state.tr.insertText("\\textbf"));
+    body.setEditable(false);
+    const before = body.state.doc.toJSON();
+    expect(slashCommandEnabled(view, "textbf")).toBe(false);
+    expect(commitSlashCommand(view, "textbf", from, view.state.selection.from)).toBe(false);
+    expect(body.state.doc.toJSON()).toEqual(before);
+  });
+
+  it("main's own slash commit is still refused by main's pen", () => {
+    const main = mountMain("paragraph");
+    publishPaneHandle(main);
+    main.setEditable(false);
+    expect(runEditorAction(main.view, "citation", { surface: "typed" })).toBe("read-only");
+  });
+});
+
+describe("EditorPane's handle asks the ORIGIN, as this fixture does (task 1480)", () => {
+  it("gates on the ORIGIN view's pen, never on the pane editor's", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(process.cwd(), "src/components/EditorPane.tsx"), "utf8");
+    const start = src.indexOf("const handle: EditorActionsHandle = {");
+    const body = src.slice(start, src.indexOf("registerEditorActionsHandle(editor, handle)", start));
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toContain('if (!surfaceEditableNow(originView)) return "read-only";');
+    expect(body).toContain("canEdit: surfaceEditableNow(originView),");
+    expect(body).not.toMatch(/surfaceEditableNow\(ed\)/);
   });
 });
