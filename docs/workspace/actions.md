@@ -1,4 +1,4 @@
-<!-- last-verified: 790a5589 2026-11-04 -->
+<!-- last-verified: 25db9fea 2026-11-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -78,7 +78,7 @@ an `applies()` gate + `run()`.
 | 11 | `delete` | Delete | `⌫` | lifecycle | `cardLifecycle` delete + range cut |
 
 The `CardCreationApi` ([card-creation.ts:190](../../src/components/editor-layout/card-actions/card-creation.ts))
-is the SSOT for the create endpoints; the `cardLifecycle`
+is the SSOT for the create endpoints (panel-header "+" buttons included — every panel host's `onAdd*` comes from `useCardCreationContext()`, task 1474); the `cardLifecycle`
 (`CardLifecycleApi`, the per-`CardKind` clone/delete registry) drives Duplicate
 and Delete. Three actions deliberately create the *request/comment* end of a
 pair, not the authored kind: `suggest-edit` → a `revision-comment`, `cutter` →
