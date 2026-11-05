@@ -207,13 +207,10 @@ def _read_paper_notes(library: Path, citekey: str) -> str:
         return ""
 
 
-# The catalog key an operator hand-sets to pin a paper's metadata. ONE
-# spelling: camelCase, like every other catalog field. The kebab
-# `metadata-lock` is the STALLED *reason token*, never this key — the two
-# were forked for months and the docs taught the one nothing reads
-# (task 449). `library/lib/catalog.ts::CatalogEntry` declares it so the
-# app round-trips it; `_doctrine.md` §4 carries the patch recipe.
-METADATA_LOCK_KEY = "metadataLock"
+# The catalog key an operator hand-sets to pin a paper's metadata. Its ONE
+# spelling lives in `_tools.METADATA_LOCK_KEY` (task 1470 moved it there, so
+# every pipeline catalog writer honours the pin through `split_lock_held`).
+from _tools import METADATA_LOCK_KEY  # noqa: E402
 
 # Emitted verbatim as the `deep-index-blocked` notification reason. The
 # doctrine sites quote this string, and a guard pins the quotes against it.

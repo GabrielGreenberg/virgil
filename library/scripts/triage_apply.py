@@ -40,6 +40,7 @@ from _tools import (
     TERMINAL_BIB_STATES,
     admit_catalog_row,
     settle_catalog_bib,
+    split_lock_held,
     append_inbox_item,
     bump_catalog_version,
     citekey_matches,
@@ -226,7 +227,7 @@ def _upsert_catalog_row_bib_only(
     fields: dict[str, str],
     field_changes: list[dict[str, str]] | None = None,
     bib_state: str = "unverified",
-) -> None:
+) -> list[str]:
     """Write the catalog row a `.bib` entry is entitled to — usually none.
 
     A `.bib` import carries no source document, so its entry is
@@ -243,6 +244,13 @@ def _upsert_catalog_row_bib_only(
     refresh that existing row's bib fields in place — never clobbering its
     `pdf.present`/`indexed` — so a real holding doesn't lose its merged
     field history. We never CREATE a `pdf.present=false` row here.
+
+    That refresh PATCHES (task 1470): it writes `bib`, `updatedAt` and the
+    bibliographic fields — the last only where the row carries no
+    `metadataLock` — and leaves every other key as it found it.
+
+    Returns the bibliographic keys the lock HELD (a value the import would
+    have changed on a pinned row), so the caller can say so; [] otherwise.
 
     Read-modify-write is serialized via `lock_catalog` so concurrent
     triage runs don't drop each other's row updates.
@@ -264,7 +272,7 @@ def _upsert_catalog_row_bib_only(
         # exception used to be hand-written here and nowhere else, which is
         # how the third writer came to lose it; it is the door's now, so all
         # three writers keep it.
-        return
+        return []
 
     title = fields.get("title", "") or ""
     authors_str = fields.get("author", "") or ""
@@ -302,34 +310,33 @@ def _upsert_catalog_row_bib_only(
         catalog = read_catalog(library)
         catalog.setdefault("version", 1)
         catalog.setdefault("entries", [])
-        for i, e in enumerate(catalog["entries"]):
+        for e in catalog["entries"]:
             if citekey_matches(e.get("citekey", ""), citekey):
-                # Preserve addedAt; only update mutable fields. F#4: never
-                # clobber a holding's pdf/indexed status with the bib-only
-                # placeholders — this path now runs only for real holdings.
-                preserved = {
-                    "addedAt": e.get("addedAt", now),
-                    "tags": e.get("tags"),
-                    "originalFilename": e.get("originalFilename"),
-                    "pdf": e.get("pdf"),
-                    "indexed": e.get("indexed"),
-                }
-                merged_bib = settle_catalog_bib(
+                # PATCH the keys a bib import owns — `bib` and the
+                # bibliographic fields — and touch nothing else, so no key
+                # outside this list (pdf/indexed/tags/metadataLock/
+                # duplicateOf/isScanned, or one a future writer adds) can be
+                # dropped by construction. The pre-1470 code REBUILT the row
+                # from a hand-listed preserve allowlist and so deleted every
+                # key added to the row model after it — the operator's
+                # metadata lock first among them. The bibliographic fields go
+                # through `split_lock_held`: a locked row keeps its pin.
+                writable, held = split_lock_held(e, {
+                    "title": title, "authors": authors,
+                    "year": year_int, "doi": doi,
+                })
+                e.update(writable)
+                e["bib"] = settle_catalog_bib(
                     library, citekey, e.get("bib"), bib_status)
-                updated = dict(base_row)
-                updated["addedAt"] = preserved["addedAt"]
-                updated["bib"] = merged_bib
-                for k, v in preserved.items():
-                    if k != "addedAt" and v is not None:
-                        updated[k] = v
-                catalog["entries"][i] = updated
+                e["updatedAt"] = now
                 write_catalog(library, catalog)
-                return
+                return held
         # New holdings row: reflect the source file actually present on disk.
         base_row["pdf"] = {"present": True}
         base_row["bib"] = settle_catalog_bib(library, citekey, None, bib_status)
         catalog["entries"].append(base_row)
         write_catalog(library, catalog)
+        return []
 
 
 def _guard_find(
@@ -500,7 +507,7 @@ def apply_bib_row(
 
     # Catalog row — refresh-only. Mints nothing for a source-less entry
     # (F#4 holdings gate, `_tools.admit_catalog_row`).
-    _upsert_catalog_row_bib_only(
+    lock_held = _upsert_catalog_row_bib_only(
         library, citekey, entry_type, merged_fields,
         field_changes=field_changes,
         bib_state=final_state,
@@ -526,6 +533,9 @@ def apply_bib_row(
         summary_bits.append(f"authenticate NOT queued ({queue_result})")
     if possible_dup:
         summary_bits.append(f"possibleDuplicateOf {possible_dup}")
+    if lock_held:
+        summary_bits.append(
+            f"metadataLock held catalog {', '.join(lock_held)}")
 
     inbox_item = {
         "kind": "triage-bib-imported",
@@ -538,6 +548,8 @@ def apply_bib_row(
     }
     if possible_dup:
         inbox_item["possibleDuplicateOf"] = possible_dup
+    if lock_held:
+        inbox_item["lockHeld"] = lock_held
     append_inbox_item(library, inbox_item)
     result = {
         "status": "bib-imported",
