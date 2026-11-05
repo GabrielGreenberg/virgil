@@ -436,6 +436,9 @@ describe("readFlag", () => {
   });
 
   it("honours every row's default when the key is unset", () => {
+    // vitest.setup.ts pins `virgil:gutter-layout` OFF for the legacy suites
+    // (task 1440); the DEFAULT is the question here, so drop every override.
+    clearFlagOverrides();
     for (const key of FLAG_KEYS) {
       const spec = FLAG_REGISTRY[key];
       if (spec.requires.length > 0) continue; // covered by the requires leg

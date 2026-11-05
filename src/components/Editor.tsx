@@ -1181,9 +1181,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (node.type.name !== "exampleBlock") return true;
         const id = (node.attrs.uuid as string) || "";
         if (!id) return false;
+        // Text leaves run together across block boundaries (a gloss's cells
+        // and tiers), so a space is inserted wherever the parent changes —
+        // never inside a paragraph, where a mark boundary splits one word.
         let preview = "";
-        node.descendants((child) => {
+        let previewParent: PMNode | null = null;
+        node.descendants((child, _pos, parent) => {
           if (child.isText && child.text) {
+            if (previewParent && parent !== previewParent) preview += " ";
+            previewParent = parent;
             preview += child.text;
             return preview.length < 120;
           }

@@ -3,7 +3,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REPO_ROOT, commentsStripped } from "@/lib/__tests__/_source-scan";
 import {
   FLAG_KEYS,
@@ -53,6 +53,9 @@ function setAll(keys: readonly FlagKey[], v: string | null): void {
 }
 
 describe("flagBootstrapExpr — the inline twin of readFlag", () => {
+  // vitest.setup.ts pins `virgil:gutter-layout` OFF for the legacy suites
+  // (task 1440); the bootstrap twin reads storage, never an override.
+  beforeEach(() => clearFlagOverrides());
   afterEach(() => {
     clearFlagOverrides();
     localStorage.clear();

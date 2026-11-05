@@ -113,6 +113,8 @@ const PERMITTED_NON_MENU_CSS_SURFACES: Record<string, string> = {
     "IT IS THE TIER. The rule the other four axes are defined for — leg 3 above asserts each of its declarations reads its own `--menu-*` token, which is a stronger statement than this leg makes, so exempting it here is not a hole: it is the leg that would fail first.",
   ".lifted-text-overlay":
     "NOT A MENU — the drag GHOST of lifted text (AGENTS.md \"The tag half\"). It is the moving preview of a document block, so its surface must read as a lifted PAGE rather than as a dropdown: a menu-tier retone would make a dragged paragraph look like a popup, and its elevation is deliberately the lift shadow rather than the menu halo. Its header parity with the float chrome is pinned separately by `lift-ghost-header-parity`.",
+  ".tool-gutter-tool [data-card]":
+    "NOT A SURFACE — the opposite: it UNPAINTS one. Under the cards-right / tools-left layout (task 1440) a tool body (Search, Word count) renders inside the left tool gutter, where everything is text on the manila; this rule zeroes the four axes the card frame painted inline (transparent fill, no shadow, no radius, a bottom hairline only). It states all four because the card frame does — a rule that left one axis painted would leave a half-card.",
   ".label-ref-popover":
     "IDENTITY, not drift — the CSS half of the one entry on `PERMITTED_UNSURFACED_MENUS` above, and the same reason: a 2px `--amber-highlight-edge` border plus a matching amber halo binds the popover to the amber `\\ref` highlight in the text it points at, so a ref recolour moves both together. Its INNER dropdown list is a different surface and took the menu tier in task 459; this outer shell is the deliberate binding.",
 };

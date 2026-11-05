@@ -34,6 +34,11 @@ export interface NormalViewSide {
   present: boolean;
   /** The side's panel column is collapsed (the strip stays). */
   collapsed: boolean;
+  /** The gutter layout (task 1440): the column runs to the window edge and
+   *  the strip is mounted ONLY while the side is collapsed — it is then the
+   *  one control that brings the column back. Absent = the two-strip layout,
+   *  whose strip is always mounted. */
+  edgeToEdge?: boolean;
   /** The side's committed panel width pref (`getPanelWidth(side, "omni")`). */
   panelPref: number;
 }
@@ -51,8 +56,14 @@ type RailTerm =
 /** The width terms one side's rail removes from the row — the SSOT. */
 function railTerms(side: NormalViewSide): RailTerm[] {
   if (!side.present) return [];
-  const terms: RailTerm[] = [{ kind: "strip" }];
-  if (!side.collapsed) terms.push({ kind: "panel", pref: side.panelPref });
+  const terms: RailTerm[] = [];
+  if (side.edgeToEdge) {
+    // Edge to edge: ONE of the two — the open column, or the collapsed strip.
+    terms.push(side.collapsed ? { kind: "strip" } : { kind: "panel", pref: side.panelPref });
+  } else {
+    terms.push({ kind: "strip" });
+    if (!side.collapsed) terms.push({ kind: "panel", pref: side.panelPref });
+  }
   // The rail sits beside the editor column, so the row's gap separates them.
   terms.push({ kind: "gap" });
   return terms;

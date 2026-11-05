@@ -69,6 +69,7 @@ const LEDGER: Record<string, Row> = {
   "lib/spell/spell-client.ts#availabilityListeners": { scope: "app-wide", why: "the one spell worker's availability" },
   "hooks/useWindowChrome.ts#_listeners": { scope: "app-wide", why: "OS/browser window chrome geometry" },
   "lib/input-modality.ts#listeners": { scope: "app-wide", why: "pointer vs keyboard is an app-level fact" },
+  "lib/tool-gutter-store.ts#listeners": { scope: "app-wide", why: "the tool gutter's open tool + lists are one app-wide localStorage value, like the dock it replaces (task 1440)" },
   "lib/stack/stack-terminal.ts#openListeners": { scope: "app-wide", why: "the one Stack strip-open signal" },
 
   "components/card-lift.ts#targetListeners": { scope: "gesture", why: "one card lift-off drag at a time" },

@@ -1,5 +1,7 @@
 "use client";
 
+import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { routePanelOpenToGutter } from "@/lib/tool-gutter-store";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
@@ -1599,6 +1601,7 @@ export function useViewPrefs(opts?: {
    */
   const openPanel = useCallback((id: PanelId, side?: Side, freeSpacePx?: number) => {
     if (id === "omni") return;
+    if (gutterLayoutOn() && routePanelOpenToGutter(id, "open")) return;
     update((p) => {
       if (isPanelOpen(p, id)) return p;
       return openInMode(p, id, resolveSide(p, id, side), freeSpacePx);
@@ -1622,6 +1625,7 @@ export function useViewPrefs(opts?: {
   const openPanelDocked = useCallback(
     (id: PanelId, side?: Side, freeSpacePx?: number) => {
       if (id === "omni") return;
+      if (gutterLayoutOn() && routePanelOpenToGutter(id, "open")) return;
       update((p) => {
         if (isPanelOpen(p, id)) return p;
         return placeInStack(p, id, resolveSide(p, id, side), { freeSpacePx });
@@ -1682,6 +1686,7 @@ export function useViewPrefs(opts?: {
   const togglePanel = useCallback(
     (id: PanelId, side?: Side, freeSpacePx?: number) => {
       if (id === "omni") return;
+      if (gutterLayoutOn() && routePanelOpenToGutter(id, "toggle")) return;
       update((p) =>
         isPanelOpen(p, id)
           ? closePanel(p, id)

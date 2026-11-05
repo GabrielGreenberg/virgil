@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Playfair_Display, Cinzel, Source_Serif_4, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { Analytics } from "@/components/Analytics";
 import { publicAssetUrl } from "@/lib/public-asset-url";
@@ -8,33 +8,58 @@ import { prefCssBootstrapScript } from "@/lib/pref-css-bootstrap";
 import { DEFAULT_THEME_COLOR } from "@/lib/theme-color";
 import "./globals.css";
 
-const inter = Inter({
+// The five families ship INSIDE the repo (the @fontsource-variable packages and
+// Vercel's `geist`), loaded through next/font/local. Until task 1441 they came
+// from next/font/google, which makes the BUILD fetch each family from
+// fonts.googleapis.com; on GitHub's runners that fetch failed on three of four
+// releases (Turbopack: "next/font/google queries have exactly one entry" /
+// "Can't resolve '@vercel/turbopack-next/internal/font/google/font'"), and a
+// failed build is a failed deploy. A local font is read from node_modules at
+// build time and fetches nothing. Same CSS variables, same latin subset, same
+// normal style (italics stay synthesized, as they were), weight ranges as the
+// variable files declare them.
+const inter = localFont({
   variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  src: "../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
+  weight: "100 900",
+  display: "swap",
 });
 
-const playfair = Playfair_Display({
+const playfair = localFont({
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  src: "../../node_modules/@fontsource-variable/playfair-display/files/playfair-display-latin-wght-normal.woff2",
+  weight: "400 900",
+  display: "swap",
+  // next/font/google picked the serif metric fallback by category; local
+  // fonts default to Arial's, so say it.
+  adjustFontFallback: "Times New Roman",
 });
 
-const cinzel = Cinzel({
+const cinzel = localFont({
   variable: "--font-logo",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  src: "../../node_modules/@fontsource-variable/cinzel/files/cinzel-latin-wght-normal.woff2",
+  weight: "400 900",
+  display: "swap",
+  // next/font/google picked the serif metric fallback by category; local
+  // fonts default to Arial's, so say it.
+  adjustFontFallback: "Times New Roman",
 });
 
-const sourceSerif = Source_Serif_4({
+const sourceSerif = localFont({
   variable: "--font-serif",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  src: "../../node_modules/@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2",
+  weight: "200 900",
+  display: "swap",
+  // next/font/google picked the serif metric fallback by category; local
+  // fonts default to Arial's, so say it.
+  adjustFontFallback: "Times New Roman",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
   variable: "--font-mono",
-  subsets: ["latin"],
+  src: "../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2",
+  weight: "100 900",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
