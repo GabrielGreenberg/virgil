@@ -468,20 +468,6 @@ def _build_citekey(surname: str, year: str, title: str) -> str:
 # ── Resolution: Library first, then Crossref ───────────────────────────
 
 
-def _target_year(year: str) -> "int | None":
-    r"""The warning's year as an int, tolerating a disambiguating letter.
-
-    `_missing_bib_targets` deliberately captures `1975a` — author-year
-    disambiguation is the norm in the philosophy / cog-sci corpus this script
-    is FOR. `work_identity.norm_year` matches `\b(\d{4})\b`, and `1975a` has
-    no word boundary between the `5` and the `a`, so it answers None. Both
-    acceptance bars short-circuit on None, so without this slice every
-    lettered-year target is refused whatever the evidence — and reported as
-    `no-author-year-match`, which names the wrong cause.
-    """
-    return wi.norm_year(year[:4])
-
-
 def _master_candidates(
     master: dict, cited: tuple[str, ...], et_al: bool, want_year: "int | None",
 ) -> list[tuple[str, dict]]:
@@ -560,7 +546,7 @@ def _resolve_target(
     cited, et_al = _parse_cited_mention(author)
     if not cited:
         return "unparsed-author", {}
-    want_year = _target_year(year)
+    want_year = wi.norm_year(year)  # `1975a` → 1975 (task 1485)
     if want_year is None:
         return "unparsed-year", {}
 
