@@ -194,6 +194,102 @@
         "command": "vcid",
         "id": "c9"
       }
+    },
+    {
+      "name": "rewrite-keeps-footnote-marker-drops-footnote",
+      "why": "Task 1484: keeping \\vfid{f002} but deleting its \\footnote{…} deletes the footnote prose and orphans the card — the marker multiset alone is conserved, so this passed before.",
+      "matched": "asides\\vfid{f002}\\footnote{The standard study \\emph{is} here.}. The gloss",
+      "replacement": "asides\\vfid{f002}. The gloss",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vfid",
+        "id": "f002"
+      }
+    },
+    {
+      "name": "rewrite-moves-footnote-away-from-marker",
+      "why": "An id binds the IMMEDIATELY following atom; a footnote moved away from its \\vfid is a fresh footnote, and the card's marker binds nothing.",
+      "matched": "asides\\vfid{f002}\\footnote{The standard study \\emph{is} here.}. The gloss",
+      "replacement": "asides\\vfid{f002}. The \\footnote{The standard study \\emph{is} here.}gloss",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vfid",
+        "id": "f002"
+      }
+    },
+    {
+      "name": "rewrite-edits-footnote-body",
+      "why": "An AI rewrite of the paragraph may not silently rewrite the footnote's own prose; that is the footnote's card's business.",
+      "matched": "asides\\vfid{f002}\\footnote{The standard study \\emph{is} here.}. The gloss",
+      "replacement": "asides\\vfid{f002}\\footnote{A different note.}. The gloss",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vfid",
+        "id": "f002"
+      }
+    },
+    {
+      "name": "rewrite-moves-marker-and-footnote-together",
+      "why": "A rewrite may MOVE the (marker, footnote) pair as a unit — only splitting it is refused.",
+      "matched": "asides\\vfid{f002}\\footnote{The standard study \\emph{is} here.}. The gloss",
+      "replacement": "The gloss, with asides\\vfid{f002}\\footnote{The standard study \\emph{is} here.}.",
+      "wholeCut": false,
+      "expected": null
+    },
+    {
+      "name": "rewrite-keeps-citation-marker-changes-key",
+      "why": "The \\vcid's \\citet{foo} is its atom; swapping the key under a kept id points citation card c1 at another work.",
+      "matched": "See also \\vcid{c1}\\citet[p.~3]{foo} for details.",
+      "replacement": "See also \\vcid{c1}\\citet[p.~3]{bar} for details.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "span-ending-at-marker-must-still-end-there",
+      "why": "When the atom lies past the span, the replacement must end right at the marker too — anything after it would sit between the id and its atom.",
+      "matched": "See also \\vcid{c1}",
+      "replacement": "See also \\vcid{c1} and",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "span-ending-at-marker-carried-verbatim",
+      "why": "The atom past the span is untouched when the replacement ends at the marker as the span did.",
+      "matched": "See also \\vcid{c1}",
+      "replacement": "Compare \\vcid{c1}",
+      "wholeCut": false,
+      "expected": null
+    },
+    {
+      "name": "cut-takes-citation-command-without-argument",
+      "why": "Task 1484: a cut over `\\vcid{c1}\\citet` but not its {…} strands `{foo}` in the text — the cut must cover the WHOLE atom.",
+      "matched": "See also \\vcid{c1}\\citet",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": {
+        "rule": "atom-left",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "cut-takes-citation-with-optional-args",
+      "why": "A whole cut over a citation with optional args and its balanced key takes the atom with it.",
+      "matched": "See also \\vcid{c1}\\citet[see][p.~{3}]{foo}.",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": null
     }
   ]
 }

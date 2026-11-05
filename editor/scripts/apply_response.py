@@ -178,6 +178,7 @@ from _common import (
     describe_marker_violation,
     die,
     marker_conservation_violation,
+    replacement_author,
     find_bib_file,
     find_tex_file,
     is_ai_request_kind,
@@ -1744,10 +1745,11 @@ def _refuse_unconserved_markers(kind: str, card: dict, original: str, replacemen
     replaces (task 1426). `original` IS the matched span: both doors splice it
     verbatim. A whole cut is a deletion-family card with an empty replacement —
     the same family table the empty-replacement refusal reads. A human's own
-    text (`user_text`, or a human card) is held to the no-phantom half only —
-    `replacementAuthor` in the app, the same rule."""
+    text (`user_text`, or a card whose author is literally "human") is held to
+    the no-phantom half only — `replacement_author`, the twin of the app's
+    `replacementAuthor`. An author-less card is AI (task 1484: fail closed)."""
     whole_cut = _SUGGESTION_LANDING["familyMeansDeletion"].get(kind, False) and replacement == ""
-    human = bool(card.get("user_text")) or card.get("author") != "ai"
+    human = replacement_author(card) == "human"
     v = marker_conservation_violation(original, replacement, whole_cut, human)
     if v:
         die(f"{lead}: {describe_marker_violation(v)} — nothing was written")
