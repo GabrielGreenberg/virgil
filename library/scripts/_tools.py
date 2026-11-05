@@ -1106,6 +1106,49 @@ def citekey_matches(stored: str, query: str) -> bool:
     return normalize_citekey(stored) == normalize_citekey(query)
 
 
+# ── the operator metadata pin ─────────────────────────────────────────
+#
+# The catalog key an operator hand-sets to pin a paper's metadata. ONE
+# spelling: camelCase, like every other catalog field. The kebab
+# `metadata-lock` is the STALLED *reason token*, never this key — the two
+# were forked for months and the docs taught the one nothing reads
+# (task 449). `library/lib/catalog.ts::CatalogEntry` declares it so the
+# app round-trips it; `_doctrine.md` §4 carries the patch recipe. Read by
+# `apply_metadata_mismatch_policy` (the block-the-pass check) and by
+# `split_lock_held` below (every pipeline catalog writer), so it lives here.
+METADATA_LOCK_KEY = "metadataLock"
+
+# The top-level catalog fields a bibliographic source (a master.bib or a
+# dropped .bib entry) derives. These are what the lock pins (§4: "do not
+# touch master.bib or the catalog title"): a locked row keeps them however
+# they got there.
+BIBLIOGRAPHIC_TOP_KEYS: frozenset[str] = frozenset({"title", "authors", "year", "doi"})
+
+
+def split_lock_held(row: "dict | None", fields: dict) -> "tuple[dict, list[str]]":
+    """Split a pipeline patch for an EXISTING catalog row into what may land
+    and what the operator's metadata lock holds (task 1470).
+
+    Returns `(writable, held)`: `writable` is `fields` minus every
+    bibliographic key when `row` carries `metadataLock: true`; `held` names
+    the keys whose value the lock actually kept from changing (a re-write of
+    the same value is not a hold). An unlocked row passes everything.
+
+    Every pipeline writer that patches a row's bibliographic fields goes
+    through this — `upsert_catalog_entry` (index_paper, merge_paper_references),
+    `admit_catalog_row`'s stale-row refresh, and triage's .bib import — so the
+    lock is honoured at the one door rather than remembered per writer. The
+    operator's own `update_catalog_entry` deliberately does NOT: the lock pins
+    against the pipeline, not against the person who set it.
+    """
+    if not (row and row.get(METADATA_LOCK_KEY)):
+        return dict(fields), []
+    writable = {k: v for k, v in fields.items() if k not in BIBLIOGRAPHIC_TOP_KEYS}
+    held = sorted(k for k, v in fields.items()
+                  if k in BIBLIOGRAPHIC_TOP_KEYS and row.get(k) != v)
+    return writable, held
+
+
 def _deep_merge(dst: dict, src: dict) -> None:
     """Recursively merge `src` into `dst`.
 
@@ -1315,6 +1358,11 @@ def upsert_catalog_entry(
     `importedKeys`/`authenticatedAt` that a caller didn't re-supply. Scalar and
     list fields keep REPLACE semantics (the caller's value wins outright).
 
+    On an existing row carrying the operator's `metadataLock`, the
+    bibliographic fields (`BIBLIOGRAPHIC_TOP_KEYS`) are HELD — dropped from
+    the patch by `split_lock_held` — so no pipeline writer through this door
+    can rewrite a pinned title (task 1470). A new row has no lock to honour.
+
     Duplicate-work guard (optional, keyword-only)
     ---------------------------------------------
     When `_guard` (a `work_identity.WorkIndex`) is provided AND no row matches
@@ -1327,7 +1375,8 @@ def upsert_catalog_entry(
     for e in catalog.get("entries", []):
         if citekey_matches(e.get("citekey", ""), citekey):
             # Deep-merge nested dicts (bib/indexed/pdf/…); replace scalars+lists.
-            for k, v in fields.items():
+            writable, _held = split_lock_held(e, fields)
+            for k, v in writable.items():
                 if isinstance(v, dict) and isinstance(e.get(k), dict):
                     _deep_merge(e[k], v)
                 else:
@@ -2650,7 +2699,8 @@ def admit_catalog_row(
                     e["bib"] = settle_catalog_bib(
                         library, citekey, e.get("bib"), patch,
                         effective_state=effective)
-                for k, v in (top or {}).items():
+                writable, _held = split_lock_held(e, top or {})
+                for k, v in writable.items():
                     e[k] = v
                 e["updatedAt"] = _now()
                 catalog["entries"][i] = e

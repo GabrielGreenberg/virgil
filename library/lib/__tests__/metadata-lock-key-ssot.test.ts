@@ -17,10 +17,12 @@
 // script's guard is intact, and the promise simply is not kept — which is
 // why the drift survived for months across four doctrine sites.
 //
-// THE SSOT IS THE READER. `METADATA_LOCK_KEY` in
-// `apply_metadata_mismatch_policy.py` is the one place the key is spelled;
-// every leg below DERIVES the expected spelling from it, so renaming the
-// key there fails this file rather than silently orphaning the docs again.
+// THE SSOT IS THE READERS' SHARED MODULE. `METADATA_LOCK_KEY` in
+// `_tools.py` is the one place the key is spelled (task 1470 moved it there
+// from `apply_metadata_mismatch_policy.py`, so every pipeline catalog writer
+// honours the pin through `split_lock_held` — the policy imports it); every
+// leg below DERIVES the expected spelling from it, so renaming the key there
+// fails this file rather than silently orphaning the docs again.
 //
 // TWO WORDS, NOT ONE. The camelCase `metadataLock` is the catalog KEY; the
 // kebab `metadata-lock` is the STALLED REASON TOKEN printed in the banner
@@ -41,6 +43,7 @@ import { describe, it, expect } from "vitest";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const read = (rel: string) => readFileSync(join(repoRoot, rel), "utf8");
 
+const KEY_SSOT = "library/scripts/_tools.py";
 const SSOT = "library/scripts/apply_metadata_mismatch_policy.py";
 const CATALOG_TS = "library/lib/catalog.ts";
 const DOCTRINE = "library/skills/_doctrine.md";
@@ -53,10 +56,10 @@ const SELF = "library/lib/__tests__/metadata-lock-key-ssot.test.ts";
 
 const ssot = read(SSOT);
 
-/** The one spelling of the catalog key, read out of the reader. */
+/** The one spelling of the catalog key, read out of the shared module. */
 const KEY = (() => {
-  const m = ssot.match(/^METADATA_LOCK_KEY = "([A-Za-z0-9_]+)"$/m);
-  if (!m) throw new Error(`${SSOT} no longer publishes METADATA_LOCK_KEY`);
+  const m = read(KEY_SSOT).match(/^METADATA_LOCK_KEY = "([A-Za-z0-9_]+)"$/m);
+  if (!m) throw new Error(`${KEY_SSOT} no longer publishes METADATA_LOCK_KEY`);
   return m[1];
 })();
 
@@ -88,6 +91,9 @@ function censusFiles(): string[] {
 describe("metadata-lock: one key, one spelling", () => {
   it("the reader publishes the key as a constant and reads it through that constant", () => {
     expect(KEY).toBe("metadataLock");
+    // The policy reads the shared constant rather than spelling its own.
+    expect(ssot).toMatch(/^from _tools import METADATA_LOCK_KEY\b/m);
+    expect(ssot).not.toMatch(/^METADATA_LOCK_KEY = /m);
     // No inline literal: the lookup goes through the constant, or the
     // reason string below could report a key the lookup does not use.
     expect(ssot).toMatch(/catalog_row\.get\(METADATA_LOCK_KEY\)/);
