@@ -89,6 +89,19 @@ check(match("Lib1999title")["match_source"] == "citekey", "exact citekey wins fi
 print("work_identity normalizers")
 check(wi.normalize_doi("https://dx.doi.org/10.1/X") == "10.1/x", "dx.doi.org prefix stripped")
 check(wi.normalize_doi("doi:10.1/x;") == "10.1/x", "doi: prefix + trailing punctuation stripped")
+# Task 1485: every prefix spelling a reference list or a resolver hands us, in
+# any stacking order, reaches the one key — the DOI rung is the only one that
+# matches a work whose title/year differ, so a miss here is a duplicate add.
+for raw in ("10.1/x", "https://doi.org/10.1/x", "https://www.doi.org/10.1/x", "doi.org/10.1/x",
+            "DOI 10.1/x", "DOI: 10.1/x", "doi:https://doi.org/10.1/x", "http://dx.doi.org/10.1/x.",
+            "{https://doi.org/10.1/X}"):
+    check(wi.normalize_doi(raw) == "10.1/x", f"normalize_doi({raw!r}) == '10.1/x'")
+# A disambiguated year (`1998a`) is the corpus norm; a word boundary does not
+# exist between `8` and `a`, so the year run is digit-bounded instead.
+for raw, want in (("1998", 1998), ("{1998}", 1998), ("1998a", 1998), ("c. 1998", 1998),
+                  ("1998-2001", 1998), ("May 1998", 1998), ("forthcoming", None),
+                  ("12345", None), ("", None), (None, None)):
+    check(wi.norm_year(raw) == want, f"norm_year({raw!r}) == {want!r}")
 check(wi.first_author_surname("John Smith III and Jane Doe") == "smith", "trailing III dropped")
 check(wi.first_author_surname("Jr") == "jr", "a lone token is never dropped as a suffix")
 check(wi.first_author_surname("van der Berg, Jan") == "vanderberg", "particles kept in the comma form")
@@ -103,6 +116,20 @@ check(not any(hasattr(bml, n) for n in ("_normalize_doi", "_normalize_title", "_
 check(mpr._normalize_doi is wi.normalize_doi and mpr._norm_title is wi.norm_title
       and mpr._first_author_surname is wi.first_author_surname and mpr._strip_braces is wi._strip_braces,
       "merge_paper_references binds work_identity's functions")
+
+print("one year parser (census)")
+# A private `\\b(\\d{4})\\b` is how `1998a` went unparsed in four places at
+# once (task 1485); scripts call `work_identity.norm_year` instead.
+_PRIVATE_YEAR = "\\b(\\d{4})\\b"
+offenders = [
+    str(f.relative_to(ROOT))
+    for silo in ("editor/scripts", "library/scripts")
+    for f in sorted((ROOT / silo).rglob("*.py"))
+    if "tests" not in f.parts and not f.name.startswith("test_")
+    and "dedup-run-" not in str(f)
+    and _PRIVATE_YEAR in f.read_text(encoding="utf-8")
+]
+check(not offenders, f"no script hand-rolls the word-bounded year regex: {offenders}")
 
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

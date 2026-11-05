@@ -401,11 +401,11 @@ def test_a_disambiguated_year_still_clears_the_year_bar(tmp_path: Path):
     """`missing-bib-entry: Fodor 1975a` — author-year disambiguation is the
     norm in the corpus this script is FOR.
 
-    `work_identity.norm_year` answers None for `1975a` (no word boundary
-    before the letter), and both acceptance bars short-circuit on None — so
-    without the target-year slice EVERY lettered target is refused whatever
-    the evidence, and reported as `no-author-year-match`, which names the
-    wrong cause. The suffix must survive into the citekey, since that is what
+    Both acceptance bars short-circuit on a None year, so if
+    `work_identity.norm_year` ever again answers None for `1975a` (the old
+    word-boundary pattern did — task 1485) EVERY lettered target is refused
+    whatever the evidence, and reported as `no-author-year-match`, which
+    names the wrong cause. The suffix must survive into the citekey, since that is what
     distinguishes it from its sibling.
     """
     lib = _make_library(tmp_path, ["missing-bib-entry: Fodor 1975a"])

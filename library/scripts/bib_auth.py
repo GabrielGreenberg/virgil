@@ -30,6 +30,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import paper_folder  # noqa: E402
+from work_identity import norm_year  # noqa: E402  (task 1485: one year parser)
 from _bib_types import propose_type, retirement_ops  # noqa: E402  (task 1040)
 
 try:
@@ -512,9 +513,9 @@ def _isbn_lookup(isbn: str) -> list[dict]:
     publish_date = it.get("publish_date", "")
     year = ""
     if publish_date:
-        m = re.search(r"\b(\d{4})\b", publish_date)
-        if m:
-            year = m.group(1)
+        published = norm_year(publish_date)
+        if published is not None:
+            year = str(published)
     publishers = it.get("publishers", [])
     return [{
         "source": "openlibrary-isbn",

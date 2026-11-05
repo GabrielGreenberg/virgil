@@ -136,9 +136,13 @@ def _strip_accents(s: str) -> str:
 def normalize_doi(s: str) -> str:
     """Canonical DOI: lowercase, strip a resolver/scheme prefix, trim.
 
-    Prefixes stripped: ``https?://(dx.)?doi.org/`` and ``doi:`` (any case,
-    optional space). Trailing citation punctuation (`` .;,``) is trimmed — a
-    DOI copied out of a reference list often keeps the sentence's period.
+    Prefixes stripped, in any order and any number, until none applies
+    (task 1485): a ``doi:`` / ``doi `` label (any case, optional space), a
+    scheme ``https?://``, and a resolver host ``(www.|dx.)?doi.org/`` — so
+    ``https://www.doi.org/…``, a bare ``doi.org/…``, ``DOI 10.…`` and the
+    doubled ``doi:https://doi.org/…`` all reach the same key. Trailing
+    citation punctuation (`` .;,``) is trimmed — a DOI copied out of a
+    reference list often keeps the sentence's period.
     This is THE DOI normalizer: the editor's ``bib_match_library`` and
     ``merge_paper_references`` import it rather than keep private copies
     (task 1312 — the editor copy had drifted and missed ``dx.doi.org``).
@@ -151,9 +155,17 @@ def normalize_doi(s: str) -> str:
     if not s:
         return ""
     s = _strip_braces(s).strip().lower()
-    s = re.sub(r"^https?://(dx\.)?doi\.org/", "", s)
-    s = re.sub(r"^doi:\s*", "", s)
+    while True:
+        stripped = _DOI_PREFIX_RE.sub("", s, count=1).lstrip()
+        if stripped == s:
+            break
+        s = stripped
     return s.strip(" .;,\t\n")
+
+
+# One rule per prefix kind; `normalize_doi` strips until none fires, so the
+# order a source happens to stack them in cannot matter.
+_DOI_PREFIX_RE = re.compile(r"^(?:doi\s*:\s*|doi\s+|https?://|(?:www\.|dx\.)?doi\.org/)")
 
 
 def normalize_isbn(s: str) -> str:
@@ -276,11 +288,15 @@ def norm_year(s: str) -> Optional[int]:
     """Extract a 4-digit year as an int, or ``None``.
 
     Tolerates ``{1998}``, ``1998a``, ``c. 1998``, ``1998-2001`` (takes the
-    first 4-digit run). Non-numeric transient years (``forthcoming``) → None.
+    first run of exactly four digits). Non-numeric transient years
+    (``forthcoming``) → None. The run is bounded by DIGIT lookarounds, not
+    ``\\b`` — a word boundary does not exist between ``8`` and ``a``, so the
+    old pattern answered None for every author-year disambiguated year
+    (task 1485). This is THE year parser for library/editor scripts.
     """
     if s is None:
         return None
-    m = re.search(r"\b(\d{4})\b", str(s))
+    m = re.search(r"(?<!\d)(\d{4})(?!\d)", str(s))
     return int(m.group(1)) if m else None
 
 
