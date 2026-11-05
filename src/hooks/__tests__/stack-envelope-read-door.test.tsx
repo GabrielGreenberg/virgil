@@ -10,7 +10,7 @@
  * starts fresh.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import {
   addStackItem,
   readStackItem,
@@ -111,6 +111,61 @@ describe("Stack read door — unreadable is not empty", () => {
  * the user "The Stack is full — remove some items" for all of them, including
  * the ones where the strip is empty and nothing can be removed.
  */
+/**
+ * **An item this build cannot read is carried, not erased (task 1478).** The
+ * read door used to drop a foreign payload kind for DISPLAY and the write
+ * doors then built their write from that filtered list — so another build's
+ * capture vanished on this build's next add or remove.
+ */
+describe("Stack write doors — a foreign-kind item rides along", () => {
+  beforeEach(() => localStorage.clear());
+
+  const future = {
+    id: "future",
+    capturedAt: "2026-10-13T00:00:00.000Z",
+    source: { docId: "docA" },
+    payload: { kind: "future-kind", data: { whatever: [1, 2] } },
+  };
+  function storedEntries(): unknown[] {
+    return JSON.parse(localStorage.getItem(STACK_STORAGE_KEY)!).items;
+  }
+
+  it("addStackItem keeps the future item verbatim, in its place", () => {
+    store({ version: 1, items: [textItem("old"), future] });
+    expect(addStackItem(textItem("new"), NO_BIB)).toEqual({ ok: true });
+    const entries = storedEntries() as { id: string }[];
+    expect(entries.map((e) => e.id)).toEqual(["new", "old", "future"]);
+    expect(entries[2]).toEqual(future);
+  });
+
+  it("remove deletes only the readable target and keeps the future item", () => {
+    store({ version: 1, items: [future, textItem("gone"), textItem("stay")] });
+    const { result } = renderHook(() => useStack());
+    expect(result.current.items.map((i) => i.id)).toEqual(["gone", "stay"]);
+    let ok = false;
+    act(() => {
+      ok = result.current.remove("gone");
+    });
+    expect(ok).toBe(true);
+    expect(result.current.items.map((i) => i.id)).toEqual(["stay"]);
+    expect(storedEntries()).toEqual([future, textItem("stay")]);
+  });
+
+  it("remove of a foreign-kind id writes nothing (the strip never offered it)", () => {
+    store({ version: 1, items: [future] });
+    const before = localStorage.getItem(STACK_STORAGE_KEY);
+    const { result } = renderHook(() => useStack());
+    expect(result.current.remove("future")).toBe(false);
+    expect(localStorage.getItem(STACK_STORAGE_KEY)).toBe(before);
+  });
+
+  it("a structurally corrupt entry is still dropped on write", () => {
+    store({ version: 1, items: [null, { id: "no-payload" }, { payload: { kind: "text" } }, textItem("ok")] });
+    expect(addStackItem(textItem("new"), NO_BIB).ok).toBe(true);
+    expect((storedEntries() as { id: string }[]).map((e) => e.id)).toEqual(["new", "ok"]);
+  });
+});
+
 describe("Stack add door — a refusal carries its own reason", () => {
   beforeEach(() => {
     localStorage.clear();
