@@ -1220,6 +1220,80 @@ def merge_indexed_warnings(
     return out
 
 
+def undeclared_warning_heads(fresh: list, declared) -> list[str]:
+    """The heads of `fresh` warning lines that are NOT among `declared`.
+
+    A fresh line whose head no writer declares is never dropped by a later
+    recompute, so it duplicates on every run (the typo'd-kind shape). Every
+    per-kind recompute door refuses on a non-empty answer; non-string junk
+    reports as `<non-string>`.
+    """
+    owned = {k.strip() for k in declared if isinstance(k, str) and k.strip()}
+    return sorted({
+        w.split(":", 1)[0] for w in fresh
+        if isinstance(w, str) and w.split(":", 1)[0] not in owned
+    } | {
+        "<non-string>" for w in fresh if not isinstance(w, str)
+    })
+
+
+def replace_owned_keys(block: dict, owned_keys, fresh: dict) -> dict:
+    """Write a RE-OBSERVED block: REPLACE its owned keys, touch nothing else.
+
+    For each key in `owned_keys`, set it from `fresh` when `fresh` carries
+    it and POP it when it does not; every key outside `owned_keys` survives
+    byte-identically. Mutates and returns `block`.
+
+    Why this is not `_deep_merge`: deep-merge is a PATCH channel — a key the
+    patch omits survives. A writer that re-observes a whole block (the
+    indexer re-describing the source it just extracted) means the opposite
+    by an omission: "this pass found no such thing". Through deep-merge a
+    re-extract with no fusion kept the prior `pgmarkSource`, and one whose
+    alternates were since removed kept `alternates` (task 1469). The owner
+    states its keys once; an omitted owned key is a deletion, an unowned
+    key is somebody else's.
+
+    `fresh` carrying a key outside `owned_keys` is refused (`ValueError`):
+    it would be written but never cleared by the next pass, which is the
+    same defect from the other side.
+    """
+    owned = tuple(owned_keys)
+    stray = sorted(set(fresh) - set(owned))
+    if stray:
+        raise ValueError(
+            "fresh block carries keys its writer does not declare as owned: "
+            f"{', '.join(stray)} — add them to the owner's key set so a later "
+            "pass that no longer observes them clears them"
+        )
+    for k in owned:
+        if k in fresh:
+            block[k] = fresh[k]
+        else:
+            block.pop(k, None)
+    return block
+
+
+#: The `indexed` keys `/library/deep-index` step 5 stamps that the indexer
+#: never writes (deep-index.md §5 "Patch fields"; `state`, `lastIndexedAt`
+#: and `pgmarkCount` are the indexer's own). They describe the deep-indexed
+#: TEXT, so a re-index — which resets `indexed.state` to `indexed` and
+#: retires that text — clears them (task 1469). Pinned to the skill's own
+#: patch block by `test_reindex_owned_keys.py`.
+DEEP_INDEX_STEP5_INDEXED_KEYS: tuple[str, ...] = ("exampleCount",)
+
+#: The warning kinds `/library/deep-index` step 5 recomputes — exactly the
+#: `--recompute-warning-kind` flags of its bash block (pinned by
+#: `test_reindex_owned_keys.py`). A re-index clears them for the same reason
+#: as `DEEP_INDEX_STEP5_INDEXED_KEYS`; the next deep-index recomputes them.
+DEEP_INDEX_STEP5_WARNING_KINDS: tuple[str, ...] = (
+    "footnote-recovery-needed",
+    "examples-not-converted",
+    "pgmark-duplicate",
+    "pgmark-gap",
+    "pgmark-out-of-order",
+)
+
+
 def update_catalog_entry(
     library: Path,
     citekey: str,
@@ -1289,12 +1363,7 @@ def update_catalog_entry(
             k.strip() for k in recompute_warning_kinds
             if isinstance(k, str) and k.strip()
         }
-        undeclared = sorted({
-            w.split(":", 1)[0] for w in fresh
-            if isinstance(w, str) and w.split(":", 1)[0] not in declared
-        } | {
-            "<non-string>" for w in fresh if not isinstance(w, str)
-        })
+        undeclared = undeclared_warning_heads(fresh, declared)
         if undeclared:
             raise ValueError(
                 "every fresh warning line's head must be a declared kind — "

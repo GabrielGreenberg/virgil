@@ -66,8 +66,9 @@ export interface IndexedStatus {
   pgmarkSource?: string;
   footnoteCount?: number;
   // Top-level numbered examples (`\ex` / `\pex`) — stamped by
-  // /library/deep-index's catalog patch (deep-index.md §8), never by the
-  // indexer.
+  // /library/deep-index's catalog patch (deep-index.md §5), never by the
+  // indexer — which CLEARS it on a re-index, since the counted text is gone
+  // (index_paper.py INDEX_PAPER_INDEXED_KEYS, task 1469).
   exampleCount?: number;
   warnings?: string[];
 }
