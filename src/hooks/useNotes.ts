@@ -461,7 +461,15 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, docId, stateRef],
   );
 
-  const addNoteTextObjectId = useCallback(
+  // The sidecar's link doors are POLYMORPHIC over its whole collection (task
+  // 1473) — the same vocabulary as useCutter / useRevisions / useReports, each
+  // write stamped with the card's OWN spine kind. They used to be per-kind
+  // (`addNoteTextObjectId` / `addHighlightTextObjectId`, a `c.kind === …` gate
+  // each), and the margin handler bundle was fed the NOTE half only — so a
+  // highlight re-anchored to a paragraph (drop-mode strips its mark, keeps the
+  // pid) was invisible to the archive carry and the displaced-anchor retarget:
+  // carried nowhere, re-homed nowhere, left pointing at archived text.
+  const addCardParagraphId = useCallback(
     (
       id: string,
       paragraphId: string,
@@ -470,8 +478,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     ) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "note"
-            ? addTextObjectLink(c, "note", paragraphId, targetKind, paragraphSnapshot)
+          c.id === id
+            ? addTextObjectLink(c, cardKindFromRecord(c, "notes"), paragraphId, targetKind, paragraphSnapshot)
             : c,
         ),
       }));
@@ -479,13 +487,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
-  const removeNoteTextObjectId = useCallback(
+  const removeCardParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "note"
-            ? removeTextObjectLink(c, paragraphId)
-            : c,
+          c.id === id ? removeTextObjectLink(c, paragraphId) : c,
         ),
       }));
     },
@@ -494,44 +500,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
 
   // Task 1149 — the margin Delete's multi-anchor door: detach the links ONE
   // margin row is drawn from, by identity (see `detachAnchorSources`).
-  const detachNoteAnchorSources = useCallback(
+  const detachAnchorSources = useCallback(
     (id: string, sources: readonly AnchorRowSource[]) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "note"
-            ? detachCardAnchorSources(c, sources)
-            : c,
-        ),
-      }));
-    },
-    [update],
-  );
-
-  const addHighlightTextObjectId = useCallback(
-    (
-      id: string,
-      paragraphId: string,
-      targetKind?: import("@/text-objects/types").TextObjectKind,
-      paragraphSnapshot?: string | null,
-    ) => {
-      update((prev) => ({
-        cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "highlight"
-            ? addTextObjectLink(c, "highlight", paragraphId, targetKind, paragraphSnapshot)
-            : c,
-        ),
-      }));
-    },
-    [update],
-  );
-
-  const removeHighlightTextObjectId = useCallback(
-    (id: string, paragraphId: string) => {
-      update((prev) => ({
-        cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "highlight"
-            ? removeTextObjectLink(c, paragraphId)
-            : c,
+          c.id === id ? detachCardAnchorSources(c, sources) : c,
         ),
       }));
     },
@@ -802,11 +775,9 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       updateNoteTitle,
       setNoteAiRequest,
       setHighlightAiRequest,
-      addNoteTextObjectId,
-      removeNoteTextObjectId,
-      detachNoteAnchorSources,
-      addHighlightTextObjectId,
-      removeHighlightTextObjectId,
+      addCardParagraphId,
+      removeCardParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       reinstate,
       carry,
@@ -841,11 +812,9 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       updateNoteTitle,
       setNoteAiRequest,
       setHighlightAiRequest,
-      addNoteTextObjectId,
-      removeNoteTextObjectId,
-      detachNoteAnchorSources,
-      addHighlightTextObjectId,
-      removeHighlightTextObjectId,
+      addCardParagraphId,
+      removeCardParagraphId,
+      detachAnchorSources,
       reconcileAnchors,
       reinstate,
       carry,
