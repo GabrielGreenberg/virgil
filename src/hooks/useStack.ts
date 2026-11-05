@@ -238,8 +238,8 @@ export function readStackItem(id: string): StackItem | null {
  * Returns whether the item actually LANDED, and when it did not, WHY (task
  * 1285) — a {@link StackAddReport}. Only `ok: true` may be reported as a
  * capture (task 591); the reason is what the terminal's notice is derived
- * from, so a refusal never tells the user to remove items from a Stack that
- * holds none.
+ * from, so a refusal never offers a remedy that cannot change the outcome
+ * (tasks 1285, 1477).
  *
  * `bib` is REQUIRED (task 235). The referenced bibliography is resolved HERE,
  * once, for every payload family, so a producer cannot land an item without
@@ -278,11 +278,11 @@ export function addStackItem(item: StackItem, bib: StackBibCtx): StackAddReport 
     // throw well inside it. Make room the same way and try again. When only
     // the new item is left there is nothing further to give, and the add
     // REFUSES: a failed write is never reported as a capture, because its
-    // report is what closes the float and tears down the lift. Whether
-    // "remove some items" is honest copy depends on whether there were any
-    // (task 1285).
+    // report is what closes the float and tears down the lift. That last
+    // write REPLACED the whole stored Stack, so the Stack's own items were
+    // not what blocked it — one reason, whatever the strip held (task 1477).
     if (fitted.items.length <= 1) {
-      return { ok: false, reason: cur.length > 0 ? "full" : "no-room" };
+      return { ok: false, reason: "too-large" };
     }
     candidate = fitted.items.slice(0, fitted.items.length - 1);
   }

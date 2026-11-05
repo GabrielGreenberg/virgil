@@ -139,19 +139,53 @@ describe("Stack add door — a refusal carries its own reason", () => {
     });
   });
 
-  it("a write that fails with items stored → full; with the Stack empty → no-room", () => {
-    expect(addStackItem(textItem("resident"), NO_BIB).ok).toBe(true);
-    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw quotaError();
+  /**
+   * A FAITHFUL quota (task 1477): `setItem` REPLACES the key's value, and the
+   * quota is measured on what storage holds AFTER the replacement — the old
+   * value's bytes are given back. An unconditional throw (the task-1285 shim)
+   * made "remove some items" look like a remedy it can never be.
+   */
+  function fakeQuota(limit: number) {
+    const real = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      let total = 0;
+      for (let i = 0; i < this.length; i++) {
+        const k = this.key(i)!;
+        if (k !== key) total += k.length + (this.getItem(k) ?? "").length;
+      }
+      if (total + key.length + value.length > limit) throw quotaError();
+      return real.call(this, key, value);
     });
-    expect(addStackItem(textItem("new"), NO_BIB)).toEqual({ ok: false, reason: "full" });
-    set.mockRestore();
+  }
 
-    localStorage.clear();
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw quotaError();
-    });
-    expect(addStackItem(textItem("new"), NO_BIB)).toEqual({ ok: false, reason: "no-room" });
+  it("a write that fails even for the new item alone → too-large, whatever the strip holds", () => {
+    expect(addStackItem(textItem("resident"), NO_BIB).ok).toBe(true);
+    const stored = localStorage.getItem(STACK_STORAGE_KEY)!;
+    // Room for the Stack exactly as it is, and nothing more.
+    localStorage.setItem("virgil:other-prefs", "x".repeat(200));
+    const used = STACK_STORAGE_KEY.length + stored.length + "virgil:other-prefs".length + 200;
+    fakeQuota(used);
+    const big = textItem("big");
+    big.payload = { kind: "text", slice: null, plain: "y".repeat(stored.length * 3) };
+    expect(addStackItem(big, NO_BIB)).toEqual({ ok: false, reason: "too-large" });
+
+    // The remedy the old copy offered: empty the Stack, retry. Same refusal —
+    // the final attempt had already written over every byte the Stack held.
+    vi.restoreAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    localStorage.removeItem(STACK_STORAGE_KEY);
+    fakeQuota(used);
+    expect(addStackItem(big, NO_BIB)).toEqual({ ok: false, reason: "too-large" });
+  });
+
+  it("the notice for that refusal never tells the user to remove items", () => {
+    const notice = STACK_ADD_REFUSAL_NOTICE["too-large"];
+    expect(notice.message).not.toMatch(/remove/i);
+    expect(notice.title).not.toMatch(/full/i);
   });
 
   it("a quarantine that cannot land → quarantine-failed", () => {
@@ -192,8 +226,7 @@ describe("Stack add door — a refusal carries its own reason", () => {
 describe("Stack refusal copy — derived per reason", () => {
   it("is exhaustive over the reason union", () => {
     const reasons: Record<StackAddRefusal, true> = {
-      full: true,
-      "no-room": true,
+      "too-large": true,
       foreign: true,
       "unreadable-storage": true,
       "quarantine-failed": true,
@@ -201,10 +234,10 @@ describe("Stack refusal copy — derived per reason", () => {
     expect(Object.keys(STACK_ADD_REFUSAL_NOTICE).sort()).toEqual(Object.keys(reasons).sort());
   });
 
-  it("only `full` tells the user to remove items — the one case the strip holds any", () => {
+  it("no refusal tells the user to remove items — the add door refuses only after the new item ALONE failed", () => {
     for (const [reason, notice] of Object.entries(STACK_ADD_REFUSAL_NOTICE)) {
       const says = /remove some items/i.test(notice.message) || /full/i.test(notice.title);
-      expect(says, `"${reason}" must not claim the Stack is full`).toBe(reason === "full");
+      expect(says, `"${reason}" must not offer removing items as a remedy`).toBe(false);
     }
   });
 });
