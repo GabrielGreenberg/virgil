@@ -35,3 +35,34 @@ export const ALL_HIGHLIGHT_TYPES = [
   "report",
 ] as const;
 export type HighlightType = (typeof ALL_HIGHLIGHT_TYPES)[number];
+
+/**
+ * The highlight types the Highlights menu deliberately offers NO hide row for —
+ * the DECLARED opt-out, mirroring `NON_HIDEABLE_MARKER_TYPES` (task 1476). The
+ * menu's rows are `ALL_HIGHLIGHT_TYPES` minus this set, derived, so a new
+ * highlight type gets a row by default and leaving one out is a visible edit
+ * here rather than a silent omission from a hand-typed member list.
+ *
+ * `report`: the Reports panel's anchors highlight, but the menu has offered no
+ * row for them since the Quotations → Reports swap (21c9ef9e); the reason was
+ * never recorded. Stating it here keeps today's menu byte-identical — the
+ * stored pref still accepts `report` (`ALL_HIGHLIGHT_TYPES` is the value
+ * domain), only the menu row is withheld.
+ */
+export const NON_MENU_HIGHLIGHT_TYPES = [
+  "report",
+] as const satisfies readonly HighlightType[];
+
+/** A highlight type the Highlights menu renders a hide row for. */
+export type MenuHighlightType = Exclude<
+  HighlightType,
+  (typeof NON_MENU_HIGHLIGHT_TYPES)[number]
+>;
+
+/** `ALL_HIGHLIGHT_TYPES` minus the declared opt-out, in array order — the SSOT
+ *  `VIEW_PREF_REGISTRY.hiddenHighlightTypes.members` is derived from. */
+export const MENU_HIGHLIGHT_TYPES: readonly MenuHighlightType[] =
+  ALL_HIGHLIGHT_TYPES.filter(
+    (t): t is MenuHighlightType =>
+      !(NON_MENU_HIGHLIGHT_TYPES as readonly HighlightType[]).includes(t),
+  );

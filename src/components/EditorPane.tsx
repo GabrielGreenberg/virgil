@@ -6666,8 +6666,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return;
         }
         const ok = await confirmArchiveAtom({
-          title: kind === "footnote" ? "Archive footnote?" : "Archive citation?",
-          message: `Archiving this ${kind} removes its marker from your document. The card moves to this panel's archive — you can unarchive it later, but the marker won't be restored automatically.`,
+          title: `Archive ${CARD_REGISTRY[kind].label.toLowerCase()}?`,
+          message: `Archiving this ${CARD_REGISTRY[kind].label.toLowerCase()} removes its marker from your document. The card moves to this panel's archive — you can unarchive it later, but the marker won't be restored automatically.`,
           confirmLabel: "Archive",
           suppressId: "archive-atom-marker",
         });

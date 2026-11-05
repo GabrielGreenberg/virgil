@@ -17,7 +17,7 @@ import {
   type CardAtomKind,
   type CardAtomNodeName,
 } from "@/lib/tiptap/atom-registry";
-import { isInlineAtomCardKind } from "@/cards/predicates";
+import { isInlineAtomCardKind, isSuggestionKind } from "@/cards/predicates";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { AnchoredCardRef } from "./anchored-card-store";
 import { findEntity } from "./entity-hover";
@@ -65,9 +65,7 @@ export function appliedChangeLink(
   ref: AnchoredCardRef,
   entity: { id: string; kind?: string; links?: Link[] },
 ): Link | null {
-  if (ref.kind !== "revision-suggestion" && ref.kind !== "cutter-suggestion") {
-    return null;
-  }
+  if (!isSuggestionKind(ref.kind)) return null;
   const sugg = entity as AppliedSuggestionEntity;
   if (
     sugg.kind !== "suggestion" ||
