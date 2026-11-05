@@ -64,8 +64,10 @@ directory).
    `deepIndex` (legacy `richIndex`), `triage`. Not every `*.json` there is
    a request: `pending-reviews.json` is the app's bib-review manifest and
    `*.done.json` a retirement marker — the drain never counts them
-   (`queue_slot.request_files`). To see what is pending without running
-   anything: `python3 .virgil/scripts/library/queue_slot.py pending`.
+   (`queue_slot.request_files`). To see what is waiting to be picked up
+   without running anything: `python3 .virgil/scripts/library/queue_slot.py pending`
+   (`status: requested` only — `outstanding` adds failed retries and requests
+   a worker is working right now).
 
    Only `index` and `reindex` are native (`queue_slot.DRAIN_NATIVE_KINDS`).
    **Every other kind is deferred**: the drain lists it under
@@ -165,26 +167,32 @@ log path so the next phase can tail it.
 
 **Phase B — wait for the NATIVE work to finish, then continue.** The
 drain only ever empties the native kinds: every deferred request (and any
-`failed`/`poisoned` entry, and the review manifest) stays in the folder
-until step 2 runs, so never poll for an empty folder — ask the queue door
-how many native requests are still pending, and use the drain's pid as the
-belt (a drain that died early leaves the count stuck above zero):
+`poisoned` entry, and the review manifest) stays in the folder until step 2
+runs, so never poll for an empty folder — ask the queue door how much
+native work is still OUTSTANDING, and use the drain's pid as the belt.
+Count `outstanding`, never `pending`: the drain CLAIMS each request before
+working it (`status: running`, for up to ten minutes an index), so the
+last request leaves `pending` the moment its index STARTS, and `pending`
+never counted the `failed` retries the drain also works (task 1468):
 ```bash
 cd <library-root>
 drain_pid=<pid from Phase A>
 q=".virgil/scripts/library/queue_slot.py"
-until [ "$(python3 $q pending --native --count)" = "0" ]; do
-  kill -0 "$drain_pid" 2>/dev/null || break   # drain exited early
+until [ "$(python3 $q outstanding --native --count)" = "0" ]; do
+  kill -0 "$drain_pid" 2>/dev/null || break   # drain exited
   sleep 30
 done
-left="$(python3 $q pending --native --count)"
-echo "native requests left: $left $(date -u +%H:%M:%SZ)"
+left="$(python3 $q outstanding --native --count)"
+echo "native work left: $left $(date -u +%H:%M:%SZ)"
 ```
 If `left` is `0`, run step 2 (deferred-kind dispatch), step 3 (re-drain
 if step 2 changed anything), step 4 (refresh the "imported" flags) and
 step 5 (final summary), reading the drain's own summary from the Phase A
-log. If `left` is above `0`, the drain stopped early: `tail` the log for
-the error and re-run Phase A.
+log. If `left` is above `0`, the drain exited with work left: `tail` the
+log — an error means it stopped early; otherwise what is left is `failed`
+retries (`python3 $q outstanding --native` names them). Re-run Phase A;
+each pass is one more attempt, and the third failure poisons an entry, so
+the count converges.
 
 If two callers race and start two `drain_queue.py` processes against
 the same library, that's safe — `_process_one` in the drain script
