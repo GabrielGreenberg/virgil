@@ -2220,6 +2220,70 @@ _MARKER_COMMENT_RE = re.compile(r"%!v(?:tex)?:[^\s]*")
 
 CUT_MAY_DROP_MARKERS = ("vcid", "vlid", "vlidend")
 _RANGE_PARTNER = {"vlid": "vlidend", "vlidend": "vlid"}
+# The markers that identify the ATOM right after them (\vfid its \footnote{…},
+# \vcid its \cite…{…}) — conserved as (marker, atom) PAIRS (task 1484). The TS
+# original DERIVES `ATOM_ID_MARKERS` (inline .tex markers that delimit no
+# range); Python cannot import it, so the parity suite pins this copy.
+ATOM_ID_MARKERS = ("vfid", "vcid")
+_ATOM_NAME_RE = re.compile(r"[A-Za-z@]+\*?")
+
+
+def _group_end(text: str, i: int, open_: str, close: str) -> int:
+    """Index just past the open_…close group at `i`, or -1 when it does not
+    close inside `text` — the twin of `groupEnd` (backslash escapes; a {…}
+    nested in […] is skipped whole)."""
+    depth = 0
+    j = i
+    while j < len(text):
+        ch = text[j]
+        if ch == "\\":
+            j += 1
+        elif ch == "{" and open_ != "{":
+            e = _group_end(text, j, "{", "}")
+            if e < 0:
+                return -1
+            j = e - 1
+        elif ch == open_:
+            depth += 1
+        elif ch == close:
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return -1
+
+
+def bound_atom_after(text: str, pos: int):
+    """The atom an id marker ending at `pos` binds, as (bytes, complete), or
+    None when it binds nothing — the twin of `boundAtomAfter` in
+    src/lib/latex-markers.ts (command token, […] optional args, one balanced
+    {…} required arg; incomplete = the atom may run past the end of `text`,
+    and the bytes are then the whole rest)."""
+    partial = (text[pos:], False)
+    if pos >= len(text):
+        return partial
+    if text[pos] != "\\":
+        return None
+    name = _ATOM_NAME_RE.match(text, pos + 1)
+    if not name:
+        return partial if pos + 1 >= len(text) else None
+    end = name.end()
+    while True:
+        j = end
+        while j < len(text) and text[j] == " ":
+            j += 1
+        if j >= len(text):
+            return partial
+        if text[j] in "[{":
+            e = _group_end(text, j, text[j], "]" if text[j] == "[" else "}")
+            if e < 0:
+                return partial
+            end = e
+            if text[j] == "{":
+                break
+        else:
+            break
+    return (text[pos:end], True)
 _MARKER_CALL_RE = re.compile(
     r"\\(" + "|".join(sorted(VIRGIL_MARKER_COMMANDS, key=len, reverse=True)) + r")\{([^}]*)\}"
 )
@@ -2228,34 +2292,54 @@ _MARKER_CALL_RE = re.compile(
 def marker_conservation_violation(matched: str, replacement: str, whole_cut: bool,
                                   human_authored: bool = False):
     """The first violation as {"rule", "command", "id"} (rule ∈ introduced /
-    dropped / unpaired / atom-left), or None when the splice conserves. A
-    HUMAN-authored replacement (`user_text`) is held to the `introduced` half
-    only — a person types words, never the invisible markers (see the TS
-    original's docstring)."""
+    dropped / atom-detached / unpaired / atom-left), or None when the splice
+    conserves. A HUMAN-authored replacement (`replacement_author`) is held to
+    the `introduced` half only — a person types words, never the invisible
+    markers (see the TS original's docstring)."""
     have = [(m.group(1), m.group(2), m.end()) for m in _MARKER_CALL_RE.finditer(matched)]
     budget: dict = {}
     for cmd, mid, _ in have:
         budget[(cmd, mid)] = budget.get((cmd, mid), 0) + 1
+    carried: dict = {}
     for m in _MARKER_CALL_RE.finditer(replacement):
         k = (m.group(1), m.group(2))
         if budget.get(k, 0) == 0:
             return {"rule": "introduced", "command": k[0], "id": k[1]}
         budget[k] -= 1
+        carried.setdefault(k, []).append(m.end())
     if human_authored:
         return None
     for cmd, mid, end in have:
         k = (cmd, mid)
-        if budget.get(k, 0) == 0:
+        atom = bound_atom_after(matched, end) if cmd in ATOM_ID_MARKERS else None
+        twins = carried.get(k)
+        if twins:
+            twin_end = twins.pop(0)
+            if atom is not None:
+                text, complete = atom
+                if not (replacement.startswith(text, twin_end) if complete
+                        else replacement[twin_end:] == text):
+                    return {"rule": "atom-detached", "command": cmd, "id": mid}
             continue  # carried through
-        budget[k] -= 1
         if not whole_cut or cmd not in CUT_MAY_DROP_MARKERS:
             return {"rule": "dropped", "command": cmd, "id": mid}
         partner = _RANGE_PARTNER.get(cmd)
         if partner and not any(c == partner and i == mid for c, i, _ in have):
             return {"rule": "unpaired", "command": cmd, "id": mid}
-        if not partner and not matched.startswith("\\", end):
+        if not partner and not (atom and atom[1]):
             return {"rule": "atom-left", "command": cmd, "id": mid}
     return None
+
+
+def replacement_author(card: dict) -> str:
+    """Who wrote the replacement a suggestion card lands — the twin of
+    `replacementAuthor` in src/panels/_shared/suggestion-field-vocabulary.ts:
+    the human when they typed `user_text` (it wins), else the card's author.
+    STRICT like the original (task 1484): only an explicit "human" is human —
+    a card with no author, or any other value, is held to the full (AI) rule."""
+    if card.get("user_text"):
+        return "human"
+    return "human" if card.get("author") == "human" else "ai"
 
 
 def describe_marker_violation(v: dict) -> str:
@@ -2267,6 +2351,10 @@ def describe_marker_violation(v: dict) -> str:
         "dropped": f"the replacement drops {call} — the citation, footnote or range it "
                    f"identifies would lose its card (a rewrite carries every marker through "
                    f"verbatim; a cut may not remove a footnote)",
+        "atom-detached": f"the replacement keeps {call} but not, right after it, the "
+                         f"footnote or citation it identifies, verbatim — that atom would be "
+                         f"deleted, moved away from its card, or rewritten (a rewrite carries "
+                         f"each marker AND its atom through together)",
         "unpaired": f"the cut removes {call} but not its partner — the range it delimits "
                     f"would be left unpaired",
         "atom-left": f"the cut removes {call} but not the atom it identifies — extend the "

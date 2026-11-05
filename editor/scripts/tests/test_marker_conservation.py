@@ -191,5 +191,35 @@ r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-human"}))
 check(r.returncode == 0, f"human-text accept exited 0 (stderr={r.stderr.strip()[:200]})")
 check(human["user_text"] in tex_path(sb).read_text(encoding="utf-8"), "the human's text landed")
 
+print("\n=== accept: an AI rewrite that keeps \\vfid but deletes its footnote is refused (task 1484) ===")
+sb = sandbox()
+p = sb / "virgil" / "revisions.json"
+st = json.loads(p.read_text())
+st["cards"].append(card("rev-detach", "revision-suggestion", "2201", FOOTED,
+                        r"polemical asides\vfid{f002}."))
+p.write_text(json.dumps(st, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+tex_before = tex_path(sb).read_bytes()
+r = run(APPLY, str(sb), "accept", json.dumps({"cardId": "rev-detach"}))
+check(r.returncode != 0 and "\\vfid{f002}" in r.stderr and "keeps" in r.stderr,
+      f"accept REFUSED (atom-detached) naming \\vfid{{f002}} (rc={r.returncode}, stderr={r.stderr.strip()[:200]})")
+check(tex_path(sb).read_bytes() == tex_before, ".tex byte-identical — the footnote prose survives")
+
+print("\n=== propose: an AUTHOR-LESS card is held to the full rule (task 1484) ===")
+sb = sandbox()
+add_request(sb, {"id": "t-rev-b", "kind": "suggestion", "text": "tighten",
+                 "createdAt": ISO, "status": "pending", "paragraphIds": ["2201"]})
+rev_before = vbytes(sb, "revisions.json")
+anon = card("rev-anon", "revision-suggestion", "2201", FOOTED, "polemical asides.", "t-rev-b")
+del anon["author"]
+r = propose(sb, "revisions", anon, "t-rev-b")
+check(r.returncode != 0 and "\\vfid{f002}" in r.stderr,
+      f"author-less propose REFUSED naming \\vfid{{f002}} (rc={r.returncode}, stderr={r.stderr.strip()[:200]})")
+check(vbytes(sb, "revisions.json") == rev_before, "revisions.json byte-unchanged")
+for author, want in ((None, "ai"), ("ai", "ai"), ("Human", "ai"), ("human", "human")):
+    c = {} if author is None else {"author": author}
+    check(C.replacement_author(c) == want, f"replacement_author(author={author!r}) == {want!r}")
+check(C.replacement_author({"author": "ai", "user_text": "x"}) == "human",
+      "replacement_author: user_text wins")
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

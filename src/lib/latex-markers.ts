@@ -233,12 +233,16 @@ export const CUT_MAY_DROP_MARKERS: readonly string[] = [
  *    marker) the replaced span did not: a phantom atom/range no card owns.
  *  - `dropped`    — the replaced span held a marker the replacement does not
  *    carry through: its card loses the atom/range it is anchored to.
+ *  - `atom-detached` — the replacement carries an {@link ATOM_ID_MARKERS}
+ *    marker through but not, right after it, the atom it bound in the
+ *    replaced span, verbatim: the footnote/citation was deleted, moved away
+ *    from its marker, or rewritten (task 1484).
  *  - `unpaired`   — a whole cut removes one half of a `\vlid`/`\vlidend` pair.
- *  - `atom-left`  — a whole cut removes an atom's id marker but not the atom
- *    after it (the span ends right after the marker).
+ *  - `atom-left`  — a whole cut removes an atom's id marker but not the WHOLE
+ *    atom after it (the span ends at the marker or inside the atom).
  */
 export interface MarkerConservationViolation {
-  readonly rule: "introduced" | "dropped" | "unpaired" | "atom-left";
+  readonly rule: "introduced" | "dropped" | "atom-detached" | "unpaired" | "atom-left";
   /** Command name without the backslash — `"vcid"`. */
   readonly command: string;
   readonly id: string;
@@ -271,6 +275,77 @@ const RANGE_PARTNER: Readonly<Record<string, string>> = {
   [VIRGIL_MARKERS.linkedRangeOpen.command]: VIRGIL_MARKERS.linkedRangeClose.command,
   [VIRGIL_MARKERS.linkedRangeClose.command]: VIRGIL_MARKERS.linkedRangeOpen.command,
 };
+
+/**
+ * The markers that identify the ATOM right after them — `\vfid` its
+ * `\footnote{…}`, `\vcid` its `\cite…{…}` (the binding {@link PendingMarkerId}
+ * makes structural: the immediately following atom, or nothing). Derived, not
+ * listed: the inline `.tex` markers that do not delimit a range. Conservation
+ * holds these as (marker, atom) PAIRS — an id kept without its atom identifies
+ * nothing (task 1484). Mirrored by `ATOM_ID_MARKERS` in
+ * `editor/scripts/_common.py`, pinned by the parity suite.
+ */
+export const ATOM_ID_MARKERS: readonly string[] = ALL_VIRGIL_MARKERS
+  .filter((m) => m.file === "tex" && m.position === "inline" && !(m.command in RANGE_PARTNER))
+  .map((m) => m.command);
+
+/** Index just past the `open`…`close` group opening at `i`, or -1 when it
+ *  does not close inside `text`. A backslash escapes the next char (`\{`,
+ *  `\]`), and a `{…}` group nested in a `[…]` one is skipped whole, so its
+ *  `]` does not close the bracket. */
+function groupEnd(text: string, i: number, open: string, close: string): number {
+  let depth = 0;
+  for (let j = i; j < text.length; j++) {
+    const ch = text[j];
+    if (ch === "\\") {
+      j++;
+    } else if (ch === "{" && open !== "{") {
+      const e = groupEnd(text, j, "{", "}");
+      if (e < 0) return -1;
+      j = e - 1;
+    } else if (ch === open) {
+      depth++;
+    } else if (ch === close && --depth === 0) {
+      return j + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * The atom an id marker ending at `pos` binds, as source bytes — a command
+ * token (`\footnote`, `\citet*`), its `[…]` optional arguments, and its one
+ * required `{…}` argument, balanced (spaces between them allowed, as in
+ * LaTeX). `complete: false` when the atom may run past the end of `text` (the
+ * span ends at the marker or inside its atom): the bytes are then the whole
+ * rest of `text`. `null` when what follows is no command at all — the marker
+ * binds nothing. Mirrored by `bound_atom_after` in `editor/scripts/_common.py`.
+ */
+export function boundAtomAfter(
+  text: string,
+  pos: number,
+): { text: string; complete: boolean } | null {
+  const partial = { text: text.slice(pos), complete: false };
+  if (pos >= text.length) return partial;
+  if (text[pos] !== "\\") return null;
+  const name = /^[A-Za-z@]+\*?/.exec(text.slice(pos + 1));
+  if (!name) return pos + 1 >= text.length ? partial : null;
+  let end = pos + 1 + name[0].length;
+  for (;;) {
+    let j = end;
+    while (text[j] === " ") j++;
+    if (j >= text.length) return partial;
+    if (text[j] === "[" || text[j] === "{") {
+      const e = groupEnd(text, j, text[j], text[j] === "[" ? "]" : "}");
+      if (e < 0) return partial;
+      end = e;
+      if (text[j] === "{") break; // the one required argument closes the atom
+    } else {
+      break;
+    }
+  }
+  return { text: text.slice(pos, end), complete: true };
+}
 
 /**
  * **May this replacement stand in for these matched bytes?** — the ONE answer
@@ -312,23 +387,34 @@ export function markerConservationViolation(
   const budget = new Map<string, number>();
   for (const c of have) budget.set(key(c), (budget.get(key(c)) ?? 0) + 1);
 
+  // The replacement's carried-through calls, per marker, in order: the i-th
+  // copy in the match pairs with the i-th copy in the replacement.
+  const carried = new Map<string, MarkerCall[]>();
   for (const c of markerCalls(replacement)) {
     const left = budget.get(key(c)) ?? 0;
     if (left === 0) return { rule: "introduced", command: c.command, id: c.id };
     budget.set(key(c), left - 1);
+    carried.set(key(c), [...(carried.get(key(c)) ?? []), c]);
   }
 
   if (humanAuthored) return null;
   for (const c of have) {
-    const left = budget.get(key(c)) ?? 0;
-    if (left === 0) continue; // carried through
-    budget.set(key(c), left - 1);
+    const atom = ATOM_ID_MARKERS.includes(c.command) ? boundAtomAfter(matched, c.end) : null;
+    const twin = carried.get(key(c))?.shift();
+    if (twin) {
+      // Carried through — and so must its atom be, verbatim, right after it.
+      if (atom && !(atom.complete
+        ? replacement.startsWith(atom.text, twin.end)
+        : replacement.slice(twin.end) === atom.text))
+        return { rule: "atom-detached", command: c.command, id: c.id };
+      continue;
+    }
     if (!wholeCut || !CUT_MAY_DROP_MARKERS.includes(c.command))
       return { rule: "dropped", command: c.command, id: c.id };
     const partner = RANGE_PARTNER[c.command];
     if (partner && !have.some((p) => p.command === partner && p.id === c.id))
       return { rule: "unpaired", command: c.command, id: c.id };
-    if (!partner && !matched.startsWith("\\", c.end))
+    if (!partner && !atom?.complete)
       return { rule: "atom-left", command: c.command, id: c.id };
   }
   return null;
@@ -342,6 +428,8 @@ export function describeMarkerViolation(v: MarkerConservationViolation): string 
       return `the replacement adds ${call}, which the replaced text does not hold — it would mint an atom or range no card owns`;
     case "dropped":
       return `the replacement drops ${call} — the citation, footnote or range it identifies would lose its card (a rewrite carries every marker through verbatim; a cut may not remove a footnote)`;
+    case "atom-detached":
+      return `the replacement keeps ${call} but not, right after it, the footnote or citation it identifies, verbatim — that atom would be deleted, moved away from its card, or rewritten (a rewrite carries each marker AND its atom through together)`;
     case "unpaired":
       return `the cut removes ${call} but not its partner — the range it delimits would be left unpaired`;
     case "atom-left":

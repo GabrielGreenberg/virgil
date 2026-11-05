@@ -225,7 +225,10 @@ parser matches them by table, not by a fixed command name.)
   card/footnote fork — exactly as a hand-typed one is.
   When you REWRITE existing text, carry any marker already in it through
   **verbatim, with its id**: a rewrite that drops or re-mints one detaches the
-  atom from its card.
+  atom from its card. A `\vfid`/`\vcid` binds the atom IMMEDIATELY after it,
+  so the marker and its `\footnote{…}`/`\cite…{…}` are one unit: move them
+  together, verbatim, never apart (task 1484 — the doors refuse a kept marker
+  whose atom was deleted, moved or edited).
   *Scope.* This is the rule for a document Virgil is EDITING, where the
   allocator owns the id space. The **library** extraction pipeline is the other
   case: it authors `main.tex` from scratch, has no allocator to ask, and mints
