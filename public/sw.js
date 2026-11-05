@@ -53,6 +53,27 @@ const BUILD_SHAS = new Map(
   BUILD_PRECACHE.map(([p, sha]) => [scopeUrl(p), sha]),
 );
 
+// The ONE request→cache-key resolver (task 1482). Every lookup and store the
+// fetch path makes keys by what this returns, never by the raw request. A
+// precached path requested WITH a query — PdfView's iframe loads
+// `pdfjs/web/viewer.html?file=` — is the precached file: the query is read by
+// the page's own script, not the server. Keyed by the raw URL it missed its
+// sha (never cache-first, never pinned, re-downloaded every deploy) and, offline,
+// missed its precache, so the navigation fell back to the app shell and Virgil
+// booted inside the PDF pane. So: the URL as requested when that is a precache
+// key; else the URL without its query when THAT is; else the URL as requested
+// (an unpinned runtime path — Google Fonts' `css2?family=` — keeps one entry
+// per query).
+function precacheKeyOf(request) {
+  const href = typeof request === "string" ? request : request.url;
+  if (BUILD_SHAS.has(href)) return href;
+  const url = new URL(href);
+  if (url.origin !== self.location.origin || !url.search) return href;
+  url.search = "";
+  url.hash = "";
+  return BUILD_SHAS.has(url.href) ? url.href : href;
+}
+
 // Allowed cross-origin responses (fonts) live in their OWN cache, whose name
 // does not follow the build: a deploy must not strand an offline user without
 // the typefaces they already downloaded. Its size is bounded by the families
@@ -423,11 +444,12 @@ async function handle(event) {
   // output never changes under one name, and a precached asset whose copy
   // carries this build's sha is exactly what the build shipped. Navigations
   // stay network-first (the shell is precached too, for the offline fallback).
-  const sha = isAllowedCrossOrigin ? undefined : BUILD_SHAS.get(request.url);
+  const key = precacheKeyOf(request);
+  const sha = isAllowedCrossOrigin ? undefined : BUILD_SHAS.get(key);
   if (!isAllowedCrossOrigin && request.mode !== "navigate") {
     const immutable = url.pathname.startsWith(IMMUTABLE_PREFIX);
     if (immutable || sha) {
-      const held = await cache.match(request);
+      const held = await cache.match(key);
       if (held && (immutable || shaOf(held) === sha)) return held;
     }
   }
@@ -436,7 +458,7 @@ async function handle(event) {
   try {
     response = await fetch(request);
   } catch {
-    const cached = await heldCopy(cache, request);
+    const cached = await heldCopy(cache, key);
     if (cached) return cached;
     if (request.mode === "navigate") {
       const fallback = await cache.match(OFFLINE_FALLBACK);
@@ -455,20 +477,20 @@ async function handle(event) {
     // this build pins by content is stored only as this build's bytes.
     event.waitUntil(
       sha
-        ? putPinned(cache, request, response.clone(), sha)
-        : putCached(cache, request, response.clone()),
+        ? putPinned(cache, key, response.clone(), sha)
+        : putCached(cache, key, response.clone()),
     );
   } else if (!isAllowedCrossOrigin && !response.ok) {
     // The server no longer has it (a deploy replaced the build this tab is
     // running) or is failing: a copy we hold beats the error.
-    const cached = await heldCopy(cache, request);
+    const cached = await heldCopy(cache, key);
     if (cached) return cached;
   }
   return response;
 }
 
-// A cached copy of `request`: this build's (or the fonts') cache first, then
-// any retained build's.
-async function heldCopy(cache, request) {
-  return (await cache.match(request)) || (await caches.match(request));
+// A cached copy under `key` (precacheKeyOf): this build's (or the fonts')
+// cache first, then any retained build's.
+async function heldCopy(cache, key) {
+  return (await cache.match(key)) || (await caches.match(key));
 }
