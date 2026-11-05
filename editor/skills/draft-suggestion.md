@@ -111,7 +111,7 @@ this skill.
      `\vfid{…}` and `\vlid{…}`/`\vlidend{…}` in `original_text` through
      verbatim, with its id, and add none ([_latex-allowlist.md](_latex-allowlist.md)).
      A `\vfid`/`\vcid` travels WITH the atom right after it (task 1484): keep
-     `\vfid{…}\footnote{…}` and `\vcid{…}\citet{…}` together and byte-for-byte —
+     `\vfid{…}\footnote{…}` and `\vcid{…}\cite*{…}` together and byte-for-byte —
      you may move the pair, never split it or edit the footnote/citation.
      Propose, `/editor/accept-suggestion` and the in-app Apply all refuse a
      replacement that drops, duplicates or invents one, or detaches its atom,
