@@ -684,8 +684,8 @@ export interface EditorPaneViewPrefs {
     value: import("@/lib/view-prefs/registry").RegistryPrefs[K],
   ) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
-   *  Reader has none; the main app feeds these via EditorPane's own
-   *  footnote-add handler (`handleAddFootnote`). */
+   *  Reader has none; the main app feeds these from its footnote
+   *  orphan tracking. */
   orphanedFootnotes: import("@/lib/types").OrphanedFootnote[];
   onEditOrphan: (id: string, newContent: unknown) => void;
   onDeleteOrphan: (id: string) => void;
@@ -5419,17 +5419,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setSelectedArchiveId(null);
   }, [archiveHook]);
 
-  // Footnote add/edit/delete bridges — wrap the editor handle's
-  // imperative API. The Reader (`editable: false`) won't invoke
+  // Footnote edit/delete bridges — wrap the editor handle's imperative
+  // API. (The panel "+" is not here: FootnotesHost creates through the
+  // shared `CardCreationApi.createFootnote` door, like every panel.) The Reader (`editable: false`) won't invoke
   // these (TipTap blocks mutations), but the hosts wire them anyway.
-  const handleAddFootnote = useCallback((): string => {
-    // Inserts an empty footnote atom at the cursor (or doc start)
-    // via the editor's imperative API. Reader chrome's
-    // `editableCardKinds` filter still hides the panel "+" button —
-    // this is the path FootnotesHost takes when the affordance is
-    // visible (main app post-7.8).
-    return innerRef.current?.createEmptyFootnote()?.footnoteId ?? "";
-  }, []);
   const handleEditFootnote = useCallback(
     (id: string, newContent: JSONContent) => {
       innerRef.current?.updateFootnoteContent(id, newContent);
@@ -7056,7 +7049,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     revisionsHook={revisionsHook}
                     sortedArchiveSnippets={sortedArchiveSnippets}
                     onArchiveDelete={handleArchiveDelete}
-                    onAddFootnote={handleAddFootnote}
                     onEditFootnote={handleEditFootnote}
                     onEditFootnoteTitle={handleEditFootnoteTitle}
                     onDeleteFootnote={handleDeleteFootnote}
@@ -7114,7 +7106,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       revisionsHook={revisionsHook}
                       sortedArchiveSnippets={sortedArchiveSnippets}
                       onArchiveDelete={handleArchiveDelete}
-                        onAddFootnote={handleAddFootnote}
                       onEditFootnote={handleEditFootnote}
                       onEditFootnoteTitle={handleEditFootnoteTitle}
                       onDeleteFootnote={handleDeleteFootnote}
@@ -8096,7 +8087,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         revisionsHook={revisionsHook}
                         sortedArchiveSnippets={sortedArchiveSnippets}
                         onArchiveDelete={handleArchiveDelete}
-                            onAddFootnote={handleAddFootnote}
                         onEditFootnote={handleEditFootnote}
                         onEditFootnoteTitle={handleEditFootnoteTitle}
                         onDeleteFootnote={handleDeleteFootnote}
@@ -8864,7 +8854,6 @@ interface PaneRailBodyProps {
   revisionsHook: WithMorphDoor<ReturnType<typeof useRevisions>>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   onArchiveDelete: (id: string) => void;
-  onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
   onDeleteFootnote: (id: string) => void;
@@ -8938,7 +8927,6 @@ function PaneRailBody({
   revisionsHook,
   sortedArchiveSnippets,
   onArchiveDelete,
-  onAddFootnote,
   onEditFootnote,
   onEditFootnoteTitle,
   onDeleteFootnote,
@@ -9016,7 +9004,6 @@ function PaneRailBody({
         // it removes only the sidecar ref (the anchored onDelete would no-op on
         // the missing atom and leave the ref behind).
         onDeleteUnanchored={onDeleteUnanchoredFootnote}
-        onAdd={onAddFootnote}
         onDeleteOrphan={viewPrefs?.onDeleteOrphan ?? (() => {})}
         onEditOrphan={viewPrefs?.onEditOrphan ?? (() => {})}
         onEditOrphanTitle={viewPrefs?.onEditOrphanTitle ?? (() => {})}
