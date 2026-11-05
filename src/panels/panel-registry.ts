@@ -9,9 +9,16 @@
  * PANEL→KIND MEMBERSHIP IS NOT HERE. Each kind declares its own owning panel in
  * `CARD_REGISTRY` and membership DERIVES — `cardKindsForPanel(panel)`
  * (cards/predicates.ts). `card` below is the narrower fact `popKey` needs: the
- * panel's PRIMARY kind, for the panels whose id-keyed surfaces name themselves by
- * the panel rather than by the kind. It is `null` for a polymorphic panel with no
- * primary (notes / reports / cutter) and for every card-less panel.
+ * one kind a MONOMORPHIC panel's id-keyed surfaces name themselves by. It is
+ * `null` for every polymorphic panel (notes / reports / cutter / revisions —
+ * their cards key by kind through `cardPopKey`) and for every card-less panel.
+ * Nothing else is a "panel's primary kind": a reader that needs a panel-level
+ * card fact (its body typography, say) derives it from the membership, which
+ * the registry asserts is uniform where it matters (task 1475).
+ *
+ * The panel's NAMES are here too, and only here: `label` (full) and
+ * `shortLabel` (in a list). Every copy table that names a panel derives from
+ * them (task 1475).
  *
  * The popout KEY grammar is not here either, and used to look as though it were:
  * a `keyPrefix` + `themeKey` column per entry, 16 literals duplicating
@@ -28,13 +35,21 @@ import { buildFloatKey } from "@/floats/float-key";
 
 export interface PanelRegistryEntry {
   kind: PanelKind;
+  /** The panel's full name — its header, strip-icon hint and "Restore to …"
+   *  target ("Todo List", "Archived Text"). */
   label: string;
-  /** The panel's PRIMARY card kind — what `popKey(panel, id)` builds its key
-   *  from — or `null` when the panel hosts no card, or hosts several with no
-   *  primary. NOT the panel's membership: that derives from `CARD_REGISTRY`
-   *  via `cardKindsForPanel`, which is why `revisions` can name a primary
-   *  (`revision-comment`, whose `RevisionRequestCard` keys by panel) while
-   *  `cutter` names none (both its cards key by kind). */
+  /** The panel's name in a LIST of panels — the Preferences theme and text-size
+   *  rows, the Search scope chips, the marginalia hide rows, the tool-gutter
+   *  headings ("To-dos", "Archive", "Cuts"). Where the two coincide they are
+   *  spelled twice here, never anywhere else (task 1475:
+   *  `panel-label-census.test.ts` fails on a panel-label literal table outside
+   *  this file). */
+  shortLabel: string;
+  /** The kind `popKey(panel, id)` builds its key from — the sole card kind of
+   *  a monomorphic panel — or `null` when the panel hosts no card, or hosts
+   *  several (every such panel's cards key by kind via `cardPopKey`). NOT the
+   *  panel's membership: that derives from `CARD_REGISTRY` via
+   *  `cardKindsForPanel`. */
   card: CardKind | null;
   /** Whether this panel's items appear in the Omni view. */
   omniEligible: boolean;
@@ -52,6 +67,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   notes: {
     kind: "notes",
     label: "Notes",
+    shortLabel: "Notes",
     // Polymorphic — hosts both `note` and `highlight` card kinds. Membership
     // is registry-derived (`cardKindsForPanel("notes")` in cards/predicates.ts,
     // each kind declares its panel in CARD_REGISTRY); `card` stays null.
@@ -62,6 +78,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   footnotes: {
     kind: "footnotes",
     label: "Footnotes",
+    shortLabel: "Footnotes",
     card: "footnote",
     omniEligible: true,
     defaultStripSide: "left",
@@ -69,6 +86,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   citations: {
     kind: "citations",
     label: "Citations",
+    shortLabel: "Citations",
     card: "citation",
     omniEligible: true,
     defaultStripSide: "left",
@@ -76,6 +94,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   bibliography: {
     kind: "bibliography",
     label: "Bibliography",
+    shortLabel: "Bibliography",
     card: "bib",
     omniEligible: false,
     defaultStripSide: "left",
@@ -83,6 +102,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   reports: {
     kind: "reports",
     label: "Reports",
+    shortLabel: "Reports",
     // Polymorphic — hosts both `report` and `report-request` card kinds.
     // Membership is registry-derived (`cardKindsForPanel("reports")` in
     // cards/predicates.ts); `card` stays null.
@@ -100,6 +120,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   examples: {
     kind: "examples",
     label: "Examples",
+    shortLabel: "Examples",
     card: "example",
     omniEligible: true,
     defaultStripSide: "left",
@@ -107,6 +128,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   todo: {
     kind: "todo",
     label: "Todo List",
+    shortLabel: "To-dos",
     card: "todo",
     omniEligible: true,
     defaultStripSide: "right",
@@ -114,6 +136,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   archive: {
     kind: "archive",
     label: "Archived Text",
+    shortLabel: "Archive",
     card: "archive",
     omniEligible: true,
     defaultStripSide: "right",
@@ -121,13 +144,18 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   revisions: {
     kind: "revisions",
     label: "Revisions",
-    card: "revision-comment",
+    shortLabel: "Revisions",
+    // Polymorphic — `revision-comment` + `revision-suggestion`, both keyed by
+    // kind (the shared card shell and the omni rows call `cardPopKey`), so
+    // nothing calls `popKey("revisions", …)`.
+    card: null,
     omniEligible: true,
     defaultStripSide: "right",
   },
   cutter: {
     kind: "cutter",
     label: "Cutter",
+    shortLabel: "Cuts",
     // Polymorphic with NO primary — hosts both `cutter-comment` and
     // `cutter-suggestion`, and both cards key by kind, so nothing needs
     // `popKey("cutter", …)`. The shared marker/theme/typography for the panel
@@ -140,6 +168,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   outline: {
     kind: "outline",
     label: "Outline",
+    shortLabel: "Outline",
     card: null,
     omniEligible: false,
     defaultStripSide: "left",
@@ -147,6 +176,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   search: {
     kind: "search",
     label: "Search",
+    shortLabel: "Search",
     card: null,
     omniEligible: false,
     defaultStripSide: "left",
@@ -154,6 +184,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   wordcount: {
     kind: "wordcount",
     label: "Word Count",
+    shortLabel: "Word Count",
     card: null,
     omniEligible: false,
     defaultStripSide: "right",
@@ -161,6 +192,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   errors: {
     kind: "errors",
     label: "Errors",
+    shortLabel: "Errors",
     card: "error",
     omniEligible: true,
     defaultStripSide: "right",
@@ -168,6 +200,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   omni: {
     kind: "omni",
     label: "Omni-view",
+    shortLabel: "Omni-view",
     card: null,
     omniEligible: false,
     defaultStripSide: null,

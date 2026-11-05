@@ -74,21 +74,13 @@ import {
   type GutterRow,
 } from "./gutter-rows";
 
-/** Gutter headings. Plural, sentence case — the registry labels except where
- *  the gutter says it the way Gabriel does. */
-const SECTION_TITLE: Record<GutterSection, string> = {
-  footnotes: "Footnotes",
+/** Gutter headings — each section's panel's `PANEL_REGISTRY.shortLabel`
+ *  (task 1475), except where the gutter says it the way Gabriel does. */
+const SECTION_TITLE_OVERRIDE: Partial<Record<GutterSection, string>> = {
   examples: "Numbered examples",
-  todo: "To-dos",
-  notes: "Notes",
-  citations: "Citations",
-  bibliography: "Bibliography",
-  reports: "Reports",
-  archive: "Archive",
-  revisions: "Revisions",
-  cutter: "Cuts",
-  errors: "Errors",
 };
+const sectionTitle = (s: GutterSection): string =>
+  SECTION_TITLE_OVERRIDE[s] ?? PANEL_REGISTRY[s].shortLabel;
 
 export interface ToolGutterProps {
   /** The panel kinds this host offers (the chrome whitelist). A tool or list
@@ -239,7 +231,7 @@ export function ToolGutter(p: ToolGutterProps) {
                   <MenuActionRow
                     key={s}
                     id={`gutter-more-${s}`}
-                    label={SECTION_TITLE[s]}
+                    label={sectionTitle(s)}
                     onSelect={() => {
                       revealGutterSection(s);
                       close();
@@ -286,7 +278,7 @@ function GutterSectionView({
   onActivate: (jump: GutterJump, el: HTMLElement | null) => void;
   onToggleTodo: (id: string) => void;
 }) {
-  const title = SECTION_TITLE[section];
+  const title = sectionTitle(section);
   // A numbered list hangs its markers in ONE column shared by every row (the
   // list is the grid; the rows are `display: contents`), so every row in it
   // fills that column — with its number, its checkbox, or an empty cell.
