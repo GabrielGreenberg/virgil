@@ -508,7 +508,7 @@ describe("ViewMenu — expandable groups (click + Enter; snapshot grows/shrinks)
     expect(viewRowByLabel("Show marginalia")).toBeDefined();
     expect(viewRowByLabel("Notes")).toBeDefined();
     expect(viewRowByLabel("Archive")).toBeDefined();
-    expect(viewRowByLabel("Todo")).toBeDefined();
+    expect(viewRowByLabel("To-dos")).toBeDefined();
   });
 
   it("Enter on the active group row expands it (keyboard expand)", () => {

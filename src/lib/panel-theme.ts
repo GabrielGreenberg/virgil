@@ -33,6 +33,10 @@ export type PanelThemeKey =
 // promotion pipeline can rewrite them without touching TS source.
 import defaultPanelColorsJson from "./panel-theme.defaults.json";
 import { subscribeToStorageKey } from "./cross-window-storage";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import type { CardKind } from "@/cards/types";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import type { PanelKind } from "@/panels/_shared/types";
 import {
   hexToRgb,
   rgbToHex,
@@ -78,30 +82,74 @@ export const PANEL_THEME_FAMILIES: Readonly<
   system: { label: "System", keys: ["error"] },
 });
 
+/** Theme keys that name no PANEL — a card sub-kind's accent (`highlight`, worn
+ *  inside Notes) or a system accent — and so carry their own name. Every other
+ *  key is a panel's accent and is named by that panel (below). */
+const NON_PANEL_THEME_LABELS: Readonly<Partial<Record<PanelThemeKey, string>>> = {
+  highlight: "Highlights",
+  aiRequest: "AI requests",
+};
+
+/** The panel a theme key is the accent of — the ONE panel whose card kinds wear
+ *  it (`CARD_REGISTRY[kind].themeKey` / `.panel`). Throws when that is not one
+ *  panel, so a key shared across panels has to be given its own name above
+ *  rather than silently borrowing one panel's. */
+function panelForThemeKey(key: PanelThemeKey): PanelKind {
+  const panels = new Set(
+    (Object.keys(CARD_REGISTRY) as CardKind[])
+      .filter((k) => CARD_REGISTRY[k].themeKey === key)
+      .map((k) => CARD_REGISTRY[k].panel),
+  );
+  const [panel] = panels;
+  if (panels.size !== 1 || panel == null) {
+    throw new Error(
+      `[panel-theme] theme key "${key}" is worn in ${panels.size} panels; name it in NON_PANEL_THEME_LABELS`,
+    );
+  }
+  return panel;
+}
+
+const PANEL_THEME_DESCRIPTIONS: Readonly<Record<PanelThemeKey, string>> = {
+  footnote:  "Footnote cards, superscript markers, and anchor highlights.",
+  citation:  "Citation cards, badges, and in-text highlights.",
+  bib:       "Bibliography entries and linked citation anchors.",
+  highlight: "Highlight cards and the in-text highlight band.",
+  example:   "Example cards and their in-text anchors.",
+  revision:  "Revision cards and change markers.",
+  report:    "Report cards and their margin markers.",
+  aiRequest: "AI-request accents (system colour, not editable).",
+  note:      "Note cards and margin markers.",
+  archive:   "Archived-snippet cards and anchors.",
+  todo:      "Task cards and checklist markers.",
+  cut:       "Deleted-text cards and strikethrough markers.",
+  error:     "Compile-error cards (system colour, not editable).",
+};
+
 /** User-facing name of each theme key — the ONE label table (task 977, moved
  *  here from `smart-preferences.ts` by task 1163). A TOTAL record, so a new
- *  `PanelThemeKey` fails tsc until it has a label. Two readers: the
- *  Preferences "Panel theme" rows (label + description) and every panel
- *  kebab's colour picker (`panelThemeColorLabel`), so the same colour is named
- *  the same way in both places. System keys carry copy too (the record stays
- *  total) but never reach either surface — they are not user-overridable. */
+ *  `PanelThemeKey` fails tsc until it has a description. A panel's accent is
+ *  named by its panel's `PANEL_REGISTRY.shortLabel` (task 1475 — this table
+ *  used to spell "Margin notes" / "To-dos" / "Cuts" by hand, beside four other
+ *  spellings of the same panels). Two readers: the Preferences "Panel theme"
+ *  rows (label + description) and every panel kebab's colour picker
+ *  (`panelThemeColorLabel`), so the same colour is named the same way in both
+ *  places. System keys carry copy too (the record stays total) but never reach
+ *  either surface — they are not user-overridable. */
 export const PANEL_THEME_COPY: Readonly<
   Record<PanelThemeKey, { label: string; description: string }>
-> = Object.freeze({
-  footnote:  { label: "Footnotes",    description: "Footnote cards, superscript markers, and anchor highlights." },
-  citation:  { label: "Citations",    description: "Citation cards, badges, and in-text highlights." },
-  bib:       { label: "Bibliography", description: "Bibliography entries and linked citation anchors." },
-  highlight: { label: "Highlights",   description: "Highlight cards and the in-text highlight band." },
-  example:   { label: "Examples",     description: "Example cards and their in-text anchors." },
-  revision:  { label: "Revisions",    description: "Revision cards and change markers." },
-  report:    { label: "Reports",      description: "Report cards and their margin markers." },
-  aiRequest: { label: "AI requests",  description: "AI-request accents (system colour, not editable)." },
-  note:      { label: "Margin notes", description: "Note cards and margin markers." },
-  archive:   { label: "Archive",      description: "Archived-snippet cards and anchors." },
-  todo:      { label: "To-dos",       description: "Task cards and checklist markers." },
-  cut:       { label: "Cuts",         description: "Deleted-text cards and strikethrough markers." },
-  error:     { label: "Errors",       description: "Compile-error cards (system colour, not editable)." },
-});
+> = Object.freeze(
+  Object.fromEntries(
+    (Object.keys(PANEL_THEME_DESCRIPTIONS) as PanelThemeKey[]).map((key) => [
+      key,
+      {
+        label:
+          NON_PANEL_THEME_LABELS[key] ??
+          PANEL_REGISTRY[panelForThemeKey(key)].shortLabel,
+        description: PANEL_THEME_DESCRIPTIONS[key],
+      },
+    ]),
+  ) as Record<PanelThemeKey, { label: string; description: string }>,
+);
 
 /** The colour picker's trigger name for a theme key ("Cuts color") — derived
  *  from `PANEL_THEME_COPY`, never hand-spelled at a call site (task 1163). */

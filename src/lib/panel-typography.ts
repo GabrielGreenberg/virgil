@@ -13,6 +13,7 @@
  * (card-registry imports only types), so no cycle.
  */
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { subscribeToStorageKey } from "./cross-window-storage";
 import { PANEL_BODY_FONTS } from "./font-catalogue";
 import type { CardKind } from "@/cards/types";
@@ -37,8 +38,8 @@ export interface PanelTypography {
 }
 
 /** The two visual tiers (A9 §N2 / C2). The default rows of
- *  `DEFAULT_PANEL_TYPOGRAPHY` are now DERIVED from each panel's primary card
- *  kind's `CardMeta.bodyClass`, not hand-kept — so the declared appearance
+ *  `DEFAULT_PANEL_TYPOGRAPHY` are now DERIVED from each panel's member card
+ *  kinds' `CardMeta.bodyClass`, not hand-kept — so the declared appearance
  *  class and the rendered default can never drift.
  *  - `"borrowed"` → 15px Source Serif 4: the apparatus kinds that quote
  *    document prose (footnotes, archive, examples). Same family as main text
@@ -156,54 +157,68 @@ export function resolvePreviewFontStack(name: string): string {
   return resolveFontStack(trimmed);
 }
 
-/** The card kind whose `bodyClass` defines each panel-body row. The single
- *  representative kind per panel (the panel's primary content kind); morph
- *  pairs share a `bodyClass`, so either sibling would yield the same row. A
- *  dev assertion (`assertPanelTypographyCoverage`, card-registry-side) checks
- *  every kind sharing a panel agrees on its class. */
-const PANEL_BODY_PRIMARY_KIND: Record<PanelBodyKey, CardKind> = {
-  footnote: "footnote",
-  note:     "note",
+/** The panel each panel-body row tunes — the crosswalk from the persisted
+ *  typography-key vocabulary (`PanelBodyKey`: the `virgil-panel-typography`
+ *  storage keys, frozen, hence `cut` / `note` rather than `cutter` / `notes`)
+ *  to the registry's `PanelKind`. This is the ONE hand-kept table here, and it
+ *  holds only that key mapping: the row's NAME is the panel's
+ *  `PANEL_REGISTRY.shortLabel` and its TIER is the panel's member kinds'
+ *  `bodyClass` (both derived below). It used to name a "primary card kind" per
+ *  row instead — a second answer to "which kind is this panel's", disagreeing
+ *  with `PANEL_REGISTRY.card` on three panels (task 1475). Panels absent here
+ *  have no card body text whose size can be tuned (Outline, Search, WordCount,
+ *  Errors, Omni). */
+const PANEL_BODY_PANEL: Record<PanelBodyKey, PanelKind> = {
+  footnote: "footnotes",
+  note:     "notes",
   archive:  "archive",
-  cut:      "cutter-comment",
-  revision: "revision-comment",
-  citation: "citation",
-  bib:      "bib",
+  cut:      "cutter",
+  revision: "revisions",
+  citation: "citations",
+  bib:      "bibliography",
   todo:     "todo",
-  report:   "report",
-  example:  "example",
+  report:   "reports",
+  example:  "examples",
 };
 
-/** `PanelKind → PanelBodyKey`, DERIVED by inverting `PANEL_BODY_PRIMARY_KIND`
- *  through each primary kind's owning panel (`CARD_REGISTRY[kind].panel`, the
- *  registry SSOT). Panels absent here have no card body text whose size can be
- *  tuned (Outline, Search, WordCount, Errors, Omni). This REPLACES the hand-kept
- *  `KIND_TO_BODY_KEY` in `panel-kind-context` — deriving from the same source as
- *  `DEFAULT_PANEL_TYPOGRAPHY`/`PANEL_BODY_TIER` means adding a body-tunable panel
- *  (a new `PANEL_BODY_PRIMARY_KIND` row) automatically produces its `PanelKind`
- *  entry, so the two can no longer drift (audit-059). The inversion is 1:1 — each
- *  primary kind owns a distinct panel — and `panel-kind-body-key.test.ts` pins
- *  the map + fails loudly if any body key's primary kind loses its owning panel. */
-export const PANEL_KIND_TO_BODY_KEY: Partial<Record<PanelKind, PanelBodyKey>> =
-  (() => {
-    const map: Partial<Record<PanelKind, PanelBodyKey>> = {};
-    for (const key of Object.keys(PANEL_BODY_PRIMARY_KIND) as PanelBodyKey[]) {
-      const panel = CARD_REGISTRY[PANEL_BODY_PRIMARY_KIND[key]].panel;
-      if (panel) map[panel] = key;
-    }
-    return map;
-  })();
+/** A panel's body class, DERIVED from its member kinds (each kind declares its
+ *  panel in `CARD_REGISTRY`). Any member answers: the members of a panel agree
+ *  on `bodyClass` — morph siblings must, or a morph would re-typeset the card —
+ *  and `assertPanelTypographyCoverage` (card-registry-side) makes a
+ *  disagreement loud. */
+function panelBodyClass(panel: PanelKind): "borrowed" | "sans" {
+  const member = (Object.keys(CARD_REGISTRY) as CardKind[]).find(
+    (k) => CARD_REGISTRY[k].panel === panel,
+  );
+  if (!member) {
+    throw new Error(`[panel-typography] panel "${panel}" has no card kind`);
+  }
+  return CARD_REGISTRY[member].bodyClass;
+}
 
-/** Each panel-body row's visual TIER (its primary kind's `CardMeta.bodyClass`).
+/** `PanelKind → PanelBodyKey` — the inversion of `PANEL_BODY_PANEL`. This
+ *  REPLACES the hand-kept `KIND_TO_BODY_KEY` in `panel-kind-context`
+ *  (audit-059): adding a body-tunable panel (a new `PANEL_BODY_PANEL` row)
+ *  automatically produces its `PanelKind` entry. The inversion is 1:1 and
+ *  `panel-taxonomy-pins.test.ts` pins the map. */
+export const PANEL_KIND_TO_BODY_KEY: Partial<Record<PanelKind, PanelBodyKey>> =
+  Object.fromEntries(
+    (Object.keys(PANEL_BODY_PANEL) as PanelBodyKey[]).map((key) => [
+      PANEL_BODY_PANEL[key],
+      key,
+    ]),
+  );
+
+/** Each panel-body row's visual TIER (its panel's members' `CardMeta.bodyClass`).
  *  The tier picks which doc-relative base font size a row's *default* tracks
  *  (BUG #30): borrowed → main-text size − 2px, sans → the `panelFontSize`
  *  pref. Derived from the same `bodyClass` source as `DEFAULT_PANEL_TYPOGRAPHY`,
  *  so the two can never disagree about which tier a panel sits in. */
 export const PANEL_BODY_TIER: Record<PanelBodyKey, "borrowed" | "sans"> =
   Object.fromEntries(
-    (Object.keys(PANEL_BODY_PRIMARY_KIND) as PanelBodyKey[]).map((key) => [
+    (Object.keys(PANEL_BODY_PANEL) as PanelBodyKey[]).map((key) => [
       key,
-      CARD_REGISTRY[PANEL_BODY_PRIMARY_KIND[key]].bodyClass,
+      panelBodyClass(PANEL_BODY_PANEL[key]),
     ]),
   ) as Record<PanelBodyKey, "borrowed" | "sans">;
 
@@ -215,30 +230,26 @@ export const PANEL_BODY_TIER: Record<PanelBodyKey, "borrowed" | "sans"> =
  *  panelKey is set, so the rendered size matches the registry value
  *  step-for-step and the per-panel size stepper stays monotonic.
  *
- *  DERIVED from `CardMeta.bodyClass` (A9 C2): a panel's default row is the
- *  typography for its primary kind's class. This fixes the example row
+ *  DERIVED from `CardMeta.bodyClass` (A9 C2): a row's default is the
+ *  typography for its panel's body class. This fixes the example row
  *  (12 → 15px serif: it's a `"borrowed"` kind) and pins report to sans. */
 export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> =
   Object.fromEntries(
-    (Object.keys(PANEL_BODY_PRIMARY_KIND) as PanelBodyKey[]).map((key) => [
+    (Object.keys(PANEL_BODY_PANEL) as PanelBodyKey[]).map((key) => [
       key,
-      BODY_CLASS_TYPOGRAPHY[CARD_REGISTRY[PANEL_BODY_PRIMARY_KIND[key]].bodyClass],
+      BODY_CLASS_TYPOGRAPHY[panelBodyClass(PANEL_BODY_PANEL[key])],
     ]),
   ) as Record<PanelBodyKey, PanelTypography>;
 
-/** User-facing labels for the smart-preferences grid. */
-export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = {
-  footnote: "Footnotes",
-  note:     "Margin notes",
-  archive:  "Archive",
-  cut:      "Cutter cards",
-  revision: "Revisions",
-  citation: "Citations",
-  bib:      "Bibliography",
-  todo:     "To-dos",
-  report:   "Reports",
-  example:  "Examples",
-};
+/** User-facing labels for the smart-preferences grid — each row's panel's
+ *  `PANEL_REGISTRY.shortLabel` (task 1475; was a hand table that named the
+ *  same panels "Margin notes" and "Cutter cards"). */
+export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = Object.fromEntries(
+  (Object.keys(PANEL_BODY_PANEL) as PanelBodyKey[]).map((key) => [
+    key,
+    PANEL_REGISTRY[PANEL_BODY_PANEL[key]].shortLabel,
+  ]),
+) as Record<PanelBodyKey, string>;
 
 /** Font choices for the Smart grid — the curated serif + sans cores of the
  *  one font vocabulary (`src/lib/font-catalogue.ts`, task 901), each with a

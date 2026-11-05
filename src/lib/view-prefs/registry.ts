@@ -42,8 +42,12 @@ import {
 import {
   ALL_MARKER_TYPES,
   HIDEABLE_MARKER_TYPES,
+  panelForMarkerType,
   type HideableMarkerType,
 } from "@/cards/marker-meta";
+// Runtime, cycle-safe for the same reason: `panel-registry` imports only
+// `card-registry` and the zero-import `float-key`.
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 // The SHIPPED defaults — the one copy `tools/promote-defaults.mjs` rewrites
 // (task 900). A JSON import, so it adds no module to the graph and no cycle.
 import shippedDefaultsJson from "@/hooks/useViewPrefs.defaults.json";
@@ -206,25 +210,16 @@ const SHIPPED = shippedDefaultsJson as unknown as {
   dividerWidth: DividerWidth;
 };
 /**
- * Menu labels for the per-type marginalia hide rows. The ANNOTATION is the
- * coverage assertion task 672 asked for: `Record<HideableMarkerType, string>`
- * is exhaustive, so a marker type added to `MarkerType` and not opted out in
- * `NON_HIDEABLE_MARKER_TYPES` fails to compile here until it is given a row
- * label — it can no longer ship invisible.
- *
- * Declared rather than derived from `MARKER_META.label`: those are singular
- * marker names ("Note", "Task") and reading them would make this
- * dependency-light module import the marginalia UI lib. Menu plurals are a
- * menu concern.
+ * Menu labels for the per-type marginalia hide rows — each marker type's
+ * owning panel's `PANEL_REGISTRY.shortLabel` (`panelForMarkerType`, derived
+ * from `CARD_REGISTRY`). Task 1475: this was a hand table that called the Todo
+ * List "Todo" beside four other spellings. Exhaustive over
+ * `HIDEABLE_MARKER_TYPES` (task 672's coverage concern): a new hideable marker
+ * type gets its panel's name, so it can no longer ship unlabelled.
  */
-const MARGINALIA_TYPE_LABELS: Record<HideableMarkerType, string> = {
-  note: "Notes",
-  archive: "Archive",
-  revision: "Revisions",
-  cut: "Cuts",
-  todo: "Todo",
-  report: "Reports",
-};
+const MARGINALIA_TYPE_LABELS: Record<HideableMarkerType, string> = Object.fromEntries(
+  HIDEABLE_MARKER_TYPES.map((t) => [t, PANEL_REGISTRY[panelForMarkerType(t)].shortLabel]),
+) as Record<HideableMarkerType, string>;
 
 export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
