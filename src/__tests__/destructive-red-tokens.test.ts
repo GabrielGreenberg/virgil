@@ -507,7 +507,6 @@ const PINNED_DANGER_TEXT_UTILITY_SITES: Readonly<Record<string, string>> = {
 
 const PINNED_DANGER_INLINE_SITES: Readonly<Record<string, string>> = {
   "library/components/LibraryView.tsx": "sync-error banner's dismiss ICON (its text reads ERROR_INK)",
-  "library/components/Toaster.tsx": "attention toast's 3px EDGE (its label reads ERROR_INK)",
   "src/components/EditorLayout.tsx": "a dot's backgroundColor — a fill, not text",
   "src/lib/interruption-tone.ts": "the danger register's EDGE (its ink is --ink-strong)",
   "src/panels/Errors/ErrorCard.tsx": "the severity BADGE icon (the severity word reads SEVERITY_INK)",
@@ -559,7 +558,6 @@ describe("error text reads the error role", () => {
     ["src/components/BibEntryCard.tsx", "text-error"],
     ["src/components/system-dialog-host.tsx", "text-error"],
     ["library/components/BibEditModal.tsx", "color: ERROR_INK"],
-    ["library/components/Toaster.tsx", "ERROR_INK"],
     ["src/panels/Errors/ErrorCard.tsx", "SEVERITY_INK[err.severity]"],
   ])("%s reads the role (%s)", (rel, needle) => {
     expect(commentsStripped(read(rel))).toContain(needle);

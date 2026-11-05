@@ -78,11 +78,9 @@ import {
 } from "@/components/editor-layout/StatusCluster";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import { OUTER_LIBRARY_ROOT_ID } from "@/lib/doc-index";
+import { TAB_LABEL_MAX_PX } from "@/components/chrome/folder-tab-geometry";
 import {
-  FOLDER_TAB_SEAM_OVERLAP,
-  TAB_LABEL_MAX_PX,
-} from "@/components/chrome/folder-tab-geometry";
-import {
+  OUTER_TAB_FLOOR_MIN_WIDTH,
   TAB_LABEL_ATTR,
   TAB_LABEL_FLOOR_MIN_WIDTH,
 } from "@/components/chrome/tab-strip-occupancy";
@@ -600,7 +598,7 @@ describe("the tab strip's occupancy ladder — compress, then scroll", () => {
   const rowEl = () => document.querySelector<HTMLElement>('[data-bar-occupant="tabs"]')!;
   /** The per-tab wrapper the strip keys `outerTabRefs` by. */
   /** A tab by its tooltip — the one string both tab renderers (the active
-   *  folder tab and an inactive inline label) carry for the same tab. */
+   *  lozenge and an inactive inline label) carry for the same tab. */
   const tabByHint = (hint: string) => {
     const hits = document.querySelectorAll<HTMLElement>(`[data-hint="${hint}"]`);
     expect(hits, `exactly one element hinted "${hint}"`).toHaveLength(1);
@@ -610,14 +608,17 @@ describe("the tab strip's occupancy ladder — compress, then scroll", () => {
 
   it("inactive tabs COMPRESS (`shrink`), the active tab RESISTS (`shrink-0`), the pinned Library root never compresses", () => {
     crowded();
-    // Inactive: flex-shrink 1 with the automatic (min-content) minimum, which
-    // is the tab's fixed chrome plus its label's floor.
+    // Inactive: flex-shrink 1 down to the tab's fixed chrome plus its label's
+    // floor.
     for (const name of ["Doc Two: main.tex", "Doc Three: main.tex"]) {
       const w = wrapperOf(name);
       expect(w.className, `${name} must be compressible`).toMatch(/\bshrink\b/);
       expect(w.className).not.toMatch(/shrink-0/);
+      // The automatic minimum would be the whole name, so the tab states its
+      // floor: without this it never compresses and the strip only scrolls.
+      expect(w.style.minWidth).toBe(OUTER_TAB_FLOOR_MIN_WIDTH);
     }
-    // Active: the folder tab holds its name; only the strip scrolls.
+    // Active: the lozenge holds its name; only the strip scrolls.
     expect(wrapperOf("Coherence Intro: main.tex").className).toMatch(/shrink-0/);
     // The Library root is the strip's pinned tab (Chrome's pinned tabs).
     expect(wrapperOf("Library").className).toMatch(/shrink-0/);
@@ -634,17 +635,12 @@ describe("the tab strip's occupancy ladder — compress, then scroll", () => {
     expect(labels.length).toBe(4); // Library root + 3 docs
   });
 
-  it("past the floors the strip SCROLLS: a scroller with a hidden scrollbar, and the seam kept INSIDE its clip", () => {
+  it("past the floors the strip SCROLLS: a scroller with a hidden scrollbar", () => {
     crowded();
     const s = scrollerEl();
     expect(s.style.overflowX).toBe("auto");
     expect(s.style.overflowY, "an unstated axis would be coerced to auto and grow a 1px scroll range").toBe("hidden");
     expect(s.style.scrollbarWidth).toBe("none");
-    // The active tab hangs FOLDER_TAB_SEAM_OVERLAP below the strip to merge
-    // into the canvas; the padding keeps that inside the scroller's padding
-    // box (never clipped), the margin keeps the footprint unchanged.
-    expect(s.style.paddingBottom).toBe(`${FOLDER_TAB_SEAM_OVERLAP}px`);
-    expect(s.style.marginBottom).toBe(`-${FOLDER_TAB_SEAM_OVERLAP}px`);
     // The row: natural width when roomy, the scroller's width when crowded.
     const row = rowEl();
     expect(row.style.width).toBe("max-content");
@@ -742,7 +738,7 @@ describe("census · the structural floor and the shared cap", () => {
     for (const rel of [STRIP, "library/components/panel-tabs/PanelTabStrip.tsx"]) {
       const code = commentsStripped(read(rel));
       expect(code, `${rel} must spread the shared scroller style`).toMatch(
-        /\.\.\.TAB_STRIP_SCROLLER_STYLE/,
+        /(?:\.\.\.|style=\{)TAB_STRIP_SCROLLER_STYLE/,
       );
       // Axis-SPECIFIC needle: `overflow: "hidden"` on a label (the ellipsis
       // idiom) or a menu row is not a scroll axis.
@@ -751,7 +747,6 @@ describe("census · the structural floor and the shared cap", () => {
       );
     }
     const strip = commentsStripped(read(STRIP));
-    expect(strip).toMatch(/tabStripSeamPadding\(FOLDER_TAB_SEAM_OVERLAP\)/);
     // The retired floor stays retired.
     expect(strip).not.toMatch(/overflowX:\s*"clip"/);
   });
@@ -792,7 +787,7 @@ describe("census · the structural floor and the shared cap", () => {
     for (const rel of [
       STRIP,
       "src/components/editor-layout/InlineTabLabel.tsx",
-      "src/components/editor-layout/DocumentFolderTab.tsx",
+      "src/components/editor-layout/ActiveBarTab.tsx",
       "library/components/panel-tabs/PanelTabStrip.tsx",
       "library/components/panel-tabs/PanelFolderTab.tsx",
     ]) {
@@ -804,9 +799,9 @@ describe("census · the structural floor and the shared cap", () => {
       }
       expect(code, `${rel} hand-spells the label floor`).not.toMatch(/calc-size\(max-content,\s*min\(size/);
     }
-    // The active floors read the variant spec; the inactive floor reads the
-    // shared style.
-    expect(codeOnly(read("src/components/editor-layout/DocumentFolderTab.tsx"))).toMatch(/minWidth:\s*V\.activeMinContent/);
+    // Each active floor is named once; the inactive floor reads the shared
+    // style.
+    expect(codeOnly(read("src/components/editor-layout/ActiveBarTab.tsx"))).toMatch(/minWidth:\s*ACTIVE_TAB_MIN_WIDTH/);
     expect(codeOnly(read("library/components/panel-tabs/PanelFolderTab.tsx"))).toMatch(/V\.activeMinContent/);
     for (const rel of ["src/components/editor-layout/InlineTabLabel.tsx", "library/components/panel-tabs/PanelTabStrip.tsx"]) {
       expect(codeOnly(read(rel)), `${rel} does not take the shared label floor`).toMatch(/\.\.\.INACTIVE_TAB_LABEL_STYLE/);

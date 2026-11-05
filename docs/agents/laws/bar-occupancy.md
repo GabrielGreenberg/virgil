@@ -180,41 +180,37 @@ Nine rules it earned:
   content box, and the `+` nets out of it exactly as the protected status
   width `R` does. The ladder in bar-occupancy.ts is unchanged in form;
   `useBarOccupancy` observes the same three roles.
-- **The seam is the detail the scroller OWES.** Per CSS Overflow 3,
-  `overflow-x: auto` coerces an unstated vertical axis to `auto`, and the
-  active folder tab hangs `FOLDER_TAB_SEAM_OVERLAP` (1px) BELOW the strip so
-  its open-bottom silhouette merges into the canvas — inside a scroll
-  container that overhang is scrollable overflow, and the clip eats it. So
-  the axis is stated `overflow-y: hidden` and the overhang is kept INSIDE the
-  clip by a 1px bottom padding + −1px margin pair (`tabStripSeamPadding`), the
-  mechanism the inner strip has carried since task 324. Both strips read ONE
-  `TAB_STRIP_SCROLLER_STYLE`; neither may spell an overflow axis of its own.
-  The scroller also carries the row's trailing slack as PADDING (a last active
-  tab's border box protrudes 8px past its margin box plus the cap's 1px
-  overhang), because as content that protrusion would be a 9px phantom scroll
-  range on a strip with every tab in view.
+- **The scroll axis is stated.** Per CSS Overflow 3, `overflow-x: auto` coerces
+  an unstated vertical axis to `auto`, so the axis is stated `overflow-y:
+  hidden`. Both strips read ONE `TAB_STRIP_SCROLLER_STYLE`; neither may spell
+  an overflow axis of its own. The inner strip's folder tab still hangs 1px
+  below it to merge into the sheet, and keeps that overhang inside the clip with
+  its own padding (task 324). The outer tabs are lozenges and hang nothing.
 - **The inactive floor is on the LABEL, and that closed a latent overflow.**
   The inner strip's floor was a tab-level `minWidth: 60`, which is
   chrome-blind: a tab with a pin, a menu and a close has 62px of fixed chrome,
   so at the floor its content overflowed its own box. A `min-width` on the
-  label composes with whatever chrome the tab carries — the tab's automatic
-  flex minimum is `chrome + INACTIVE_MIN_LABEL_PX` by construction — and the
-  value (20) reproduces the plain closable inner tab's old floor byte for byte
+  label composes with whatever chrome the tab carries, and the value (20)
+  reproduces the plain closable inner tab's old floor byte for byte
   (60 − 40 of chrome). It is `calc-size(max-content, min(size, 20px))`, never
   a bare `20px`: a two-letter name is not padded out to the floor, so the
-  roomy layout is byte-identical to the pre-561 one and the inline↔folder
-  pixel-stability contract holds for short names too.
-- **The ACTIVE floor is a per-VARIANT field of the geometry spec, not one
-  number.** The two content rows genuinely differ (the library row holds pin +
-  icon + menu + close beside its label; the topbar row a label + close), the
-  active tab never compresses (its floor is a minimum SIZE for a short name,
+  roomy layout is byte-identical to the pre-561 one.
+- **The outer tab states the floor at its WRAPPER too.** The label's `min-width`
+  does not reach the wrapper's automatic flex minimum: that is the wrapper's
+  min-content width, and a `truncate` label contributes its WHOLE name to it. So
+  a wrapper left at `auto` never compressed, and the strip went straight to
+  scrolling while the census stayed green. `OUTER_TAB_FLOOR_MIN_WIDTH` is `chrome
+  + 20` in the same `calc-size` shape, and `bar-occupancy.test.tsx` pins it on
+  each inactive wrapper.
+- **The ACTIVE floor is per strip, not one number.** The two content rows
+  genuinely differ (the library row holds pin + icon + menu + close beside its
+  label; the outer row a label + close), the active tab never compresses (its floor is a minimum SIZE for a short name,
   not a compression stop), and unifying the number would have moved every
-  short-named outer tab for no reason. `FOLDER_TAB_VARIANTS[v].activeMinContent`
-  (116 / 80) is read by both tabs; the hand-written `80` is gone.
+  short-named outer tab for no reason. The inner tab reads
+  `FOLDER_TAB_VARIANTS.library.activeMinContent` (116); the outer lozenge names
+  its floor once, `ACTIVE_TAB_MIN_WIDTH` (80).
 - **The Library root is the strip's PINNED tab and never compresses**
-  (Chrome's pinned tabs): its `library-pinned` padding pre-reserves the folder
-  silhouette's footprint, and a floor below that chrome would squeeze the
-  padding under its own label.
+  (Chrome's pinned tabs).
 - **The nudge is the minimum delta, instant, in a LAYOUT effect.** Never
   `el.scrollIntoView()`, which centres/over-scrolls, scrolls every ANCESTOR
   too, and races a smooth scroll in flight ("Refocus is not navigation"); a

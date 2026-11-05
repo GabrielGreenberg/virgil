@@ -195,7 +195,7 @@ const VIEWER_CSS_THEME_LIGHT = 1;
  */
 export const VIEWER_PALETTE_TOKENS = [
   "--topbar-bg",
-  "--topbar-border",
+  "--border-light",
   "--foreground",
   "--surface",
   "--muted",

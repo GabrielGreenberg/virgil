@@ -3550,7 +3550,7 @@ export function PanelHeader({
   children?: ReactNode;
 }) {
   return (
-    <div className={`${PANEL.header} flex items-center gap-1.5`}>
+    <div className={`panel-header ${PANEL.header} flex items-center gap-1.5`}>
       <h3 className="panel-header-title text-2xs font-semibold leading-none">
         {title}
       </h3>

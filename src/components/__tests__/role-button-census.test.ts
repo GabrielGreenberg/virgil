@@ -212,7 +212,6 @@ const COMPONENTS_RATCHET: Record<string, number> = {
   "src/components/LabelRefPopover.tsx": 2,
   "src/components/PanelTextSizeRow.tsx": 1,
   "src/components/SourcePodNodeView.tsx": 4,
-  "src/components/editor-layout/DocumentFolderTab.tsx": 1,
   "src/components/library/BibEntryPickerMenu.tsx": 1,
   "src/components/menu/AnchoredMenu.tsx": 1,
   "src/components/panel-primitives.tsx": 1,

@@ -5,7 +5,6 @@ import { activatableProps } from "@/lib/activatable-props";
 import { IconX } from "./panel-icons";
 import { FONT_MONO } from "@/lib/font-stacks";
 import {
-  FOLDER_TAB_VARIANTS,
   TAB_LABEL_MAX_PX,
 } from "@/components/chrome/folder-tab-geometry";
 import {
@@ -16,16 +15,9 @@ import { describedHint, iconHint } from "@/components/Hint";
 
 /**
  * Inline (inactive) tab label rendered as flat clickable text in the Virgil
- * bar. Used for every outer tab that isn't the currently-active item —
- * those keep the full DocumentFolderTab silhouette.
- *
- * `variant` defaults to "tight" (pl-2 pr-2): used by paper/library/doc
- * tabs whose active counterpart applies negative margins to keep text and
- * neighbors pixel-stable across activation. The Library root tab passes
- * "library-pinned" instead (LIBRARY_PINNED_PAD_*) — Library can't shift
- * its silhouette leftward (it's the leftmost item), so the inline label
- * pre-reserves the swoop+inner-padding space, matching the folder
- * geometry exactly.
+ * bar. Used for every outer tab that isn't the currently-active item, which is
+ * the same box filled in as a lozenge (ActiveBarTab), so activating a tab
+ * leaves its text where it was.
  *
  * Omitting `onClose` hides the × button (used by the Library root tab,
  * which is permanent and can't be closed).
@@ -54,27 +46,9 @@ export type InlineTabLabelProps = {
   label: string;
   title: string;
   monospace?: boolean;
-  variant?: "tight" | "library-pinned";
   onActivate: (id: string) => void;
   onClose?: (id: string) => void;
 };
-
-/** The active Library folder's label trails its content row by this much
- *  (TabStrip renders it; read here so the inline footprint matches). */
-export const LIBRARY_FOLDER_LABEL_TRAIL = 10;
-
-// The library-pinned label pre-reserves the ACTIVE Library folder's footprint
-// (topbar variant), computed from the geometry SSOT rather than annotated:
-// left = foot-flare inset + the row's left pad; right = the right inset + the
-// row's right pad + the label's trail. Both come to 26 today — symmetric by
-// arithmetic, not by assertion.
-const TOPBAR = FOLDER_TAB_VARIANTS.topbar;
-const LIBRARY_PINNED_PAD_LEFT = TOPBAR.contentInsetLeft + TOPBAR.contentPadLeft;
-const LIBRARY_PINNED_PAD_RIGHT =
-  TOPBAR.contentInsetRight + TOPBAR.contentPadRight + LIBRARY_FOLDER_LABEL_TRAIL;
-/** The hover lozenge's breathing room around the content — the tight
- *  variant's own `pl-2 pr-2`. */
-const HOVER_BREATH = 8;
 
 function InlineTabLabelImpl({
   id,
@@ -82,17 +56,9 @@ function InlineTabLabelImpl({
   label,
   title,
   monospace,
-  variant = "tight",
   onActivate,
   onClose,
 }: InlineTabLabelProps) {
-  const pinned = variant === "library-pinned";
-  const padding = pinned ? "" : "pl-2 pr-2";
-  // Hover lozenge hugs the content with HOVER_BREATH on each side. The tight
-  // variant's wrapper already sits at content + 8px, so `inset-x-0` is
-  // correct. The library-pinned wrapper carries the folder footprint's
-  // padding, so the lozenge insets by that padding less the breath.
-  const hoverBgInsetX = pinned ? "" : "inset-x-0";
   return (
     <div
       // A tab is a CONTAINER (its close is a nested `<button>`, which the HTML
@@ -106,32 +72,19 @@ function InlineTabLabelImpl({
       // button would otherwise join the name computed from content; the
       // tooltip (often the fuller path) is the description (task 609).
       aria-label={label}
-      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default focus-ring`}
-      style={
-        pinned
-          ? { paddingLeft: LIBRARY_PINNED_PAD_LEFT, paddingRight: LIBRARY_PINNED_PAD_RIGHT }
-          : undefined
-      }
+      className="group relative flex items-center gap-1.5 pl-2 pr-2 h-6 cursor-default focus-ring"
     >
       <div
         aria-hidden
-        className={`absolute inset-y-0 rounded transition-colors group-hover:bg-black/5 ${hoverBgInsetX}`}
-        style={
-          pinned
-            ? {
-                left: LIBRARY_PINNED_PAD_LEFT - HOVER_BREATH,
-                right: LIBRARY_PINNED_PAD_RIGHT - HOVER_BREATH,
-              }
-            : undefined
-        }
+        className="absolute inset-0 rounded-md transition-colors group-hover:bg-black/5"
       />
       {icon ? <span className="relative inline-flex">{icon}</span> : null}
       <span
         {...TAB_LABEL_ATTRS}
         className="relative text-sm leading-4 truncate"
         style={{
-          // The bar-wide label cap (task 395) — shared with the ACTIVE folder
-          // tab's label so the two renderers of one tab can't disagree about
+          // The bar-wide label cap (task 395) — shared with the ACTIVE tab's
+          // label so the two renderers of one tab can't disagree about
           // how wide a name may get.
           maxWidth: TAB_LABEL_MAX_PX,
           // …and the compression FLOOR (task 561): under a squeeze the label

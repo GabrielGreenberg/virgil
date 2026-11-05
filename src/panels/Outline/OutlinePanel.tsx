@@ -557,7 +557,7 @@ function ParTitleRow({
       className={`block w-full text-left cursor-pointer rounded text-2xs text-[var(--par-title-color-dense,#b05756)] truncate focus-ring ${activation.focusEditing ? "" : "hover-on-light"}`}
       style={{
         paddingLeft,
-        paddingRight: 8,
+        paddingRight: 4,
         paddingTop: 2,
         paddingBottom: 2,
         opacity: dim ? 0.3 : 1,
@@ -646,7 +646,7 @@ function OutlineNode({
       <div
         data-outline-pos={`h-${node.heading.index}`}
         className={`flex items-start group cursor-pointer rounded focus-ring ${isFocusEditing ? "" : "hover-on-light"}`}
-        style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity var(--motion-slow) ease", position: "relative", zIndex: 5 }}
+        style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 4, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity var(--motion-slow) ease", position: "relative", zIndex: 5 }}
         /* A container, not a <button>: it holds the fold chevron and the
            label controls. The helper's target guard keeps Enter on THOSE
            theirs (task 956). */
@@ -682,7 +682,7 @@ function OutlineNode({
           <div className="flex">
             {showNumbers && node.heading.sectionNumber && (
               <span
-                className="shrink-0 text-ink-muted font-normal text-sm leading-snug tabular-nums"
+                className="outline-number shrink-0 font-normal text-sm leading-snug tabular-nums"
                 style={{ paddingRight: 4 }}
               >
                 {node.heading.sectionNumber}
@@ -693,8 +693,8 @@ function OutlineNode({
                 node.heading.level <= 1
                   ? "font-semibold text-ink-strong"
                   : node.heading.level === 2
-                    ? "font-medium text-ink-body"
-                    : "text-ink-body"
+                    ? "font-medium text-ink-strong"
+                    : "text-ink-strong"
               }`}
             >
               {node.heading.text}
@@ -715,7 +715,7 @@ function OutlineNode({
           ) : null)}
         </div>
         {showWordCount && (
-          <span className="text-2xs tabular-nums text-ink-muted shrink-0 mt-0.5">
+          <span className="outline-number text-2xs tabular-nums shrink-0 ml-2 mt-0.5">
             {sectionWordCount}
           </span>
         )}
@@ -950,8 +950,8 @@ const EditablePod = memo(function EditablePod({
                 : (pod.level ?? 0) <= 1
                   ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
-                    ? "text-sm font-medium text-ink-body"
-                    : "text-sm text-ink-body"
+                    ? "text-sm font-medium text-ink-strong"
+                    : "text-sm text-ink-strong"
             }`}
           >
             {pod.text}
@@ -1765,7 +1765,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       headerMenu={headerMenu}
       headerTitleAfter={headerTitleAfter}
       variant="raw"
-      panelExtras={<div className="mx-3 h-px bg-[var(--border)] shrink-0" />}
+      panelExtras={<div className="outline-header-rule mx-3 h-px bg-[var(--border)] shrink-0" />}
     >
       <div ref={scrollRef} className="panel-scroll flex-1 p-1 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
@@ -1812,7 +1812,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                 data-outline-pos="docstart"
                 className={`flex w-full text-left items-start cursor-pointer rounded focus-ring ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                 style={{
-                  paddingLeft: headingIndent(0), paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP,
+                  paddingLeft: headingIndent(0), paddingRight: 4, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP,
                   position: "relative",
                   zIndex: 5,
                 }}
@@ -1834,7 +1834,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                   )}
                 </span>
                 {showWordCount && (
-                  <span className="text-2xs text-ink-muted shrink-0 mt-0.5">
+                  <span className="outline-number text-2xs shrink-0 ml-2 mt-0.5">
                     words
                   </span>
                 )}

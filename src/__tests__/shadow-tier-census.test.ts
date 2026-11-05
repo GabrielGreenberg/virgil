@@ -187,7 +187,7 @@ export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; wh
   { file: "src/app/globals.css", needle: ".math-popover {", what: "math popover" },
   { file: "src/app/globals.css", needle: ".figure-popover {", what: "figure popover" },
   { file: "src/app/globals.css", needle: ".menu-surface {", what: "every MenuProvider menu" },
-  { file: "library/components/Toaster.tsx", needle: "borderLeft: `3px solid ${accent}`,", what: "toast" },
+  { file: "library/components/Toaster.tsx", needle: "padding: \"10px 12px 12px 14px\",", what: "toast" },
   { file: "src/components/SelectionActionsMenu.tsx", needle: "zIndex: IN_SCROLL_MARGIN_TRIGGER_Z,", what: "floating zap trigger" },
   { file: "library/styles/library.css", needle: ".page-scroll-lozenge {", what: "Library page-number lozenge" },
 ];

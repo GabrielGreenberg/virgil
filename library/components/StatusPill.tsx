@@ -2,7 +2,6 @@
 
 import type { IndexedState, BibAuthState } from "@library/lib/catalog";
 import { FACETS, STATUS_SUBGRID, type StatusFacet } from "@library/lib/list-columns";
-import { FONT_MONO } from "@/lib/font-stacks";
 import {
   bibStateTone,
   indexStateTier,
@@ -30,6 +29,9 @@ function Pill({ label, tone, title }: PillProps) {
   return (
     <span
       data-hint={title}
+      // A bare "—" is the row's resting state, not news: in the list it only
+      // comes up with the row.
+      className={label === "—" ? "lib-row-reveal" : undefined}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -39,7 +41,6 @@ function Pill({ label, tone, title }: PillProps) {
         lineHeight: "16px",
         padding: "1px 6px",
         borderRadius: "var(--radius-pill)",
-        fontFamily: FONT_MONO,
         whiteSpace: "nowrap",
       }}
     >

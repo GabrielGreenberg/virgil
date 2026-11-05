@@ -107,7 +107,7 @@ export const SMART_PREFERENCES: SmartSection[] = [
         type: "color",
         key: "backgroundColor",
         label: "Document background",
-        description: "Fill of the page canvas — the active tab joins this color.",
+        description: "Fill of the page canvas.",
       }),
       {
         kind: "link-edge",
@@ -118,14 +118,14 @@ export const SMART_PREFERENCES: SmartSection[] = [
       p({
         type: "color",
         key: "libraryBg",
-        label: "Library tab background",
-        description: "Fill of the darker library peek-tab next to each doc tab.",
+        label: "Library background",
+        description: "Fill behind the Library's panels.",
       }),
       p({
         type: "color",
         key: "topbarBorder",
-        label: "Tab outline",
-        description: "Border around tabs and under the top bar.",
+        label: "Top bar line",
+        description: "Line under the top bar. Matches the bar by default, so it doesn't show.",
       }),
       p({
         type: "color",

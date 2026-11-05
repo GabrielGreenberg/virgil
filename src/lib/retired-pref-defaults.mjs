@@ -28,7 +28,7 @@ export const RETIRED_PREF_DEFAULTS = Object.freeze({
   // the cool hairlines and the sub-AA greys go warm.
   topbarBackground: ["#c5dbe2"],
   topbarBackgroundBottom: ["#c4c4c4"],
-  topbarBorder: ["#cbc3b8"],
+  topbarBorder: ["#cbc3b8", "#dcd3cb"],
   tabBg: ["#c5dbe2"],
   libraryBg: ["#ddeaee"],
   virgilBarText: ["#78716c"],

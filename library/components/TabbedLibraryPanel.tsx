@@ -528,10 +528,11 @@ export default function TabbedLibraryPanel({
             // the tab swoop feet (no wing) — the gutter to either side reads as
             // library field, matching the strip's own side padding.
             margin: `0 ${STRIP_SIDE_PAD}px`,
-            background: isPaper(activeLibrary)
-              ? "var(--background)"
-              : "var(--surface)",
-            border: "1px solid var(--library-edge)",
+            // A list is a sheet of paper, on the editor's own depth. A paper's
+            // reader stands on the canvas, with its own pod and header inside.
+            ...(isPaper(activeLibrary)
+              ? { background: "var(--background)" }
+              : { background: "var(--surface)", boxShadow: "var(--card-shadow-ambient)" }),
             borderRadius: "var(--library-manila-radius)",
             overflow: "hidden",
             display: "flex",
@@ -736,16 +737,12 @@ function ProjectHeader({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "6px 10px",
+        padding: "8px 12px 0",
         // Top corners match the unifying wrapper's R=10 so the header reads
         // as the top of the one continuous folder surface (the wrapper's
         // overflow:hidden also clips to this radius — belt-and-suspenders).
         borderTopLeftRadius: "var(--library-manila-radius)",
         borderTopRightRadius: "var(--library-manila-radius)",
-        // Flattened from a hard 1px --border seam to a subtle divider: it
-        // separates the controls from the catalog list without reading as a
-        // separate clipped card edge.
-        borderBottom: "1px solid var(--border-light)",
         background: "var(--surface)",
         gap: 8,
         flexShrink: 0,

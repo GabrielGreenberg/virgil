@@ -46,7 +46,7 @@ import { type PanelKey } from "@library/hooks/useLibraryTabs";
 import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
-import { FONT_MONO } from "@/lib/font-stacks";
+import { useFittedColumns } from "@library/hooks/useFittedColumns";
 import LibrarySearchInput from "./LibrarySearchInput";
 import { iconHint } from "@/components/Hint";
 import type { RowDotTone } from "@library/hooks/useRowDotState";
@@ -185,9 +185,17 @@ export default function LeftList({
   // stable between renders (its identity changes ONLY when `layout.colOrder`
   // changes — i.e. on a drag-reorder commit, never on a keystroke). Passing
   // this stable array to the memo()'d LeftListRow does NOT defeat the bail.
-  const colOrder = useMemo<ReorderableColId[]>(
+  const fullOrder = useMemo<ReorderableColId[]>(
     () => resolveColOrder(layout.colOrder),
     [layout.colOrder],
+  );
+  // The columns this width can show. A pick from `fullOrder`, so the user's
+  // order and widths survive a narrow list untouched.
+  const colOrder = useFittedColumns(
+    listRootRef,
+    fullOrder,
+    widths,
+    STATUS_DOT_COL_WIDTH + OPEN_COL_WIDTH + ACTION_COL_WIDTH,
   );
 
   const template = useMemo(
@@ -454,16 +462,16 @@ export default function LeftList({
   const onReorder = useCallback(
     (fromId: ReorderableColId, overId: ReorderableColId, side: "before" | "after") => {
       if (fromId === overId) return;
-      const next = colOrder.filter((c) => c !== fromId);
+      const next = fullOrder.filter((c) => c !== fromId);
       const at = next.indexOf(overId) + (side === "after" ? 1 : 0);
       next.splice(at, 0, fromId);
       // No-op guard: skip the commit when the order is unchanged.
-      if (next.length === colOrder.length && next.every((c, i) => c === colOrder[i])) {
+      if (next.length === fullOrder.length && next.every((c, i) => c === fullOrder[i])) {
         return;
       }
       setLayout({ colOrder: next });
     },
-    [colOrder, setLayout],
+    [fullOrder, setLayout],
   );
 
   // ── Window (chip C7) ─────────────────────────────────────────────────
@@ -511,7 +519,6 @@ export default function LeftList({
       <div
         style={{
           padding: "10px 12px",
-          borderBottom: "1px solid var(--border)",
           background: "var(--surface)",
         }}
       >
@@ -522,9 +529,11 @@ export default function LeftList({
           aria-label="Search the library"
           style={{ width: "100%", padding: "6px 10px", fontSize: 13 }}
         />
-        <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
-          {filtered.length} of {entries.length} papers
-        </div>
+        {filtered.length < entries.length && (
+          <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
+            {filtered.length} of {entries.length} papers
+          </div>
+        )}
       </div>
 
       {/* Header row — flex(left-dot + grid + right-action) mirrors
@@ -535,11 +544,11 @@ export default function LeftList({
           display: "flex",
           alignItems: "stretch",
           background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
+          borderBottom: "1px solid var(--library-rule)",
           position: "sticky",
           top: 0,
           zIndex: 1,
-          fontSize: 11,
+          fontSize: 12,
         }}
       >
         <div style={{ flexShrink: 0, width: STATUS_DOT_COL_WIDTH }} />
@@ -736,8 +745,8 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
         borderRadius: "var(--radius-sm)",
         padding: "6px 8px",
         textAlign: align,
-        fontFamily: FONT_MONO,
-        fontSize: 11,
+        fontSize: 12,
+        fontWeight: 500,
         color: active ? "var(--control-selected-ink)" : "var(--muted)",
         cursor: "pointer",
         whiteSpace: "nowrap",
@@ -753,7 +762,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
       }}
     >
       {label.charAt(0).toUpperCase() + label.slice(1)}
-      <span style={{ fontFamily: FONT_MONO }}>{arrow}</span>
+      <span>{arrow}</span>
     </button>
   );
 }
@@ -904,7 +913,7 @@ function FacetSubBar({
               minWidth: 0,
               // Match SortHeader's 6px vertical rhythm so the rail sits on the
               // same baseline as the other one-line column headers.
-              padding: "6px 6px",
+              padding: "6px 2px",
               border: "none",
               borderRadius: "var(--radius-sm)",
               // Selected-column highlight: a taupe fill (not just text colour)
@@ -912,8 +921,8 @@ function FacetSubBar({
               // here and to the active regular header in SortHeader.
               background: active ? "var(--control-selected-tint)" : "transparent",
               cursor: "pointer",
-              fontFamily: FONT_MONO,
-              fontSize: 11,
+              fontSize: 12,
+              fontWeight: 500,
               lineHeight: "12px",
               color: active ? "var(--control-selected-ink)" : "var(--muted)",
               overflow: "hidden",

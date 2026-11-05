@@ -446,7 +446,6 @@
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--ink-muted, var(--muted));
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
 }
 
 .lib-dashboard-searchrow {
@@ -503,7 +502,6 @@
 
 .lib-dashboard-section-title {
   margin: 0 0 8px;
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 11px;
   font-weight: 500;
   color: var(--ink-muted, var(--muted));
@@ -538,7 +536,6 @@
 }
 
 .lib-dashboard-card-label {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 11px;
   font-weight: 500;
   color: var(--ink-muted, var(--muted));
@@ -630,7 +627,6 @@
   margin-top: 8px;
   font-size: 11px;
   color: var(--ink-muted, var(--muted));
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
 }
 
 .lib-dashboard-browseall {
@@ -663,7 +659,6 @@
    face, which the segments inherit. */
 
 .lib-viewswitch {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
 }
 
 /* ── Library list COLUMN boundary (`.list-col-resizer`) ────────────────
@@ -702,4 +697,25 @@
 .list-col-resizer.dragging {
   background: var(--drag-highlight);
   box-shadow: var(--drag-glow-line);
+}
+
+/* A catalog row at rest is its data. The row's own controls, and a status pill
+   with nothing to say, come up with the row, so fifteen rows read as fifteen
+   papers instead of forty-five buttons. */
+:root {
+  --library-rule: color-mix(in srgb, var(--border-light) 45%, transparent);
+}
+.lib-row .lib-row-reveal {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease-out;
+}
+.lib-row:hover .lib-row-reveal,
+.lib-row:focus-within .lib-row-reveal,
+.lib-row[data-selected] .lib-row-reveal {
+  opacity: 1;
+}
+@media (hover: none) {
+  .lib-row .lib-row-reveal {
+    opacity: 1;
+  }
 }

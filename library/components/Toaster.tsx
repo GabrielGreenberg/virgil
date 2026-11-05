@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NotificationItem } from "@library/lib/queue";
-import { notificationSeverity, notificationTtlMs } from "@library/lib/queue";
-import { FONT_MONO } from "@/lib/font-stacks";
-import { ERROR_INK } from "@/lib/error-ink";
+import { notificationTitle, notificationTtlMs } from "@library/lib/queue";
 import { TOAST_Z } from "@/floats/float-policy";
+import { Button } from "@/components/Button";
 
 interface ToastEntry extends NotificationItem {
   uid: string;
 }
+
+/** How many toasts show at once. The rest wait their turn: a skill sweep can
+ *  post dozens in one go, and a stack that tall would run up over the bar. */
+const MAX_VISIBLE_TOASTS = 4;
 
 export default function Toaster({ items }: { items: NotificationItem[] }) {
   const [visible, setVisible] = useState<ToastEntry[]>([]);
@@ -41,6 +44,9 @@ export default function Toaster({ items }: { items: NotificationItem[] }) {
 
   if (visible.length === 0) return null;
 
+  const showing = visible.slice(0, MAX_VISIBLE_TOASTS);
+  const waiting = visible.length - showing.length;
+
   return (
     <div
       style={{
@@ -53,22 +59,38 @@ export default function Toaster({ items }: { items: NotificationItem[] }) {
         zIndex: TOAST_Z,
       }}
     >
-      {visible.map((t) => (
+      {showing.map((t) => (
         <Toast key={t.uid} toast={t} onClose={() => removeToast(t.uid)} />
       ))}
+      {waiting > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "6px 14px",
+            background: "var(--surface)",
+            borderRadius: "var(--panel-radius)",
+            boxShadow: "var(--menu-shadow)",
+            fontSize: 12,
+            color: "var(--ink-muted)",
+          }}
+        >
+          <span>{waiting} more</span>
+          <Button variant="ghost" size="sm" onClick={() => setVisible([])}>
+            Dismiss all
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
+  // Severity sets how long a toast stays, not how it looks: a toast is a
+  // sentence and a way forward, and red stays the mark of lost data.
   const ttl = notificationTtlMs(toast);
-  const severity = notificationSeverity(toast);
-  const attention = severity === "attention";
-  // Two readings of one tone (task 867): the 3px EDGE carries no text-contrast
-  // obligation and keeps `--danger`; the 11px kind label is TEXT and takes the
-  // error role, which `--danger` paints under AA.
-  const accent = attention ? "var(--danger)" : "var(--accent)";
-  const accentInk = attention ? ERROR_INK : "var(--accent)";
 
   // Each toast owns one timer. Hovering pauses the countdown (we bank the
   // remaining time); leaving resumes it. A sibling arriving/leaving cannot
@@ -126,10 +148,8 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
       onMouseLeave={resume}
       style={{
         background: "var(--surface)",
-        border: "var(--pod-border)",
-        borderLeft: `3px solid ${accent}`,
-        borderRadius: "var(--radius-md)",
-        padding: "8px 12px 10px 14px",
+        borderRadius: "var(--panel-radius)",
+        padding: "10px 12px 12px 14px",
         boxShadow: "var(--menu-shadow)",
         fontSize: 13,
         maxWidth: 360,
@@ -146,9 +166,8 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
       >
         <div
           style={{
-            fontFamily: FONT_MONO,
-            fontSize: 11,
-            color: accentInk,
+            fontWeight: 600,
+            color: "var(--ink-strong)",
             flex: 1,
             minWidth: 0,
             overflow: "hidden",
@@ -156,7 +175,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
             whiteSpace: "nowrap",
           }}
         >
-          {toast.kind}
+          {notificationTitle(toast)}
           {toast.citekey ? ` · ${toast.citekey}` : ""}
         </div>
         <button
@@ -186,7 +205,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
           ×
         </button>
       </div>
-      <div>{toast.summary}</div>
+      <div style={{ color: "var(--ink-body)" }}>{toast.summary}</div>
     </div>
   );
 }

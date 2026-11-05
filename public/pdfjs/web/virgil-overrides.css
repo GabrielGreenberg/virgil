@@ -26,8 +26,8 @@
 :root {
   /* The live Virgil palette, copied in by PdfView.applyViewerPalette. The
      fallbacks are the shipped defaults (globals.css promote-defaults block). */
-  --v-topbar-bg: var(--virgil-topbar-bg, #c5dbe2);
-  --v-topbar-border: var(--virgil-topbar-border, #cbc3b8);
+  --v-topbar-bg: var(--virgil-topbar-bg, #ede3de);
+  --v-hairline: var(--virgil-border-light, #dcd3cb);
   --v-ink: var(--virgil-foreground, #1a1a1a);
   --v-surface: var(--virgil-surface, #ffffff);
   --v-muted: var(--virgil-muted, #8a8580);
@@ -38,10 +38,10 @@
 
   /* Toolbar surface + chrome -> Virgil topbar tokens */
   --toolbar-bg-color: var(--v-topbar-bg);
-  --toolbar-border-color: var(--v-topbar-border);
+  --toolbar-border-color: var(--v-hairline);
   --toolbar-height: 40px;
   --toolbar-box-shadow: none;
-  --toolbar-border-bottom: 1px solid var(--v-topbar-border);
+  --toolbar-border-bottom: 1px solid var(--v-hairline);
 
   --main-color: var(--v-ink);
 
@@ -58,11 +58,11 @@
   /* Page-number + scale fields */
   --field-color: var(--v-ink);
   --field-bg-color: var(--v-surface);
-  --field-border-color: var(--v-topbar-border);
+  --field-border-color: var(--v-hairline);
 
   /* Secondary toolbar doorhanger (kept for the few items we keep there) */
   --doorhanger-bg-color: var(--v-sheet);
-  --doorhanger-border-color: var(--v-topbar-border);
+  --doorhanger-border-color: var(--v-hairline);
   --doorhanger-hover-bg-color: var(--v-accent-hover);
 }
 
@@ -70,7 +70,7 @@
 #toolbarContainer,
 .toolbar {
   background-color: var(--v-topbar-bg);
-  border-bottom: 1px solid var(--v-topbar-border);
+  border-bottom: 1px solid var(--v-hairline);
   box-shadow: none;
 }
 

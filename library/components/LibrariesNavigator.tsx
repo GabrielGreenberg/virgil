@@ -15,7 +15,6 @@ import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import NavPod from "./NavPod";
 import { NavPodEmptyHint, NavPodRow } from "./NavPodRow";
 import RowMenu, { type RowMenuEntry } from "./RowMenu";
-import { FONT_MONO } from "@/lib/font-stacks";
 import { InlineRenameInput } from "@/components/InlineRenameInput";
 import { StatusDot } from "@/components/StatusDot";
 
@@ -320,9 +319,9 @@ function SectionHeader({
       <div
         style={{
           flex: 1,
-          fontSize: 11,
+          fontSize: 12,
+          fontWeight: 600,
           color: "var(--muted)",
-          fontFamily: FONT_MONO,
         }}
       >
         {children}

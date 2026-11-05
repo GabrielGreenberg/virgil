@@ -10,11 +10,11 @@
  *  1. Three tool icons across the top — Outline, Search, Word count. A click
  *     writes that tool's body at the top of the gutter (the same panel body
  *     the dock used to frame, rendered with no frame). Click again to close.
- *  2. Fold-out TEXT LISTS beneath: Footnotes, Numbered examples, To-dos, and
- *     any list added through "More" (Notes, Citations, Bibliography, Reports,
- *     Archive, Revisions, Cuts, Errors). Each card is ONE LINE of text; a
- *     click jumps to it in the paper and selects its card in the right
- *     gutter; a to-do's box still ticks.
+ *  2. Fold-out TEXT LISTS beneath. Footnotes and Bibliography by default; none
+ *     is required, and "More" adds any of the others (Numbered examples,
+ *     To-dos, Notes, Citations, Reports, Archive, Revisions, Cuts, Errors).
+ *     Each card is ONE LINE of text; a click jumps to it in the paper and
+ *     selects its card in the right gutter; a to-do's box still ticks.
  *
  * The CARDS themselves live only in the right gutter (`resolvePanelSide`
  * answers "right" for every panel under this layout). View state is the
@@ -44,9 +44,8 @@ import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import {
+  GUTTER_SECTIONS,
   GUTTER_TOOLS,
-  MORE_SECTIONS,
-  STANDING_SECTIONS,
   removeGutterSection,
   revealGutterSection,
   toggleGutterSectionFold,
@@ -118,12 +117,9 @@ export function ToolGutter(p: ToolGutterProps) {
   const tools = GUTTER_TOOLS.filter((t) => offered.has(t));
   const activeTool = state.tool && offered.has(state.tool) ? state.tool : null;
 
-  const sections: GutterSection[] = [
-    ...STANDING_SECTIONS.filter((s) => offered.has(s)),
-    ...state.extra.filter((s) => offered.has(s)),
-  ];
-  const moreChoices = MORE_SECTIONS.filter(
-    (s) => offered.has(s) && !state.extra.includes(s),
+  const sections = state.sections.filter((s) => offered.has(s));
+  const moreChoices = GUTTER_SECTIONS.filter(
+    (s) => offered.has(s) && !state.sections.includes(s),
   );
 
   const diagnostics = useDiagnosticsContext();
@@ -199,7 +195,6 @@ export function ToolGutter(p: ToolGutterProps) {
             section={s}
             rows={rowsFor(s)}
             folded={state.folded.includes(s)}
-            removable={(MORE_SECTIONS as readonly string[]).includes(s)}
             onActivate={activate}
             onToggleTodo={p.toggleTodo}
             selectedIds={selectedId}
@@ -269,7 +264,6 @@ function GutterSectionView({
   section,
   rows,
   folded,
-  removable,
   onActivate,
   onToggleTodo,
   selectedIds,
@@ -278,7 +272,6 @@ function GutterSectionView({
   section: GutterSection;
   rows: GutterRow[];
   folded: boolean;
-  removable: boolean;
   onActivate: (jump: GutterJump, el: HTMLElement | null) => void;
   onToggleTodo: (id: string) => void;
 }) {
@@ -298,18 +291,16 @@ function GutterSectionView({
           {title}
           {rows.length > 0 && <span className="tool-gutter-count">{rows.length}</span>}
         </PodDisclosure>
-        {removable && (
-          <button
-            type="button"
-            className="iconbtn-xs tool-gutter-remove opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-            onClick={() => removeGutterSection(section)}
-            {...iconHint({ label: `Remove ${title} from the list` })}
-          >
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        )}
+        <button
+          type="button"
+          className="iconbtn-xs tool-gutter-remove opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          onClick={() => removeGutterSection(section)}
+          {...iconHint({ label: `Remove ${title} from the list` })}
+        >
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
       </div>
       {!folded && (
         rows.length === 0 ? (

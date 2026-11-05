@@ -98,9 +98,11 @@ Two rules the family carries:
   banner dialogs and cards draw). Every error string reads it — the dialogs,
   the bug-report notice, bib cards and the bib modal, the system dialog's
   `danger` message, an invalid field's ink, the compile-log status, the error
-  card's severity word, the attention toast's label, the skill-sync and library
-  permission alerts. What stays on `--danger` is non-text: an attention toast's
-  EDGE, the error badge ICON, a dismiss icon, a destructive button or menu row.
+  card's severity word, the skill-sync and library permission alerts. What stays
+  on `--danger` is non-text: the error badge ICON, a dismiss icon, a destructive
+  button or menu row. A toast takes neither: it is a sentence and a way forward,
+  in ink, with a heading in words (`notificationTitle`), and severity sets only
+  how long it stays. Four show at once; the rest wait.
   `destructive-red-tokens.test.ts` ("error text reads the error role") pins
   those survivors as exact file sets, so the set only shrinks, and fails any
   `role="alert"` line that paints `--danger`.
@@ -615,19 +617,15 @@ The token scales:
   member of a traffic light and means "ok" only against `--status-warn` /
   `--status-danger` in the same glyph, while these are shown with no red or
   yellow sibling in view (globals.css states the test).
-- **Library edge** (`--library-edge`): the SSOT for every Library-surface
-  page edge — tab silhouette strokes, the panel/body frame border, NavPod.
-  DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
-  so it is a darker tint of the library field *by construction* and can never
-  drift into a warm-on-cool clash (the failure mode when these edges rode the
-  top-bar token `--topbar-border` over the promoted cool `--library-bg`; task
-  048). Any new Library-surface edge consumes THIS token, never
-  `--topbar-border`; a guard in `tab-chrome-contracts.test.ts` fails the build if a
-  `library/` source re-grabs `--topbar-border`. The general pattern: an edge
-  token that must harmonize with a surface should be `color-mix`-derived FROM
-  that surface's var, not a hand-picked hex that a future retone can desync.
+- **Library surfaces have no outline.** The navigator is text on the canvas, a
+  list is a sheet on `--card-shadow-ambient`, and the active folder tab is the
+  top of that sheet, drawn by its fill alone (`strokeVar: "transparent"`). A
+  paper's reader stands on the canvas. Rules inside a list are `--library-rule`,
+  a soft tint of `--border-light`.
+- **An edge that must harmonize with a surface** should be `color-mix`-derived
+  FROM that surface's var, not a hand-picked hex that a future retone can desync.
 
-Locked aliases (must track each other): `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
+Locked aliases (must track each other): `--pod-editor`/`--surface`,
 `--h1-color`/`--foreground`, `--h2h3-color`/`--editor-text-color`,
 `--scrollbar-hover`/`--muted-light`, `--zen-canvas-cool`/`--topbar-bg`. Each is DERIVED (`var(--partner)`), never
 a re-spelled literal, and
@@ -959,6 +957,13 @@ Mono inside cards always routes through the override-first stack
 class (Tailwind's `font-mono` skips the user's mono override pref; apply
 `.card-mono` directly and set the size alongside it). CODE/key mono sits on
 the META tier (11px).
+
+**The Library list keeps its columns honest.** A column that does not fit steps
+aside whole (`fitColumns`: citekey, then status, then year) rather than clip to a
+letter. The title has a floor and takes the slack first; `status` flexes between
+a floor its four labels stay readable at and the saved width. A row's controls,
+and a status pill with nothing to say, wear `.lib-row-reveal` and come up with the
+row, so a list at rest reads as papers.
 
 **Status badges (library cards).** Two documented chip dialects coexist on
 the bibliography/citation card's stacked header, distinguished by role, not
@@ -2030,7 +2035,9 @@ fails if this prose and `globals.css` disagree). Header
 slots, in order: title + count, after-title tool, add button, extras, the ⋮
 menu, close X. Order is fixed even when slots are absent. The × exists only in
 a docked pod, whose `PanelChromeProvider` supplies it: a tool in the tool gutter
-is closed by its own button in the tools row, so it has none.
+is closed by its own button in the tools row, so it has none. There a tool's
+title sits at the left edge in capitals, above the sentence-case section
+headings, and its controls sit at the right.
 (AI requests are per-**card** — the `AiRequestCheckbox` — not a panel-header
 slot.)
 
@@ -2464,6 +2471,12 @@ spell the treatment ONCE per control family, not once per button (task 309:
 the two Search toggles were spelled twice, had drifted together onto raw
 Tailwind amber + `--accent`, and were pinned by a directory census —
 `src/panels/Search/__tests__/search-token-convergence.test.ts`).
+
+**A number in a list is a label.** Footnote and example markers, section numbers
+and word counts read `--gutter-number`, set back from the text they label, and
+the text beside them stays strong ink. It sits at 3.5:1 on the sand on purpose:
+under the 4.5:1 text floor, since the number is never the only way to read the
+row.
 
 **A segmented choice is the primitive: `<SegmentedToggle>`**
 ([components/SegmentedToggle.tsx](components/SegmentedToggle.tsx), task 950).
@@ -4426,9 +4439,11 @@ reload (or a successful re-anchor) restores it to the grid.
 ## Top bar
 
 40px, `--topbar-bg`, which is the canvas colour: the bar is part of the ground, not a band above it. One row. Slots: logo, project tabs, title bar, AI
-status, user menu. Hovers use `hover-on-dark`. The active-project tab
-joins the canvas via the locked `--main-tab-bg` = `--background`
-alias.
+status, user menu. Hovers use `hover-on-dark`. The active tab is a
+lozenge: `SEGMENT_ON`, the same white tile as the view switch, so the bar
+has one way of saying what is selected. Inactive tabs are plain text in
+the same 24px box. The bar has no bottom line by default (`topbarBorder`
+matches the bar) and no dividers between tabs: it stands on the canvas.
 
 Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
@@ -4523,12 +4538,8 @@ strips read:
 
 Under the ladder is still a structural FLOOR: the tab row lives in a scroll
 container, which clips, so even at the bottom of the ladder a tab can never
-paint over tier 1. The seam is the one detail the scroller owes: `overflow-x:
-auto` coerces an unstated vertical axis to `auto`, and the active tab hangs 1px
-BELOW the strip to merge into the canvas — so the axis is stated `hidden` and
-the overhang is kept INSIDE the clip by a 1px bottom padding + −1px margin
-pair (`tabStripSeamPadding`), the mechanism the inner strip has carried since
-task 324. **A new bar occupant declares which tier it is in; it does not
+paint over tier 1. `overflow-x: auto` coerces an unstated vertical axis to
+`auto`, so the scroller states its axis `hidden`. **A new bar occupant declares which tier it is in; it does not
 position itself against the others** — and nothing in a higher tier changes
 width in response to the verdict, which is what keeps the rule from
 oscillating against its own output (the save pill therefore honours the user's
@@ -4666,11 +4677,11 @@ the attribute AND injects synthetic insets.
 
 ## Folder tabs — layout-driven chrome
 
-Both tab strips (outer Virgil bar + inner Library panels) render their
-ACTIVE tab through ONE module: `src/components/chrome/FolderTabChrome.tsx`
-with the geometry SSOT `src/components/chrome/folder-tab-geometry.ts`
-(named variants `library`/`topbar` for the height/edge-token/seam
-differences). The silhouette is a three-piece composition — two constant
+The Library's inner panel tabs render their ACTIVE tab through
+`src/components/chrome/FolderTabChrome.tsx` with the geometry SSOT
+`src/components/chrome/folder-tab-geometry.ts`. A folder tab says "this
+sheet belongs to this tab", so it stands only where it opens a sheet; the
+Virgil bar's outer tabs are lozenges (see "Top bar"). The silhouette is a three-piece composition — two constant
 SVG end caps (swoop foot + shoulder; half-pixel crispness baked in once)
 plus a stretchable middle (fill background + 1px top border) — so the tab
 tracks any width purely by layout. Rules that generalize:

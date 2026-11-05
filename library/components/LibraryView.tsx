@@ -319,9 +319,9 @@ export default function LibraryView({
     if (!lastSync || !lastSync.synced || lastSync.filesWritten <= 0) return;
     setSyncToasts([
       {
-        kind: "indexed",
+        kind: "skills-updated",
         at: new Date().toISOString(),
-        summary: `Skills updated to v${lastSync.version} — restart your Claude Code cowork session to pick up the new commands.`,
+        summary: `Now at v${lastSync.version}. Restart your Claude Code cowork session to pick up the new commands.`,
       },
     ]);
   }, [lastSync]);
@@ -1000,7 +1000,8 @@ export default function LibraryView({
                   position: "relative",
                   display: "flex",
                   flexDirection: "column",
-                  padding: 6,
+                  // The foot clears the Stack row at the window's corner.
+                  padding: "6px 6px 44px",
                   background: "var(--library-bg)",
                 }}
               >

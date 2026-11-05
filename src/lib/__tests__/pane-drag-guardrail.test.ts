@@ -127,6 +127,8 @@ const PERMITTED_GESTURE_RESIZE_OBSERVERS: Record<string, string> = {
   // ── library silo ──
   "library/components/panel-tabs/PanelTabStrip.tsx":
     "[cost: per fire = a scheduled frame; per coalesced FRAME = one flush-right boolean measure behind an equality bail; ZERO fires during a layout gesture] PARKED — Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); parked via parkDuringLayoutGesture.",
+  "library/hooks/useFittedColumns.ts":
+    "[cost: per fire = one clientWidth read + an arithmetic fit, behind an equality bail on the column SET; ZERO fires during a gesture] PARKED — which list columns fit; a pane drag settles it once on the end edge.",
   "library/components/LeftList.tsx":
     "[cost: per fire = one equality-bailed setState of the rows-viewport height] LIVE — Rows-viewport measure for the virtualization window. Deliberately unparked: a horizontal gutter drag cannot change the height, so mid-drag fires bail to the same state and cost one comparison.",
   "library/components/RightDetail.tsx":

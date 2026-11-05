@@ -94,10 +94,9 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      flattens Search's result cards (`[data-card]`) and Word count's pods
      (`.rounded-lg`) onto the manila. There is no ×: the tool's own button in
      the row above closes it, and a tool mounts no `PanelChromeProvider`.
-  2. **Lists** — fold-out sections. Standing: Footnotes, Numbered examples,
-     To-dos (fold, never leave). "More" (an `AnchoredMenu`) adds Notes,
-     Citations, Bibliography, Reports, Archive, Revisions, Cuts, Errors (each
-     removable). A row is ONE line of text from
+  2. **Lists** — fold-out sections. None is required: Footnotes and Bibliography
+     show by default (`DEFAULT_GUTTER_SECTIONS`), any can be removed, and "More"
+     (an `AnchoredMenu`) adds the rest, including one the user removed. A row is ONE line of text from
      [gutter-rows.ts](../../src/components/editor-layout/tool-gutter/gutter-rows.ts)
      (pure, archived cards left out via `archivedIds`, `\cite…{}` read as
      "Author Year"); a click selects the card (`useSelectionsContext`) and jumps
@@ -335,9 +334,9 @@ The ladder is stated once in [bar-occupancy.ts](../../src/components/editor-layo
 
 The collapsible group collapses by **width, not by unmounting**, which is what keeps the measurement available in both states — and leaves three debts paid on the collapse edge: the children are REMOUNTED (a `key` on the inner content, never on the measured wrapper) so body-portalled dropdowns close, focus moves to the chip (tracked as focus-WITHIN, since `activeElement` has already fallen to `<body>` by the time an effect can ask), and the clip is CONDITIONAL so an expanded button's focus ring isn't trimmed. A composed ref on a measured element must be a **stable** `useCallback` — React detaches an unstable ref callback on every render, and this one's detach drops the strip's measurement. CI: `bar-occupancy.test.tsx` drives the REAL `TopBar` through a fake `ResizeObserver` (jsdom has no layout, so what is measurable is the DECISION, not the boxes) plus a census of the scroller pair, the shared floors and the shared label cap. The occupancy rule is fed the tab row's NATURAL width even while the row is compressed (`tabRowNaturalWidth` — a label's `scrollWidth` reports its un-ellipsized text width), because fed the compressed box the rule would oscillate. (The pre-561 residual — a clipped strip with no overflow affordance and a drop indicator invisible past the boundary — is CLOSED: the strip scrolls, and the indicator is a child of the non-scrolling root, clamped to the scroller's visible span.)
 
-## Document folder tabs
+## Virgil bar tabs
 
-[src/components/editor-layout/DocumentFolderTab.tsx](../../src/components/editor-layout/DocumentFolderTab.tsx) renders the ACTIVE manila-folder document tab in the topbar (rounded top shoulders + convex swoop feet); inactive tabs are flat `InlineTabLabel`s with no silhouette. The silhouette is the shared layout-driven three-piece chrome [src/components/chrome/FolderTabChrome.tsx](../../src/components/chrome/FolderTabChrome.tsx) — two constant SVG end caps + a stretchable middle div, geometry SSOT in [src/components/chrome/folder-tab-geometry.ts](../../src/components/chrome/folder-tab-geometry.ts) (`FOLDER_TAB_VARIANTS.topbar`; the inner Library panel tabs render the SAME module with the `library` variant). No ResizeObserver, no measured per-width `d`-strings — the forked measured-SVG builders (`folder-path.ts`, `buildActiveTabStrokePath`/`buildTabFillPath`) were deleted in the library-ui refactor. The stroke omits the bottom edge so the tab's bottom fill row overlaps the topbar border and the canvas draws the seam. Under WCO (below) the leftmost tab's outline continues under the reserved window-controls gutter (c7460b84).
+[src/components/editor-layout/ActiveBarTab.tsx](../../src/components/editor-layout/ActiveBarTab.tsx) renders the ACTIVE outer tab (document, paper or library) as a lozenge: `SEGMENT_ON`, the same white tile as the Text/Code/PDF switch beside it. Inactive tabs are flat `InlineTabLabel`s in the same 24px box and padding, so activating one leaves its text where it was. The bar has no bottom line by default: `topbarBorder` defaults to the bar's own colour, and stays a preference. The Library's INNER tabs are still folders: the shared layout-driven three-piece chrome [src/components/chrome/FolderTabChrome.tsx](../../src/components/chrome/FolderTabChrome.tsx), with geometry in `folder-tab-geometry.ts`, constructs no ResizeObserver, and the strip clips rather than spilling (task 395; `TabStrip`).
 
 ## Window chrome / WCO title bar
 

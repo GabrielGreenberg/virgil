@@ -229,7 +229,9 @@ export function PanelTabStrip({
       }
       const t = el.getBoundingClientRect();
       const p = panel.getBoundingClientRect();
-      const flush = Math.abs(t.right - (p.right - STRIP_SIDE_PAD)) <= 2;
+      // At or past the sheet's right edge: an untucked foot there would curl
+      // out over the field beyond the corner.
+      const flush = t.right >= p.right - STRIP_SIDE_PAD - 2;
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
     // Parked during a pane-resize drag (parkDuringLayoutGesture on the app-wide

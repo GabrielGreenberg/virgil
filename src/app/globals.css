@@ -70,13 +70,12 @@
      The PWA/browser chrome colour (<meta name="theme-color">, manifest
      theme_color) follows --topbar-bg's PAINTED value; src/lib/theme-color.ts
      owns it in every phase (task 1274).
-     --main-tab-bg is locked to --background so the active tab and the page
-     canvas it joins always share a color.
      --topbar-bg, --topbar-bg-bottom (the gradient's lower stop),
      --topbar-border, --tab-bg, --library-bg, --virgil-bar-text: promoted. */
   /* Virgil-bar seam lift (task 821): the ONE off-grid spacing value the bar
-     row shares. Every 24px-tall seam-anchored group (tabs, the "+", the
-     StatusCluster icons) is `self-end mb-[var(--bar-seam-lift)]`, which lands
+     row shares. Every 24px-tall seam-anchored group (the "+", the StatusCluster
+     icons) is `self-end mb-[var(--bar-seam-lift)]`, and the tab row lifts by the
+     same amount, which lands
      its optical centre at seam−15 — the tab titles' anchor (tasks 094/289).
      aligns: a 24px row's centre to seam−15, not the 4px grid. */
   --bar-seam-lift: 3px;
@@ -86,17 +85,6 @@
      segment `gap` + trailing margin); no occupant carries its own margin.
      6px = Tailwind v4 `1.5` (--spacing 0.25rem × 1.5). */
   --bar-occupant-gap: 6px;
-  --main-tab-bg: var(--background);
-  /* Library page-edge chrome (tab silhouettes, panel/body frame, NavPod).
-     DERIVED from --library-bg by construction — a low-contrast darker tint —
-     so it can never drift into a warm-on-cool clash the way the top-bar token
-     --topbar-border did (task 048). Defined ONCE here: because it references
-     var(--library-bg), it resolves against whichever --library-bg is live
-     (the promoted pref's value, or a user retone), so it auto-tracks every
-     retone with NO second definition to keep in sync. Library-surface edges
-     must consume THIS token, never --topbar-border. */
-  --library-edge: color-mix(in oklab, var(--library-bg) 82%, #000);
-
   /* Window insets — the app's single window-edge inset model (SSOT)
      ==============================================================
      Every OS/browser-reserved edge region flows through these vars: app
@@ -603,6 +591,7 @@
   --surface-muted-strong: #f5f5f4;   /* icon-button hover, chip bg (≈ stone-100) */
   --card-surface: #fbf7f3;           /* a card at rest, one step behind the paper */
   --segment-track: rgba(90, 70, 50, 0.08);  /* a segmented control's recessed track */
+  --gutter-number: #80756b;  /* a number beside text in a list: a label, set back from what it labels */
   --segment-tile-edge: 0 0 0 0.5px rgba(70, 50, 30, 0.14);  /* the selected tile's hairline */
   /* The keyboard-roving "selection square" in action menus — the highlight the
      L/R/U/D arrow cursor moves. A darker, blue-tinted surface (derived from
@@ -827,7 +816,7 @@
   --editor-text-color: #000000;
   --topbar-bg: #ede3de;
   --topbar-bg-bottom: #ede3de;
-  --topbar-border: #dcd3cb;
+  --topbar-border: #ede3de;
   --tab-bg: #ede3de;
   --library-bg: #ede3de;
   --virgil-bar-text: #625a53;
@@ -6063,8 +6052,8 @@ body.perf-contain .static-borrowed-text {
      still seam-matches the solid theme-color strip; ONLY the 1px border-b
      moves down 1px. Still one owner, no positioned pseudo (a prior WCO
      ::after landed a SECOND line one padding-box pixel higher → the doubled
-     edge; removed). The active-tab cover-rect merge is relative to the border
-     and shifts down with it, so tabs still merge bottom-lessly. */
+     edge; removed). The line matches the bar by default (topbarBorder), so
+     this only shows once a user sets a colour for it. */
   min-height: max(var(--bar-base-h), calc(var(--window-inset-top) + 1px));
 }
 :root[data-display-mode="window-controls-overlay"] .virgil-bar > * {
@@ -6075,10 +6064,6 @@ body.perf-contain .static-borrowed-text {
   -webkit-app-region: drag;
   app-region: drag;
 }
-
-/* Tab swoops removed — DocumentFolderTab now renders each tab as a single
-   SVG shape with a continuous border around its full outline, so the
-   pseudo-element radial-gradient swoops are no longer needed. */
 
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
@@ -6954,6 +6939,32 @@ body.perf-contain .static-borrowed-text {
   padding: calc(var(--pod-gap) + 2px) 4px 8px;
   background: var(--background);
 }
+/* A tool's header runs the gutter's width: the title in capitals at the left
+   edge, under the tool buttons, and its controls at the right. */
+.tool-gutter-tool .panel-header {
+  padding-inline: 2px 0;
+}
+.tool-gutter-tool .panel-header > .flex-1 {
+  display: none;
+}
+.tool-gutter-tool .panel-header-title {
+  margin-right: auto;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+}
+/* The gutter scrolls, not the tool, so a tool reserves no scrollbar lane; the
+   outline's rows run to the gutter's edges. */
+.tool-gutter-tool .panel-scroll {
+  scrollbar-gutter: auto;
+}
+.tool-gutter-tool[data-gutter-tool="outline"] .panel-scroll {
+  padding: 0;
+}
+.tool-gutter-tool .outline-header-rule {
+  display: none;
+}
 /* A tool body renders the dock's own panel body, frameless: no fixed
    height (it grows with its content inside the gutter's scroll), and its
    header bar takes the manila instead of the pod fill. */
@@ -7071,8 +7082,11 @@ body.perf-contain .static-borrowed-text {
   padding-top: 2px;
   font-size: inherit;
   line-height: inherit;
-  color: var(--muted);
+  color: var(--gutter-number);
   font-variant-numeric: tabular-nums;
+}
+.outline-number {
+  color: var(--gutter-number);
 }
 .tool-gutter-row[data-selected] .tool-gutter-row-text {
   color: var(--accent);

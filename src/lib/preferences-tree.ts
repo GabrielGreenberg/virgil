@@ -71,7 +71,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
     children: [
       { type: "color", key: "topbarBackground", label: "Top bar background", description: "Fill color of the application title bar (also sets the browser/PWA chrome color). Top edge of the Virgil bar gradient." },
       { type: "color", key: "topbarBackgroundBottom", label: "Top bar background (bottom)", description: "Bottom color of the Virgil bar gradient — fades down from the top-bar background. Set equal to the top for a flat bar." },
-      { type: "color", key: "topbarBorder", label: "Top bar border", description: "Bottom edge separating title bar from content" },
+      { type: "color", key: "topbarBorder", label: "Top bar line", description: "Line under the top bar. Matches the bar by default, so it doesn't show." },
     ],
   },
   {

@@ -428,7 +428,7 @@ export default function PaperHeader({
               showStatusRow={false}
               dedupeApaHeadline
             />
-            {/* raw citekey + copy + fields/edit — mono micro-controls under
+            {/* raw citekey + copy + fields/edit — micro-controls under
                 the headline, aligned with the chip column. */}
             <div
               style={{
@@ -487,14 +487,13 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: FONT_MONO,
-                    fontSize: 11,
+                    fontSize: 12,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
                 >
                   <Chevron expanded={expanded} />
-                  fields
+                  Fields
                 </button>
               )}
               {onEdit ? (
@@ -505,13 +504,12 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: FONT_MONO,
-                    fontSize: 11,
+                    fontSize: 12,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
                 >
-                  edit
+                  Edit
                 </button>
               ) : editPending ? (
                 <button
@@ -522,14 +520,13 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: FONT_MONO,
-                    fontSize: 11,
+                    fontSize: 12,
                     cursor: "not-allowed",
                     padding: "0 4px",
                     opacity: 0.55,
                   }}
                 >
-                  edit
+                  Edit
                 </button>
               ) : null}
             </div>

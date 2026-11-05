@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /**
  * The tool gutter (task 1440): tools write their body at the top of the
- * gutter, the standing lists fold, "More" adds a list, a row click goes
+ * gutter, every list folds and can leave, "More" adds one, a row click goes
  * through the editor's own jump door and selects the card, and a to-do's box
  * ticks without a jump.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { FootnoteInfo } from "@/components/Editor";
 import type { TodoItem } from "@/lib/types";
 
@@ -47,7 +47,7 @@ vi.mock("@/hooks/useDiagnostics", () => ({
 }));
 
 import { ToolGutter } from "../ToolGutter";
-import { __resetToolGutterStoreForTests } from "@/lib/tool-gutter-store";
+import { __resetToolGutterStoreForTests, revealGutterSection } from "@/lib/tool-gutter-store";
 import type { PanelKind } from "@/panels/_shared/types";
 
 const para = (text: string) => ({
@@ -97,13 +97,13 @@ beforeEach(() => {
 });
 
 describe("ToolGutter", () => {
-  it("shows the three tools and the three standing lists, no card chrome", () => {
+  it("shows the three tools and Footnotes and Bibliography by default, no card chrome", () => {
     mount();
     expect(screen.getByRole("toolbar", { name: "Tools" }).querySelectorAll("button")).toHaveLength(3);
     const sections = [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
       s.getAttribute("data-gutter-section"),
     );
-    expect(sections).toEqual(["footnotes", "examples", "todo"]);
+    expect(sections).toEqual(["footnotes", "bibliography"]);
     expect(document.querySelector("[data-card]")).toBeNull();
     expect(screen.getByText("None yet")).toBeTruthy();
   });
@@ -127,6 +127,22 @@ describe("ToolGutter", () => {
     expect(within(fn as HTMLElement).queryByText("First note")).toBeNull();
   });
 
+  it("every list can leave, the defaults included, and More brings it back", () => {
+    mount();
+    const sections = () =>
+      [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
+        s.getAttribute("data-gutter-section"),
+      );
+    for (const id of ["footnotes", "bibliography"]) {
+      const section = document.querySelector(`[data-gutter-section="${id}"]`) as HTMLElement;
+      fireEvent.click(within(section).getByRole("button", { name: /^Remove / }));
+    }
+    expect(sections()).toEqual([]);
+    expect(screen.getByRole("button", { name: "More lists" })).toBeTruthy();
+    act(() => revealGutterSection("footnotes"));
+    expect(sections()).toEqual(["footnotes"]);
+  });
+
   it("a row click selects the card and jumps through the editor's door", () => {
     mount();
     fireEvent.click(screen.getByText("First note"));
@@ -137,6 +153,7 @@ describe("ToolGutter", () => {
   });
 
   it("a to-do's box ticks without a jump", () => {
+    revealGutterSection("todo");
     const { toggleTodo } = mount();
     fireEvent.click(screen.getByRole("checkbox", { name: "Mark done" }));
     expect(toggleTodo).toHaveBeenCalledWith("t1");
@@ -144,6 +161,7 @@ describe("ToolGutter", () => {
   });
 
   it("offers only what the host offers (the Reader's whitelist)", () => {
+    revealGutterSection("examples");
     mount(["outline", "search", "footnotes", "examples", "notes"]);
     expect(screen.getByRole("toolbar", { name: "Tools" }).querySelectorAll("button")).toHaveLength(2);
     const sections = [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
