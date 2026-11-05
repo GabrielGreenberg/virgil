@@ -38,11 +38,17 @@ from dataclasses import dataclass
 
 # Fields that are incoherent on an entry of each type. Fields outside this set
 # are fine (many bibs carry legitimate extras like `month`, `note`, `keywords`).
+# The app's edit form (`PUBLICATION_FIELDS_BY_TYPE` in library/lib/bib-edit.ts)
+# may never OFFER a field this table forbids for that type, and its type list
+# must cover every type named here — pinned by
+# library/lib/__tests__/bib-vocabulary-parity.test.ts.
 DISALLOWED_FIELDS: dict[str, set[str]] = {
     "phdthesis": {"journal", "publisher", "pages", "volume", "number", "booktitle"},
     "mastersthesis": {"journal", "publisher", "pages", "volume", "number", "booktitle"},
     "article": {"school", "booktitle"},
-    "book": {"journal", "volume", "number", "booktitle"},
+    # `volume` is legitimate on a book (a volume of a multi-volume work — the
+    # standard styles print it), and the app's edit form offers it (task 1471).
+    "book": {"journal", "number", "booktitle"},
     "inbook": {"journal", "volume", "number"},
     "incollection": {"journal", "school"},
     "inproceedings": {"journal", "school"},

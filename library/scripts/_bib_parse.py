@@ -209,14 +209,22 @@ def read_master_bib(path: Path) -> dict[str, dict]:
 
 
 def emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
-    """Emit a `@type{citekey, …}` block. Mirrors the format used by triage_apply.
+    """Emit a `@type{citekey, …}` block — THE one entry emitter (task 1471).
+
+    `_tools.emit_bib_entry` delegates here, and the app's `emitBibEntry`
+    (`library/lib/bib-edit.ts`) is pinned byte-identical to it by
+    `library/lib/__tests__/bib-vocabulary-parity.test.ts`. A value is trimmed;
+    an empty or whitespace-only value is omitted (it says nothing a missing
+    field doesn't).
 
     The no-field form keeps the comma (`@misc{key,\\n}\\n`): `_BIB_ENTRY_START_RE`
     requires it, so the comma-less variant emitted an entry the parser could
     never see again — and an upsert would then append a duplicate rather than
     replace it.
     """
-    field_lines = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields.items() if v)
+    field_lines = ",\n".join(
+        f"  {k} = {{{v.strip()}}}" for k, v in fields.items() if v and v.strip()
+    )
     if field_lines:
         return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
     return f"@{entry_type}{{{citekey},\n}}\n"
