@@ -11,7 +11,7 @@
  * SEPARATE document that does NOT inherit the parent app's globals.css, nor
  * the user's Colors preferences written onto the parent's :root at runtime.
  * So this file names NO colour of its own: the wrapper
- * (library/components/PdfView.tsx, `applyViewerPalette`) copies each LIVE
+ * (src/components/PdfViewer.tsx, `applyViewerPalette`) copies each LIVE
  * Virgil token onto this document's root as `--virgil-<name>` on every open
  * and on every palette change, and the rules below consume only those. Each
  * var() carries the shipped default as its fallback, for the frame before the
@@ -20,7 +20,8 @@
  *
  * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip in the
  * Virgil top-bar colour, in the same register as the Library TopBar, keeping only page navigation +
- * zoom, and hiding the annotate / editor / print / download / open groups.
+ * zoom, and hiding the annotate / editor / open groups. Print and download show
+ * only on the compiled paper.
  */
 
 :root {
@@ -103,6 +104,11 @@
   height: 40px;
 }
 
+/* The print dialog's progress bar is a native control. */
+progress {
+  accent-color: var(--v-accent);
+}
+
 #sidebarContent {
   box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 var(--v-hairline);
 }
@@ -131,8 +137,8 @@
 }
 
 /*
- * Hide the groups we don't want: annotate/editor tools, print, download,
- * open-file, presentation mode, bookmark. We keep:
+ * Hide the groups we don't want: annotate/editor tools, open-file, presentation
+ * mode, bookmark. We keep:
  *   - sidebar toggle (thumbnails / outline)
  *   - previous / next page + page-number field + page count
  *   - zoom out / in + scale dropdown
@@ -143,13 +149,21 @@
 #editorHighlight,
 #editorInk,
 #editorStamp,
-#printButton,
-#downloadButton,
-#secondaryPrint,
-#secondaryDownload,
 #secondaryOpenFile,
 #presentationMode,
 #viewBookmark,
 #viewBookmarkSeparator {
+  display: none !important;
+}
+
+/*
+ * Print and Download are for the writer's own compiled paper, which has no other
+ * door to them. The wrapper puts `.virgil-compiled` on the root for that mount
+ * (PdfViewer.tsx, COMPILED_VIEWER_CLASS); a Library paper never carries it.
+ */
+:root:not(.virgil-compiled) #printButton,
+:root:not(.virgil-compiled) #downloadButton,
+:root:not(.virgil-compiled) #secondaryPrint,
+:root:not(.virgil-compiled) #secondaryDownload {
   display: none !important;
 }

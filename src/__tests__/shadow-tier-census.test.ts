@@ -181,7 +181,7 @@ export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; wh
   { file: "src/app/globals.css", needle: ".hint-bubble {", what: "hint tooltip" },
   { file: "src/components/EditorPane.tsx", needle: "── Floating Save/Cancel chip", what: "drop-mode Save/Cancel chip" },
   { file: "src/components/CompilePaneStatus.tsx", needle: "bg-yellow-100 text-yellow-800", what: "stale-PDF badge" },
-  { file: "src/components/CompilePaneStatus.tsx", needle: "bg-neutral-900/85 text-white/90", what: "compile-running chip" },
+  { file: "src/components/CompilePaneStatus.tsx", needle: "bg-[var(--pod-panel)] text-ink-body", what: "compile-running chip" },
   { file: "src/app/globals.css", needle: ".label-ref-popover {", what: "label-ref popover" },
   { file: "src/app/globals.css", needle: ".label-ref-popover-dropdown {", what: "label-ref dropdown" },
   { file: "src/app/globals.css", needle: ".math-popover {", what: "math popover" },

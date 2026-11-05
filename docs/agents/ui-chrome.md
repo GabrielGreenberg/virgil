@@ -35,7 +35,7 @@ EditorLayout (shell)
     ├─ library-outer branch → <LibraryOuterView> → <LibraryApp>
     └─ right-hand split pane → split-with-code.tsx, ONE slot (task 1320):
         code → CodeEditor (state in EditorLayout; code↔TipTap bridge)
-        pdf  → FramedViewerSurface + compiled-PDF iframe / CompilePaneStatus
+        pdf  → FramedViewerSurface + PdfViewer (role "compiled") / CompilePaneStatus
 
 EditorPane (canonical editor surface)
 ├─ PaneRail side="left" (icon strip, OmniFilterMenu)

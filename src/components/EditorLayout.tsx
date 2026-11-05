@@ -8,6 +8,7 @@ import { announceEditRefused, editRefusalNotice } from "@/lib/edit-refusal";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
+import PdfViewer from "./PdfViewer";
 import {
   type RightPane,
   afterDocSwitch,
@@ -30,6 +31,7 @@ import { applyPerfBodyFlags } from "@/lib/perf-feature-flags";
 import {
   isLayoutGestureActive,
   parkDuringLayoutGesture,
+  PaneFreeze,
 } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
@@ -237,7 +239,7 @@ import {
   useDocLoadFailure,
   useDocLoadFailureRevision,
 } from "@/lib/doc-load-failure";
-import { relocateDoc } from "@/lib/storage";
+import { pdfFilenameFromTex, relocateDoc } from "@/lib/storage";
 import { RecentPapersList } from "./RecentPapersList";
 import { InstallPwaPrompt } from "./InstallPwaPrompt";
 import { LibraryTabView } from "./library/LibraryTabView";
@@ -3145,41 +3147,45 @@ export default function EditorLayout() {
                         // text in the same right-hand pane the code view uses
                         // (it was a whole-surface replacement that hid the
                         // editor). The pane-resize engine's drag shield covers
-                        // the iframe during a gutter drag.
-                        <FramedViewerSurface
-                          backdrop="dark"
-                          paddingLeft={0}
-                          paddingBottom={zenModeOn ? 4 : "var(--pod-gap)"}
-                        >
-                          {/* P6: the viewer reads this pane's bubbled PDF
-                              state — the single source of truth. `pdfBlobUrl`
-                              is the fresh-compile blob OR the pane's cold-start
-                              disk seed; `pdfStale` is owned solely by the
-                              pane's edit-vs-compile tracker. */}
-                          {paneState?.pdfBlobUrl ? (
-                            <iframe
-                              src={paneState.pdfBlobUrl}
-                              className="w-full h-full border-none"
-                              style={{ borderRadius: "var(--pod-radius)" }}
-                              title="Compiled PDF"
-                            />
-                          ) : (
-                            /* Task 454: never a bare dark surface —
-                               `CompilePaneStatus` renders the live phase, the
-                               last failure, or the honest "nothing yet"
-                               prompt, which "no pdfBlobUrl" cannot tell apart. */
-                            <CompilePaneStatus docId={slotDocId} />
-                          )}
-                          {/* Task 854: over a showing PDF, `PdfPaneOverlay`
-                              paints the live compile phase, else the "out of
-                              date" chip when the PDF lags the edits. */}
-                          {paneState?.pdfBlobUrl && (
-                            <PdfPaneOverlay
-                              docId={slotDocId}
-                              stale={!!paneState.pdfStale}
-                            />
-                          )}
-                        </FramedViewerSurface>
+                        // the iframe during a gutter drag, and the freeze makes
+                        // pdf.js re-rasterize once per drag, not per frame. The
+                        // split's divider moves this pane's LEFT edge, so its
+                        // right edge is the one that stays still.
+                        <PaneFreeze anchor="right">
+                          <FramedViewerSurface
+                            paddingLeft={0}
+                            paddingBottom={zenModeOn ? 4 : "var(--pod-gap)"}
+                          >
+                            {/* P6: the viewer reads this pane's bubbled PDF
+                                state — the single source of truth. `pdfBlobUrl`
+                                is the fresh-compile blob OR the pane's cold-start
+                                disk seed; `pdfStale` is owned solely by the
+                                pane's edit-vs-compile tracker. */}
+                            {paneState?.pdfBlobUrl ? (
+                              <PdfViewer
+                                role="compiled"
+                                id={slotDocId}
+                                url={paneState.pdfBlobUrl}
+                                filename={pdfFilenameFromTex(activeTexFilename ?? "main.tex")}
+                              />
+                            ) : (
+                              /* Task 454: never a bare surface —
+                                 `CompilePaneStatus` renders the live phase, the
+                                 last failure, or the honest "nothing yet"
+                                 prompt, which "no pdfBlobUrl" cannot tell apart. */
+                              <CompilePaneStatus docId={slotDocId} />
+                            )}
+                            {/* Task 854: over a showing PDF, `PdfPaneOverlay`
+                                paints the live compile phase, else the "out of
+                                date" chip when the PDF lags the edits. */}
+                            {paneState?.pdfBlobUrl && (
+                              <PdfPaneOverlay
+                                docId={slotDocId}
+                                stale={!!paneState.pdfStale}
+                              />
+                            )}
+                          </FramedViewerSurface>
+                        </PaneFreeze>
                       ) : null
                     }
                   />

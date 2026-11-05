@@ -58,9 +58,8 @@ chromatic CSS keyword in a CSS-value position) is censused in **every production
 `.ts`/`.tsx` under `src/`** (task 1412); its allowlist holds only the declared
 colour TABLES (panel-theme presets, collab presence, the selection menu's text
 colours, the hue wheel), the ruled keeps a non-CSS consumer needs as a concrete
-value (`PENDING_AI_TINT`, the typography pref default, the web manifest, the
-pdf.js backdrop) and the AI window's status chips awaiting a `--status-*`
-family. The Tailwind palette UTILITY is still censused only over `src/panels/**`
+value (`PENDING_AI_TINT`, the typography pref default, the web manifest) and
+the AI window's status chips awaiting a `--status-*` family. The Tailwind palette UTILITY is still censused only over `src/panels/**`
 plus the two shared panel/field primitives — chrome utilities elsewhere under
 `src/components/**` (the Library's deliberate multi-hue chips) are **not**;
 widening that leg is a separate decision with its own draining cost. Both

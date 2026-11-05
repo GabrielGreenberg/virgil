@@ -190,14 +190,14 @@ export function CompilePaneStatus({ docId }: { docId: string | null }) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <div
-          className="text-center text-white/80 p-8 max-w-md"
+          className="text-center text-ink-body p-8 max-w-md"
           role="status"
           aria-live="polite"
         >
           <Spinner size={28} className="mx-auto mb-3 opacity-80" />
           <p className="text-lg mb-2">{phaseLine(view)}</p>
           {details.map((d) => (
-            <p key={d} className="text-sm text-white/60 break-words">
+            <p key={d} className="text-sm text-ink-muted break-words">
               {d}
             </p>
           ))}
@@ -209,12 +209,12 @@ export function CompilePaneStatus({ docId }: { docId: string | null }) {
   if (failed) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="text-center text-white/80 p-8 max-w-md" role="alert">
+        <div className="text-center text-ink-body p-8 max-w-md" role="alert">
           <p className="text-lg mb-2">Compile didn&rsquo;t produce a PDF</p>
           {progress.message && (
-            <p className="text-sm text-white/60 break-words">{progress.message}</p>
+            <p className="text-sm text-ink-muted break-words">{progress.message}</p>
           )}
-          <p className="text-sm text-white/45 mt-3">
+          <p className="text-sm text-ink-muted mt-3">
             Press Compile to try again.
           </p>
         </div>
@@ -224,10 +224,10 @@ export function CompilePaneStatus({ docId }: { docId: string | null }) {
 
   return (
     <div className="flex flex-1 items-center justify-center">
-      <div className="text-center text-white/70 p-8">
+      <div className="text-center text-ink-body p-8">
         <p className="text-lg mb-2">No compiled PDF</p>
-        {cancelled && <p className="text-sm mb-1">Compile cancelled.</p>}
-        <p className="text-sm">Click Compile to generate a PDF.</p>
+        {cancelled && <p className="text-sm text-ink-muted mb-1">Compile cancelled.</p>}
+        <p className="text-sm text-ink-muted">Click Compile to generate a PDF.</p>
       </div>
     </div>
   );
@@ -236,9 +236,10 @@ export function CompilePaneStatus({ docId }: { docId: string | null }) {
 /**
  * The chrome laid over a SHOWING PDF (task 854). While this doc's compile runs:
  * a compact progress strip — the same phase/detail lines as the full-pane
- * status — pinned to the top of the viewer, `pointer-events: none` so the PDF
- * underneath stays scrollable and selectable. Otherwise, when the PDF lags the
- * edits: the "PDF is out of date" chip. Never both (see the file header).
+ * status — pinned just under the viewer's toolbar, whose controls it must not
+ * cover, `pointer-events: none` so the PDF underneath stays scrollable and
+ * selectable. Otherwise, when the PDF lags the edits: the "PDF is out of date"
+ * chip. Never both (see the file header).
  *
  * Its own component so the progress subscription re-renders only this chrome —
  * a cold compile notifies a few times a second, and the host (EditorLayout)
@@ -258,9 +259,9 @@ export function PdfPaneOverlay({
   if (isCompileRunning(view.progress)) {
     const details = detailLines(view);
     return (
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 max-w-[min(32rem,calc(100%-1.5rem))] pointer-events-none">
+      <div className="absolute top-12 left-1/2 -translate-x-1/2 z-10 max-w-[min(32rem,calc(100%-1.5rem))] pointer-events-none">
         <div
-          className="flex items-start gap-2 rounded bg-neutral-900/85 text-white/90 text-xs px-2.5 py-1.5 shadow-[var(--menu-shadow)]"
+          className="flex items-start gap-2 rounded bg-[var(--pod-panel)] text-ink-body text-xs px-2.5 py-1.5 shadow-[var(--menu-shadow)]"
           role="status"
           aria-live="polite"
         >
@@ -268,7 +269,7 @@ export function PdfPaneOverlay({
           <div className="min-w-0">
             <p>{phaseLine(view)}</p>
             {details.map((d) => (
-              <p key={d} className="text-white/60 break-words">
+              <p key={d} className="text-ink-muted break-words">
                 {d}
               </p>
             ))}
@@ -280,7 +281,7 @@ export function PdfPaneOverlay({
 
   if (!stale) return null;
   return (
-    <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow-[var(--menu-shadow)] flex items-center gap-1.5 z-10">
+    <div className="absolute top-12 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow-[var(--menu-shadow)] flex items-center gap-1.5 z-10">
       {/* Deliberately still a hand-rolled dot (task 315), and the
           reasoning is recorded in status-dot-ssot.test.ts's allowlist:
           this is the SAME signal StatusCluster's pdf-stale dot paints,
