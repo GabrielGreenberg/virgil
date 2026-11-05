@@ -347,13 +347,20 @@ export const BIB_ENTRY_TYPES = [
   "phdthesis",
   "mastersthesis",
   "unpublished",
+  "manual",
   "misc",
 ] as const;
 
 export type BibEntryType = (typeof BIB_ENTRY_TYPES)[number];
 
 /** Fields shown in the "Publication" section, conditional on entry type.
- *  Order matters — that's the order they render in the form. */
+ *  Order matters — that's the order they render in the form.
+ *
+ *  Never offer a field the coherence pre-flight forbids for that type
+ *  (`DISALLOWED_FIELDS` in library/scripts/_bib_types.py): filling it would
+ *  make the entry "incoherent" and push the paper back into re-authentication.
+ *  Pinned, with `BIB_ENTRY_TYPES` covering every type that table names, by
+ *  `__tests__/bib-vocabulary-parity.test.ts` (task 1471). */
 export const PUBLICATION_FIELDS_BY_TYPE: Record<string, string[]> = {
   article: ["journal", "volume", "number", "pages", "publisher"],
   book: ["publisher", "address", "edition", "series", "volume", "isbn", "editor"],
@@ -363,7 +370,8 @@ export const PUBLICATION_FIELDS_BY_TYPE: Record<string, string[]> = {
   techreport: ["institution", "type", "number", "address"],
   phdthesis: ["school", "type", "address"],
   mastersthesis: ["school", "type", "address"],
-  unpublished: ["howpublished", "publisher"],
+  unpublished: ["howpublished"],
+  manual: ["organization", "address", "edition"],
   misc: ["howpublished", "publisher"],
 };
 
@@ -383,9 +391,12 @@ export function knownFieldsForType(type: string): Set<string> {
   ]);
 }
 
-/** Re-emit a single entry as a BibTeX block. Mirrors the Python
- *  `_emit_bib_entry` in scripts/index_paper.py so frontend and skill
- *  produce byte-identical output. Empty fields are omitted. */
+/** Re-emit a single entry as a BibTeX block. Byte-identical to the ONE
+ *  Python emitter, `emit_bib_entry` in library/scripts/_bib_parse.py
+ *  (`_tools.emit_bib_entry` delegates to it) — pinned by
+ *  `__tests__/bib-vocabulary-parity.test.ts`. Values are trimmed; empty or
+ *  whitespace-only fields are omitted; the no-field form keeps the comma
+ *  (`@misc{key,\n}\n`) so the parser can see the entry again. */
 export function emitBibEntry(
   type: string,
   citekey: string,
@@ -395,7 +406,7 @@ export function emitBibEntry(
     .filter(([, v]) => v && v.trim().length > 0)
     .map(([k, v]) => `  ${k} = {${v.trim()}}`)
     .join(",\n");
-  return `@${type}{${citekey},\n${lines}\n}\n`;
+  return lines ? `@${type}{${citekey},\n${lines}\n}\n` : `@${type}{${citekey},\n}\n`;
 }
 
 /** Count fields that the AI review would attempt to fill — i.e. standard

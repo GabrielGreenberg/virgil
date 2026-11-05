@@ -2182,8 +2182,11 @@ def bib_entry_extent(text: str, opener_start: int) -> tuple[int, bool]:
 
 
 def emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
-    field_lines = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields.items() if v)
-    return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
+    """The master.bib writers' name for `_bib_parse.emit_bib_entry` — the ONE
+    emitter (task 1471). This used to be a second copy whose no-field form
+    (`@t{k,\n\n}`) disagreed with the paper-bib emitter's (`@t{k,\n}`)."""
+    from _bib_parse import emit_bib_entry as _emit  # lazy: sibling, avoids a cycle
+    return _emit(citekey, entry_type, fields)
 
 
 def rename_master_bib_entry(library: Path, old: str, new: str) -> bool:
