@@ -12,6 +12,8 @@ import {
   acceptedWordKey,
   bibNameWords,
   buildAcceptedWords,
+  withAcceptedTerm,
+  withoutAcceptedTerm,
 } from "@/lib/spell/accepted-words";
 import type { BibEntry } from "@/lib/types";
 
@@ -88,6 +90,23 @@ describe("the accepted-word authority", () => {
   it("`acceptedWordKey` is the ONE normalization the add-affordance must reuse", () => {
     expect(acceptedWordKey("Gricean's")).toBe("gricean");
     expect(acceptedWordKey("gricean")).toBe("gricean");
+  });
+
+  it("an accepted word is accepted in BOTH apostrophe spellings (task 1483)", () => {
+    // `.bib` and typed text say `'`; PDF/Word imports say `’`. The key folds
+    // them, as the engine's `ICONV ’ '` already does.
+    const fromBib = buildAcceptedWords({ bibEntries: [entry({ author: "O'Brien, Flann" })] });
+    expect(fromBib.has("O’Brien")).toBe(true);
+    expect(fromBib.has("O'Brien")).toBe(true);
+    expect(buildAcceptedWords({ paper: ["D’Agostino"] }).has("D'Agostino")).toBe(true);
+    // One entry, whichever spelling it was stored in.
+    const stored = ["O'Neill"];
+    expect(withAcceptedTerm(stored, "O’Neill")).toBe(stored);
+    expect(withoutAcceptedTerm(["O’Neill"], "O'Neill")).toEqual([]);
+    // The possessive strip survives the fold, in both spellings.
+    expect(acceptedWordKey("Gricean’s")).toBe("gricean");
+    expect(acceptedWordKey("Gricean's")).toBe("gricean");
+    expect(acceptedWordKey("O’Brien’s")).toBe("o'brien");
   });
 
   it("a bibliography name is read through the DISPLAY door, not raw bytes", () => {

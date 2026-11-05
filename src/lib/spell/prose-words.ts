@@ -157,7 +157,26 @@ function maskUnwordly(text: string): string {
   return out;
 }
 
-const WORD_RE = /[\p{L}\p{M}\p{Nd}]+(?:['’][\p{L}\p{M}\p{Nd}]+)*/gu;
+/**
+ * The apostrophe spellings a word may carry — straight `'` and curly `’`, the
+ * two the parser's own smart-quote pass can produce. ONE class, read by the
+ * tokenizer below and by {@link foldApostrophes}, so "what an apostrophe is"
+ * cannot drift between tokenizing a word and keying it (task 1483).
+ */
+const APOSTROPHES = "'’";
+
+const WORD_RE = new RegExp(`[\\p{L}\\p{M}\\p{Nd}]+(?:[${APOSTROPHES}][\\p{L}\\p{M}\\p{Nd}]+)*`, "gu");
+const APOSTROPHE_RE = new RegExp(`[${APOSTROPHES}]`, "g");
+
+/**
+ * `word` with every apostrophe spelling folded to the straight `'` — the same
+ * equivalence the shipped dictionary's `ICONV ’ '` line states to the engine.
+ * A KEY normalization only: token TEXT is never folded, because the
+ * suggestion menu compares it against the document's own bytes.
+ */
+export function foldApostrophes(word: string): string {
+  return word.replace(APOSTROPHE_RE, "'");
+}
 const HAS_DIGIT_RE = /\p{Nd}/u;
 
 /** Is this string a token the checker will look up? See the header's list. */

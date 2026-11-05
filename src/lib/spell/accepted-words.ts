@@ -30,6 +30,13 @@
  * Guessing plurals would be morphology invented for names the dictionary has
  * never seen.
  *
+ * Both normalizations run AFTER a third, which is not an inference at all:
+ * every apostrophe spelling folds to one (`foldApostrophes`, task 1483), so
+ * `O'Brien` in the bibliography accepts `O’Brien` pasted from a PDF, and an
+ * entry added in one spelling is the same entry in the other. The engine
+ * already reads them as one letter (`ICONV ’ '` in the shipped `.aff`); the
+ * key states the same equivalence, by the tokenizer's own apostrophe class.
+ *
  * ## Cost class
  *
  * Building the set is O(paper terms + global terms + bibliography names) and
@@ -39,7 +46,7 @@
 
 import type { BibEntry } from "@/lib/types";
 import { bibFieldDisplay } from "@/lib/bib-parser";
-import { wordsIn } from "@/lib/spell/prose-words";
+import { foldApostrophes, wordsIn } from "@/lib/spell/prose-words";
 
 /** The composed answer. */
 export interface AcceptedWords {
@@ -59,7 +66,7 @@ export interface AcceptedWordSources {
   bibEntries?: readonly BibEntry[];
 }
 
-const POSSESSIVE_RE = /['’]s$/;
+const POSSESSIVE_RE = /'s$/;
 
 /**
  * The lookup key for a word. Exported because the "add to dictionary"
@@ -68,7 +75,7 @@ const POSSESSIVE_RE = /['’]s$/;
  * squiggle stays.
  */
 export function acceptedWordKey(word: string): string {
-  return word.replace(POSSESSIVE_RE, "").toLocaleLowerCase();
+  return foldApostrophes(word).replace(POSSESSIVE_RE, "").toLocaleLowerCase();
 }
 
 /**
