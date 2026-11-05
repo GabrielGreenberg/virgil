@@ -35,6 +35,12 @@
  * docked pod 0 < bin slot 20 < resize grips 25 — a docked pod never carries
  * the floating-window rung.
  *
+ * In the gutter layout there are no docked bands. The frame's slot then sits on
+ * the right gutter's head row, left of the collapse toggle: the rail's
+ * `--omni-frame-z` lifts the empty frame above that row, `--omni-sticky-top`
+ * holds the strip at the row's height, and `--omni-head-clear` keeps the slot
+ * off the toggle.
+ *
  * The context is `null` where no column hosts the omni view (unit fixtures,
  * any future bare mount). `OmniViewPanel` then keeps the bins inside the pod,
  * in the in-pod STICKY posture (`OmniBinStack host="pod"`), which answers the

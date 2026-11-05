@@ -204,6 +204,8 @@ export const TOAST_Z = OPEN_CHROME_MENU_Z - 1;
  *   DROP_INDICATOR_Z  9999   the blue insertion bar during a move (Issue-11);
  *                            above floats/ghosts but below an open modal.
  *   MODAL_SCRIM_Z    10000   the SystemDialog backdrop + every centered dialog.
+ *   MODAL_MENU_Z     10001   a menu opened from inside a modal, which would
+ *                            otherwise ride its 2000 rung behind the dialog.
  *   HINT_Z           10010   data-hint tooltip bubbles; one above the modal
  *                            tier so a hint on a modal control still shows.
  *
@@ -213,6 +215,7 @@ export const TOAST_Z = OPEN_CHROME_MENU_Z - 1;
  */
 export const DROP_INDICATOR_Z = 9999;
 export const MODAL_SCRIM_Z = 10000;
+export const MODAL_MENU_Z = MODAL_SCRIM_Z + 1;
 export const HINT_Z = 10010;
 
 /**

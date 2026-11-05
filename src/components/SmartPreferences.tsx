@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { SMART_PREFERENCES, type SmartSection, type SmartItem } from "@/lib/smart-preferences";
+import type { SmartSection, SmartItem } from "@/lib/smart-preferences";
 import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
 import { Select } from "./field-primitives";
 import { withCurrent } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import { ResetButton } from "./ResetButton";
-import { PodDisclosure } from "./PodDisclosure";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
@@ -326,7 +324,8 @@ function ItemRow({
   );
 }
 
-function Section({
+/** One section as a page of the Preferences window. */
+export default function SmartPreferencesSection({
   section,
   prefs,
   onUpdate,
@@ -335,54 +334,16 @@ function Section({
   prefs: EditorPreferences;
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
 }) {
-  const [open, setOpen] = useState(true);
   // No link wrapper here any more (task 625): the locked-link cascade belongs to
-  // `usePreferences.updatePref`, so it reaches the "All preferences" tree — which
-  // renders the very same parent rows — instead of only this section.
+  // `usePreferences.updatePref`, so it reaches the tree pages too.
   return (
-    <div className="rounded-lg border border-edge-subtle bg-surface-muted/40 overflow-hidden">
-      <PodDisclosure
-        expanded={open}
-        onToggle={() => setOpen(!open)}
-        className="w-full text-left px-3 py-2 hover-on-light text-ink-muted"
-      >
-        <span className="block text-xs font-semibold text-ink-strong">{section.label}</span>
-        {section.description && (
-          <span className="block text-2xs text-ink-muted leading-tight">{section.description}</span>
-        )}
-      </PodDisclosure>
-      {open && (
-        <div className="px-3 pt-1 pb-2 bg-surface border-t border-edge-subtle">
-          {section.items.map((item, i) => (
-            <ItemRow key={i} item={item} prefs={prefs} onUpdate={onUpdate} />
-          ))}
-        </div>
+    <>
+      {section.description && (
+        <p className="text-xs text-ink-muted mb-2">{section.description}</p>
       )}
-    </div>
-  );
-}
-
-export default function SmartPreferences({
-  prefs,
-  onUpdate,
-}: {
-  prefs: EditorPreferences;
-  onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
-}) {
-  if (SMART_PREFERENCES.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="section-caption text-[var(--accent)]">
-          Smart preferences
-        </span>
-        <div className="flex-1 h-px bg-edge-subtle" />
-      </div>
-      <div className="space-y-2">
-        {SMART_PREFERENCES.map((section) => (
-          <Section key={section.id} section={section} prefs={prefs} onUpdate={onUpdate} />
-        ))}
-      </div>
-    </div>
+      {section.items.map((item, i) => (
+        <ItemRow key={i} item={item} prefs={prefs} onUpdate={onUpdate} />
+      ))}
+    </>
   );
 }

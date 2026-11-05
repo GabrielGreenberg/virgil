@@ -878,8 +878,8 @@ paper keeps its own scale above. Each rung is a Tailwind utility owned by the
 
 | Size | Utility | Use |
 |---|---|---|
-| 20 / 26 | `text-lg` | page and dialog titles |
-| 15 / 20 | `text-base` | section headings |
+| 20 / 26 | `text-lg` | page titles |
+| 15 / 20 | `text-base` | section headings, dialog titles |
 | 13 / 18 | `text-sm` | body, lists, menus |
 | 12 / 16 | `text-xs` | labels, buttons, controls |
 | 11 / 14 | `text-2xs` | captions, card kind, chips |
@@ -2023,7 +2023,9 @@ rows lie flat (`.tool-gutter-tool` overrides). **There is no strip:** both
 gutters run to the window edge, the collapse toggle leads the left gutter's
 tools row and sits on a sticky head row above the right gutter's cards
 (`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
-one piece of chrome. Generalisable rule: **a list of what is IN the paper reads
+one piece of chrome. The cards' notices (pending changes, unanchored, outside
+focus) share that head row, left of the toggle, so the first card starts
+directly under it. Generalisable rule: **a list of what is IN the paper reads
 as text; a thing you can open and edit reads as a card** — and the cards are on
 the right.
 
@@ -2394,8 +2396,7 @@ Modal footers (`<SystemDialogFooter>`, task 1258 — this describes every
 shipped footer, and `dialog-footer-order-census.test.ts` holds it):
 
 - **Cancel is `secondary`** (the default — omit `variant`). Not `ghost`: an
-  unbordered word reads as a label on the footer's muted band. The footer's
-  variants are the `Button` vocabulary itself (`primary | secondary | danger`);
+  unbordered word reads as a label. The footer's variants are the `Button` vocabulary itself (`primary | secondary | danger`);
   there is no alias spelling.
 - **The affirmative/cued answer is rightmost** (`primary`).
 - **A two-button danger confirm** (`Cancel | Delete`) puts the destructive
@@ -2547,6 +2548,12 @@ dialogs had done exactly that, in four class strings. `<Field label="Name">
 | `register` | `section` (default: 11px medium, `text-ink-subtle`) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
 | `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
 | `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
+
+A **dropdown is `Select`**, a real `<select>` whose list is drawn as a Virgil
+menu (`.field-select`, `appearance: base-select`). The browser keeps the keyboard
+and focus, so while the list is open the keys belong to an `<option>` inside the
+page: a door that listens for Escape or Enter leaves those alone. Nothing falls
+back to the system's blue: `accent-color` is set once, on `:root`.
 
 A **single-choice set of cards or swatches** (NewDocumentModal's document
 type, the collaborator identity colours) is a radio group, not a row of
@@ -2841,12 +2848,25 @@ gets `data-helper-mode="on"` and `HintLayer` drops the hover delay to 0 so every
 `SYSTEM_DIALOG_TOKENS` (`src/components/system-dialog.tsx`) — edit it
 to re-skin every dialog at once.
 
-Anatomy: header (title + optional subtitle) + body + footer button row.
-Surface is `bg-surface`, `rounded-xl`, `border`, and the detached-float
-shadow token `--shadow-float` (not a raw `shadow-xl`). Title is
-`text-sm font-semibold text-ink-body`. Backdrop is `bg-[var(--overlay-scrim)]`
-(a warm-neutral translucent derived from `--ink-strong`, not cool black),
-click-to-dismiss.
+Anatomy: header (title + optional subtitle) + body + footer button row, with
+no hairlines or bands between them: spacing separates them. Surface is
+`bg-surface`, `rounded-xl` and the detached-float shadow token `--shadow-float`
+(which carries the faint edge, so there is no drawn border). Title is
+`text-base font-semibold text-ink-strong`. Backdrop is `.dialog-scrim`: a light
+warm `--overlay-scrim` over a 6px blur, click-to-dismiss. A dialog arrives with
+one soft settle (`.dialog-frame`), and only when motion is allowed.
+
+**A dialog with several pages uses `<SystemDialogSidebarLayout>`** (Preferences,
+the AI window): a tinted sidebar holding the title and the sections, the active
+page beside it, and the page's controls at its top right. A window of that kind
+has one shape, and it does not scroll one long list.
+
+**Red appears at the moment of acting.** A destructive action in a list or a
+window lives in a `⋯` menu (`ItemMenu`, a `tone="danger"` row), never as a red
+button on every row or in a resting footer. The confirm it raises may be red.
+
+**A menu opened inside a modal** rides `MODAL_MENU_Z`: `SystemDialog` raises
+`MenuLayerContext` for everything inside it, so no call site has to know.
 
 Buttons render through the `Button` primitive (`<SystemDialogButton>` maps
 the legacy `primary/secondary/danger/accent` names onto it). The affirmative

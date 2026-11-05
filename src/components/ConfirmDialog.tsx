@@ -161,7 +161,7 @@ export default function ConfirmDialog({
     >
       <SystemDialogHeader title={title} />
       <SystemDialogBody className={title ? "" : "pt-3"}>
-        <div className="text-xs text-ink-body leading-relaxed">{message}</div>
+        <div className="text-sm text-ink-body leading-relaxed">{message}</div>
         {suppressible && (
           /* Deliberately NOT `autoFocus`: `autoFocus` marks the CUED DEFAULT
              (task 389) and the cue must stay on the answer. So the dialog's

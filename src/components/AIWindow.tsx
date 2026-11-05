@@ -55,13 +55,14 @@ import { linkedCardKindFrom } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
-import { usePanelCardPalette } from "@/hooks/usePanelTheme";
+import { usePanelColor } from "@/hooks/usePanelTheme";
 import ConfirmDialog from "./ConfirmDialog";
-import SystemDialog from "./system-dialog";
+import SystemDialog, { SystemDialogSidebarLayout } from "./system-dialog";
 import { Button } from "./Button";
 import { Field, Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { describedHint, iconHint } from "@/components/Hint";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 import type { StatusTone } from "./StatusDot";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { isCommitEnter } from "@/lib/key-intent";
@@ -93,8 +94,8 @@ interface AIRequestVM {
   id: string;
   kind: AIRequestKind;
   status: AIRequestStatus;
-  // Short label shown next to the kind chip — usually the bib key, the
-  // user name, or "General".
+  // What the row is ABOUT, beside its kind: usually the bib key or the user
+  // name. Empty when the kind says all there is.
   label: string;
   // Free-form preview text shown under the label.
   snippet: string;
@@ -126,12 +127,11 @@ interface AIRequestVM {
   themeKey?: PanelThemeKey;
 }
 
-/* ── The chip vocabulary (task 178) ──────────────────────────────────
+/* ── The kind vocabulary (task 178) ──────────────────────────────────
  *
- * `KIND_META` carries LABELS and DESCRIPTIONS only. A request chip's colour is
- * the panel theme of the card kind the request is about, derived live through
- * `usePanelCardPalette(themeKey)` → the SAME `badgeBg`/`badgeColor` pair the
- * panels paint their badges with.
+ * `KIND_META` carries LABELS and DESCRIPTIONS only. A request row's dot is the
+ * panel theme of the card kind the request is about, read live through
+ * `usePanelColor(themeKey)` — the SAME colour the card's own dot paints.
  *
  * It used to be a private table of `chipBg`/`chipFg` hex literals — the second
  * per-kind colour vocabulary in the app, agreeing with no panel theme and
@@ -141,8 +141,8 @@ interface AIRequestVM {
  * has learned the colour language of the margin read the inbox wrong.
  *
  * The themeKey is read OFF `CARD_REGISTRY` rather than restated, so a kind
- * re-themed in the registry re-tints its chip for free. And whether a user's
- * colour override may reach a chip is not decided here: it is decided by
+ * re-themed in the registry re-tints its row for free. And whether a user's
+ * colour override may reach a row is not decided here: it is decided by
  * `panel-theme`'s `SYSTEM_THEME_KEYS` for that key, exactly as it is for every
  * other surface painting that kind. Delegating the policy is the point — one
  * accent → one colour language, wherever it is rendered.
@@ -584,7 +584,7 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
       id: `bibent:${r.id}`,
       kind: "bib-entry",
       status,
-      label: r.resolvedKey || "—",
+      label: r.resolvedKey || "",
       snippet: r.description,
       createdAt: r.createdAt,
       resolvedHint: r.resolvedKey ? `→ ${r.resolvedKey}` : undefined,
@@ -659,10 +659,10 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
       kind: panelDisplayKind(r.kind),
       themeKey: linkedKind ? CARD_REGISTRY[linkedKind].themeKey : undefined,
       status,
-      // The RAW on-disk kind, always — which is what makes an unrecognised row
-      // legible: its chip says "Unrecognized" and its label says what the file
-      // actually calls it.
-      label: r.kind,
+      // A recognised kind is already named by the row's kind label. An
+      // unrecognised one shows the RAW on-disk kind, which is what makes it
+      // legible: the row says "Unrecognized" and what the file actually calls it.
+      label: isAiRequestKind(r.kind) ? "" : r.kind,
       snippet: text || "(empty draft)",
       createdAt: r.createdAt,
       onCancel: cancelFor("panel", status, r, args),
@@ -949,12 +949,13 @@ export default function AIWindow({
          pane loses it. */
       dismissIsFree
       labelledBy="ai-window-title"
-      frameClassName="max-h-[82vh] flex flex-col"
+      frameClassName="h-[min(82vh,640px)] flex flex-col"
     >
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)]">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <SystemDialogSidebarLayout
+        title="AI"
+        titleId="ai-window-title"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
             <g transform="rotate(15 12 12)">
               <line x1="12" y1="2" x2="12" y2="22" />
               <line x1="2" y1="12" x2="22" y2="12" />
@@ -962,81 +963,37 @@ export default function AIWindow({
               <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
             </g>
           </svg>
-          <h2
-            id="ai-window-title"
-            className="text-sm font-semibold text-ink-body"
-          >
-            AI
-          </h2>
-          <div className="flex-1" />
-          {section === "requests" && (
+        }
+        sections={SECTIONS}
+        active={section}
+        onSelect={setSection}
+        heading={SECTIONS.find((s) => s.id === section)?.label ?? ""}
+        headingDetail={
+          section === "requests"
+            ? `${buckets.open.length} open · ${buckets.responded.length} responded · ${buckets.resolved.length} resolved`
+            : undefined
+        }
+        onClose={onClose}
+        actions={
+          section === "requests" ? (
             <button
               onClick={() => refreshAll()}
               className="iconbtn-md"
               {...iconHint({ label: "Refresh" })}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <polyline points="23 4 23 10 17 10" />
                 <polyline points="1 20 1 14 7 14" />
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
             </button>
-          )}
-          <button
-            onClick={onClose}
-            className="iconbtn-md"
-            {...iconHint({ label: "Close" })}
-          >
-            <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M3 3l8 8M11 3l-8 8" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Two-pane body */}
-        <div className="flex-1 flex min-h-0">
-          {/* Left nav */}
-          <nav className="w-[200px] shrink-0 border-r border-[var(--border)] bg-surface-muted/60 py-3 px-2 overflow-y-auto">
-            <div className="section-caption px-2 mb-1.5">
-              Browse
-            </div>
-            <ul className="flex flex-col gap-0.5">
-              {SECTIONS.map((s) => {
-                const active = s.id === section;
-                return (
-                  <li key={s.id}>
-                    <button
-                      onClick={() => setSection(s.id)}
-                      className={
-                        "w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors " +
-                        (active
-                          ? "bg-surface border border-[var(--border)] text-ink-strong"
-                          : "text-ink-body hover-on-dark hover:text-ink-strong border border-transparent")
-                      }
-                    >
-                      {s.label}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-
-          {/* Right content */}
-          <div className="flex-1 flex flex-col min-w-0">
+          ) : undefined
+        }
+      >
             {section === "requests" && (
               <>
-                <div className="px-5 pt-3 pb-2 border-b border-[var(--border)]">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="text-sm font-semibold text-ink-body">Request status</h3>
-                    <span className="text-2xs text-ink-muted">
-                      {buckets.open.length} open · {buckets.responded.length} responded · {buckets.resolved.length} resolved
-                    </span>
-                  </div>
-                </div>
-
                 {/* Composer */}
-                <div className="border-b border-[var(--border)] bg-surface-muted/60 px-5 py-2.5">
+                <div className="px-5 pb-2 shrink-0">
                   {!composerOpen ? (
                     <button
                       onClick={() => setComposerOpen(true)}
@@ -1150,7 +1107,7 @@ export default function AIWindow({
                 </div>
 
                 {/* Request list */}
-                <div className="flex-1 overflow-y-auto px-5 py-3">
+                <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-1 pb-4">
                   <Bucket title="Open" status="open" items={buckets.open} />
                   <Bucket title="Responded" status="responded" items={buckets.responded} />
                   <Bucket title="Resolved" status="resolved" items={buckets.resolved} />
@@ -1187,9 +1144,7 @@ export default function AIWindow({
             {section === "skills" && (
               <SkillsPanel />
             )}
-          </div>
-        </div>
-      </div>
+      </SystemDialogSidebarLayout>
     </SystemDialog>
   );
 }
@@ -1231,9 +1186,9 @@ function Bucket({
 
 function RequestCard({ req }: { req: AIRequestVM }) {
   const meta = KIND_META[req.kind];
-  // Live-derived, override-subscribed: the SAME badge pair the owning panel
-  // paints (`deriveCardPalette`), never a chip-local literal (task 178).
-  const chip = usePanelCardPalette(themeKeyForVM(req));
+  // Live, override-subscribed: the SAME colour the owning card's dot paints,
+  // never a row-local literal (task 178).
+  const accent = usePanelColor(themeKeyForVM(req));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const handleCancel = useCallback(() => {
@@ -1245,42 +1200,41 @@ function RequestCard({ req }: { req: AIRequestVM }) {
   }, [req]);
 
   return (
-    <li className="flex gap-2.5 items-start px-2.5 py-2 rounded-md border border-[var(--border)] bg-surface hover:border-edge-hover transition-colors">
-      <span
-        className="shrink-0 text-2xs px-1.5 py-0.5 rounded font-medium"
-        style={{ background: chip.badgeBg, color: chip.badgeColor }}
-        {...describedHint(meta.description)}
-      >
-        {meta.label}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-ink-body truncate">
-            {req.label}
-          </span>
-          {req.resolvedHint && (
-            <span className="text-2xs text-ink-muted truncate">
-              {req.resolvedHint}
-            </span>
-          )}
-          <span className="text-2xs text-ink-muted ml-auto shrink-0">
-            {formatRelativeTime(req.createdAt, { dateAfterDays: 30 })}
-          </span>
-        </div>
-        <p className="text-2xs text-ink-subtle leading-snug mt-0.5 break-words">
-          {truncate(req.snippet)}
-        </p>
-      </div>
-      {req.onCancel && (
-        <button
-          data-iconbtn-exempt="inline text glyph sized by its text line, not a box"
-          onClick={handleCancel}
-          className="shrink-0 text-2xs text-ink-muted hover:text-danger-muted transition-colors px-1 focus-ring"
-          {...iconHint({ label: "Cancel" })}
+    <li className="ai-request-row py-2 border-b border-edge-subtle/50 last:border-b-0">
+      <div className="flex items-center gap-1.5 min-h-5">
+        <span
+          aria-hidden="true"
+          className="card-kind-dot shrink-0"
+          style={{ backgroundColor: accent }}
+        />
+        <span
+          className="shrink-0 text-xs font-medium text-ink-subtle"
+          {...describedHint(meta.description)}
         >
-          ×
-        </button>
-      )}
+          {meta.label}
+        </span>
+        {req.label && (
+          <span className="text-xs text-ink-body truncate">{req.label}</span>
+        )}
+        {req.resolvedHint && (
+          <span className="text-2xs text-ink-muted truncate">{req.resolvedHint}</span>
+        )}
+        <span className="text-2xs text-ink-muted ml-auto shrink-0">
+          {formatRelativeTime(req.createdAt, { dateAfterDays: 30 })}
+        </span>
+        {req.onCancel && (
+          <button
+            onClick={handleCancel}
+            className="ai-request-cancel iconbtn-xs shrink-0"
+            {...iconHint({ label: "Cancel" })}
+          >
+            <CloseIcon size={12} />
+          </button>
+        )}
+      </div>
+      <p className="text-sm text-ink-body leading-snug mt-0.5 break-words">
+        {truncate(req.snippet)}
+      </p>
       <ConfirmDialog
         open={confirmOpen}
         message="This request has text. Discard it?"
@@ -1295,9 +1249,8 @@ function RequestCard({ req }: { req: AIRequestVM }) {
 
 function ConnectWithClaude() {
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-4">
-      <h3 className="text-sm font-semibold text-ink-body mb-1">Connect with Claude</h3>
-      <p className="text-2xs text-ink-subtle mb-4">
+    <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-4">
+      <p className="text-xs text-ink-subtle mb-4">
         Manage how this document talks to Claude. Authentication, models, and
         workspace defaults will appear here.
       </p>
@@ -1368,9 +1321,8 @@ function SkillsPanel() {
     },
   ];
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-4">
-      <h3 className="text-sm font-semibold text-ink-body mb-1">Skills</h3>
-      <p className="text-2xs text-ink-subtle mb-4">
+    <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-4">
+      <p className="text-xs text-ink-subtle mb-4">
         Skills are the tools Claude can use inside this document. Toggle them on
         or off to shape what Claude can do on your behalf.
       </p>

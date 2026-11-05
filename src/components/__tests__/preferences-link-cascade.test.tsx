@@ -81,9 +81,7 @@ async function mountDialog() {
 }
 
 /**
- * The hex text box of one preference row, found by the row's LABEL — the two
- * doors label the same key differently ("Virgil bar background" vs "Top bar
- * background"), which is exactly why they could drift apart.
+ * The hex text box of one preference row, found by the row's LABEL.
  */
 function hexBoxFor(label: string): HTMLInputElement {
   let el: HTMLElement | null = screen.getByText(label);
@@ -103,9 +101,15 @@ function typeHex(box: HTMLInputElement, hex: string) {
   });
 }
 
-/** Open the collapsed tree group that carries the tree's copy of the row. */
-function openTreeGroup(label: string) {
-  act(() => { fireEvent.click(screen.getByText(label)); });
+/** Go to a page of the window's sidebar. */
+function openPage(label: string) {
+  act(() => { fireEvent.click(screen.getByRole("button", { name: label })); });
+}
+
+/** Run "Reset to defaults" from the window's ⋯ menu. */
+function resetAll() {
+  act(() => { fireEvent.click(screen.getByRole("button", { name: "Options" })); });
+  act(() => { fireEvent.click(screen.getByText("Reset to defaults")); });
 }
 
 const PARENT_HEX = "#3a5f8a";
@@ -115,6 +119,7 @@ describe("every door of the preferences dialog cascades a locked link", () => {
     const { read } = await mountDialog();
     const before = { libraryBg: read().libraryBg, tabBg: read().tabBg };
 
+    openPage("Top bar");
     typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
 
     expect(read().topbarBackground).toBe(PARENT_HEX);
@@ -122,36 +127,7 @@ describe("every door of the preferences dialog cascades a locked link", () => {
     expect(read().tabBg).not.toBe(before.tabBg);
   });
 
-  it("the 'All preferences' tree row moves them too — the bug", async () => {
-    const { read } = await mountDialog();
-    const before = { libraryBg: read().libraryBg, tabBg: read().tabBg };
-
-    openTreeGroup("Top Bar & Browser");
-    typeHex(hexBoxFor("Top bar background"), PARENT_HEX);
-
-    expect(read().topbarBackground).toBe(PARENT_HEX);
-    expect(read().libraryBg).not.toBe(before.libraryBg);
-    expect(read().tabBg).not.toBe(before.tabBg);
-  });
-
-  it("the two doors produce byte-identical preferences", async () => {
-    const smart = await mountDialog();
-    typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
-    const viaSmart = { ...smart.read() };
-
-    // A second, independent dialog over a fresh store — the first must go, or
-    // both copies of every row answer to the same query.
-    smart.unmount();
-    vi.resetModules();
-    installLocalStorage();
-    const tree = await mountDialog();
-    openTreeGroup("Top Bar & Browser");
-    typeHex(hexBoxFor("Top bar background"), PARENT_HEX);
-
-    expect({ ...tree.read() }).toEqual(viaSmart);
-  });
-
-  it("an UNLOCKED link is still inert from either door", async () => {
+  it("an UNLOCKED link is inert", async () => {
     const { linksMod, read } = await mountDialog();
     act(() => {
       linksMod.setLinkLocked("topbarBackground", "libraryBg", false);
@@ -159,8 +135,8 @@ describe("every door of the preferences dialog cascades a locked link", () => {
     });
     const before = { libraryBg: read().libraryBg, tabBg: read().tabBg };
 
-    openTreeGroup("Top Bar & Browser");
-    typeHex(hexBoxFor("Top bar background"), PARENT_HEX);
+    openPage("Top bar");
+    typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
 
     expect(read().topbarBackground).toBe(PARENT_HEX);
     expect(read().libraryBg).toBe(before.libraryBg);
@@ -211,8 +187,7 @@ describe("the cascade's shape inside the one writer", () => {
 
 /**
  * Task 903 — "Reset to defaults" wiped every preference and transform in one
- * click with no way back, from the primary's corner of the footer. It now sits
- * in the destructive slot and offers Undo, which restores the snapshot it
+ * click with no way back. It now sits in the window's ⋯ menu and offers Undo, which restores the snapshot it
  * replaced; and any further change retires the offer — from ANY writer, not
  * just the dialog's own controls (task 1121: the offer is derived from the live
  * state, so FontsDialog and a peer window retire it too).
@@ -227,10 +202,11 @@ describe("Reset to defaults is undoable (task 903)", () => {
 
   it("reset → Undo restores the prior settings", async () => {
     const { read, prefsMod } = await mountDialog();
+    openPage("Top bar");
     typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
     expect(read().topbarBackground).toBe(PARENT_HEX);
 
-    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    resetAll();
     expect(read().topbarBackground).toBe(prefsMod.DEFAULT_PREFS.topbarBackground);
     expect(screen.getByRole("status").textContent).toContain("Preferences reset");
 
@@ -241,7 +217,8 @@ describe("Reset to defaults is undoable (task 903)", () => {
 
   it("a later edit retires the Undo offer", async () => {
     await mountDialog();
-    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    openPage("Top bar");
+    resetAll();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
@@ -249,7 +226,7 @@ describe("Reset to defaults is undoable (task 903)", () => {
 
   it("an edit from OUTSIDE the dialog (FontsDialog's raw updatePref) retires the offer", async () => {
     const { read, store } = await mountDialog();
-    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    resetAll();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     // FontsDialog is wired straight to the store's door, not the dialog's.
     act(() => store().updatePref("editorFontSize", 1.37));
@@ -259,7 +236,7 @@ describe("Reset to defaults is undoable (task 903)", () => {
 
   it("an edit from a PEER window (storage event) retires the offer", async () => {
     const { read, prefsMod } = await mountDialog();
-    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    resetAll();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     act(() => {
       localStorage.setItem(
@@ -272,10 +249,10 @@ describe("Reset to defaults is undoable (task 903)", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
-  it("the destructive action sits first in the footer (STYLE_GUIDE: far left)", async () => {
+  it("the destructive action stays out of sight until its menu opens", async () => {
     await mountDialog();
-    const reset = screen.getByRole("button", { name: "Reset to defaults" });
-    expect(reset.parentElement!.firstElementChild).toBe(reset);
-    expect(reset.className).not.toContain("ml-auto");
+    expect(screen.queryByText("Reset to defaults")).toBeNull();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Options" })); });
+    expect(screen.getByText("Reset to defaults").getAttribute("role")).toBe("menuitem");
   });
 });

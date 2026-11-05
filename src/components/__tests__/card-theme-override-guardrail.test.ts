@@ -432,7 +432,7 @@ describe("accent-bypass guardrail — the frozen colour tables are defaults-only
     // The themeKey is READ off the registry, not restated — so a kind re-themed
     // in CARD_REGISTRY re-tints its chip for free.
     expect(table).toMatch(/themeKey: CARD_REGISTRY/);
-    expect(src).toMatch(/usePanelCardPalette\(/);
+    expect(src).toMatch(/usePanelColor\(/);
   });
 
   /** Does the detector flag this source? (the second law, end to end) */

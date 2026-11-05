@@ -67,19 +67,11 @@ export { isLeaf };
 
 export const PREFERENCES_TREE: PrefNode[] = [
   {
-    label: "Top Bar & Browser",
-    children: [
-      { type: "color", key: "topbarBackground", label: "Top bar background", description: "Fill color of the application title bar (also sets the browser/PWA chrome color). Top edge of the Virgil bar gradient." },
-      { type: "color", key: "topbarBackgroundBottom", label: "Top bar background (bottom)", description: "Bottom color of the Virgil bar gradient — fades down from the top-bar background. Set equal to the top for a flat bar." },
-      { type: "color", key: "topbarBorder", label: "Top bar line", description: "Line under the top bar. Matches the bar by default, so it doesn't show." },
-    ],
-  },
-  {
     label: "Editor",
     defaultOpen: true,
     children: [
       {
-        label: "Body Text",
+        label: "Body text",
         defaultOpen: true,
         children: [
           { type: "slider", key: "editorFontSize", label: "Font size", description: "Base size for body paragraphs", min: 0.85, max: 1.4, step: 0.05, unit: " rem" },
@@ -89,14 +81,14 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "Paragraph Titles",
+        label: "Paragraph titles",
         children: [
           { type: "slider", key: "parTitleSize", label: "Size", description: "Size of short titles before paragraphs", min: 0.6, max: 1.0, step: 0.02, unit: " rem" },
           { type: "color", key: "parTitleColor", label: "Color", description: "Color of paragraph title labels" },
         ],
       },
       {
-        label: "Heading Annotations",
+        label: "Heading annotations",
         children: [
           { type: "color", key: "headingAnnotationColor", label: "Text color", description: "Annotations displayed alongside headings" },
           { type: "color", key: "headingAnnotationBorder", label: "Border color", description: "Border around heading annotation markers" },
@@ -110,7 +102,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "Code & Math",
+        label: "Code and math",
         children: [
           { type: "color", key: "codeBackground", label: "Code background", description: "Fill behind inline code spans" },
           { type: "color", key: "codeBlockBackground", label: "Code block background", description: "Fill behind fenced code blocks" },
@@ -138,7 +130,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "Margin Notes",
+        label: "Margin notes",
         children: [
           { type: "color", key: "noteColor", label: "Marker color", description: "Note indicator icons and numbers" },
           { type: "color", key: "noteMarkerBorder", label: "Border color", description: "Border around note markers" },
@@ -151,7 +143,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "LaTeX Comments",
+        label: "LaTeX comments",
         children: [
           { type: "color", key: "latexCommentColor", label: "Text color", description: "% comments visible in source view" },
         ],
@@ -164,7 +156,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "LaTeX Commands",
+        label: "LaTeX commands",
         children: [
           { type: "color", key: "latexCmdColor", label: "Command color", description: "Backslash commands in source view" },
         ],
@@ -172,10 +164,10 @@ export const PREFERENCES_TREE: PrefNode[] = [
     ],
   },
   {
-    label: "Panels & UI",
+    label: "Panels and UI",
     children: [
       {
-        label: "Panel Typography & Surfaces",
+        label: "Panel type and surfaces",
         children: [
           { type: "slider", key: "panelFontSize", label: "Font size", description: "Text size in side panel content", min: 11, max: 16, step: 1, unit: "px" },
           { type: "slider", key: "panelHeaderSize", label: "Header size", description: "Text size for panel section headers", min: 9, max: 17, step: 1, unit: "px" },
@@ -184,7 +176,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "Panel Backgrounds",
+        label: "Panel backgrounds",
         children: [
           { type: "color", key: "headerBg", label: "Header background", description: "Top header bar of each panel" },
           { type: "color", key: "podPanel", label: "Panel pod background", description: "Container area behind panel content" },
@@ -195,7 +187,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
     ],
   },
   {
-    label: "Canvas & Layout",
+    label: "Canvas and layout",
     children: [
       { type: "color", key: "backgroundColor", label: "Page background", description: "Main page/canvas fill color" },
       { type: "color", key: "foreground", label: "Foreground text", description: "Default text color for UI elements" },
@@ -209,7 +201,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
     ],
   },
   {
-    label: "Global Font Families",
+    label: "Fonts",
     children: [
       { type: "font", key: "fontSerif", label: "Body (serif)", description: "Main typeface for document text", options: MAIN_TEXT_FONTS },
       { type: "font", key: "fontSans", label: "UI (sans)", description: "Typeface for panels and interface", options: MAIN_TEXT_FONTS },

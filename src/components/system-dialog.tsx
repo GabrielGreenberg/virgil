@@ -108,7 +108,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Button, type ButtonVariant } from "./panel-primitives";
-import { MODAL_SCRIM_Z, DRAGGABLE_DIALOG_Z } from "@/floats/float-policy";
+import { MODAL_MENU_Z, MODAL_SCRIM_Z, DRAGGABLE_DIALOG_Z } from "@/floats/float-policy";
+import { MenuLayerContext } from "./menu/context";
+import { iconHint } from "@/components/Hint";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 import { useDragPosition } from "@/hooks/useDragPosition";
 import {
   isKeyOwner,
@@ -120,19 +123,20 @@ import {
 import { useDialogFocusRestore } from "./dialog-contract";
 import { isPlainEnter, resolveDialogEnter } from "./dialog-enter-policy";
 import { useBackdropPress } from "@/lib/backdrop-press";
+import { isCancelEscape } from "@/lib/key-intent";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    The one object you edit to re-skin every system dialog. Tailwind-class
    strings so they play with arbitrary-value utilities.
 */
 export const SYSTEM_DIALOG_TOKENS = {
-  scrim: "bg-[var(--overlay-scrim)]",
+  scrim: "dialog-scrim bg-[var(--overlay-scrim)]",
   /** Modal stacking tier. Applied via inline style (not a Tailwind class) so
    *  it reads from the {@link MODAL_SCRIM_Z} SSOT in float-policy.ts rather
    *  than a bare arbitrary-z literal — see the scrim `<div>` below. */
   zIndex: MODAL_SCRIM_Z,
   surface:
-    "bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-[var(--shadow-float)]",
+    "dialog-frame bg-[var(--surface)] rounded-xl shadow-[var(--shadow-float)]",
   maxWidth: {
     sm: "max-w-[340px]",
     md: "max-w-[380px]",
@@ -140,13 +144,12 @@ export const SYSTEM_DIALOG_TOKENS = {
     xl: "max-w-[720px]",
     full: "max-w-[min(96vw,1100px)]",
   },
-  header: "px-5 pt-4 pb-3",
-  body: "px-5 pb-4",
-  footer:
-    "flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border)] bg-surface-muted/60",
-  title: "text-sm font-semibold text-ink-body mb-1.5",
-  subtitle: "text-xs text-ink-subtle",
-  message: "text-xs text-ink-body leading-relaxed",
+  header: "px-5 pt-5 pb-3",
+  body: "px-5 pb-3",
+  footer: "flex items-center justify-end gap-2 px-5 pt-2 pb-5",
+  title: "text-base font-semibold text-ink-strong",
+  subtitle: "mt-1 text-sm text-ink-muted",
+  message: "text-sm text-ink-body leading-relaxed",
   /* SystemDialog buttons render through `Button` from panel-primitives;
      no per-token strings needed. The variant prop on SystemDialogButton
      maps onto the canonical Button variants. */
@@ -757,7 +760,7 @@ export default function SystemDialog({
 
     const onBubble = (e: KeyboardEvent) => {
       if (!tokenRef.current || !isKeyOwner(tokenRef.current)) return;
-      if (e.key === "Escape") {
+      if (isCancelEscape(e)) {
         // Unchanged from pre-389 except for the stack gate: Escape closes the
         // TOP dialog, unconditionally. Deliberately NOT gated on
         // `defaultPrevented` — CodeMirror binds Escape (simplifySelection) and
@@ -765,6 +768,9 @@ export default function SystemDialog({
         // make Escape stop closing that dialog whenever its preamble editor has
         // focus. A modal always has a way out.
         if (!onClose) return;
+        // An open dropdown's own Escape: its focus is on an <option>, and the
+        // browser closes the picker. The dialog stays.
+        if ((e.target as Element | null)?.closest?.("option")) return;
         // preventDefault BEFORE the door: the dialog is answering this key
         // whether the answer turns out to be "close" or "ask first", so nothing
         // beneath it (CodeMirror's simplifySelection, the editor keymaps) may
@@ -899,6 +905,7 @@ export default function SystemDialog({
   // ── Modal variant (default) — scrim + centered/anchor-placed frame ─
   return createPortal(
     <DialogCtx.Provider value={ctxValue}>
+      <MenuLayerContext.Provider value={MODAL_MENU_Z}>
       <div
         className={`fixed inset-0 ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
         // Keep centered dialogs clear of the OS window-control strip under WCO
@@ -933,8 +940,112 @@ export default function SystemDialog({
           {children}
         </div>
       </div>
+      </MenuLayerContext.Provider>
     </DialogCtx.Provider>,
     document.body,
+  );
+}
+
+/* ── Sidebar shell ─────────────────────────────────────────────────────── */
+
+export interface SystemDialogSection<Id extends string = string> {
+  id: Id;
+  label: string;
+}
+
+/**
+ * The shape of a dialog with several pages: a tinted sidebar that carries the
+ * dialog's title and its sections, and the active page beside it. Preferences
+ * and the AI window both render this, so a window of this kind has one look.
+ * In a draggable dialog both title strips are the drag handle.
+ */
+export function SystemDialogSidebarLayout<Id extends string>({
+  title,
+  titleId,
+  icon,
+  sections,
+  active,
+  onSelect,
+  heading,
+  headingDetail,
+  actions,
+  onClose,
+  children,
+}: {
+  title: string;
+  /** The frame's `labelledBy`. */
+  titleId: string;
+  icon?: ReactNode;
+  sections: readonly SystemDialogSection<Id>[];
+  active: Id;
+  onSelect: (id: Id) => void;
+  /** The active page's title. */
+  heading: string;
+  /** Quiet text beside the page title (counts, a status). */
+  headingDetail?: ReactNode;
+  /** Controls before the close button. */
+  actions?: ReactNode;
+  onClose: () => void;
+  /** The page. It owns its own scrolling. */
+  children: ReactNode;
+}) {
+  const { onMouseDown, dragging } = useSystemDialogDrag();
+  const dragHandle = onMouseDown
+    ? { onMouseDown, style: { cursor: dragging ? "grabbing" : "grab" } }
+    : undefined;
+  return (
+    <div className="flex flex-1 min-h-0">
+      <nav
+        aria-label={title}
+        className="flex flex-col w-[184px] shrink-0 px-2 pb-3 overflow-y-auto bg-[var(--card-surface)]"
+      >
+        <div {...dragHandle} className="flex items-center gap-2 h-14 px-2 shrink-0 select-none">
+          {icon}
+          <h2 id={titleId} className={SYSTEM_DIALOG_TOKENS.title}>
+            {title}
+          </h2>
+        </div>
+        <ul className="flex flex-col gap-0.5">
+          {sections.map((section) => (
+            <li key={section.id}>
+              <button
+                type="button"
+                aria-current={section.id === active ? "page" : undefined}
+                onClick={() => onSelect(section.id)}
+                className="dialog-nav-row focus-ring"
+              >
+                {section.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="flex flex-col flex-1 min-w-0">
+        <div {...dragHandle} className="flex items-center gap-2 h-14 pl-5 pr-3 shrink-0 select-none">
+          <div className="flex items-baseline gap-2 flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-ink-strong truncate">{heading}</h3>
+            {headingDetail && (
+              <span className="text-xs text-ink-muted truncate">{headingDetail}</span>
+            )}
+          </div>
+          <div
+            className="flex items-center gap-1 shrink-0"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {actions}
+            <button
+              type="button"
+              onClick={onClose}
+              className="iconbtn-md"
+              {...iconHint({ label: "Close" })}
+            >
+              <CloseIcon size={16} />
+            </button>
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 

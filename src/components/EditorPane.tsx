@@ -8799,8 +8799,8 @@ function PaneRail({
     // lives IN the column — first in the tool gutter's tools row on the left
     // (passed as its `leading`), on a sticky head row above the cards on the
     // right — so no strip column stands between the column and the window
-    // edge. The omni's own sticky chrome (navigator, bins) pins below that
-    // head through `--omni-sticky-top`, set on the rail below.
+    // edge. The omni's own sticky chrome (navigator, bins) shares that head
+    // row, through the variables set on the rail below.
     const omniNode: React.ReactNode =
       gutterLayout && !isLeft ? (
         <div data-gutter-side-host={side}>
@@ -8866,10 +8866,15 @@ function PaneRail({
           // establishing a scroll context, so descendants' sticky
           // positioning still latches to the row.
           overflow: 'clip',
-          // The right gutter's sticky head row (above): the omni's sticky
-          // navigator and bins read this and pin below it.
+          // The right gutter's sticky head row (above): the omni's navigator
+          // and bins sit ON it, to the left of the toggle, and the cards start
+          // below it.
           ...(gutterLayout && !isLeft
-            ? { ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)" }
+            ? {
+                ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)",
+                ["--omni-frame-z" as string]: 30,
+                ["--omni-head-clear" as string]: "28px",
+              }
             : null),
         }}
       >

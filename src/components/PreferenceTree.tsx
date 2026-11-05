@@ -20,8 +20,8 @@ import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 // unnamed. Each row also ends in the ONE reset control (`ResetButton`) when it
 // is given a default — present always, disabled at the default.
 
-/** The row shell every preference leaf shares: a `Field` in the row register
- *  with the 9rem label column. */
+/** The row shell every preference leaf shares: the label and its gloss take the
+ *  width, and the control sits at the row's right edge. */
 export function PrefField({
   label,
   description,
@@ -37,10 +37,10 @@ export function PrefField({
     <Field
       label={label}
       description={description}
-      register="row"
+      register="setting"
       control={control}
-      className="gap-3 py-1"
-      labelClassName="w-36"
+      className="gap-4 py-1.5"
+      labelClassName="flex-1 min-w-0"
     >
       {children}
     </Field>
@@ -82,9 +82,9 @@ export function SliderPref({
             step={step}
             value={value}
             onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="flex-1 h-1 accent-[var(--accent)]"
+            className="w-28 shrink-0 h-1 accent-[var(--accent)]"
           />
-          <span className="text-2xs text-ink-muted w-14 text-right tabular-nums">
+          <span className="text-2xs text-ink-muted w-12 shrink-0 text-right tabular-nums">
             {value}{unit}
           </span>
           {defaultValue !== undefined && (
@@ -129,14 +129,13 @@ export function ColorPref({
           role="group"
           aria-labelledby={labelId}
           aria-describedby={descriptionId}
-          className="flex items-center gap-2 flex-1"
+          className="flex items-center gap-4 shrink-0"
         >
           <HexColorField value={value} onChange={onChange} />
           <ResetButton
             onReset={() => onChange(defaultValue)}
             atDefault={isDefault}
             target={label}
-            className="ml-auto"
           />
         </div>
       )}
@@ -172,7 +171,7 @@ export function FontPref({
             aria-describedby={descriptionId}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="flex-1 text-xs px-2 py-1"
+            className="w-44 shrink-0 text-xs px-2 py-1"
           >
             {groups.map((g) =>
               g.group ? (
@@ -253,7 +252,7 @@ function LeafNode({
   prefs: EditorPreferences;
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
 }) {
-  const style = { paddingLeft: depth * 12 + 14 };
+  const style = { paddingLeft: depth * 12 };
 
   if (leaf.type === "color") {
     const l = leaf as PrefLeafColor;

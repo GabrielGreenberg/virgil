@@ -600,12 +600,12 @@
      menu's roving-active state consumes it (grab/lightning/heading/tab/menubar/
      color/combobox), so the cursor looks the same everywhere + future menus
      inherit it. */
-  --menu-roving-bg: rgba(37, 99, 235, 0.14);
+  --menu-roving-bg: rgba(90, 70, 50, 0.1);
   /* Modal scrim — a warm-neutral translucent derived from --ink-strong
      (#292524, a stone/umber near-black) rather than a cool pure black, so
      every modal's backdrop reads warm against the manila canvas instead of
      graphite. The ONE un-warmed token in this otherwise stone-mapped block. */
-  --overlay-scrim: rgba(41, 37, 36, 0.3);
+  --overlay-scrim: rgba(70, 50, 30, 0.16);
   /* The Stack strip (task 860): a LIGHT warm-black tint over the canvas (the
      same --ink-strong umber as the scrim), and the empty-state hint on it in
      body ink. The hint used to be 72%-white — chosen for a documented dark
@@ -1174,7 +1174,7 @@ body[data-zen-mode="on"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  column-gap: 12px;
+  column-gap: 8px;
   row-gap: 2px;
   margin-inline: -8px;
   padding-inline: 8px;
@@ -6924,12 +6924,13 @@ body.perf-contain .static-borrowed-text {
 /* The right gutter's head (task 1440, edge to edge): the collapse toggle on
    a sticky row above the cards, where the left gutter's tools row sits —
    the strip column is gone. The omni's own sticky chrome (the pending
-   navigator, the bins) pins BELOW it through `--omni-sticky-top`, which the
-   rail sets to this row's height. */
+   navigator, the bins) shares this row: the sticky frame that holds it sits one
+   rung above (`--omni-frame-z`), and `--omni-sticky-top` holds the row's height,
+   so the first card starts under the row whether or not a notice is showing. */
 .gutter-side-head {
   position: sticky;
   top: 0;
-  z-index: 31;
+  z-index: 29;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -6938,6 +6939,16 @@ body.perf-contain .static-borrowed-text {
   height: calc(var(--pod-gap) + 42px);
   padding: calc(var(--pod-gap) + 2px) 4px 8px;
   background: var(--background);
+}
+.gutter-side-head::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: linear-gradient(to bottom, var(--background), transparent);
+  pointer-events: none;
 }
 /* A tool's header runs the gutter's width: the title in capitals at the left
    edge, under the tool buttons, and its controls at the right. */
@@ -7091,4 +7102,124 @@ body.perf-contain .static-borrowed-text {
 .tool-gutter-row[data-selected] .tool-gutter-row-text {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ── Dialogs ───────────────────────────────────────────────────────────────
+   A blurred backdrop and one soft settle. `translate`, not `transform`: a
+   draggable frame is placed by an inline transform, which an animated one would
+   replace. No scale: an anchored frame is measured while this runs. */
+.dialog-scrim {
+  backdrop-filter: blur(6px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dialog-scrim {
+    animation: dialog-scrim-in var(--motion-fast) ease-out;
+  }
+  .dialog-frame {
+    animation: dialog-settle var(--motion-fade) var(--motion-ease-emphasis);
+  }
+}
+@keyframes dialog-scrim-in {
+  from { opacity: 0; }
+}
+@keyframes dialog-settle {
+  from { opacity: 0; translate: 0 6px; }
+}
+
+/* A section in a dialog's sidebar (`SystemDialogSidebarLayout`). */
+.dialog-nav-row {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  color: var(--ink-body);
+  transition: background-color var(--motion-fast) ease;
+}
+.dialog-nav-row:hover {
+  background: var(--segment-track);
+}
+.dialog-nav-row[aria-current="page"] {
+  background: var(--segment-track);
+  color: var(--ink-strong);
+  font-weight: 500;
+}
+
+/* A request's cancel shows with its row. */
+.ai-request-cancel {
+  opacity: 0;
+}
+.ai-request-row:hover .ai-request-cancel,
+.ai-request-cancel:focus-visible {
+  opacity: 1;
+}
+
+/* No form control falls back to the system's blue. */
+:root {
+  accent-color: var(--control-selected);
+}
+
+/* ── The one dropdown ──────────────────────────────────────────────────────
+   Still a real <select>, so the browser keeps its keyboard, focus and form
+   behaviour; `base-select` hands its list to this stylesheet as a Virgil menu.
+   A browser without it shows its own list, and nothing breaks. */
+.field-select,
+.field-select::picker(select) {
+  appearance: base-select;
+}
+.field-select {
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.field-select::picker-icon {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 6px;
+  margin-inline-start: auto;
+  background: var(--ink-muted);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.field-select::picker(select) {
+  margin-block: 4px;
+  padding: 4px;
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+}
+.field-select option {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-body);
+  cursor: default;
+}
+.field-select option:hover,
+.field-select option:focus-visible {
+  background: var(--menu-roving-bg);
+  outline: 1px solid transparent; /* the wash is the focus mark */
+}
+.field-select option:checked {
+  color: var(--ink-strong);
+  font-weight: 500;
+}
+.field-select option::checkmark {
+  order: 1;
+  margin-inline-start: auto;
+  padding-inline-start: 12px;
+  color: var(--accent);
+}
+.field-select optgroup {
+  font-weight: 400;
+}
+.field-select legend {
+  padding: 6px 8px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
 }

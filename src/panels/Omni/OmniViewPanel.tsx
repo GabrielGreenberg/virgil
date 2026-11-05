@@ -381,8 +381,10 @@ export function OmniBinStack({
         data-omni-bin-stack=""
         data-omni-bin-host="frame"
         className="omni-notices"
-        // Below the right gutter's head row (`--omni-sticky-top`, task 1440).
-        style={{ paddingTop: "var(--omni-sticky-top, 0px)" }}
+        // ON the right gutter's head row, beside the collapse toggle: at least
+        // that row's height (`--omni-sticky-top`), so the cards' floor is the
+        // row's bottom edge whether or not there is a notice to show.
+        style={{ minHeight: "calc(var(--omni-sticky-top, 0px) - var(--pod-gap))" }}
       >
         {children}
       </div>
@@ -474,7 +476,11 @@ export function OmniBinPill({
       {expanded && (
         <div
           className="panel-scroll mt-1 space-y-2 rounded-lg bg-card shadow-[var(--card-shadow-ambient)] p-2"
-          style={{ maxHeight: "var(--dock-slot-frame-h, 80vh)" }}
+          // Back out to the cards' right edge, under the head row's toggle.
+          style={{
+            maxHeight: "var(--dock-slot-frame-h, 80vh)",
+            marginRight: "calc(-1 * var(--omni-head-clear, 0px))",
+          }}
         >
           {children}
         </div>

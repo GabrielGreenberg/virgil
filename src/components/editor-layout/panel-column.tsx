@@ -577,7 +577,9 @@ export function PanelColumn({
                 overflow: 'visible',
                 display: 'flex',
                 flexDirection: 'column',
-                zIndex: hasStack ? 30 : undefined,
+                // The right gutter's head row lifts an empty frame too: the
+                // bins sit on that row, so they must paint above it.
+                zIndex: hasStack ? 30 : 'var(--omni-frame-z, auto)',
               }}
             >
               {stack.map((band, i) => (
@@ -622,6 +624,9 @@ export function PanelColumn({
                   // bins sit at the frame's own top (`frameTop`), which is
                   // exactly where a docked band's first pixel would be.
                   marginTop: hasStack ? 'var(--pod-gap)' : 0,
+                  // Stops short of the head row's collapse toggle, which sits
+                  // beneath this frame and must stay clickable.
+                  marginRight: 'var(--omni-head-clear, 0px)',
                 }}
               />
             </div>
