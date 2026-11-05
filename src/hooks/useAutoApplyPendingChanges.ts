@@ -66,7 +66,10 @@ import {
   applySuggestion,
   suggestionApplicability,
 } from "@/links/pending-change-actions";
-import type { PendingChangeFamily } from "@/links/apply-suggestion";
+import {
+  PENDING_CHANGE_FAMILIES,
+  type PendingChangeFamily,
+} from "@/links/apply-suggestion";
 import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import { generateEntityId } from "@/lib/uuid";
@@ -224,16 +227,22 @@ export function collectPendingAiSuggestions(
   cutter: CutterAutoApplyFamily,
 ): ResolvedSuggestion[] {
   const out: ResolvedSuggestion[] = [];
-  const push = <
-    TCard extends { kind: string },
-    TSugg extends AnySuggestionCard,
-  >(
-    fam: AutoApplyFamily<TCard, TSugg>,
-    family: PendingChangeFamily,
-    isSuggestion: (c: TCard) => c is TCard & TSugg,
-  ): void => {
+  // One input per suggestion family, keyed by the family's card kind. The
+  // `satisfies` makes the table exhaustive over `PendingChangeFamily`, and the
+  // loop walks `PENDING_CHANGE_FAMILIES` (≡ `SUGGESTION_KINDS`, census-pinned —
+  // task 1476) rather than one hand-written `push` per kind. Both families
+  // store their suggestions as `kind: "suggestion"`, so one guard serves both.
+  const byFamily = {
+    "revision-suggestion": revisions,
+    "cutter-suggestion": cutter,
+  } satisfies Record<PendingChangeFamily, unknown>;
+  for (const family of PENDING_CHANGE_FAMILIES) {
+    const fam = byFamily[family] as unknown as AutoApplyFamily<
+      RevisionCard | CutterCard,
+      AnySuggestionCard
+    >;
     for (const card of fam.getCards()) {
-      if (!isSuggestion(card)) continue;
+      if (card.kind !== "suggestion") continue;
       if (card.author !== "ai" || card.status !== "pending") continue;
       const anchorUuid = getLinkedTextObjectIds(card)[0];
       if (!anchorUuid) continue;
@@ -251,17 +260,7 @@ export function collectPendingAiSuggestions(
         ) => void,
       });
     }
-  };
-  push(
-    revisions,
-    "revision-suggestion",
-    (c): c is RevisionCard & RevisionSuggestionCard => c.kind === "suggestion",
-  );
-  push(
-    cutter,
-    "cutter-suggestion",
-    (c): c is CutterCard & CutterSuggestionCard => c.kind === "suggestion",
-  );
+  }
   return out;
 }
 

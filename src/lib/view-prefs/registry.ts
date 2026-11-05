@@ -32,7 +32,9 @@ import type { MarkerType } from "@/cards/types";
 // validator.
 import {
   ALL_HIGHLIGHT_TYPES,
+  MENU_HIGHLIGHT_TYPES,
   type HighlightType,
+  type MenuHighlightType,
 } from "@/lib/view-prefs/highlight-types";
 // Runtime import, and cycle-safe: `marker-meta` imports only the runtime-leaf
 // `card-registry` (itself type-only apart from the zero-import
@@ -148,7 +150,8 @@ interface SetDef<E extends string | number> {
    *  They are two different jobs, and conflating them silently deletes live
    *  state. `hiddenMarginaliaTypes` may legitimately hold the `error` marker
    *  type, which is deliberately NOT hideable and so absent from `members`
-   *  (`NON_HIDEABLE_MARKER_TYPES`); `hiddenHighlightTypes` may hold `report`,
+   *  (`NON_HIDEABLE_MARKER_TYPES`); `hiddenHighlightTypes` may hold `report`
+   *  (`NON_MENU_HIGHLIGHT_TYPES`),
    *  which the menu likewise does not render. Validating either against
    *  `members` would drop exactly those — which is why
    *  `toggleViewPrefMember` refuses to validate against `members` at all.
@@ -262,10 +265,10 @@ export const VIEW_PREF_REGISTRY = {
                           memberLabels: MARGINALIA_TYPE_LABELS },
   // Highlights
   showHighlights:       { kind: "toggle", scope: "global", default: SHIPPED.showHighlights, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
-  hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
+  hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: MENU_HIGHLIGHT_TYPES,
                           domain: ALL_HIGHLIGHT_TYPES,
                           polarity: "hidden", label: "Highlight types", menu: "highlights", memberRowIdPrefix: "highlights-type-",
-                          memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
+                          memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } satisfies Record<MenuHighlightType, string> },
   // Dividers
   dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: DIVIDER_LEVELS,
                    polarity: "present", label: "Divider levels", menu: "dividers", memberRowIdPrefix: "divider-level-",

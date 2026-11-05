@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { getBus, type DocStructure } from "@/lib/tiptap/doc-structure";
+import type { CardAtomKind } from "@/lib/tiptap/atom-registry";
 
 /** Resolves a caller-chosen id to a LIVE ProseMirror position. */
 export type LivePosResolver = (id: string) => number | undefined;
@@ -13,7 +14,18 @@ export type LivePosResolver = (id: string) => number | undefined;
  *  type-checks directly. The range-anchored consumer (a main-text search
  *  highlight keyed on a block uuid + char offset) is served by the separate
  *  `resolveLiveBlockRange` below, which reads the same live snapshot. */
-export type LivePosKind = "footnote" | "citation" | "example";
+export type LivePosKind = CardAtomKind | "example";
+
+/** Which snapshot list carries each Card-bearing atom's live entries. A MAPPED
+ *  type over `CardAtomKind` (task 1476), so a new Card-bearing atom fails to
+ *  compile here until its list is named — it can no longer be silently
+ *  missing from the live-position map. */
+const ATOM_SNAPSHOT_LIST: {
+  readonly [K in CardAtomKind]: (s: DocStructure) => readonly { id: string; pos: number }[];
+} = {
+  footnote: (s) => s.footnotes,
+  citation: (s) => s.citations,
+};
 
 /** A block-relative match identity: the block's stable uuid + the character
  *  offset of the match WITHIN that block's text + the match length. This is
@@ -142,8 +154,9 @@ export function useLivePosResolver(
       // paragraph-anchor map (structural rebuild of the items) changes identity.
       if (cacheRef.current.s !== s || cacheRef.current.anchors !== paragraphAnchors) {
         const map = new Map<string, number>();
-        for (const f of s.footnotes) map.set(keyOf("footnote", f.id), f.pos);
-        for (const c of s.citations) map.set(keyOf("citation", c.id), c.pos);
+        for (const kind of Object.keys(ATOM_SNAPSHOT_LIST) as CardAtomKind[]) {
+          for (const a of ATOM_SNAPSHOT_LIST[kind](s)) map.set(keyOf(kind, a.id), a.pos);
+        }
         for (const e of s.examples) {
           map.set(keyOf("example", e.id), e.pos);
           if (e.uuid) map.set(keyOf("example", e.uuid), e.pos);
