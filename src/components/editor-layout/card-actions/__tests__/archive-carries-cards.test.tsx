@@ -982,6 +982,8 @@ describe("archive-carry CENSUS", () => {
       await h.dispatch("archive", P_REF);
       expect(h.deletes).toEqual([]);
       expect(store.byId("k1").archived).toBe(true);
+      // Carried with the passage, not left active pointing at archived text.
+      if (modeAKind) expect(store.byId("k2").archived).toBe(true);
       expect(restore(editor, h.snippets[0])).toBe(true);
       expect(markedText(editor, "A-k")).toBe("marked words");
       store.revive(editor);
