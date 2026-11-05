@@ -62,18 +62,24 @@ function richFromParagraphs(parts: string[]): JSONContent {
  *  `user_text` wins over the AI draft, the same precedence the apply path uses
  *  (`suggestionReplacement`) — then, when the human rewrote it, the AI's
  *  SUPERSEDED draft as its own labelled paragraph (task 898: it used to vanish
- *  undeclared), then the explanation (task 199). The author byline is the one
- *  thing a comment cannot hold; the registry declares it (`drops: ["byline"]`). */
+ *  undeclared), then the explanation (task 199), then the user's own request
+ *  the AI answered (`instructions`, labelled — task 1472: it used to vanish
+ *  undeclared, and the drop vocabulary could not even name it). The author
+ *  byline is the one thing a comment cannot hold; the registry declares it
+ *  (`drops: ["byline"]`). `morph-field-accountability.test.ts` holds every
+ *  suggestion field to one of carried / salvaged / declared. */
 function suggestionCommentParts(s: {
   user_text?: string;
   suggested_text?: string;
   explanation?: string;
+  instructions?: string;
 }): string[] {
   const user = s.user_text || "";
   const draft = s.suggested_text || "";
   const superseded =
     user && draft && draft.trim() !== user.trim() ? `Earlier draft: ${draft}` : "";
-  return [user || draft, superseded, s.explanation || ""];
+  const instructions = s.instructions?.trim() ? `Instructions: ${s.instructions}` : "";
+  return [user || draft, superseded, s.explanation || "", instructions];
 }
 
 /** The suggestion families' morph GATE (task 898): only an OPEN suggestion may

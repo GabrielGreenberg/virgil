@@ -86,6 +86,25 @@ export function isArchivedWithText(card: DormantCardShape): boolean {
   return dormantSnippetOf(card) !== null;
 }
 
+/**
+ * A MORPH keeps the card-level dormancy (task 1472). A morph re-types the
+ * record but carries its `links` verbatim (dormant links included), so the
+ * card is exactly as fully dormant after the flip as before — dropping the
+ * card-level field would break this module's invariant ("set exactly while
+ * every anchor link is dormant") and leave an archived-with-its-text card
+ * reading as a hand archive. FILL-only, and morph-only: a CLONE resets its
+ * links, so it must not inherit the field (it goes through
+ * `carryCardEnvelope`, which deliberately does not carry it).
+ */
+export function carryDormancy<T>(
+  source: DormantCardShape | null | undefined,
+  target: T,
+): T {
+  const snippet = source ? dormantSnippetOf(source) : null;
+  if (!snippet) return target;
+  return { ...(target as object), archivedWith: snippet } as T;
+}
+
 /** True when the card HAS anchor links and every one of them is dormant. */
 export function isFullyDormant(card: { links?: Link[] }): boolean {
   const anchors = (card.links ?? []).filter((l) => l.anchor.type === "textObject");
