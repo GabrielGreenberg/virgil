@@ -14,6 +14,7 @@
  */
 import { getCardMorphConverter } from "../card-registry";
 import { carryCardEnvelope, carryCapturedPassage } from "../envelope";
+import { carryDormancy, type DormantCardShape } from "@/links/dormant";
 import type { CardKind } from "../types";
 
 export function applyCardMorph<T>(fromKind: CardKind, card: T): T {
@@ -39,8 +40,12 @@ export function applyCardMorph<T>(fromKind: CardKind, card: T): T {
     card as { archived?: boolean } | null | undefined,
     out,
   );
-  return carryCapturedPassage(
+  const withCapture = carryCapturedPassage(
     card as { selectedText?: string; selectedContent?: unknown } | null | undefined,
     withEnvelope,
   );
+  // Dormancy (task 1472): the links ride the converter verbatim, so a card
+  // archived WITH its text is still fully dormant after the flip — its
+  // card-level marker must ride too (`@/links/dormant` owns the field).
+  return carryDormancy(card as DormantCardShape | null | undefined, withCapture);
 }

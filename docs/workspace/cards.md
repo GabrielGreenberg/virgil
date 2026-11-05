@@ -374,7 +374,7 @@ polymorphic-panel map:
 | Panel | Hosts | Shared key/theme | Morph |
 |---|---|---|---|
 | **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — `morph.lossy` is true in both directions, but the confirm fires only when the card HOLDS a dropped field (task 755) |
-| **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment lossy only for the AI `byline` (`drops: ["byline"]`, task 898 — body rides into `user_text` and back; a superseded AI draft rides the comment body as "Earlier draft:") |
+| **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment lossy only for the AI `byline` (`drops: ["byline"]`, task 898 — body rides into `user_text` and back; a superseded AI draft rides the comment body as "Earlier draft:", the user's request as "Instructions:" — task 1472; every field of every morph is held to carried / salvaged / declared by `morph-field-accountability.test.ts`) |
 | **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment drops only the AI `byline` (task 898) |
 | **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
 
