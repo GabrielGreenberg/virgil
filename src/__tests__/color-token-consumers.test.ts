@@ -507,6 +507,8 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
     ".iconbtn-xs.iconbtn-on-dark:hover, .iconbtn-sm.iconbtn-on-dark:hover, .iconbtn-md.iconbtn-on-dark:hover, .iconbtn-lg.iconbtn-on-dark:hover": SSOT,
     ".topbarbtn:hover": SSOT,
     ".dialog-nav-row:hover": "a sidebar section washes like a Library nav row (--segment-track)",
+    '.iconbtn-md.iconbtn-bare[aria-pressed="true"]:not(:hover)':
+      "not a hover fill: a pressed toggle's resting tile, cleared while it is NOT hovered",
     ".field-select option:hover, .field-select option:focus-visible":
       "an open dropdown's row: the menus' one roving wash (--menu-roving-bg)",
     ".topbarbtn.topbarbtn-primary:hover": "the bar's one filled control: its own fill, one step darker",
@@ -596,12 +598,10 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
  * is the same end state task 281 recorded for a control whose elevation is an
  * inline `box-shadow`, arriving from the other direction.
  *
- * The fix is a COMPOSITION, not a bigger literal: both halves are tokens
- * (`--focus-ring-shadow`, `--control-selected-inset-ring`) and the focused
- * twin reads both, so the ring is spelled once however many rules must carry
- * it. The legs below pin the two things a future edit could quietly break —
- * that the value has one spelling, and that the twin still out-specifies the
- * rule it composes with.
+ * The fix was to take the competing shadow away: a pressed toggle is a tint, so
+ * `--focus-ring-shadow` reaches it unopposed. The legs below pin the two things
+ * a future edit could quietly break — that the value has one spelling, and that
+ * no pressed rule paints a shadow of its own.
  */
 describe("the focus ring is spelled once and always wins", () => {
   /** `selector { body }` pairs at depth 0, comments stripped. */
@@ -656,9 +656,8 @@ describe("the focus ring is spelled once and always wins", () => {
   );
 
   it("sees the rules worth censusing (self-check)", () => {
-    // Exactly two: the shared indicator block, and the pressed-toggle pair
-    // (its own rule plus the focused twin that composes with it).
-    expect(shadowRules.length).toBe(3);
+    // Exactly one: the shared indicator block.
+    expect(shadowRules.length).toBe(1);
   });
 
   it("no rule re-spells the ring — every one reads a token", () => {
@@ -667,7 +666,7 @@ describe("the focus ring is spelled once and always wins", () => {
       expect(
         decl.trim(),
         `${r.selector.split(",")[0]} spells its own shadow`,
-      ).toMatch(/^var\(--(?:focus-ring-shadow|control-selected-inset-ring)\)/);
+      ).toMatch(/^var\(--focus-ring-shadow\)/);
     }
     // …and the ring's literal lives in the token home, once.
     expect(globals.match(/--focus-ring-shadow:\s*0 0 0 2px var\(--edge-strong\)/g) ?? [])
@@ -677,28 +676,11 @@ describe("the focus ring is spelled once and always wins", () => {
     );
   });
 
-  it("a pressed toggle's own box-shadow is out-specified by its focused twin", () => {
-    const pressed = shadowRules.find(
-      (r) => /aria-pressed/.test(r.selector) && !/:focus-visible/.test(r.selector),
-    );
-    const focused = shadowRules.find(
-      (r) => /aria-pressed/.test(r.selector) && /:focus-visible/.test(r.selector),
-    );
-    expect(pressed, "the pressed-toggle rule went missing").toBeTruthy();
-    expect(focused, "the pressed toggle has no focused twin — the ring vanishes").toBeTruthy();
-    // The load-bearing claim: (0,4,0) beats (0,3,0), so the focused twin wins.
-    expect(gt(specificity(focused!.selector), specificity(pressed!.selector))).toBe(true);
-    // …and it must beat the SHARED block too, or it would never apply.
-    const shared = shadowRules.find((r) => /\.focus-ring:focus-visible/.test(r.selector))!;
-    expect(gt(specificity(focused!.selector), specificity(shared.selector))).toBe(true);
-    // The twin COMPOSES rather than replacing: both halves paint.
-    expect(focused!.body).toContain("var(--control-selected-inset-ring)");
-    expect(focused!.body).toContain("var(--focus-ring-shadow)");
-    // Its selector list covers all four sizes — a size left out is a size
-    // whose pressed toggle silently keeps the pre-503 behaviour.
-    for (const size of ["xs", "sm", "md", "lg"]) {
-      expect(focused!.selector).toContain(`.iconbtn-${size}.iconbtn-toggle`);
-    }
+  it("a pressed toggle paints no shadow of its own, so the ring reaches it", () => {
+    // Task 503's defect was a pressed toggle whose inset ring out-specified the
+    // focus ring and took the whole `box-shadow` property. The pressed state is
+    // a tint alone now, so nothing is left to out-specify it.
+    expect(shadowRules.filter((r) => /aria-pressed/.test(r.selector))).toEqual([]);
   });
 
   it("the specificity comparator CAN SEE an inversion (self-check)", () => {

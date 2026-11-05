@@ -262,15 +262,8 @@
    * than the main editor pod's shadow but still readable as "raised". */
   --card-shadow-ambient: 0 0 0 0.5px rgba(70,50,30,0.06), 0 1px 3px rgba(70,50,30,0.07);
   /* The KEYBOARD FOCUS RING, spelled once (task 503). Read by the shared
-   * `:focus-visible` block below AND by the one rule that has to COMPOSE
-   * with it — a pressed `.iconbtn-toggle`, whose own inset ring sits at a
-   * higher specificity and would otherwise replace the indicator outright.
-   * Two rules, one spelling, so the ring cannot drift into two rings. */
+   * `:focus-visible` block below, so the ring cannot drift into two rings. */
   --focus-ring-shadow: 0 0 0 2px var(--edge-strong);
-  /* …and the pressed toggle's inset ring, for the same reason: it is now
-   * read by the pressed rule and by the pressed+focused rule beside it. */
-  --control-selected-inset-ring: inset 0 0 0 1px
-    color-mix(in oklab, var(--control-selected-ink) 30%, transparent);
   /* Lift for a DRAG GHOST — the translucent copy of a grabbed thing that
    * follows the cursor on the topmost layer. Authored in the `filter:`
    * form (not `box-shadow`) because both consumers are clones whose
@@ -1386,6 +1379,11 @@ body[data-zen-mode="on"] {
   color: var(--ink-strong);
 }
 
+/* A toggle whose glyph already shows its state paints no pressed tile. */
+.iconbtn-md.iconbtn-bare[aria-pressed="true"]:not(:hover) {
+  background-color: transparent;
+}
+
 /* Danger variant — used for the card-trash button. */
 .iconbtn-xs.iconbtn-danger,
 .iconbtn-sm.iconbtn-danger,
@@ -1471,9 +1469,8 @@ body[data-zen-mode="on"] {
 
 /* Toggle variant — for icon buttons whose active state means "this mode
    is on" (sidebar strip toggles, code/compile mode buttons). When
-   `aria-pressed="true"`, paint with the brand accent on accent-light bg
-   and a thin inset accent ring — the look the topbar/strip toggles
-   used pre-codification. */
+   `aria-pressed="true"`, a tint and its ink say so: no drawn box, so the
+   shared `:focus-visible` ring reaches a pressed toggle unopposed. */
 .iconbtn-xs.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-sm.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-md.iconbtn-toggle[aria-pressed="true"],
@@ -1483,22 +1480,7 @@ body[data-zen-mode="on"] {
      taupe) on the tint so glyph/label contrast clears AA. */
   background-color: var(--control-selected-tint);
   color: var(--control-selected-ink);
-  box-shadow: var(--control-selected-inset-ring);
 }
-/* …and the same toggle WHILE FOCUSED (task 503). The rule above is
-   (0,3,0) and the shared `:focus-visible` block is (0,2,0), so without
-   this the pressed state won the whole `box-shadow` property and the
-   focus ring vanished — leaving `outline: none` (which the focus rule
-   still applied) and nothing in its place, i.e. a keyboard-reachable
-   sidebar/mode toggle with NO visible focus at all. Both values are read
-   from their tokens, so this composes rather than re-spelling either. */
-.iconbtn-xs.iconbtn-toggle[aria-pressed="true"]:focus-visible,
-.iconbtn-sm.iconbtn-toggle[aria-pressed="true"]:focus-visible,
-.iconbtn-md.iconbtn-toggle[aria-pressed="true"]:focus-visible,
-.iconbtn-lg.iconbtn-toggle[aria-pressed="true"]:focus-visible {
-  box-shadow: var(--control-selected-inset-ring), var(--focus-ring-shadow);
-}
-
 /* ── Topbar button utility ─────────────────────────────────────────
    Single source of truth for buttons in the 40px Virgil bar. Covers
    icon-only, text-only, and icon+text shapes with one height, one
@@ -7223,3 +7205,27 @@ body.perf-contain .static-borrowed-text {
   font-weight: 500;
   color: var(--ink-muted);
 }
+
+/* ── One line weight ───────────────────────────────────────────────────────
+   Every icon draws at one real thickness, whatever grid it was drawn on: a
+   `stroke-width` of 2 on a 24 grid and 1.5 on a 16 grid are different lines at
+   the same size, so the number in the markup cannot be the weight.
+   `non-scaling-stroke` takes the grid out, and these rules state the weight.
+   Zero specificity on purpose: any real rule still wins, as a folded chevron
+   does. A glyph that is not a line of this weight (a ring, a tick) says so with
+   `data-icon-weight="own"`. */
+:root {
+  --icon-stroke: 1.5px;
+  --icon-stroke-small: 1.25px;
+}
+:where(svg[width="8"], svg[width="9"], svg[width="10"], svg[width="11"], svg[width="12"], svg[width="13"]) {
+  --icon-stroke: var(--icon-stroke-small);
+}
+:where(svg[stroke]:not([stroke="none"], [data-icon-weight="own"]))
+  :where(path, line, polyline, polygon, circle, ellipse, rect),
+:where(svg:not([data-icon-weight="own"]))
+  :where(path, line, polyline, polygon, circle, ellipse, rect):where([stroke]:not([stroke="none"])) {
+  vector-effect: non-scaling-stroke;
+  stroke-width: var(--icon-stroke);
+}
+

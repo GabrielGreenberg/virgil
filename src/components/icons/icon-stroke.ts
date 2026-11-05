@@ -1,14 +1,16 @@
 /**
- * The icon stroke rungs — the ONE place a stroke weight for a UI glyph is a
- * number (task 2026-10-24-1276). STYLE_GUIDE → "Icons".
+ * The stroke values a UI glyph declares on its `<svg>` (task 2026-10-24-1276).
+ * STYLE_GUIDE → "Icons".
  *
- *  - `ICON_STROKE` (2) is the default: every outlined/framed glyph (a box with
- *    an arrow, a page, a link) at any size.
+ * These are not the line weight. An icon's weight on screen is set once, in
+ * globals.css ("One line weight"), because a stroke of 2 on a 24 grid and 1.5 on
+ * a 16 grid are different lines at the same size. These stay as the attributes a
+ * glyph falls back on where that stylesheet is absent, such as a vanilla-DOM
+ * builder's node in a test or a copied SVG.
+ *
+ *  - `ICON_STROKE` (2) is the default: every outlined/framed glyph.
  *  - `ICON_STROKE_SMALL` (2.5) is the SMALL-GLYPH rung: a bare mark — a "+",
- *    a close "×", a chevron or caret — drawn at ≤14px, where a 2-unit stroke
- *    in a 24 viewBox renders under 1.2 CSS px and reads faint beside text.
- *    The shared chevron leaves (`Chevron`, `DropChevrons`, `JumpChevron`,
- *    `MenuCaret`) and the panel-header "+" / close "×" all wear it.
+ *    a close "×", a chevron or caret — drawn at ≤14px.
  *
  * A pure-data leaf (no imports), so vanilla-DOM builders can read it too.
  * `icon-stroke-rung-census.test.ts` fails a bare `2.5` stroke literal

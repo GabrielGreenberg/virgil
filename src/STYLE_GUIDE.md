@@ -1170,22 +1170,22 @@ A roving MENU row is the exception to the second half and not to the
 first: it is `tabIndex={-1}` and shows `data-active` instead, so it
 needs a name and no ring.
 
-Icons are stroke-only, stroke-width 2, round caps and joins, single
-color (`currentColor`). **One sanctioned second rung** (task
-2026-10-24-1276): `ICON_STROKE_SMALL` (2.5) for a BARE MARK — "+", close
-"×", chevron, caret — at ≤14px, where 2 units in a 24 viewBox render
-under 1.2 CSS px and read faint; framed/outlined glyphs stay on
-`ICON_STROKE` (2). Both live in
-[src/components/icons/icon-stroke.ts](src/components/icons/icon-stroke.ts)
-and a site on the small rung imports it — CI
-(`icon-stroke-rung-census.test.ts`) fails a bare `2.5` literal anywhere
-in `src/`. A glyph declares its weight ONCE, on its outer `<svg>`; a child
-never overrides it (the popout button's popped "×" did, so one button
-changed weight with its state). The menu-trigger caret is the
+Icons are outline only, one line weight, round caps and joins, single color
+(`currentColor`). **The weight is not a number in the markup.** A stroke of 2 on
+a 24 grid and 1.5 on a 16 grid are different lines at the same size, so
+globals.css ("One line weight") sets it once with `non-scaling-stroke`: 1.5px
+for an icon of 14px or more, 1.25px below that. It reaches every `<svg>` that
+draws with a stroke, at zero specificity, so a real rule can still win (a folded
+chevron does). A glyph that is not a line of this weight, such as a ring, a tick
+or a checkbox, carries `data-icon-weight="own"`. The `strokeWidth` a glyph
+declares is its fallback (`icon-stroke.ts`); a glyph declares it ONCE, on its
+outer `<svg>`, and a child never overrides it.
+
+Draw a symbol, do not type one: a `<text>` glyph takes the font's weight, which
+is how `#` came to look bold beside its neighbours. The menu-trigger caret is the
 `MenuCaret` leaf (`src/components/icons/`, down/up), never a hand-copied
 polyline; an INLINE caret sizes to the text it trails (the card-kind
-trigger's 9px), a button-only caret takes its `iconbtn-*` rung. Two exceptions are filled by design: the AI
-star (sky `#0ea5e9`) and the trash icon (`text-danger`). The **fold
+trigger's 9px), a button-only caret takes its `iconbtn-*` rung. A mark stays solid only where the solid IS the mark: dots, grips, the bold tile, a pinned pin. The **fold
 chevron** is a STROKED exception to the width: the shared
 `margin-fold-chevron` control (heading fold + source-pod collapse) and the
 Outline twisties draw one glyph, `FOLD_CHEVRON_GLYPH` in
@@ -2224,8 +2224,8 @@ flow under the last button (the strip is sticky and content-sized; nothing
 pins it to the bottom). Every toggle — strip buttons and the collapse
 toggle alike — is `iconbtn-md iconbtn-toggle` (24×24) with `aria-pressed`;
 the "on" paint is the shared control-selected path
-(`.iconbtn-toggle[aria-pressed="true"]` in globals.css: tint + ink + inset
-ring), never a hand-rolled fill. The lit strip icon is the **only**
+(`.iconbtn-toggle[aria-pressed="true"]` in globals.css: tint + ink, no drawn
+box), never a hand-rolled fill. The lit strip icon is the **only**
 active-panel cue. A panel looks **identical whether or not it has focus**: no
 per-pod stripe, ring, border, or shadow-change on focus. Pinned by
 `strip-button-a11y-name.test.tsx` (task 1226).

@@ -106,6 +106,7 @@ function FolderTabCap({
 }) {
   return (
     <svg
+      data-icon-weight="own"
       aria-hidden
       width={art.width}
       height={svgH}

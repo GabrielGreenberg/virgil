@@ -8578,7 +8578,7 @@ function SideCollapseToggle({
           viewPrefs.expandRight();
         }
       }}
-      className={bare ? "iconbtn-md" : "iconbtn-md iconbtn-toggle"}
+      className={bare ? "iconbtn-md iconbtn-bare" : "iconbtn-md iconbtn-toggle"}
       aria-pressed={isOpen}
       // Off the iconbtn ladder on purpose: the strip's 18px panel glyphs
       // (panel-icons.tsx) sit directly below, and this toggle matches them.

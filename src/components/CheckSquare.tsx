@@ -107,7 +107,7 @@ export function CheckSquare({
 }) {
   const { size, tickWidth, checkedFill, tick } = CHECK_SQUARE[variant];
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
+    <svg data-icon-weight="own" width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
       <rect
         x="1"
         y="1"

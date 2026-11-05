@@ -60,6 +60,7 @@ function RadioMarkGlyph({ checked, variant = "ring", size = 14, className }: Rad
     if (!checked) return null;
     return (
       <svg
+        data-icon-weight="own"
         data-radio-mark="checked"
         width={size}
         height={size}
@@ -86,6 +87,7 @@ function RadioMarkGlyph({ checked, variant = "ring", size = 14, className }: Rad
   }
   return (
     <svg
+      data-icon-weight="own"
       data-radio-mark={checked ? "checked" : "unchecked"}
       width={size}
       height={size}
