@@ -501,6 +501,8 @@ function nodeIntersectsFocus(node: TreeNode, focus: FocusState): boolean {
 // the same include-config bit always filters the same word set on both
 // surfaces (task 112). Re-exported for the ./index barrel consumers.
 export { buildPerBlockCounts, sumIncludedWords, extractHeadings };
+
+const EMPTY_PER_BLOCK: ReturnType<typeof buildPerBlockCounts> = [];
 /** The unlocked focus-band overlay, exported for its measure tests (task 709). */
 export { FocusBand as FocusBandOverlay };
 
@@ -1528,8 +1530,14 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
     return content.content.length;
   }, [content]);
 
-  // Per-block category counts — recomputed when content changes.
-  const perBlockCounts = useMemo(() => buildPerBlockCounts(content), [content]);
+  // Per-block category counts — recomputed when content changes, through the
+  // per-block tally cache (task 1479: a typing pause recounts only the edited
+  // blocks). Gated like `perSectionCounts` below: a hidden count costs nothing.
+  const countsShown = showWordCount && !editMode;
+  const perBlockCounts = useMemo(
+    () => (countsShown ? buildPerBlockCounts(content) : EMPTY_PER_BLOCK),
+    [countsShown, content],
+  );
 
   // Per-section word counts (view mode only). Keyed by heading id.
   const perSectionCounts = useMemo(() => {
