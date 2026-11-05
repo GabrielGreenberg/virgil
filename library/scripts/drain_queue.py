@@ -31,11 +31,10 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from queue_slot import (  # noqa: E402
-    CLAIMABLE_STATUSES,
     DRAIN_NATIVE_KINDS,
-    RUNNING_STATUS,
     claim_request,
     done_retires,
+    is_claimable,
     is_in_flight,
     normalize_kind,
     release_claimed,
@@ -62,15 +61,14 @@ KIND_PRIORITY = {
 
 # Kinds this script processes natively. Others get reported and skipped
 # so the caller (skill) can dispatch them. Owned by `queue_slot` so the
-# skill's `queue_slot.py pending --native` poll counts the same set.
+# skill's `queue_slot.py outstanding --native` poll counts the same set.
 NATIVE_KINDS = set(DRAIN_NATIVE_KINDS)
 
-# Statuses the drain works: a fresh request, and a failed one it retries
-# (`release_claimed` poisons it on the third failure) — `queue_slot`'s
-# CLAIMABLE set, plus an ABANDONED claim (`running` past its TTL). A live
-# `running` claim is in flight elsewhere, `poisoned` is given up on — both
-# are skipped and counted.
-WORK_STATUSES = CLAIMABLE_STATUSES
+# The drain works what a worker may CLAIM — a fresh request, a failed one it
+# retries (`release_claimed` poisons it on the third failure), an ABANDONED
+# claim (`running` past its TTL): `queue_slot.is_claimable`, the one predicate
+# `claim_request` gates on. A live `running` claim is in flight elsewhere,
+# `poisoned` is given up on — both are skipped and counted.
 
 
 def _read_catalog(library: Path) -> dict:
@@ -131,7 +129,7 @@ def _list_pending(library: Path, skip_counts: Optional[dict[str, int]] = None) -
         if is_in_flight(data):
             skip("running")
             continue
-        if status not in WORK_STATUSES and status != RUNNING_STATUS:
+        if not is_claimable(data):
             skip("other-status")
             continue
         if not data.get("kind"):

@@ -80,6 +80,18 @@ The contract, stated once:
    `queue-door-skill-census.test.ts` pins that every skill `retire` names
    the request it claimed.
 
+11. **"Is work left?" is a different population from "what is waiting?"**
+   (task 1468). `pending_requests` answers the second: `status: requested`,
+   the requests no worker has picked up — what a reader lists. A caller that
+   WAITS for a worker to finish asks the first, and the claim (item 9) moved
+   the request being worked OUT of `requested`, while the drain also works
+   `failed` retries. `outstanding_requests` is that population: every entry a
+   worker may still claim (`is_claimable` — the one predicate `claim_request`
+   gates on, abandoned claims included) plus every live claim
+   (`is_in_flight`). It reaches zero only when nothing is left to do or
+   being done — `poisoned` and retired entries are out — so it is what
+   index-pending's detached-drain poll counts (`outstanding --native`).
+
 CLI (the door for skill prompts that enqueue work)::
 
     python3 queue_slot.py write --kind index --citekey smith2020 [--library .]
@@ -89,10 +101,14 @@ CLI (the door for skill prompts that enqueue work)::
     python3 queue_slot.py claim  --kind triage --file "Smith 2020.pdf"
     python3 queue_slot.py retire --kind triage --file "Smith 2020.pdf" --requested-at <claimed>
     python3 queue_slot.py pending [--native] [--count]
+    python3 queue_slot.py outstanding [--native] [--count]
 
-`pending` prints the pending requests as JSON lines (`{"kind", "citekey",
-"file"}`), or with `--count` just their number. `--native` limits it to the
-kinds `drain_queue.py` processes itself (`DRAIN_NATIVE_KINDS`) — the count a
+`pending` prints the requests WAITING to be picked up (`status: requested`)
+as JSON lines (`{"kind", "citekey", "file", "status"}`), or with `--count` just
+their number. `outstanding` prints the work NOT YET FINISHED — waiting,
+failed-and-retryable, or claimed and being worked (contract item 11).
+`--native` limits either to the kinds `drain_queue.py` processes itself
+(`DRAIN_NATIVE_KINDS`); `outstanding --native --count` is the count a
 detached drain drives to zero while the kinds it defers to skills stay queued.
 
 `write` prints one JSON line `{"result": ..., "file": ...}` (plus
@@ -109,7 +125,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -241,6 +257,25 @@ def is_in_flight(entry: Optional[dict[str, Any]], now: Optional[float] = None) -
         return True
     now = datetime.now(timezone.utc).timestamp() if now is None else now
     return now - started < RUNNING_TTL_SECONDS
+
+
+def is_claimable(entry: Optional[dict[str, Any]], now: Optional[float] = None) -> bool:
+    """True when a worker may CLAIM `entry`: a `CLAIMABLE_STATUSES` entry, or
+    an ABANDONED claim (`running` past `RUNNING_TTL_SECONDS`). The one gate
+    `claim_request` applies and the drain lists by."""
+    if not isinstance(entry, dict):
+        return False
+    status = entry.get("status")
+    if status in CLAIMABLE_STATUSES:
+        return True
+    return status == RUNNING_STATUS and not is_in_flight(entry, now)
+
+
+def is_outstanding(entry: Optional[dict[str, Any]], now: Optional[float] = None) -> bool:
+    """True while `entry` is work NOT YET FINISHED: claimable, or claimed and
+    being worked (contract item 11). False for `poisoned`, `done`, anything
+    unreadable."""
+    return is_claimable(entry, now) or is_in_flight(entry, now)
 
 
 def same_request(a: Optional[dict[str, Any]], b: Optional[dict[str, Any]]) -> bool:
@@ -590,9 +625,7 @@ def claim_request(path: Path) -> Optional[dict[str, Any]]:
         cur = _read(path) if path.exists() else None
         if cur is None:
             return None
-        status = cur.get("status")
-        abandoned = status == RUNNING_STATUS and not is_in_flight(cur)
-        if status not in CLAIMABLE_STATUSES and not abandoned:
+        if not is_claimable(cur):
             return None
         cur["status"] = RUNNING_STATUS
         cur["startedAt"] = _now()
@@ -670,17 +703,18 @@ def request_files(qdir: Path) -> list[Path]:
     return sorted(p for p in qdir.iterdir() if p.is_file() and is_request_filename(p.name))
 
 
-def pending_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str, Any]]:
-    """The requests waiting to be worked: request files whose entry reads as a
-    dict with `status == PENDING_STATUS`, not already retired by a `.done`
-    sibling (`done_retires`). Each item is the entry with `kind` normalized
-    and `_path` set. `native_only` keeps just `DRAIN_NATIVE_KINDS`.
-
-    Read-only: no stale marker is rotated here (the drain does that)."""
+def _requests_where(
+    qdir: Path, admit: Callable[[dict[str, Any]], bool], native_only: bool,
+) -> list[dict[str, Any]]:
+    """Request files whose entry reads as a dict that `admit` accepts, not
+    already retired by a `.done` sibling (`done_retires`). Each item is the
+    entry with `kind` normalized and `_path` set. `native_only` keeps just
+    `DRAIN_NATIVE_KINDS`. Read-only: no stale marker is rotated here (the
+    drain does that)."""
     out: list[dict[str, Any]] = []
     for p in request_files(qdir):
         data = _read(p)
-        if data is None or data.get("status") != PENDING_STATUS:
+        if data is None or not admit(data):
             continue
         if done_retires(p, p.with_suffix(".done")):
             continue
@@ -690,6 +724,22 @@ def pending_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str,
         data["_path"] = p
         out.append(data)
     return out
+
+
+def pending_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str, Any]]:
+    """The requests WAITING to be picked up: `status == PENDING_STATUS`. Not
+    the answer to "is work left?" — a claimed request and a failed retry are
+    left but not pending; that is `outstanding_requests`."""
+    return _requests_where(qdir, lambda d: d.get("status") == PENDING_STATUS, native_only)
+
+
+def outstanding_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str, Any]]:
+    """The work NOT YET FINISHED (contract item 11): every request a worker
+    may still claim plus every live claim (`is_outstanding`). Zero means no
+    worker has anything left to do here — what a caller waiting on a drain
+    polls."""
+    now = datetime.now(timezone.utc).timestamp()
+    return _requests_where(qdir, lambda d: is_outstanding(d, now), native_only)
 
 
 from _library_root import library_root_or_exit  # noqa: E402  (task 896)
@@ -721,16 +771,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     r.add_argument("--requested-at", default=None,
                    help="retire only the request `claim` returned (its requestedAt); "
                         "\"\" = this run claimed nothing, so retire nothing")
-    q = sub.add_parser("pending", help="list (or count) the pending requests")
-    q.add_argument("--native", action="store_true",
-                   help="only the kinds drain_queue.py processes itself")
-    q.add_argument("--count", action="store_true", help="print just the number")
-    q.add_argument("--library", default=None)
+    for name, help_ in (
+        ("pending", "list (or count) the requests waiting to be picked up"),
+        ("outstanding", "list (or count) the work not yet finished: "
+                        "waiting, failed-and-retryable, or being worked"),
+    ):
+        q = sub.add_parser(name, help=help_)
+        q.add_argument("--native", action="store_true",
+                       help="only the kinds drain_queue.py processes itself")
+        q.add_argument("--count", action="store_true", help="print just the number")
+        q.add_argument("--library", default=None)
     args = ap.parse_args(argv)
     library = library_root_or_exit(args.library)
 
-    if args.cmd == "pending":
-        items = pending_requests(queue_dir(library), native_only=args.native)
+    if args.cmd in ("pending", "outstanding"):
+        lister = pending_requests if args.cmd == "pending" else outstanding_requests
+        items = lister(queue_dir(library), native_only=args.native)
         if args.count:
             print(len(items))
         else:
@@ -739,6 +795,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "kind": it.get("kind", ""),
                     "citekey": it.get("citekey", ""),
                     "file": it["_path"].name,
+                    "status": it.get("status", ""),
                 }))
         return 0
 

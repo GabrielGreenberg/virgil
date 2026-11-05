@@ -348,6 +348,51 @@ def test_pending_native_count_ignores_deferred_failed_poisoned_manifest(tmp_path
         "a.json", "b.json", "e-auth.json", "f-richindex.json"]
 
 
+def test_outstanding_counts_the_claimed_and_the_failed_task_1468(tmp_path, capsys):
+    """index-pending's Phase B waits until native work is OUTSTANDING-zero.
+    `pending` drops the request the drain is working (the claim moved it to
+    `running`) and never held failed retries, so a poll on it ended while
+    the last index still ran — or before the drain worked anything."""
+    q = _qdir(tmp_path)
+    base = dict(requestedAt="2026-09-01T00:00:00Z", attempts=0)
+    fresh = queue_slot._now()
+    _put(q / "a.json", kind="index", status="running", citekey="a",
+         startedAt=fresh, **base)
+
+    def count(cmd: str) -> str:
+        assert _cli([cmd, "--native", "--count", "--library", str(tmp_path)]) == 0
+        return capsys.readouterr().out.strip()
+
+    assert count("pending") == "0"
+    assert count("outstanding") == "1"
+
+    # Only a failed retry left: the drain will work it, so work is left.
+    (q / "a.json").unlink()
+    _put(q / "b.json", kind="index", status="failed", citekey="b", **base)
+    assert count("pending") == "0"
+    assert count("outstanding") == "1"
+
+    # Given up on / retired / deferred kinds never hold the wait open; an
+    # ABANDONED claim is claimable, so it does (the drain re-claims it).
+    (q / "b.json").unlink()
+    _put(q / "c.json", kind="index", status="poisoned", citekey="c", **base)
+    _put(q / "d.json", kind="index", status="requested", citekey="d", **base)
+    _put(q / "d.done", kind="index", status="requested", citekey="d", **base)
+    _put(q / "e-auth.json", kind="authenticate", status="running",
+         citekey="e", startedAt=fresh, **base)
+    assert count("outstanding") == "0"
+    _put(q / "f.json", kind="reindex", status="running", citekey="f",
+         startedAt="2026-01-01T00:00:00Z", **base)
+    assert count("outstanding") == "1"
+    assert queue_slot.is_claimable(queue_slot._read(q / "f.json"))
+
+    # The listing names the status, so a caller can tell retries from work.
+    assert _cli(["outstanding", "--library", str(tmp_path)]) == 0
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    assert {(x["file"], x["status"]) for x in lines} == {
+        ("e-auth.json", "running"), ("f.json", "running")}
+
+
 def test_drain_skips_running_and_retries_failed(tmp_path):
     q = _qdir(tmp_path)
     base = dict(requestedAt="2026-09-01T00:00:00Z", attempts=1)
