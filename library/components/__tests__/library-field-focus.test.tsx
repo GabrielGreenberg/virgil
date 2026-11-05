@@ -63,7 +63,7 @@ describe("Library fields carry the primitive's focus indicator (task 1012)", () 
     expect(formFields.length).toBeGreaterThan(5);
     formFields.forEach(expectPrimitiveChrome);
 
-    fireEvent.click(screen.getByRole("tab", { name: "Raw BibTeX" }));
+    fireEvent.click(screen.getByRole("button", { name: "Raw BibTeX" }));
     expectPrimitiveChrome(screen.getByRole("textbox"));
   });
 

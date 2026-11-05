@@ -841,7 +841,7 @@
   --panel-header-size: 14px;
   --header-bg: #dcd3cb;
   --pod-panel: #fffdfa;
-  --pod-toolbar: #f5f3ef;
+  --pod-toolbar: #fffdfa;
   --pod-dark: #eae6df;
   --panel-admin-text-color: #000000;
   --panel-header-text-color: #625a53;
@@ -2502,8 +2502,12 @@ textarea {
 }
 
 /* An example's pod says nothing the number does not, until it has a label. */
-[data-margin-labels] :is(.expex-label-annotation, .expex-item-label-annotation) {
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) {
   position: absolute;
+  right: calc(100% + var(--margin-col-label));
+  left: auto;
+  top: auto;
+  bottom: auto;
   margin: 0;
   max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
   background: none;
@@ -2511,12 +2515,6 @@ textarea {
   padding: 0;
   opacity: 1;
   pointer-events: auto;
-}
-[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) {
-  right: calc(100% + var(--margin-col-label));
-  left: auto;
-  top: auto;
-  bottom: auto;
   transform: translateY(-1.4em);
 }
 [data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) > span:first-child,
@@ -2527,8 +2525,14 @@ textarea {
   opacity: 0;
 }
 [data-margin-labels] .expex-item:hover > .expex-item-label-annotation,
-[data-margin-labels] .expex-block:hover > .expex-label-annotation {
+[data-margin-labels] .expex-par-wrapper:hover > .expex-label-annotation {
   opacity: 1;
+  pointer-events: auto;
+}
+/* Under "hover" an example's label is the same raised pill as a heading's, so
+   its item has to be the box the pill is raised from. */
+[data-margin-labels="hover"] .expex-item {
+  position: relative;
 }
 
 /* Paragraph title annotations — shown in gap above paragraph */

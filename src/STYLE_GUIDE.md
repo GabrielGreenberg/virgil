@@ -3092,7 +3092,8 @@ that matches the surface, don't reinvent the shell:
   call it". So a variant and its first caller land together, or CI says so.
 - `FloatingPanel`-hosted tool windows (Fonts) are a **sanctioned pod-styled fork**
   (Gabriel, 2026-07-05, task 033): they keep their resizable shell AND their pod
-  chrome (`--pod-toolbar` header, `--pod-panel` body) — do **not** migrate them to
+  chrome (`--pod-toolbar` header, `--pod-panel` body; since Sand the two default to
+  one colour with no line between them, so there is no header band) — do **not** migrate them to
   `SYSTEM_DIALOG_TOKENS`. What they share with `SystemDialog` is the design TOKENS
   (no hex fallbacks on tokens `globals.css` always defines) and the dialog
   BEHAVIOUR contract, which `FloatingPanel` provides as an opt-in

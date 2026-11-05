@@ -41,6 +41,8 @@ export const RETIRED_PREF_DEFAULTS = Object.freeze({
   headingAnnotationColor: ["#6b9ac4"],
   headingAnnotationBorder: ["#a8c4de"],
   latexCommentColor: ["#7191b0"],
+  // Tool windows lose their header band: the toolbar pod reads as the panel.
+  podToolbar: ["#f5f3ef"],
 });
 
 /**

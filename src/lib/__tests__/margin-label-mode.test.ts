@@ -40,4 +40,17 @@ describe("the block-label column", () => {
     expect(css).toMatch(side);
     expect(css).toMatch(hover);
   });
+
+  it("gives an example's label the hover pill when the margin cannot hold it", () => {
+    // A rule for both modes kept the label bare, visible and on the text above.
+    expect(css).not.toMatch(
+      /\[data-margin-labels\] :is\(\.expex-label-annotation, \.expex-item-label-annotation\) \{/,
+    );
+    expect(css).toMatch(
+      /\[data-margin-labels="side"\] :is\(\.expex-label-annotation, \.expex-item-label-annotation\) \{\s*position: absolute;/,
+    );
+    expect(css).toMatch(
+      /\[data-margin-labels\] \.expex-par-wrapper:hover > \.expex-label-annotation \{\s*opacity: 1;\s*pointer-events: auto;/,
+    );
+  });
 });

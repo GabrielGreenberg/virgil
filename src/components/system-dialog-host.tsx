@@ -273,7 +273,7 @@ function PendingDialog({
       >
         <SystemDialogHeader title={title} />
         <SystemDialogBody>
-          <div className="text-xs text-ink-body leading-relaxed">{message}</div>
+          <div className="text-sm text-ink-body leading-relaxed">{message}</div>
         </SystemDialogBody>
         <SystemDialogFooter>
           <SystemDialogButton

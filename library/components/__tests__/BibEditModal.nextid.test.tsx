@@ -67,13 +67,13 @@ describe("BibEditModal — extra-row id allocator survives a raw→form switch",
     expect(screen.queryAllByPlaceholderText("field")).toHaveLength(0);
 
     // → Raw, seed two unknown fields into the raw text.
-    fireEvent.click(screen.getByRole("tab", { name: "Raw BibTeX" }));
+    fireEvent.click(screen.getByRole("button", { name: "Raw BibTeX" }));
     const rawTextarea = screen.getByRole("textbox");
     fireEvent.change(rawTextarea, { target: { value: RAW_WITH_TWO_EXTRAS } });
 
     // ← Form: the two unknowns are re-seeded as extra rows (ids 1, 2). The
     // allocator must now advance PAST them.
-    fireEvent.click(screen.getByRole("tab", { name: "Form" }));
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
     let keyInputs = screen.getAllByPlaceholderText("field") as HTMLInputElement[];
     let valueInputs = screen.getAllByPlaceholderText("value") as HTMLInputElement[];
     expect(keyInputs.map((i) => i.value)).toEqual(["customa", "customb"]);

@@ -35,6 +35,27 @@
   --v-sheet: var(--virgil-pod-panel, #fffdfa);
   --v-accent-hover: color-mix(in srgb, var(--v-accent) 16%, transparent);
   --v-accent-active: color-mix(in srgb, var(--v-accent) 28%, transparent);
+  /* This document has no next/font faces, so the toolbar takes the system's. */
+  --v-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* The canvas around the page and the sidebar stand on the same Sand as the
+     toolbar. */
+  --body-bg-color: var(--v-topbar-bg);
+  --sidebar-narrow-bg-color: var(--v-topbar-bg);
+  --sidebar-toolbar-bg-color: var(--v-topbar-bg);
+  --toolbarSidebar-box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 var(--v-hairline), 0 1px 0 var(--v-hairline);
+  --progressBar-color: var(--v-accent);
+
+  /* A selected tool or thumbnail is a tint of the accent, never a grey block. */
+  --toggled-btn-color: var(--v-ink);
+  --toggled-btn-bg-color: var(--v-accent-hover);
+  --toggled-hover-active-btn-color: var(--v-accent-active);
+  --thumbnail-hover-color: var(--v-accent-hover);
+  --thumbnail-selected-color: var(--v-accent-active);
+  --treeitem-bg-color: var(--v-accent-hover);
+  --treeitem-hover-color: var(--v-ink);
+  --treeitem-selected-color: var(--v-ink);
+  --treeitem-selected-bg-color: var(--v-accent-active);
 
   /* Toolbar surface + chrome -> Virgil topbar tokens */
   --toolbar-bg-color: var(--v-topbar-bg);
@@ -59,11 +80,15 @@
   --field-color: var(--v-ink);
   --field-bg-color: var(--v-surface);
   --field-border-color: var(--v-hairline);
+  --dropdown-btn-bg-color: var(--v-surface);
+  --dropdown-btn-border: 1px solid var(--v-hairline);
+  --separator-color: var(--v-hairline);
 
   /* Secondary toolbar doorhanger (kept for the few items we keep there) */
   --doorhanger-bg-color: var(--v-sheet);
   --doorhanger-border-color: var(--v-hairline);
   --doorhanger-hover-bg-color: var(--v-accent-hover);
+  --doorhanger-separator-color: var(--v-hairline);
 }
 
 /* Quiet the toolbar container: thin top-bar strip, no heavy gradient/shadow. */
@@ -78,18 +103,31 @@
   height: 40px;
 }
 
-/* Micro-label register for the page-count + scale text. */
+#sidebarContent {
+  box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 var(--v-hairline);
+}
+
+/* The page count and scale text. */
 #numPages,
 .toolbarLabel {
   color: color-mix(in srgb, var(--v-muted) 80%, var(--v-ink)); /* between --muted and ink */
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-family: var(--v-sans);
+  font-size: 12px;
 }
 
-#pageNumber {
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+#toolbarContainer #toolbarViewer #pageNumber {
+  border-radius: 6px;
+  font: 12px/16px var(--v-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.dropdownToolbarButton {
+  border-radius: 6px;
+}
+
+.dropdownToolbarButton > select {
+  font-family: var(--v-sans);
+  border-radius: 6px;
 }
 
 /*

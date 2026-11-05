@@ -160,7 +160,7 @@ export default function ConfirmDialog({
       noCuedDefault={cuedDefault === "none"}
     >
       <SystemDialogHeader title={title} />
-      <SystemDialogBody className={title ? "" : "pt-3"}>
+      <SystemDialogBody>
         <div className="text-sm text-ink-body leading-relaxed">{message}</div>
         {suppressible && (
           /* Deliberately NOT `autoFocus`: `autoFocus` marks the CUED DEFAULT

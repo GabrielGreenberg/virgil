@@ -27,7 +27,7 @@ interface FontsDialogProps {
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
 }
 
-/** Visual wrapper for a font category — generous spacing, soft pod look. */
+/** One font category: a caption over its sample and controls, on the sheet. */
 function CategoryCard({
   label,
   children,
@@ -40,19 +40,13 @@ function CategoryCard({
   resetDisabled?: boolean;
 }) {
   return (
-    <div
-      className="rounded-lg p-5"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border-light)",
-      }}
-    >
-      <div className="flex items-baseline justify-between mb-3">
+    <section>
+      <div className="flex items-baseline justify-between mb-2">
         <h3 className="section-caption">{label}</h3>
         <ResetButton onReset={onReset} atDefault={!!resetDisabled} target={label} />
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -73,8 +67,7 @@ function PreviewPod({
     <div
       className="rounded-md px-4 py-3 mb-4"
       style={{
-        background: "var(--background)",
-        border: "1px solid var(--border-light)",
+        background: "var(--card-surface)",
         // Never a bare family name — resolvePreviewFontStack routes through
         // the loaded faces / CSS vars (a bare name silently falls back to
         // the UA default for next/font-loaded families). Preview-only: the
@@ -189,15 +182,12 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
       {/* Header — drag strip lives here (FloatingPanel's drag listener
           ignores buttons & inputs, so the close button still works). */}
       <div
-        className="flex items-center justify-between px-5 py-3 shrink-0"
-        style={{
-          background: "var(--pod-toolbar)",
-          borderBottom: "1px solid var(--border-light)",
-        }}
+        className="flex items-start justify-between px-5 pt-5 pb-3 shrink-0"
+        style={{ background: "var(--pod-toolbar)" }}
       >
-        <div className="flex items-baseline gap-2">
-          <h2 id={FONTS_TITLE_ID} className="text-sm font-medium text-ink-body">Fonts</h2>
-          <span className="text-2xs text-ink-muted">main text</span>
+        <div>
+          <h2 id={FONTS_TITLE_ID} className="text-base font-semibold text-ink-strong">Fonts</h2>
+          <p className="mt-1 text-sm text-ink-muted">Main text</p>
         </div>
         <button
           type="button"
@@ -210,7 +200,7 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
       </div>
 
       <div
-        className="flex-1 overflow-y-auto px-5 py-5 space-y-4"
+        className="flex-1 overflow-y-auto px-5 pb-5 space-y-6"
         data-no-window-drag
         onMouseDown={(e) => e.stopPropagation()}
         style={{ background: "var(--pod-panel)" }}

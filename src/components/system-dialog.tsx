@@ -145,7 +145,8 @@ export const SYSTEM_DIALOG_TOKENS = {
     full: "max-w-[min(96vw,1100px)]",
   },
   header: "px-5 pt-5 pb-3",
-  body: "px-5 pb-3",
+  /** `first:` takes over the header's top padding when a dialog has no header. */
+  body: "px-5 pb-3 first:pt-5",
   footer: "flex items-center justify-end gap-2 px-5 pt-2 pb-5",
   title: "text-base font-semibold text-ink-strong",
   subtitle: "mt-1 text-sm text-ink-muted",
@@ -1079,6 +1080,7 @@ export function SystemDialogHeader({
     if (!rendersTitle || !registerTitle) return;
     return registerTitle(id);
   }, [rendersTitle, registerTitle, id]);
+  if (children == null && !title && !subtitle) return null;
   return (
     <div className={t.header}>
       {children ?? (
