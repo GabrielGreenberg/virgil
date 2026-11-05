@@ -2962,8 +2962,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const n = notesHook.notes.find((nn) => nn.id === id);
         return n ? getLinkedTextObjectIds(n) : [];
       },
-      addTextObjectLink: notesHook.addNoteTextObjectId,
-      removeTextObjectLink: notesHook.removeNoteTextObjectId,
+      addTextObjectLink: notesHook.addCardParagraphId,
+      removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
       // Card-id keyed: a note and a highlight may share one anchorId.
       modeB: releaseModeB(
@@ -2971,7 +2971,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         (id) => notesHook.clearTextAnchorById(id),
       ),
     }),
-    [notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.preserveModeBAnchor, notesHook.clearTextAnchorById],
+    [notesHook.notes, notesHook.addCardParagraphId, notesHook.removeCardParagraphId, notesHook.preserveModeBAnchor, notesHook.clearTextAnchorById],
   );
   const dropHighlightsApi = useMemo(
     () => ({
@@ -2980,15 +2980,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const h = notesHook.highlights.find((hh) => hh.id === id);
         return h ? getLinkedTextObjectIds(h) : [];
       },
-      addTextObjectLink: notesHook.addHighlightTextObjectId,
-      removeTextObjectLink: notesHook.removeHighlightTextObjectId,
+      addTextObjectLink: notesHook.addCardParagraphId,
+      removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
       modeB: {
         policy: "intrinsic" as const,
         why: "a highlight IS its text range — re-anchoring snapshots the range to originalAnchor and strips the mark, but keeps the link",
       },
     }),
-    [notesHook.highlights, notesHook.addHighlightTextObjectId, notesHook.removeHighlightTextObjectId, notesHook.preserveModeBAnchor],
+    [notesHook.highlights, notesHook.addCardParagraphId, notesHook.removeCardParagraphId, notesHook.preserveModeBAnchor],
   );
   const dropTodosApi = useMemo(
     () => ({
@@ -3268,7 +3268,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         reports: reportsHook,
       }),
     [
-      notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.detachNoteAnchorSources, notesHook.deleteNote,
+      notesHook.cards, notesHook.addCardParagraphId, notesHook.removeCardParagraphId, notesHook.detachAnchorSources, notesHook.deleteNote,
       archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId, archiveHook.detachAnchorSources, archiveHook.deleteSnippet,
       cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId, cutterHook.detachAnchorSources, cutterHook.deleteCard,
       todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId, todosHook.detachAnchorSources, todosHook.deleteItem,

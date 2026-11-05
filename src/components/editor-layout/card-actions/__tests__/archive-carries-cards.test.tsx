@@ -55,7 +55,12 @@ import {
   type ReturningRemap,
 } from "@/links/dormant";
 import { hasLiveAnchor, hasLiveBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
-import type { MarginItemHandlers, MarginItemKind } from "@/cards/delete-margin-item";
+import {
+  buildMarginItemHandlers,
+  type BuildMarginItemHandlersDeps,
+  type MarginItemHandlers,
+  type MarginItemKind,
+} from "@/cards/delete-margin-item";
 import {
   carryDisplacedAnchors,
   landReturningDisplaced,
@@ -181,6 +186,15 @@ function modeB(pid: string, anchorId: string, text: string): Link {
 
 type Card = DormantCardShape & { kind: string };
 
+const noop = () => {};
+/** The unused bundles' doors — only the `note` bundle is read off the builder. */
+const STUB_DOORS = {
+  addCardParagraphId: noop,
+  removeCardParagraphId: noop,
+  detachAnchorSources: noop,
+  deleteCard: async () => true,
+};
+
 /** One store for the whole fixture; `carry` is the real `markDormant`. */
 function makeStore(cards: Card[]) {
   const all = cards.map((c) => ({ ...c }));
@@ -192,7 +206,7 @@ function makeStore(cards: Card[]) {
   const handlers = {} as Record<MarginItemKind, MarginItemHandlers>;
   /** Every 491 re-home write, `un:<id>:<pid>` / `re:<id>:<uuid>`. */
   const rehomed: string[] = [];
-  for (const kind of ["note", "archive", "cut", "todo", "revision", "report"] as MarginItemKind[]) {
+  for (const kind of ["archive", "cut", "todo", "revision", "report"] as MarginItemKind[]) {
     handlers[kind] = {
       findCard: (id: string) => all.find((c) => c.id === id && c.kind === kind),
       get cards() {
@@ -205,6 +219,28 @@ function makeStore(cards: Card[]) {
       delete: async () => true,
     } as unknown as MarginItemHandlers;
   }
+  // The `note` bundle is the PRODUCTION builder's, over this store's notes
+  // sidecar — notes AND highlights, the shape `useNotes().cards` hands it
+  // (task 1473). A getter, so each sweep reads the store as it is now.
+  const notesDep = (): BuildMarginItemHandlersDeps["notes"] => ({
+    cards: all.filter((c) => c.kind === "note" || c.kind === "highlight") as never,
+    addCardParagraphId: (id: string, uuid: string) => void rehomed.push(`re:${id}:${uuid}`),
+    removeCardParagraphId: (id: string, pid: string) => void rehomed.push(`un:${id}:${pid}`),
+    detachAnchorSources: () => {},
+    deleteNote: async () => true,
+  });
+  Object.defineProperty(handlers, "note", {
+    enumerable: true,
+    get: () =>
+      buildMarginItemHandlers({
+        notes: notesDep(),
+        archive: { snippets: [], ...STUB_DOORS, addParagraphId: noop, removeParagraphId: noop, deleteSnippet: STUB_DOORS.deleteCard },
+        todos: { items: [], ...STUB_DOORS, addParagraphId: noop, removeParagraphId: noop, deleteItem: STUB_DOORS.deleteCard },
+        cutter: { cards: [], ...STUB_DOORS },
+        revisions: { cards: [], ...STUB_DOORS },
+        reports: { cards: [], ...STUB_DOORS },
+      }).note,
+  });
   /** The reviver, against the live document (task 1193's liveness rule). */
   const revive = (editor: Editor) => {
     const uuids = collectBlockUuids(editor.state.doc);
@@ -888,7 +924,9 @@ describe("task 1270 — one travel predicate: a card is carried or re-homed, nev
 /** The kinds this file round-trips through the REAL archive + restore. */
 const ROUND_TRIPPED: Partial<Record<CardKind, MarginItemKind | null>> = {
   note: "note",
-  highlight: null, // Mode-B only — a highlight has no paragraph anchor
+  // A highlight is Mode-B by birth, but the drop-mode re-anchor leaves it a
+  // paragraph (pid) link with no mark — it lives in the NOTES bundle (task 1473).
+  highlight: "note",
   todo: "todo",
   report: "report",
   "report-request": "report",
@@ -928,11 +966,14 @@ describe("archive-carry CENSUS", () => {
         },
         { type: "paragraph", attrs: { uuid: "p-after" }, content: [{ type: "text", text: "After." }] },
       ]);
-      const recordKind = STORED_KIND[kind] ?? (bundle ?? kind);
+      const recordKind = STORED_KIND[kind] ?? kind;
+      // The notes bundle is the production builder's, which holds the
+      // sidecar's own record kinds; the other bundles are keyed by name.
+      const modeAKind = bundle === "note" ? recordKind : bundle;
       const store = makeStore([
         { id: "k1", kind: recordKind, links: [modeB("p-target", "A-k", "marked words")] },
-        ...(bundle
-          ? [{ id: "k2", kind: bundle as string, links: [modeA("p-target")] }]
+        ...(modeAKind
+          ? [{ id: "k2", kind: modeAKind as string, links: [modeA("p-target")] }]
           : []),
       ]);
       // A Mode-A card of this kind lives in its margin bundle under the
@@ -946,6 +987,14 @@ describe("archive-carry CENSUS", () => {
       store.revive(editor);
       expect(store.byId("k1").archived).toBeUndefined();
       expect(store.byId("k1").links!.some(isDormantLink)).toBe(false);
+      if (modeAKind) {
+        // The Mode-A card of the same kind went with the passage and came back
+        // — carried (never re-homed onto the neighbour), revived on Restore.
+        expect(store.rehomed.filter((e) => e.includes(":k2:"))).toEqual([]);
+        expect(store.byId("k2").archived).toBeUndefined();
+        expect(store.byId("k2").links!.some(isDormantLink)).toBe(false);
+        expect(store.byId("k2").links!.length).toBe(1);
+      }
     });
   }
 });
