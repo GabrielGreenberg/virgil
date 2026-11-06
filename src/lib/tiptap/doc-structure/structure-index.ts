@@ -34,7 +34,18 @@ import {
 // Initial build — one O(N) walk on plugin init.
 // ---------------------------------------------------------------------------
 
-export function buildInitial(doc: PMNode): DocStructure {
+/** Every table of `doc`, as a full rebuild sees it. */
+export type StructureTables = Omit<DocStructure, "version" | "structuralVersion">;
+
+/**
+ * The ONE full collection of a document's tables — `buildInitial`'s walk
+ * without the snapshot stamps. Also the step path's LIVE side (task 1493):
+ * `inspectSteps` asks it, lazily and at most once per transaction, what
+ * `newDoc` actually holds whenever a touched entity's fate cannot be settled
+ * from the step bundles alone — so the incremental path and the rebuild answer
+ * "what survives" with literally the same code.
+ */
+export function collectStructure(doc: PMNode): StructureTables {
   const blocks = new Map<string, BlockEntry>();
   const headings: HeadingEntry[] = [];
   const footnotes: FootnoteEntry[] = [];
@@ -112,6 +123,10 @@ export function buildInitial(doc: PMNode): DocStructure {
     return true;
   });
 
+  return { blocks, headings, footnotes, citations, anchors, examples, figures, labels };
+}
+
+export function buildInitial(doc: PMNode): DocStructure {
   return {
     // version 3 (Phase 2a): `structure.citations` carries `nestedInContainerId`
     // — the generalized "container owner" — for BOTH footnote-nested cites
@@ -121,20 +136,88 @@ export function buildInitial(doc: PMNode): DocStructure {
     // only — no persisted consumer reads it; it bumps per `applyDiff` after.
     version: 3,
     structuralVersion: nextStructuralVersion(),
-    blocks,
-    headings,
-    footnotes,
-    citations,
-    anchors,
-    examples,
-    figures,
-    labels,
+    ...collectStructure(doc),
   };
+}
+
+/**
+ * Map a `linkedAnchor` span the way the MARK moves. The mark is
+ * `inclusive: false` (`linked-anchor.ts`), so text typed at either edge lands
+ * OUTSIDE it: `from` sticks right (+1) and `to` sticks LEFT (−1). The default
+ * (+1) assoc on `to` stretched the snapshot over every character typed just
+ * after a highlight, with no diff to correct it (task 1493). Shared with the
+ * step reconciler's prior-vs-live comparison, so the two cannot disagree about
+ * where a mapped anchor lands.
+ */
+export function mapAnchorSpan(
+  span: { from: number; to: number },
+  mapping: { map(pos: number, assoc?: number): number },
+): { from: number; to: number } {
+  const from = mapping.map(span.from, 1);
+  // A collapsed (empty) span stays collapsed rather than inverting.
+  const to = Math.max(from, mapping.map(span.to, -1));
+  return { from, to };
 }
 
 // ---------------------------------------------------------------------------
 // Incremental apply — fold a diff into the previous snapshot.
 // ---------------------------------------------------------------------------
+
+/**
+ * Fold one keyed, document-ordered table. The ONE rule for every array table
+ * (task 1493 — it used to be five hand-copied loops):
+ *
+ *   - a REMOVED key drops every entry carrying it;
+ *   - a CHANGED key's entries are REPLACED by the changed set for that key —
+ *     the full live set, so a table holding two same-key entries (a pasted
+ *     duplicate cite or footnote) can lose ONE of them: the reconciler reports
+ *     the survivor as the key's new set, where an id-filtered removal dropped
+ *     both;
+ *   - a changed key the table does NOT hold is appended (fail-open: an entity
+ *     reported as changed is live by definition, and dropping it would lose it
+ *     from the snapshot silently);
+ *   - added entries are appended; the result is re-sorted by position.
+ *
+ * Untouched (the previous array, by identity) when the diff names nothing for
+ * this table and `force` is unset.
+ */
+function foldKeyed<E extends { pos: number }>(
+  prev: readonly E[],
+  removed: readonly E[],
+  changed: readonly E[],
+  added: readonly E[],
+  keyOf: (e: E) => string,
+  force = false,
+): readonly E[] {
+  if (removed.length === 0 && changed.length === 0 && added.length === 0 && !force) {
+    return prev;
+  }
+  const removedKeys = new Set(removed.map(keyOf));
+  const changedByKey = new Map<string, E[]>();
+  for (const e of changed) {
+    const k = keyOf(e);
+    const list = changedByKey.get(k);
+    if (list) list.push(e);
+    else changedByKey.set(k, [e]);
+  }
+  const placed = new Set<string>();
+  const next: E[] = [];
+  for (const e of prev) {
+    const k = keyOf(e);
+    if (removedKeys.has(k)) continue;
+    const replacement = changedByKey.get(k);
+    if (!replacement) {
+      next.push(e);
+    } else if (!placed.has(k)) {
+      placed.add(k);
+      next.push(...replacement);
+    }
+  }
+  for (const [k, list] of changedByKey) if (!placed.has(k)) next.push(...list);
+  next.push(...added);
+  next.sort((a, b) => a.pos - b.pos);
+  return next;
+}
 
 /**
  * Returns a new `DocStructure` with `diff` folded in. The caller is
@@ -157,75 +240,28 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
 
   // Headings: remove by UUID, fold in adds and changes. Re-sort by pos
   // afterwards so document order is preserved when positions shift.
-  let headings: readonly HeadingEntry[] = prev.headings;
-  if (
-    diff.removedHeadings.length > 0 ||
-    diff.addedHeadings.length > 0 ||
-    diff.changedHeadings.length > 0
-  ) {
-    const removedUuids = new Set(diff.removedHeadings.map((h) => h.uuid));
-    const changedByUuid = new Map(diff.changedHeadings.map((h) => [h.uuid, h]));
-    const next: HeadingEntry[] = [];
-    for (const h of prev.headings) {
-      if (removedUuids.has(h.uuid)) continue;
-      next.push(changedByUuid.get(h.uuid) ?? h);
-    }
-    for (const added of diff.addedHeadings) next.push(added);
-    next.sort((a, b) => a.pos - b.pos);
-    headings = next;
-  }
+  const headings = foldKeyed(
+    prev.headings,
+    diff.removedHeadings,
+    diff.changedHeadings,
+    diff.addedHeadings,
+    (h) => h.uuid,
+  );
+  const footnotes = foldKeyed(
+    prev.footnotes,
+    diff.removedFootnotes,
+    diff.changedFootnotes,
+    diff.addedFootnotes,
+    (f) => f.id,
+  );
+  const citations = foldKeyed(
+    prev.citations,
+    diff.removedCitations,
+    diff.changedCitations,
+    diff.addedCitations,
+    (c) => c.id,
+  );
 
-  // Footnotes: same pattern. Footnote-order change just means the array
-  // order is now wrong relative to current numbers — the consumer of
-  // `footnoteOrderChanged` is responsible for the renumber tx.
-  let footnotes: readonly FootnoteEntry[] = prev.footnotes;
-  if (
-    diff.addedFootnotes.length > 0 ||
-    diff.removedFootnotes.length > 0 ||
-    diff.changedFootnotes.length > 0
-  ) {
-    const removedIds = new Set(diff.removedFootnotes.map((f) => f.id));
-    const changedById = new Map(diff.changedFootnotes.map((f) => [f.id, f]));
-    const next: FootnoteEntry[] = [];
-    for (const f of prev.footnotes) {
-      if (removedIds.has(f.id)) continue;
-      // A moved footnote's mapped position is stale (its old pos was
-      // deleted); the changed entry carries the correct new position.
-      next.push(changedById.get(f.id) ?? f);
-    }
-    for (const added of diff.addedFootnotes) next.push(added);
-    next.sort((a, b) => a.pos - b.pos);
-    footnotes = next;
-  }
-
-  // Citations: added / removed / changed (same-id attr edits). Re-sort by
-  // pos so document order survives moves. A pure reorder (citationOrderChanged
-  // only, no add/remove/change) is already reflected by the per-tx position
-  // mapping in the observer plugin, so it needs no array rebuild here.
-  let citations: readonly CitationEntry[] = prev.citations;
-  if (
-    diff.addedCitations.length > 0 ||
-    diff.removedCitations.length > 0 ||
-    diff.changedCitations.length > 0
-  ) {
-    const removedIds = new Set(diff.removedCitations.map((c) => c.id));
-    const changedById = new Map(diff.changedCitations.map((c) => [c.id, c]));
-    const next: CitationEntry[] = [];
-    for (const c of prev.citations) {
-      if (removedIds.has(c.id)) continue;
-      // The changed entry is AUTHORITATIVE about its container: both kinds
-      // are derived on BOTH paths now — `"example"` from the cite's ancestors,
-      // `"footnote"` by the shared extractor reading the host's body (task
-      // 1128). The old carry-forward of a footnote tag (when the step path
-      // could not see inside a footnote) would resurrect a stale nesting.
-      next.push(changedById.get(c.id) ?? c);
-    }
-    for (const added of diff.addedCitations) next.push(added);
-    next.sort((a, b) => a.pos - b.pos);
-    citations = next;
-  }
-
-  // Anchors — keyed Map.
   let anchors: ReadonlyMap<string, AnchorEntry> = prev.anchors;
   if (
     diff.addedAnchors.length > 0 ||
@@ -262,45 +298,22 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
   // MOVE or renumber arrives as `changedExamples` carrying the NEW pos/number;
   // replace the entry in place so the index doesn't keep the moved example's
   // stale (deleted) position, then re-sort by pos.
-  let examples: readonly ExampleEntry[] = prev.examples;
-  if (
-    diff.addedExamples.length > 0 ||
-    diff.removedExamples.length > 0 ||
-    diff.changedExamples.length > 0 ||
-    diff.exampleStructureChanged
-  ) {
-    const removedIds = new Set(diff.removedExamples.map((e) => e.id));
-    const changedById = new Map(diff.changedExamples.map((e) => [e.id, e]));
-    const next: ExampleEntry[] = [];
-    for (const e of prev.examples) {
-      if (removedIds.has(e.id)) continue;
-      next.push(changedById.get(e.id) ?? e);
-    }
-    for (const added of diff.addedExamples) next.push(added);
-    next.sort((a, b) => a.pos - b.pos);
-    examples = next;
-  }
+  const examples = foldKeyed(
+    prev.examples,
+    diff.removedExamples,
+    diff.changedExamples,
+    diff.addedExamples,
+    (e) => e.id,
+    diff.exampleStructureChanged,
+  );
+  const figures = foldKeyed(
+    prev.figures,
+    diff.removedFigures,
+    diff.changedFigures,
+    diff.addedFigures,
+    (f) => f.uuid,
+  );
 
-  // Figures — same pattern as headings (added / removed / changed).
-  let figures: readonly FigureEntry[] = prev.figures;
-  if (
-    diff.addedFigures.length > 0 ||
-    diff.removedFigures.length > 0 ||
-    diff.changedFigures.length > 0
-  ) {
-    const removedUuids = new Set(diff.removedFigures.map((f) => f.uuid));
-    const changedByUuid = new Map(diff.changedFigures.map((f) => [f.uuid, f]));
-    const next: FigureEntry[] = [];
-    for (const f of prev.figures) {
-      if (removedUuids.has(f.uuid)) continue;
-      next.push(changedByUuid.get(f.uuid) ?? f);
-    }
-    for (const added of diff.addedFigures) next.push(added);
-    next.sort((a, b) => a.pos - b.pos);
-    figures = next;
-  }
-
-  // Labels — keyed Map.
   let labels: ReadonlyMap<string, LabelEntry> = prev.labels;
   if (
     diff.addedLabels.length > 0 ||

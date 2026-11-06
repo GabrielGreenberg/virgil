@@ -94,6 +94,9 @@ export const testSchema = new Schema({
   marks: {
     linkedAnchor: {
       attrs: { anchorId: { default: "" }, kind: { default: "note" } },
+      // Production parity (`linked-anchor.ts`): text typed at a run's edge
+      // lands OUTSIDE the anchor (task 1493).
+      inclusive: false,
       toDOM: () => ["span", { class: "linked-anchor" }],
     },
   },

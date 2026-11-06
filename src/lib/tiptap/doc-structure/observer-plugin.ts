@@ -19,7 +19,7 @@ import { Plugin, PluginKey, type StateField, type Transaction } from "@tiptap/pm
 import { Mapping, type StepMap } from "@tiptap/pm/transform";
 import { asMutable, attachBus, detachBus, type DocStructureBus } from "./bus";
 import { inspectSteps } from "./step-inspector";
-import { applyDiff, buildInitial } from "./structure-index";
+import { applyDiff, buildInitial, mapAnchorSpan } from "./structure-index";
 import {
   EMPTY_DIFF,
   EMPTY_STRUCTURE,
@@ -158,8 +158,7 @@ function mapStructurePositions(
   });
   const anchors = new Map(prev.anchors);
   for (const [id, entry] of anchors) {
-    const newFrom = mapping.map(entry.from);
-    const newTo = mapping.map(entry.to);
+    const { from: newFrom, to: newTo } = mapAnchorSpan(entry, mapping);
     if (newFrom !== entry.from || newTo !== entry.to) {
       anchors.set(id, { ...entry, from: newFrom, to: newTo });
     }
