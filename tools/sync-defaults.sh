@@ -98,9 +98,21 @@ BASE_SHA="$(git -C "$WT" rev-parse HEAD)"
 # targets; only the (gitignored) snapshot comes from the primary.
 PROMOTER_ARGS=(--root "$WT" --snapshot "$SNAPSHOT" --changed-out "$CHANGED")
 
+# The promoter's WARNING lines (a blob the snapshot lacks, a stale blob, a
+# source-less snapshot — task 1487) print above; the verdict lines below
+# repeat their count, so "no diff" can never again hide a stalled half.
+PROMOTE_OUT="$SCRATCH/promote.out"
+promote() { node "$WT/tools/promote-defaults.mjs" "${PROMOTER_ARGS[@]}" "$@" | tee -a "$PROMOTE_OUT"; }
+warnings() {
+  local n
+  n="$(grep -c '^WARNING:' "$PROMOTE_OUT" 2>/dev/null || true)"
+  [ "${n:-0}" -gt 0 ] && echo " — $n snapshot WARNING(s) above"
+  return 0
+}
+
 if [ "$MODE" = "check" ]; then
-  if node "$WT/tools/promote-defaults.mjs" "${PROMOTER_ARGS[@]}" --dry-run; then
-    log "no drift"
+  if promote --dry-run; then
+    log "no drift$(warnings)"
     exit 0
   fi
   if [ ! -s "$CHANGED" ]; then
@@ -111,10 +123,10 @@ if [ "$MODE" = "check" ]; then
   exit 1
 fi
 
-node "$WT/tools/promote-defaults.mjs" "${PROMOTER_ARGS[@]}"
+promote
 
 if [ ! -s "$CHANGED" ]; then
-  log "no diff — exiting"
+  log "no diff$(warnings) — exiting"
   exit 0
 fi
 
@@ -131,7 +143,7 @@ for f in "${FILES[@]}"; do
   esac
 done
 
-log "drift detected in ${#FILES[@]} file(s): ${FILES[*]}"
+log "drift detected in ${#FILES[@]} file(s): ${FILES[*]}$(warnings)"
 
 # Contract gate (task 900): JSON parsing proves only that the file is JSON.
 # The View-menu defaults also answer to the view-pref registry, whose
