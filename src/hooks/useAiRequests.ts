@@ -14,9 +14,10 @@ import {
   isAiRequestsWriteRefused,
   mutateAiRequests,
   readAiRequests,
+  reportAiRequestsReadFailure,
+  reportAiRequestsWriteRefusal,
   type AiRequestsMutator,
 } from "@/lib/ai-requests-store";
-import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { closeRequestRow, isTerminalStatus } from "@/lib/ai-request-open";
 import {
   SIDECAR_CHANGED_EVENT,
@@ -164,12 +165,7 @@ export function useAiRequests(docId: string | null) {
           rehydratePending.current = true;
           setLoadErrorDocId(docId);
           setLoadedDocId(docId);
-          recordSidecarRefusal({
-            docId,
-            what: "AI request list",
-            reason: "unreadable",
-            detail: err instanceof Error ? err.message : undefined,
-          });
+          reportAiRequestsReadFailure(docId, err);
         });
     };
     readRef.current = readAuthoritative;
@@ -278,15 +274,7 @@ export function useAiRequests(docId: string | null) {
       void mutateAiRequests(docId, mutate)
         .then((result) => {
           if (!isAiRequestsWriteRefused(result)) return;
-          recordSidecarRefusal({
-            docId,
-            what: "AI request",
-            reason: result.kind === "failed" ? "failed" : result.kind,
-            detail:
-              result.kind === "failed" && result.error instanceof Error
-                ? result.error.message
-                : undefined,
-          });
+          reportAiRequestsWriteRefusal(docId, result);
           // ROLL BACK by reconciling, not by inverting: arm the same deferral
           // the external-change guard uses, and let the drain below re-read the
           // file once every in-flight mutation has settled.
