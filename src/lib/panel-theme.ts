@@ -464,29 +464,35 @@ function persist() {
   catch { /* ignore */ }
 }
 
-/** Parse + validate the persisted blob into a fresh overrides object.
- *  The ONE validation path: used by the initial hydrate AND by the
- *  cross-window re-hydrate below, so a peer's blob is filtered exactly like a
- *  local one (system accents skipped, non-hex values dropped) rather than
- *  through a second, drifting copy of the rules. Returns `{}` for a missing,
- *  unparseable, or non-object blob. */
-function readOverridesFromStorage(): Partial<Record<PanelThemeKey, string>> {
+/** Validate an overrides blob — the persisted one, a peer's, or one carried
+ *  by a preset / undo snapshot (task 1489) — into a fresh overrides object.
+ *  The ONE validation path: system accents skipped, non-hex values dropped,
+ *  hex lowercased (as `setPanelColor` stores it). Anything that is not an
+ *  object resolves to `{}` — i.e. every panel at its default. */
+export function normalizePanelColorOverrides(parsed: unknown): Partial<Record<PanelThemeKey, string>> {
   const next: Partial<Record<PanelThemeKey, string>> = {};
-  if (typeof window === "undefined") return next;
+  if (!parsed || typeof parsed !== "object") return next;
+  const blob = parsed as Record<string, unknown>;
+  for (const k of Object.keys(blob) as PanelThemeKey[]) {
+    if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
+    const v = blob[k];
+    if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
+      next[k] = v.toLowerCase();
+    }
+  }
+  return next;
+}
+
+/** Parse the persisted blob through `normalizePanelColorOverrides` — used by
+ *  the initial hydrate AND the cross-window re-hydrate below, so a peer's blob
+ *  is filtered exactly like a local one. */
+function readOverridesFromStorage(): Partial<Record<PanelThemeKey, string>> {
+  if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return next;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return next;
-    for (const k of Object.keys(parsed) as PanelThemeKey[]) {
-      if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
-      const v = parsed[k];
-      if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
-        next[k] = v;
-      }
-    }
-  } catch { /* ignore */ }
-  return next;
+    if (!raw) return {};
+    return normalizePanelColorOverrides(JSON.parse(raw));
+  } catch { return {}; }
 }
 
 /** Load overrides from localStorage. Safe to call multiple times. */
@@ -533,6 +539,23 @@ export function setPanelColor(key: PanelThemeKey, hex: string): void {
 export function clearPanelColor(key: PanelThemeKey): void {
   if (SYSTEM_THEME_KEYS.has(key)) return; // system accents have no override to clear (chokepoint-trio uniform)
   delete overrides[key];
+  persist();
+  notify();
+}
+
+/** Every override, as a fresh copy — what a whole-settings snapshot captures
+ *  (task 1489; `src/lib/settings-stores.ts`). */
+export function getPanelColorOverrides(): Partial<Record<PanelThemeKey, string>> {
+  return { ...overrides };
+}
+
+/** Replace EVERY override in one write — the whole-settings door's half for
+ *  this store (reset, preset load, and an undo of either). Normalized like a
+ *  stored blob; `undefined` clears every override. Latches `loaded` so a late
+ *  first hydrate cannot clobber what was just applied. */
+export function replacePanelColorOverrides(next: unknown): void {
+  loaded = true;
+  overrides = normalizePanelColorOverrides(next);
   persist();
   notify();
 }
