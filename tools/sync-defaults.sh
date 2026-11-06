@@ -15,9 +15,10 @@
 # it lands (task 1307) — other files point here rather than restate it:
 #   - Schedule: Tue + Fri 11:00 (launchd, plus once at load), so a mirrored
 #     pref change waits at most ~96h (Fri → Tue) for the next tick.
-#   - Gates: every changed file must `JSON.parse`; a promotion touching the
-#     View defaults must also pass the registry-source vitest gate (task 900,
-#     below). No tsc and no full suite run here.
+#   - Gates: every changed file must `JSON.parse`; EVERY promotion must pass
+#     tools/check-prefs-coverage.mjs (task 1488), and a promoted file the
+#     registry's `contractSuites` table names must also pass its vitest
+#     suite(s) (task 900, below). No tsc and no full suite run here.
 #   - Landing: a LOCAL commit, fast-forwarded onto main only when the primary
 #     is on main, the promoted files are clean, and the gate is green —
 #     otherwise PARKED on a `prefs-promote-<date>` branch. Never pushed.
@@ -145,25 +146,42 @@ done
 
 log "drift detected in ${#FILES[@]} file(s): ${FILES[*]}$(warnings)"
 
-# Contract gate (task 900): JSON parsing proves only that the file is JSON.
-# The View-menu defaults also answer to the view-pref registry, whose
-# promoted rows READ this JSON; the registry-source suite (one static file,
-# a few seconds) pins that contract — every promoted value inside the domain
-# its row declares. A red gate still commits, but PARKS the commit instead of
-# fast-forwarding main, so the repair is a human's and main stays green.
+# Contract gate (tasks 900, 1488): JSON parsing proves only that the file is
+# JSON. Two layers, both run in the throwaway worktree against the promoted
+# files:
+#   1. tools/check-prefs-coverage.mjs, UNCONDITIONALLY — static, sub-second,
+#      and it knows the value contracts of every sidecar (e.g. the Library
+#      colOrder must be a full permutation of its columns: a partial one
+#      promoted from a stale blob would drop that column for every user).
+#   2. The vitest suite(s) the registry's `contractSuites` table names for each
+#      promoted file (e.g. the View defaults → the registry-source suite: every
+#      promoted value inside the domain its row declares). The pairing lives in
+#      that ONE table, never in an `if` here.
+# A red gate still commits, but PARKS the commit instead of fast-forwarding
+# main, so the repair is a human's and main stays green.
 GATE_FAIL=""
-for f in "${FILES[@]}"; do
-  if [ "$f" = "src/hooks/useViewPrefs.defaults.json" ]; then
-    ln -s "$REPO/node_modules" "$WT/node_modules"
-    if ! (cd "$WT" && NODE_OPTIONS=--no-experimental-webstorage \
-      node "$WT/node_modules/vitest/vitest.mjs" run \
-      src/components/__tests__/view-menu-registry-source.test.ts >"$SCRATCH/gate.log" 2>&1); then
-      GATE_FAIL="registry-source contract failed on the promoted defaults"
-      tail -n 40 "$SCRATCH/gate.log"
-    fi
-    rm -f "$WT/node_modules"
+if ! node "$WT/tools/check-prefs-coverage.mjs" --root "$WT" >"$SCRATCH/coverage.log" 2>&1; then
+  GATE_FAIL="prefs coverage check failed on the promoted defaults"
+  cat "$SCRATCH/coverage.log"
+fi
+SUITES=()
+while IFS= read -r s; do
+  [ -n "$s" ] && SUITES+=("$s")
+done < <(node -e '
+  const suites = JSON.parse(require("fs").readFileSync(process.argv[1], "utf-8")).contractSuites ?? {};
+  const out = new Set();
+  for (const f of process.argv.slice(2)) for (const s of Object.hasOwn(suites, f) ? suites[f] : []) out.add(s);
+  for (const s of out) console.log(s);
+' "$WT/src/lib/dev-prefs-registry.json" "${FILES[@]}")
+if [ "${#SUITES[@]}" -gt 0 ]; then
+  ln -s "$REPO/node_modules" "$WT/node_modules"
+  if ! (cd "$WT" && NODE_OPTIONS=--no-experimental-webstorage \
+    node "$WT/node_modules/vitest/vitest.mjs" run "${SUITES[@]}" >"$SCRATCH/gate.log" 2>&1); then
+    GATE_FAIL="${GATE_FAIL:+$GATE_FAIL; }contract suite(s) failed on the promoted defaults: ${SUITES[*]}"
+    tail -n 40 "$SCRATCH/gate.log"
   fi
-done
+  rm -f "$WT/node_modules"
+fi
 
 DATE="$(date +%Y-%m-%d)"
 # Explicit pathspec: the commit holds exactly the promoter's own output.
@@ -175,8 +193,9 @@ NEW_SHA="$(git -C "$WT" rev-parse HEAD)"
 # and only when none of the promoted files carry uncommitted edits there.
 CUR_BRANCH="$(git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 DIRTY="$(git -C "$REPO" status --porcelain --untracked-files=no -- "${FILES[@]}")"
+FF_ERR="$SCRATCH/ff.err"
 if [ -z "$GATE_FAIL" ] && [ "$CUR_BRANCH" = "$BASE" ] && [ -z "$DIRTY" ] &&
-  git -C "$REPO" merge --quiet --ff-only "$NEW_SHA" >/dev/null 2>&1; then
+  git -C "$REPO" merge --quiet --ff-only "$NEW_SHA" >/dev/null 2>"$FF_ERR"; then
   log "committed $NEW_SHA onto $BASE (fast-forward from $BASE_SHA; not pushed)"
   exit 0
 fi
@@ -193,7 +212,10 @@ elif [ "$CUR_BRANCH" != "$BASE" ]; then
 elif [ -n "$DIRTY" ]; then
   WHY="primary has uncommitted edits to promoted files"
 else
-  WHY="$BASE moved and cannot fast-forward"
+  # The fast-forward itself failed. "main moved" is only ONE cause — a held
+  # index.lock or a merge in progress land here too — so log git's own words.
+  WHY="fast-forward of $BASE refused: $(tr '\n' ' ' <"$FF_ERR" 2>/dev/null | sed 's/ *$//')"
+  [ -s "$FF_ERR" ] || WHY="fast-forward of $BASE refused (git printed no reason)"
 fi
 log "$WHY — parked promote commit $NEW_SHA on branch $PARK (merge it into $BASE by hand)"
 exit 0

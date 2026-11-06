@@ -11,7 +11,7 @@
 // real promoter, registry and six targets, with a bare "origin".
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,8 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const COPIED = [
   "tools/sync-defaults.sh",
   "tools/promote-defaults.mjs",
+  "tools/check-prefs-coverage.mjs",
+  "library/lib/list-columns.ts",
   "src/lib/pref-css-table.mjs",
   "src/lib/color-transform-math.mjs",
   "src/lib/dev-prefs-registry.json",
@@ -34,6 +36,8 @@ const COPIED = [
 ];
 const EDITOR_JSON = "src/hooks/usePreferences.defaults.json";
 const PANEL_JSON = "src/lib/panel-theme.defaults.json";
+const LIST_COL_JSON = "library/lib/list-columns.defaults.json";
+const REGISTRY_JSON = "src/lib/dev-prefs-registry.json";
 const CSS = "src/app/globals.css";
 const WIP_MARK = "/* live WIP — not the promoter's */";
 
@@ -202,6 +206,62 @@ describe("sync-defaults.sh — promotes in isolation", () => {
     expect(readFileSync(join(repo, CSS), "utf-8")).toBe(cssBefore);
     expect(refs()).toBe(refsBefore);
     expect(git("worktree", "list").split("\n")).toHaveLength(1);
+  });
+
+  it("parks a promotion the coverage check rejects — a partial Library colOrder never reaches main (task 1488)", () => {
+    const mainBefore = git("rev-parse", "main");
+    const full: string[] = JSON.parse(readFileSync(join(repo, LIST_COL_JSON), "utf-8")).colOrder;
+    snapshot({ "virgil-library-view-session": { layout: { colOrder: full.slice(1) } } });
+
+    const r = runSync();
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/prefs coverage check failed/);
+    expect(r.out).toMatch(new RegExp(`missing column "${full[0]}"`));
+    expect(r.out).toMatch(/parked/);
+    expect(git("rev-parse", "main")).toBe(mainBefore);
+    const parked = git("for-each-ref", "--format=%(refname:short)", "refs/heads/prefs-promote-*");
+    expect(committedFiles(parked)).toEqual([LIST_COL_JSON]);
+  });
+
+  it("runs the coverage check on every promotion, not only the View defaults", () => {
+    // A clean promotion of a file with no contract suite still passes the
+    // (unconditional) coverage check and fast-forwards main.
+    const mainBefore = git("rev-parse", "main");
+    snapshot(panelDrift());
+    const r = runSync();
+    expect(r.code, r.out).toBe(0);
+    expect(git("rev-parse", "main^")).toBe(mainBefore);
+    const src = readFileSync(join(repoRoot, "tools/sync-defaults.sh"), "utf-8");
+    // The file→suite pairing is the registry's table, never a path test here.
+    expect(src).not.toMatch(/\[ "\$f" = "src\//);
+    expect(src).toMatch(/contractSuites/);
+  });
+
+  it("every contractSuites row names a promoted defaults file and a suite that exists", () => {
+    const registry = JSON.parse(readFileSync(join(repoRoot, REGISTRY_JSON), "utf-8"));
+    const targets = new Set(registry.promotable.map((e: { defaultsFile: string }) => e.defaultsFile));
+    const rows = Object.entries(registry.contractSuites).filter(([k]) => k !== "_comment");
+    expect(rows.length).toBeGreaterThan(0);
+    for (const [file, suites] of rows) {
+      expect(targets.has(file), file).toBe(true);
+      for (const suite of suites as string[]) expect(existsSync(join(repoRoot, suite)), suite).toBe(true);
+    }
+  });
+
+  it("the promoter writes NOTHING when a later step throws (globals.css without its markers)", () => {
+    const css = readFileSync(join(repo, CSS), "utf-8").replace("PROMOTE-DEFAULTS-START", "PROMOTE-DEFAULTS-GONE");
+    writeFileSync(join(repo, CSS), css);
+    git("commit", "-qam", "drop markers");
+    snapshot({ ...cssDrift(), ...panelDrift() });
+
+    const r = spawnSync(
+      "node",
+      [join(repo, "tools/promote-defaults.mjs"), "--root", repo, "--snapshot", join(repo, "tools/personal-snapshot.json")],
+      { encoding: "utf-8" },
+    );
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/marker pair/);
+    expect(git("status", "--porcelain")).toBe("");
   });
 
   it("carries no push at all (release/deploy belongs to /cleanup-virgil)", () => {
