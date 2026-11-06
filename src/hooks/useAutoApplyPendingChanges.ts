@@ -73,6 +73,7 @@ import {
 import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import { generateEntityId } from "@/lib/uuid";
+import { isAppliedPendingSuggestion } from "@/cards/suggestion-status";
 import type { StructuralRevisions } from "@/hooks/useStructuralRevisions";
 
 /** Either suggestion family — both structurally carry the fields the gate +
@@ -174,10 +175,7 @@ export function paragraphsWithInFlightApplied(
 ): Set<string> {
   const set = new Set<string>();
   for (const c of cards) {
-    if (c.kind !== "suggestion") continue;
-    if (c.status === "applied" && c.appliedChange) {
-      set.add(c.appliedChange.anchorUuid);
-    }
+    if (isAppliedPendingSuggestion(c)) set.add(c.appliedChange.anchorUuid);
   }
   return set;
 }
@@ -449,15 +447,13 @@ export function applyOne(
   }
   // Claim synchronously before the splice so the splice-triggered re-run bails.
   dispatched.add(target.card.id);
-  const result = applySuggestion<string>({
+  const result = applySuggestion({
     editor,
     card: target.card,
     family: target.family,
     setSuggestionStatus: target.setSuggestionStatus,
     setAppliedChange: target.setAppliedChange as never,
     generateAnchorId: generateEntityId,
-    appliedStatus: "applied",
-    staleStatus: "stale",
   });
   if (result.outcome === "applied") inFlight.add(target.anchorUuid);
 }

@@ -57,6 +57,7 @@ import {
   PENDING_AI_CHANGE_KIND,
 } from "@/cards/legacy-token-crosswalk";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
+import { isAppliedPendingSuggestion } from "@/cards/suggestion-status";
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change — the
  *  same constant the applicator stamps (apply-suggestion.ts `PENDING_KIND`). */
@@ -133,9 +134,7 @@ export function pendingMarkAnchorIds(
 ): Set<string> {
   const ids = new Set<string>();
   for (const c of cards) {
-    if (c.kind === "suggestion" && c.status === "applied" && c.appliedChange) {
-      ids.add(c.appliedChange.anchorId);
-    }
+    if (isAppliedPendingSuggestion(c)) ids.add(c.appliedChange.anchorId);
   }
   return ids;
 }
@@ -154,9 +153,8 @@ export function buildPendingMarkReapplyRecords(
   const records: PendingMarkReapplyRecord[] = [];
   for (const group of groups) {
     for (const c of group.cards) {
-      if (c.kind !== "suggestion" || c.status !== "applied") continue;
+      if (!isAppliedPendingSuggestion(c)) continue;
       const ac = c.appliedChange;
-      if (!ac) continue;
       // mode "replace": the blue wraps the inserted `replacement`.
       // mode "delete":  the text was never cut, so the blue wraps `originalText`
       //                 (still present in the paragraph) — a pending-delete preview.

@@ -1595,7 +1595,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // further down AND the lifecycle SETTLE obligation declared just below — one
   // definition, no second copy to drift (task 238).
   const revisionPendingDeps = useCallback(
-    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
+    (): PendingChangeCardDeps => ({
       getAppliedChange: (cid) =>
         revisionsHookRaw.getCards().find(
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -1604,13 +1604,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setArchived: revisionsHookRaw.setArchived,
       setAppliedChange: revisionsHookRaw.setAppliedChange,
       family: "revision-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
     }),
     [revisionsHookRaw],
   );
   const cutterPendingDeps = useCallback(
-    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
+    (): PendingChangeCardDeps => ({
       getAppliedChange: (cid) =>
         cutterHookRaw.getCards().find(
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -1619,8 +1617,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setArchived: cutterHookRaw.setArchived,
       setAppliedChange: cutterHookRaw.setAppliedChange,
       family: "cutter-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
     }),
     [cutterHookRaw],
   );
@@ -3599,7 +3595,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // keystroke-stable (the hook object is), which keeps the controller memo stable
   // across typing.
   const revisionInsertDeps = useCallback(
-    (): InsertBelowCardDeps<RevisionSuggestionCard["status"]> => ({
+    (): InsertBelowCardDeps => ({
       getSuggestion: (cid) => {
         const s = revisionsHook.cards.find(
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -3613,12 +3609,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setSuggestionStatus: revisionsHook.setSuggestionStatus,
       setArchived: revisionsHook.setArchived,
       setAppliedChange: revisionsHook.setAppliedChange,
-      acceptedStatus: "accepted",
     }),
     [revisionsHook],
   );
   const cutterInsertDeps = useCallback(
-    (): InsertBelowCardDeps<CutterSuggestionCard["status"]> => ({
+    (): InsertBelowCardDeps => ({
       getSuggestion: (cid) => {
         const s = cutterHook.cards.find(
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -3632,7 +3627,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setSuggestionStatus: cutterHook.setSuggestionStatus,
       setArchived: cutterHook.setArchived,
       setAppliedChange: cutterHook.setAppliedChange,
-      acceptedStatus: "accepted",
     }),
     [cutterHook],
   );
@@ -3679,15 +3673,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // The shared `applySuggestion` — the same path the auto-apply driver takes
       // (Phase 2), so the manual button and the driver stay byte-identical. The
       // card-state transitions happen inside via the deps.
-      applySuggestion<RevisionSuggestionCard["status"]>({
+      applySuggestion({
         editor,
         card: s,
         family: "revision-suggestion",
         setSuggestionStatus: revisionsHook.setSuggestionStatus,
         setAppliedChange: revisionsHook.setAppliedChange,
         generateAnchorId: generateEntityId,
-        appliedStatus: "applied",
-        staleStatus: "stale",
       });
     },
     [editor, revisionsHook],
@@ -3700,15 +3692,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
       );
       if (!s) return;
-      applySuggestion<CutterSuggestionCard["status"]>({
+      applySuggestion({
         editor,
         card: s,
         family: "cutter-suggestion",
         setSuggestionStatus: cutterHook.setSuggestionStatus,
         setAppliedChange: cutterHook.setAppliedChange,
         generateAnchorId: generateEntityId,
-        appliedStatus: "applied",
-        staleStatus: "stale",
       });
     },
     [editor, cutterHook],
