@@ -34,10 +34,11 @@ import { join, relative } from "node:path";
 import {
   applyViewerDefaults,
   applyViewerPalette,
+  COMPILED_VIEWER_CLASS,
   VIEWER_PALETTE_TOKENS,
   viewerPaletteVar,
   type PdfViewerWindow,
-} from "../PdfView";
+} from "@/components/PdfViewer";
 
 // ---------------------------------------------------------------------------
 // The door
@@ -214,18 +215,18 @@ describe("applyViewerPalette — the parent's LIVE tokens reach the iframe", () 
 
   it("follows a palette CHANGE and leaves an unchanged token unwritten", () => {
     const { win, style } = fakeViewerDoc();
-    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#c5dbe2", "--muted": "#8a8580" }));
+    applyViewerPalette(win, parentStyle({ "--background": "#ede3de", "--muted": "#8a8580" }));
     style.setProperty.mockClear();
-    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#ff0000", "--muted": "#8a8580" }));
-    expect(style.props.get("--virgil-topbar-bg")).toBe("#ff0000");
+    applyViewerPalette(win, parentStyle({ "--background": "#ff0000", "--muted": "#8a8580" }));
+    expect(style.props.get("--virgil-background")).toBe("#ff0000");
     expect(style.setProperty).toHaveBeenCalledTimes(1);
   });
 
   it("removes a token the parent leaves empty, so the CSS fallback applies", () => {
     const { win, style } = fakeViewerDoc();
-    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#c5dbe2" }));
+    applyViewerPalette(win, parentStyle({ "--background": "#ede3de" }));
     applyViewerPalette(win, parentStyle({}));
-    expect(style.props.has("--virgil-topbar-bg")).toBe(false);
+    expect(style.props.has("--virgil-background")).toBe(false);
   });
 
   it("is a no-op on a window that is not there yet", () => {
@@ -388,5 +389,66 @@ describe("vendored pdf.js — the runtime surface applyViewerDefaults reaches fo
     expect(start).toBeGreaterThan(-1);
     const gate = VIEWER.indexOf("sidebarView === SidebarView.UNKNOWN", start);
     expect(gate).toBeGreaterThan(start);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The compiled role's vendored surface. Each of these is a fact about viewer.mjs
+// that `carryCompiledPlace` or the door relies on and nothing else would notice.
+// ---------------------------------------------------------------------------
+
+describe("the vendored surface the compiled role stands on", () => {
+  it("a pending initialBookmark still wins over the stored hash", () => {
+    expect(VIEWER).toMatch(
+      /if \(this\.initialBookmark\) \{[\s\S]{0,160}this\.pdfLinkService\.setHash\(this\.initialBookmark\);\s*this\.initialBookmark = null;\s*\} else if \(storedHash\)/,
+    );
+  });
+
+  it("every history write still tolerates a null store, and close() still clears it", () => {
+    // `app.store = null` is safe only while no writer dereferences it bare.
+    expect(VIEWER.match(/this\.store\?\.(set|setMultiple)\(/g)).toHaveLength(3);
+    expect(VIEWER).not.toMatch(/this\.store\.\w/);
+    expect(VIEWER).toMatch(/this\.store = null;\s*this\.isInitialViewSet = false;/);
+  });
+
+  it("the history still holds 20 files, which is why a compile may not take a row", () => {
+    expect(VIEWER).toMatch(/DEFAULT_VIEW_HISTORY_CACHE_SIZE = 20/);
+    expect(VIEWER).toMatch(/new ViewHistory\(pdfDocument\.fingerprints\[0\]\)/);
+  });
+
+  it("the view location is still gated on isInitialViewSet, the gate the wrapper shares", () => {
+    expect(VIEWER).toMatch(/function onUpdateViewarea\(\{\s*location\s*\}\) \{\s*if \(this\.isInitialViewSet\)/);
+  });
+
+  it("pagesinit still fires before the first view is set, inside setDocument", () => {
+    const set = VIEWER.indexOf("setDocument(pdfDocument) {\n    if (this.pdfDocument)");
+    expect(set).toBeGreaterThan(-1);
+    const load = VIEWER.indexOf("pdfViewer.setDocument(pdfDocument);");
+    expect(VIEWER.indexOf('dispatch("pagesinit"', set)).toBeGreaterThan(set);
+    expect(VIEWER.indexOf("this.setInitialView(hash, {", load)).toBeGreaterThan(load);
+  });
+
+  it("an embedded viewer's links still default to _top, which is why the door overrides them", () => {
+    expect(VIEWER).toMatch(/this\.isViewerEmbedded && AppOptions\.get\("externalLinkTarget"\) === LinkTarget\.NONE/);
+    expect(VIEWER).toMatch(/AppOptions\.set\("externalLinkTarget", LinkTarget\.TOP\)/);
+    expect(VIEWER).toMatch(/const target = newWindow \? LinkTarget\.BLANK : this\.externalLinkTarget/);
+    expect(VIEWER).toMatch(/LinkTarget = \{\s*NONE: 0,\s*SELF: 1,\s*BLANK: 2/);
+  });
+
+  it("printResolution is still read as a print starts", () => {
+    expect(VIEWER).toMatch(/printResolution: AppOptions\.get\("printResolution"\)/);
+  });
+
+  it("Print and Download exist in the dist, and the stylesheet gates them on the compiled class alone", () => {
+    const CSS = readFileSync(join(PDFJS, "web", "virgil-overrides.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    for (const id of ["printButton", "downloadButton", "secondaryPrint", "secondaryDownload"]) {
+      expect(VIEWER_HTML).toContain(`id="${id}"`);
+      expect(CSS).toContain(`:root:not(.${COMPILED_VIEWER_CLASS}) #${id}`);
+      // Hidden unconditionally anywhere else, the role could never show it.
+      expect(CSS.match(new RegExp(`#${id}\\b`, "g"))).toHaveLength(1);
+    }
   });
 });

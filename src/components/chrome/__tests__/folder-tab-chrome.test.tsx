@@ -11,12 +11,13 @@ import {
   middleInsetLeft,
   middleInsetRight,
 } from "../folder-tab-geometry";
-import { DocumentFolderTab } from "@/components/editor-layout/DocumentFolderTab";
+import { ActiveBarTab } from "@/components/editor-layout/ActiveBarTab";
+import { SEGMENT_ON } from "@/components/SegmentedToggle";
 import { PanelFolderTab } from "@library/components/panel-tabs/PanelFolderTab";
 
 // The whole point of the layout-driven chrome: rendering it constructs ZERO
-// ResizeObservers (the old PanelFolderTab built two per tab and
-// DocumentFolderTab one — all deleted, not parked). jsdom has no native RO;
+// ResizeObservers (the old PanelFolderTab built two per tab — all deleted,
+// not parked). jsdom has no native RO;
 // install a spy-able stub and assert it is never constructed.
 const roConstructed = vi.fn();
 class ResizeObserverStub {
@@ -70,7 +71,7 @@ describe("FolderTabChrome — layout-driven three-piece silhouette", () => {
     // pre-task-087 zero-cushion top stroke — the exact "missing top
     // outline" defect this chrome exists to kill — while every
     // constants-only test stayed green.
-    for (const variant of ["library", "topbar"] as const) {
+    for (const variant of ["library"] as const) {
       const { container, unmount } = render(
         <div style={{ position: "relative" }}>
           <FolderTabChrome variant={variant} fill="var(--surface)" />
@@ -113,14 +114,14 @@ describe("FolderTabChrome — layout-driven three-piece silhouette", () => {
     );
     expect(strokes.length).toBe(2);
     for (const p of strokes) {
-      expect(p.getAttribute("stroke")).toContain("var(--library-edge");
+      expect(p.getAttribute("stroke")).toBe("transparent");
     }
     // The middle piece: fill background + 1px top border in the edge color.
     const middle = Array.from(container.querySelectorAll("div")).find(
       (d) => d.style.borderTop !== "",
     );
     expect(middle).toBeTruthy();
-    expect(middle!.style.borderTop).toContain("var(--library-edge");
+    expect(middle!.style.borderTop).toContain("transparent");
     expect(middle!.style.background).toBe("var(--background)");
     expect(middle!.style.top).toBe("1px"); // TAB_TOP_GUTTER
     expect(middle!.style.bottom).toBe("0px"); // seam bridge reaches the base
@@ -144,26 +145,7 @@ describe("FolderTabChrome — layout-driven three-piece silhouette", () => {
       (d) => d.style.borderTop !== "",
     );
     expect(middle!.style.left).toBe(`${middleInsetLeft(true)}px`);
-    expect(middle!.style.right).toBe(`${middleInsetRight(true, 0)}px`);
-    expect(roConstructed).not.toHaveBeenCalled();
-  });
-
-  it("topbar variant: --topbar-border edge, 32px caps, right cap overhangs by 1px (the F#8 cushion outside the footprint)", () => {
-    const { container } = render(
-      <div style={{ position: "relative" }}>
-        <FolderTabChrome variant="topbar" fill="var(--main-tab-bg)" />
-      </div>,
-    );
-    const caps = getCaps(container);
-    expect(caps[0].getAttribute("height")).toBe(
-      String(FOLDER_TAB_VARIANTS.topbar.svgH),
-    );
-    expect(caps[0].style.left).toBe("0px");
-    expect(caps[1].style.right).toBe("-1px");
-    const strokes = Array.from(container.querySelectorAll('path[fill="none"]'));
-    for (const p of strokes) {
-      expect(p.getAttribute("stroke")).toContain("var(--topbar-border");
-    }
+    expect(middle!.style.right).toBe(`${middleInsetRight(true)}px`);
     expect(roConstructed).not.toHaveBeenCalled();
   });
 });
@@ -201,26 +183,21 @@ describe("PanelFolderTab — inner active tab wrapper on the shared chrome", () 
   });
 });
 
-describe("DocumentFolderTab — outer active tab wrapper on the SAME shared chrome", () => {
-  it("renders the topbar variant with in-flow content and no RO", () => {
+describe("ActiveBarTab — the outer active tab is the view switch's tile", () => {
+  it("wears the segmented control's one 'on' spelling, draws no folder, and holds its floor", () => {
     const { container, getByText } = render(
-      <DocumentFolderTab fill="var(--main-tab-bg)" title="paper.tex">
+      <ActiveBarTab title="paper.tex">
         <span>paper.tex</span>
-      </DocumentFolderTab>,
+      </ActiveBarTab>,
     );
     expect(roConstructed).not.toHaveBeenCalled();
     expect(getByText("paper.tex")).toBeTruthy();
-    const wrapper = container.firstElementChild as HTMLElement;
-    expect(wrapper.style.height).toBe(
-      `${FOLDER_TAB_VARIANTS.topbar.svgH}px`,
-    );
-    expect(wrapper.style.marginBottom).toBe("-1px");
-    const caps = getCaps(container);
-    expect(caps).toHaveLength(2);
-    for (const cap of caps) {
-      expect(cap.getAttribute("height")).toBe(
-        String(FOLDER_TAB_VARIANTS.topbar.svgH),
-      );
-    }
+    const tab = container.firstElementChild as HTMLElement;
+    for (const cls of SEGMENT_ON.split(" ")) expect(tab.classList.contains(cls)).toBe(true);
+    // The same 24px box as an inactive label, so activating moves nothing.
+    expect(tab.classList.contains("h-6")).toBe(true);
+    expect(tab.classList.contains("shrink-0")).toBe(true);
+    expect(tab.style.minWidth).toBe("80px");
+    expect(getCaps(container)).toHaveLength(0);
   });
 });

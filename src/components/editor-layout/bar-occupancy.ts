@@ -12,14 +12,14 @@
 // >      change, sync conflict, mirror recovery), the cowork pen, the update
 // >      and skill-sync notices, the running timer, a running compile, and the
 // >      modes the user turned on (Focus view, Helper, Collab — task 1353) —
-// >      plus the collapse toggle itself. Never yields. This is not a
+// >      plus the ⋯ menu itself. Never yields. This is not a
 // >      preference: docs/agents/laws/the-write-path.md ("The honesty half") makes a data-integrity
 // >      notice un-hideable by a layout preference, a mode chip is its mode's
-// >      off-switch, and the toggle is what makes a collapse reversible.
+// >      off-switch, and ⋯ is what makes a collapse reversible.
 // >   2. TABS — Gabriel's decision (2026-08-19): "text tabs should occlude the
 // >      tools in this case." Tabs outrank the collapsible tools.
 // >   3. COLLAPSIBLE TOOLS — the `topbarRightCollapsed` group. Collapses
-// >      automatically when tiers 1+2 need the room, behind the same chip the
+// >      automatically when tiers 1+2 need the room, into the ⋯ menu the
 // >      user already collapses it with, so the tools stay REACHABLE. Collapse
 // >      beats bare z-order for exactly that reason: a tool hidden under a tab
 // >      is unclickable with no affordance to reach it.
@@ -136,7 +136,7 @@ export function resolveBarOccupancy(m: BarOccupancyMeasure): {
     return { toolsCollapsed: false };
   }
   // The tools group costs nothing to keep open when it is empty (every tool
-  // self-gated off) — never collapse into a chip that reveals nothing.
+  // self-gated off) — never collapse into a menu that reveals nothing.
   if (toolsNaturalPx <= 0) return { toolsCollapsed: false };
 
   const need = tabsNaturalPx + (toolsCollapsed ? toolsNaturalPx : 0);

@@ -246,7 +246,7 @@ function ResetRow({ onReset }: { onReset: () => void }) {
     <button
       {...getItemProps()}
       type="button"
-      className={`mt-2 w-full text-[11px] text-ink-subtle hover:text-ink-body px-2 py-1 rounded hover-on-light ${
+      className={`mt-2 w-full text-2xs text-ink-subtle hover:text-ink-body px-2 py-1 rounded hover-on-light ${
         active ? "bg-surface-muted-strong text-ink-body" : ""
       }`}
     >

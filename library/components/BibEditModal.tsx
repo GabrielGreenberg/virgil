@@ -25,10 +25,15 @@ import {
 import type { BibEditDiffPayload } from "@library/lib/queue";
 import { bibEditBase, parseBibEntryBlock } from "@library/lib/bib-raw-entry";
 import SystemDialog, {
+  SYSTEM_DIALOG_TOKENS,
   SystemDialogButton,
   SystemDialogFooter,
+  SystemDialogHeader,
 } from "@/components/system-dialog";
 import { Button } from "@/components/Button";
+import { iconHint } from "@/components/Hint";
+import { CloseIcon } from "@/components/icons/CloseIcon";
+import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { Input, Select, Textarea } from "@/components/field-primitives";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
@@ -240,8 +245,8 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
       />
 
       <div
+        className={SYSTEM_DIALOG_TOKENS.body}
         style={{
-          padding: 16,
           overflow: "auto",
           flex: 1,
           minHeight: 0,
@@ -313,86 +318,42 @@ function Header({
   onClose: () => void;
 }) {
   return (
-    <div
-      style={{
-        padding: "12px 16px",
-        borderBottom: "1px solid var(--border)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <div id={titleId} style={{ fontSize: 14, fontWeight: 600 }}>
-          Edit bib entry <span className="sr-only">{citekey}</span>
+    <SystemDialogHeader>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id={titleId} className={SYSTEM_DIALOG_TOKENS.title}>
+            Edit bib entry <span className="sr-only">{citekey}</span>
+          </h2>
+          <code style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)" }}>
+            {citekey}
+          </code>
         </div>
-        <code style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)" }}>
-          {citekey}
-        </code>
+        <div className="flex items-center gap-2 shrink-0">
+          <SegmentedToggle
+            ariaLabel="Editor mode"
+            size="sm"
+            value={mode}
+            onChange={onSwitchMode}
+            options={MODE_OPTIONS}
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            className="iconbtn-md"
+            {...iconHint({ label: "Close" })}
+          >
+            <CloseIcon size={16} />
+          </button>
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <ModeToggle mode={mode} onChange={onSwitchMode} />
-        <button
-          data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
-          className="focus-ring"
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border-light)",
-            borderRadius: "var(--radius-sm)",
-            padding: "4px 10px",
-            fontSize: 12,
-            cursor: "pointer",
-            color: "var(--muted)",
-          }}
-        >
-          ✕
-        </button>
-      </div>
-    </div>
+    </SystemDialogHeader>
   );
 }
 
-function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
-  return (
-    <div
-      role="tablist"
-      aria-label="Editor mode"
-      style={{
-        display: "inline-flex",
-        border: "1px solid var(--border-light)",
-        borderRadius: "var(--radius-md)",
-        overflow: "hidden",
-      }}
-    >
-      {(["form", "raw"] as const).map((m) => {
-        const active = mode === m;
-        return (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(m)}
-            style={{
-              background: active ? "var(--control-selected)" : "transparent",
-              color: active ? "white" : "var(--foreground)",
-              border: "none",
-              padding: "4px 12px",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            {m === "form" ? "Form" : "Raw BibTeX"}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+const MODE_OPTIONS: ReadonlyArray<{ value: Mode; label: string }> = [
+  { value: "form", label: "Form" },
+  { value: "raw", label: "Raw BibTeX" },
+];
 
 // ────────────────────────────────────────────────────────────────────────
 // Form view
@@ -422,9 +383,9 @@ function FormView({
   nextId: React.MutableRefObject<number>;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Section label="Identity">
-        <Row label="type">
+        <Row label="Type">
           <Select
             density="dense"
             value={type}
@@ -486,24 +447,8 @@ function FormView({
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <fieldset
-      style={{
-        border: "1px solid var(--border-light)",
-        borderRadius: "var(--radius-md)",
-        padding: "10px 12px 12px",
-        margin: 0,
-      }}
-    >
-      <legend
-        style={{
-          fontFamily: FONT_MONO,
-          fontSize: 10,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: "var(--muted)",
-          padding: "0 6px",
-        }}
-      >
+    <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <legend className="section-caption" style={{ padding: 0, marginBottom: 8 }}>
         {label}
       </legend>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
@@ -560,7 +505,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
         fontSize: 13,
       }}
     >
-      <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)", paddingTop: 6 }}>
+      <span className="text-xs text-ink-muted" style={{ paddingTop: 6 }}>
         {label}
       </span>
       <span>{children}</span>
@@ -618,22 +563,12 @@ function ExtraRows({
             style={fieldBox}
           />
           <button
-            data-iconbtn-exempt="inline-styled library chrome (own palette + geometry in style={})"
-            className="focus-ring"
             type="button"
             onClick={() => removeRow(r.id)}
-            aria-label={`Remove ${r.key || "row"}`}
-            style={{
-              background: "transparent",
-              border: "1px solid var(--border-light)",
-              borderRadius: "var(--radius-sm)",
-              padding: "0 8px",
-              fontSize: 12,
-              cursor: "pointer",
-              color: "var(--muted)",
-            }}
+            className="iconbtn-md"
+            {...iconHint({ label: `Remove ${r.key || "row"}` })}
           >
-            ✕
+            <CloseIcon size={16} />
           </button>
         </div>
       ))}

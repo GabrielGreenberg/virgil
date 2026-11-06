@@ -30,13 +30,11 @@ import { bibStateTone, indexTierTone, type Tone } from "@/lib/library/status-ton
 import { OpenEntryLink } from "./open-library-entry";
 import { describedHint } from "@/components/Hint";
 
-// Status-badge dialect — a documented sibling of the META tier: 10px, but
-// sentence-case (the user-facing vocabulary reads "Verified" / "Indexed PDF",
-// not shouty uppercase) with tracking-wide to stay in the chip family. The
-// membership chips on the layer above keep their denser 9px-uppercase
-// "location tag" look. See STYLE_GUIDE § In-card type scale.
+// Status-badge dialect — a documented sibling of the META tier: 11px, with
+// colour telling it apart from the membership chips on the layer above.
+// See STYLE_GUIDE § In-card type scale.
 const CHIP_BASE =
-  "inline-flex items-center gap-0.5 text-[10px] tracking-wide px-1.5 py-0.5 rounded-pill whitespace-nowrap border";
+  "inline-flex items-center gap-0.5 text-2xs tracking-wide px-1.5 py-0.5 rounded-pill whitespace-nowrap border";
 
 /** Paint a chip from a resolved {@link Tone}. The runtime-built token name is
  *  the same shape `StatusPill`'s `Pill` uses, so the two surfaces read the

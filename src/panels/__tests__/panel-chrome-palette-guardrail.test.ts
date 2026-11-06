@@ -309,7 +309,6 @@ const PERMITTED_RAW_VALUE_LITERALS: Record<string, string> = {
   // RULED KEEPS — a concrete value some non-CSS consumer requires.
   "src/cards/legacy-token-crosswalk.ts :: #bfdbfe": "PENDING_AI_TINT — task 1066 kept the TS source, pinned equal to --pending-ai-tint by pending-ai-tint-family.test.ts",
   "src/lib/panel-typography.ts :: #44403c": "BODY_CLASS_TYPOGRAPHY default ink — a typography PREF default is a stored value, so it needs a concrete hex (= --ink-body)",
-  "src/components/FramedViewerSurface.tsx :: #525659": "BACKDROPS.dark — mirrors the vendored pdf.js viewer's own chrome grey, which the viewer owns (not a Virgil token)",
 
   // AWAITING A DECISION — the AI window's status chips. Task 1066 left this
   // vocabulary "awaiting a --status-* decision"; converging it MOVES colours,
@@ -699,7 +698,7 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
     // token out of its rule so this cannot drift into a second opinion.
     const twin = ruleBody(".heading-label-input");
     expect(twin).toMatch(/--heading-annotation-color/);
-    expect(outline).toContain("text-[var(--heading-annotation-color,#6b9ac4)]");
+    expect(outline).toContain("text-[var(--heading-annotation-color)]");
     expect(outline).not.toMatch(/text-blue-|border-blue-/);
   });
 

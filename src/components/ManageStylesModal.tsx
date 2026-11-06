@@ -25,6 +25,9 @@ import SystemDialog, {
 import StyleEditorModal from "./StyleEditorModal";
 import { Field, Input, Select } from "./field-primitives";
 import { Button } from "./Button";
+import { ItemMenu } from "./panel-primitives";
+import { MenuActionRow } from "./menu/MenuActionRow";
+import { MenuSeparator } from "./menu/MenuChrome";
 import StyleApplyDialog from "./StyleApplyDialog";
 import DocTypeChangeDialog from "./DocTypeChangeDialog";
 import type { StyleEntry } from "@/lib/document-styles";
@@ -41,8 +44,8 @@ import {
   unsupportedSectioningFor,
 } from "@/lib/document-class";
 import { DOC_TYPES } from "@/lib/doc-types";
-import { iconHint } from "@/components/Hint";
-import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
+import { describedHint } from "@/components/Hint";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 /**
  * The distinct `\documentclass` names offered by the doc-type control,
@@ -332,16 +335,13 @@ export default function ManageStylesModal({
     : null;
 
   const showActiveColumn = !!docId;
-  const gridTemplate = showActiveColumn
-    ? "auto auto 1fr auto"
-    : "auto 1fr auto";
 
   return (
     <>
       <SystemDialog
         open
         onClose={onClose}
-        size="xl"
+        size="lg"
         /* A dismissal is FREE: the only draft in this dialog's OWN body is the
            inline style-rename field, which commits on Enter or on blur — so a
            close loses at most an uncommitted style NAME. The nested
@@ -353,8 +353,8 @@ export default function ManageStylesModal({
           title="Manage styles"
           subtitle={
             showActiveColumn
-              ? "Apply a style to the current document, manage entries, or pick the default for new docs."
-              : "Edit, rename, duplicate, or delete styles. Pick which one new documents start with."
+              ? "Apply a style to this document, or manage your styles."
+              : "Manage your styles, and choose which one new documents start with."
           }
         />
         <SystemDialogBody className="pb-2">
@@ -391,7 +391,7 @@ export default function ManageStylesModal({
                   </Select>
                 )}
               </Field>
-              <span className="text-[11px] text-ink-subtle">
+              <span className="text-2xs text-ink-subtle">
                 Changes <code className="font-mono">\documentclass</code>.
               </span>
             </div>
@@ -402,130 +402,98 @@ export default function ManageStylesModal({
               doc&apos;s <code>.tex</code> stays untouched until the agent finishes.
             </div>
           )}
-          <div className="border border-edge-subtle rounded-md overflow-hidden bg-surface">
-            <div
-              className="section-caption grid items-center gap-2 px-3 py-2 border-b border-edge-subtle bg-surface-muted/40"
-              style={{ gridTemplateColumns: gridTemplate }}
-            >
-              <span data-hint="Default style for new docs">Default</span>
-              {showActiveColumn && <span data-hint="Active style for the current doc">Active</span>}
-              <span>Name</span>
-              <span>Actions</span>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto">
-              {styles.map((s) => {
-                const isDefault = s.id === defaultStyleId;
-                const isActive = showActiveColumn && s.id === styleId;
-                const isRenaming = renamingId === s.id;
-                const isOnlyOne = styles.length <= 1;
-                return (
-                  <div
-                    key={s.id}
-                    className="grid items-center gap-2 px-3 py-2 border-b border-edge-subtle/50 last:border-b-0"
-                    style={{ gridTemplateColumns: gridTemplate }}
-                  >
-                    <input
-                      type="radio"
-                      name="default-style"
-                      checked={isDefault}
-                      onChange={() => setDefaultStyleId(s.id)}
-                      data-hint="Set as default for new docs"
-                      className="cursor-pointer"
+          <div className="max-h-[55vh] overflow-y-auto">
+            {styles.map((s) => {
+              const isDefault = s.id === defaultStyleId;
+              const isActive = showActiveColumn && s.id === styleId;
+              const isRenaming = renamingId === s.id;
+              const isOnlyOne = styles.length <= 1;
+              const status = [
+                isActive && (drifted ? "In use, edited" : "In use"),
+                isDefault && "Default for new documents",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3 min-h-9 py-1 border-b border-edge-subtle/50 last:border-b-0"
+                >
+                  {isRenaming ? (
+                    <Input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => commitRename(s.id)}
+                      onKeyDown={(e) => {
+                        // preventDefault is load-bearing, not decoration: it
+                        // is how an in-dialog control tells the shell "this
+                        // Enter is MINE". Without it the shell would fall
+                        // through to the cued default ("Done") and a rename
+                        // would close the whole modal.
+                        if (isCommitEnter(e)) {
+                          e.preventDefault();
+                          commitRename(s.id);
+                        } else if (isCancelEscape(e)) {
+                          // Ends the rename, not the dialog: the shell's Escape
+                          // listens at the window.
+                          e.stopPropagation();
+                          setRenamingId(null);
+                        }
+                      }}
+                      className="flex-1 min-w-0 px-2 py-1 text-sm"
                     />
-                    {showActiveColumn && (
-                      <div className="flex items-center justify-center">
-                        {isActive ? (
-                          <span
-                            className="inline-flex items-center gap-1 text-[var(--accent)]"
-                            role="img" {...iconHint({ label: drifted ? "Active — preamble has drifted from this style" : "Active style for this doc" })}
-                          >
-                            <span aria-hidden>✓</span>
-                            {drifted && (
-                              <span
-                                aria-hidden
-                                className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
-                              />
-                            )}
-                          </span>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void apply(s.id)}
-                            disabled={!!pendingMerge}
-                            data-hint={pendingMerge ? "AI merge in progress…" : "Apply this style to the current doc"}
-                          >
-                            Apply
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 min-w-0">
-                      {isRenaming ? (
-                        <Input
-                          autoFocus
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onBlur={() => commitRename(s.id)}
-                          onKeyDown={(e) => {
-                            // preventDefault is load-bearing, not decoration: it
-                            // is how an in-dialog control tells the shell "this
-                            // Enter is MINE". Without it the shell would fall
-                            // through to the cued default ("Done") and a rename
-                            // would close the whole modal.
-                            if (isCommitEnter(e)) {
-                              e.preventDefault();
-                              commitRename(s.id);
-                            } else if (isCancelEscape(e)) {
-                              setRenamingId(null);
-                            }
-                          }}
-                          className="flex-1 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        <>
-                          <span className="text-sm text-ink-body truncate">
-                            {s.name}
-                          </span>
-                          {s.origin === "seed" && (
-                            <span
-                              data-hint="Seeded on first launch — fully editable like any other style."
-                              className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-muted text-ink-subtle border border-edge-subtle/60"
-                            >
-                              seeded
-                            </span>
+                  ) : (
+                    <div className="flex items-baseline gap-2 flex-1 min-w-0">
+                      <span className="text-sm text-ink-body truncate">{s.name}</span>
+                      {status && (
+                        <span
+                          className="text-xs text-ink-muted truncate"
+                          {...describedHint(
+                            isActive && drifted
+                              ? "This document's preamble has changed since the style was applied"
+                              : undefined,
                           )}
-                        </>
+                        >
+                          {status}
+                        </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => startEdit(s.id)}>
-                        Edit
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => duplicateStyle(s.id)}>
-                        Duplicate
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => startRename(s)}>
-                        Rename
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => setConfirmDeleteId(s.id)}
-                        disabled={isOnlyOne}
-                        data-hint={
-                          isOnlyOne
-                            ? "Library must contain at least one style"
-                            : undefined
-                        }
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  )}
+                  {showActiveColumn && !isActive && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void apply(s.id)}
+                      disabled={!!pendingMerge}
+                      data-hint={pendingMerge ? "AI merge in progress…" : "Apply this style to the current document"}
+                    >
+                      Apply
+                    </Button>
+                  )}
+                  <ItemMenu hint={`Options for ${s.name}`}>
+                    <MenuActionRow id="edit" label="Edit…" onSelect={() => startEdit(s.id)} />
+                    <MenuActionRow id="duplicate" label="Duplicate" onSelect={() => duplicateStyle(s.id)} />
+                    <MenuActionRow id="rename" label="Rename" onSelect={() => startRename(s)} />
+                    {!isDefault && (
+                      <MenuActionRow
+                        id="default"
+                        label="Use for new documents"
+                        onSelect={() => setDefaultStyleId(s.id)}
+                      />
+                    )}
+                    <MenuSeparator />
+                    <MenuActionRow
+                      id="delete"
+                      tone="danger"
+                      label="Delete"
+                      disabledReason={isOnlyOne ? "A library needs at least one style" : undefined}
+                      onSelect={() => setConfirmDeleteId(s.id)}
+                    />
+                  </ItemMenu>
+                </div>
+              );
+            })}
           </div>
 
           {confirmDeleteId && (
@@ -570,7 +538,7 @@ export default function ManageStylesModal({
             variant="secondary"
             onClick={() => setEditor("new")}
           >
-            + New style
+            New style…
           </SystemDialogButton>
           <SystemDialogButton variant="primary" onClick={onClose} autoFocus>
             Done

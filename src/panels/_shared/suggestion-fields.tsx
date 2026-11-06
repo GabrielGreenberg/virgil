@@ -155,7 +155,7 @@ export function AuthorChip({ author }: { author: SuggestionAuthor }) {
   const isAi = author === "ai";
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wide ${
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium tracking-wide ${
         isAi
           ? "bg-[var(--accent)]/10 text-[var(--accent)]"
           : "bg-surface-muted-strong text-ink-body"
@@ -185,7 +185,7 @@ export function SuggestionTrailing({
         aria-hidden="true"
       />
       <AuthorChip author={author} />
-      <span className="text-[10px] text-ink-muted">{STATUS_LABEL[status]}</span>
+      <span className="text-2xs text-ink-muted">{STATUS_LABEL[status]}</span>
     </>
   );
 }
@@ -262,7 +262,7 @@ function FieldTitleRow({
           {label}
         </span>
         {kindHint && (
-          <span className="text-[10px] text-[var(--muted-light)] lowercase">
+          <span className="text-2xs text-[var(--muted-light)] lowercase">
             {kindHint}
           </span>
         )}
@@ -270,7 +270,7 @@ function FieldTitleRow({
       {(showWordCount || showCopy) && (
         <div className="flex items-center gap-2 shrink-0">
           {showWordCount && (
-            <span className="text-[10px] text-[var(--muted-light)] tabular-nums">
+            <span className="text-2xs text-[var(--muted-light)] tabular-nums">
               {words} {words === 1 ? "word" : "words"}
             </span>
           )}
@@ -569,7 +569,7 @@ export function PendingActionRow({
         {blockedReason && (
           <p
             data-testid={isAi ? "pending-insert-blocked" : "pending-apply-blocked"}
-            className="text-[11px] leading-snug text-[var(--muted)]"
+            className="text-2xs leading-snug text-[var(--muted)]"
           >
             {blockedReason}
           </p>
@@ -617,7 +617,7 @@ export function PendingActionRow({
       {acceptBlocked && (
         <p
           data-testid="pending-accept-blocked"
-          className="text-[11px] leading-snug text-[var(--muted)]"
+          className="text-2xs leading-snug text-[var(--muted)]"
         >
           {acceptBlocked}
         </p>
@@ -876,7 +876,7 @@ export function StaleNotice({
       className="px-3 pt-2 pb-2 space-y-2"
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-[12px] text-ink-subtle">
+      <p className="text-xs text-ink-subtle">
         This paragraph changed since the suggestion was drafted, so it can no
         longer be applied as-is.
       </p>

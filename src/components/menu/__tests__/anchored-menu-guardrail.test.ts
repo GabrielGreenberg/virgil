@@ -150,7 +150,7 @@ describe("anchored-menu guardrail — doctrine participation", () => {
     // So: ask the BLOCK whether it declares menu semantics, and pin the answer
     // to an explicit set. A new `src/` menu must be stated here — an allowlist
     // entry alone can no longer absorb it silently.
-    // Task 1361 migrated `StatusClusterImpl` (the Help menu → `HelpMenu.tsx`)
+    // Task 1361 migrated `StatusClusterImpl` (the Help menu → `BarMoreMenu.tsx`)
     // and `MyPapersPod` ("+ Add paper") onto `AnchoredMenu`; task 1364 moved
     // `SlashCommandPopup`'s caret placement onto `useFloatingMenuPosition`. The
     // one below remains, its entry stating only its PLACEMENT residual.

@@ -111,7 +111,7 @@ describe("native title= tooltip CENSUS", () => {
       `<button type="button" title="Close">x</button>`,
       `<span\n  className="x"\n  title={label}\n>{label}</span>`,
       `<Button size="sm" title={reason}>Save</Button>`,
-      `<iframe title="Compiled PDF" />`,
+      `<iframe title={filename} />`,
       `<SystemDialogHeader title="Print" />`,
       `<svg><title>Icon</title></svg>`,
       `// <button title="in a comment">`,

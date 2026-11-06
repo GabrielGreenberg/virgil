@@ -15,9 +15,9 @@
  * is spelled ONCE, here:
  *
  *  - a `role="group"` with a name; every segment `aria-pressed`
- *  - the SOLID `--control-selected` path for the selected segment (filled
- *    segments, STYLE_GUIDE "Buttons"), never `--accent`
- *  - `rounded-md` (the control radius) on the outer ends
+ *  - a recessed track with the selected segment as a white tile on it, never
+ *    `--accent`, so a choice stays quieter than any filled action near it
+ *  - `rounded-md` (the control radius) on the track, `rounded-sm` on a segment
  *  - `.focus-ring` per segment, lifted above its neighbours while focused so
  *    the ring is not painted under the next segment (no `overflow-hidden` on
  *    the group, which would clip it)
@@ -45,21 +45,23 @@ export interface SegmentedOption<V extends string | number> {
   disabledHint?: string;
 }
 
-export type SegmentedToggleSize = "xs" | "sm";
+export type SegmentedToggleSize = "xs" | "sm" | "bar";
 
 const SIZE: Record<SegmentedToggleSize, string> = {
-  xs: "text-[10px] px-1.5 py-1",
-  sm: "text-[11px] font-medium px-2 h-6",
+  xs: "text-2xs px-1.5 py-0.5",
+  sm: "text-2xs font-medium px-2 h-5",
+  bar: "text-xs font-medium px-2.5 h-5",
 };
 
+const SEGMENT_TRACK = "inline-flex items-stretch shrink-0 p-0.5 rounded-md bg-[var(--segment-track)]";
 const SEGMENT_BASE =
-  "relative focus-ring focus-visible:z-10 border border-edge-subtle -ml-px first:ml-0 first:rounded-l-md last:rounded-r-md transition-colors";
-/** The selected segment — the SOLID control-selected path. Exported so the
- *  census can pin that this is the family's one "on" spelling. */
+  "relative inline-flex items-center focus-ring focus-visible:z-10 rounded-sm transition-colors";
+/** The selected segment — the white tile. Exported so the census can pin that
+ *  this is the family's one "on" spelling. */
 export const SEGMENT_ON =
-  "bg-[var(--control-selected)] border-[var(--control-selected)] text-white z-[1]";
-const SEGMENT_OFF = "bg-surface text-ink-muted hover-on-light hover:text-ink-body";
-const SEGMENT_DISABLED = "bg-surface text-ink-faint cursor-not-allowed";
+  "bg-surface text-ink-strong shadow-[var(--segment-tile-edge)] z-[1]";
+const SEGMENT_OFF = "text-ink-muted hover:text-ink-body";
+const SEGMENT_DISABLED = "text-ink-faint cursor-not-allowed";
 
 export interface SegmentedToggleProps<V extends string | number> {
   value: V;
@@ -90,7 +92,7 @@ export function SegmentedToggle<V extends string | number>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className={`inline-flex items-stretch shrink-0${className ? ` ${className}` : ""}`}
+      className={`${SEGMENT_TRACK}${className ? ` ${className}` : ""}`}
     >
       {options.map((opt) => {
         const active = opt.value === value;

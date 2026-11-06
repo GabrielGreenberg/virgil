@@ -19,23 +19,20 @@
   /* Canvas & Layout
      --background, --foreground, --surface, --border, --border-light,
      --muted, --muted-light, --accent: promoted (see above). */
-  --accent-light: #f5f0ea;
-  /* Selected-fill for segmented controls / toggle "on" states. A warm
-     taupe — the manila's own deeper tone (lower chroma, slightly higher
-     value than --accent) so an active pill reads as "a darker shade of
-     the paper" rather than the saturated brown sticker --accent paints.
-     Decoupled from --accent on purpose: --accent is the user-overridable
-     link/selection/CTA accent; this is purely the toggle aesthetic and
-     ships one value across both themes. F#12. NOT a promoted pref —
-     lives outside the PROMOTE-DEFAULTS block.
-       --control-selected      solid fill; white label text clears AA (4.5:1).
+  --accent-light: #ecf4f9;
+  /* Selected-fill for segmented controls / toggle "on" states: azure, the
+     one cool colour against the sand. Decoupled from --accent on purpose:
+     --accent is the user-overridable link/selection/CTA accent, one step
+     darker so it holds up as text on the bar and the sand; this is purely the
+     toggle aesthetic and ships one value across both themes. F#12. NOT a
+     promoted pref — lives outside the PROMOTE-DEFAULTS block.
+       --control-selected      solid fill; white label text clears AA (4.6:1).
        --control-selected-tint pale "on" background for tint-path toggles.
-       --control-selected-ink  text/icon on the tint; a darker taupe that
-                               clears AA (5.6:1 on the tint) — the lighter
-                               --control-selected would only hit 3.7:1. */
-  --control-selected: #8a7355;
-  --control-selected-tint: #efe9e0;
-  --control-selected-ink: #6b5840;
+       --control-selected-ink  text/icon on the tint and on the bar's Compile
+                               tile; clears AA on both (6.6:1 and 5.8:1). */
+  --control-selected: #167bb6;
+  --control-selected-tint: #deedf5;
+  --control-selected-ink: #0f567f;
   /* The CHECKBOX glyph's two checked-state colours (task 287). The box EDGE is
      --muted-light at every variant, so it has no token of its own here — one
      read, no indirection rung. These two are the pair --muted-light cannot
@@ -53,12 +50,10 @@
   --checkbox-fill: #ece9e4;
   --checkbox-mark: #1c1917;
   /* Fill for the affirmative (primary) button on dialogs, prompts, and
-     confirms. Aliases --control-selected — the SAME low-chroma warm taupe
-     the toggle "on" state uses — so a solid affirmative button reads as "a
-     darker shade of the paper" rather than the saturated brown sticker
-     --accent paints. Decoupled from --accent on purpose: --accent stays the
+     confirms. Aliases --control-selected, the same azure the toggle "on" state
+     uses. Decoupled from --accent on purpose: --accent stays the
      user-overridable link / selection / mark / CTA accent; this is the
-     button-fill aesthetic. White label text clears AA (4.5:1) on the taupe. */
+     button-fill aesthetic. White label text clears AA (4.6:1) on the azure. */
   --btn-primary: var(--control-selected);
   /* Blue accent for selection-state chrome (menu roving cursor, active
      swatch rings, the stack icon's drag-target ring). NOT the insertion
@@ -70,13 +65,12 @@
      The PWA/browser chrome colour (<meta name="theme-color">, manifest
      theme_color) follows --topbar-bg's PAINTED value; src/lib/theme-color.ts
      owns it in every phase (task 1274).
-     --main-tab-bg is locked to --background so the active tab and the page
-     canvas it joins always share a color.
      --topbar-bg, --topbar-bg-bottom (the gradient's lower stop),
      --topbar-border, --tab-bg, --library-bg, --virgil-bar-text: promoted. */
   /* Virgil-bar seam lift (task 821): the ONE off-grid spacing value the bar
-     row shares. Every 24px-tall seam-anchored group (tabs, the "+", the
-     StatusCluster icons) is `self-end mb-[var(--bar-seam-lift)]`, which lands
+     row shares. Every 24px-tall seam-anchored group (the "+", the StatusCluster
+     icons) is `self-end mb-[var(--bar-seam-lift)]`, and the tab row lifts by the
+     same amount, which lands
      its optical centre at seam−15 — the tab titles' anchor (tasks 094/289).
      aligns: a 24px row's centre to seam−15, not the 4px grid. */
   --bar-seam-lift: 3px;
@@ -86,17 +80,6 @@
      segment `gap` + trailing margin); no occupant carries its own margin.
      6px = Tailwind v4 `1.5` (--spacing 0.25rem × 1.5). */
   --bar-occupant-gap: 6px;
-  --main-tab-bg: var(--background);
-  /* Library page-edge chrome (tab silhouettes, panel/body frame, NavPod).
-     DERIVED from --library-bg by construction — a low-contrast darker tint —
-     so it can never drift into a warm-on-cool clash the way the top-bar token
-     --topbar-border did (task 048). Defined ONCE here: because it references
-     var(--library-bg), it resolves against whichever --library-bg is live
-     (the promoted pref's value, or a user retone), so it auto-tracks every
-     retone with NO second definition to keep in sync. Library-surface edges
-     must consume THIS token, never --topbar-border. */
-  --library-edge: color-mix(in oklab, var(--library-bg) 82%, #000);
-
   /* Window insets — the app's single window-edge inset model (SSOT)
      ==============================================================
      Every OS/browser-reserved edge region flows through these vars: app
@@ -145,19 +128,19 @@
      referenced, NEVER redefined outside :root — print flattens the editor
      pod through --editor-pod-radius, not the tier); the @theme `--radius-lg`/`--radius-xl`
      alias onto them. Tiers, small→large:
-       --radius-xs 3px    in-text/chip micro details (marks, chips, kbd)
-       --radius-sm 4px    small controls & inner rows (icon btns, swatches)
-       --radius-md 6px    primary CONTROL radius (buttons, inputs, tooltips)
-       --pod-radius 8px   CARD + POD + MENU + code/math block tier
-       --panel-radius 14px large PANEL + MODAL tier
+       --radius-sm 4px    in-text marks, chips, kbd, icon btns, inner rows
+       --radius-md 8px    primary CONTROL radius (buttons, inputs, tooltips)
+       --pod-radius 10px  CARD + MENU + code/math block tier
+       --panel-radius 12px SHEET tier: the page, panels, modals
        --radius-pill 9999px fully-round capsules (status pills, lozenges)
+     Corners nest: an inner corner is the outer corner minus the padding
+     between them, which is why the steps are this close together.
      See src/STYLE_GUIDE.md "Radius scale". Do NOT hard-code a literal radius:
      the lint guard (scripts/check-radius-tokens.mjs) flags new ones. */
-  --radius-xs: 3px;
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --pod-radius: 8px;
-  --panel-radius: 14px; /* panel-only; editor pod & menus stay 8px */
+  --radius-md: 8px;
+  --pod-radius: 10px;
+  --panel-radius: 12px;
   --radius-pill: 9999px;
   /* Deliberate exception, NOT a scale step: the Library "manila folder"
      corner. The active-tab shoulder arc (MANILA_RADIUS in
@@ -173,10 +156,10 @@
      the pod's CHROME, not the tier (task 2026-10-23-1248). Print flattens
      the editor pod's chrome by zeroing THIS, so `--pod-radius` keeps one
      meaning in every mode: code blocks, display math and figure images
-     (which read the tier) print with the same 8px corners they show on
+     (which read the tier) print with the same corners they show on
      screen. Every editor-pod chrome surface (frame ring, caps, in-card
      header, split panes) reads this name, never `--pod-radius` directly. */
-  --editor-pod-radius: var(--pod-radius);
+  --editor-pod-radius: var(--panel-radius);
   /* ── The icon-button LADDER (task 2026-10-23-1249) ──────────────────
      Each `.iconbtn-*` box and the glyph it centres, as ONE pair of tokens.
      The box rules read the box token, `.iconbtn-* > svg` reads the glyph
@@ -214,7 +197,7 @@
      not moat-width: the pod's shadow does the work and the seam only has to
      be wide enough to HOLD it. So the value is DERIVED, not chosen — it is
      the greatest downward reach of --card-shadow-ambient (the docked pod's
-     own shadow: offset 2 + blur 6 ⇒ 2 + 6/2 = 5px), rounded up to 6. A
+     own shadow: offset 1 + blur 3 ⇒ 1 + 3/2 = 2.5px), rounded up to 4. A
      narrower seam would smear the shadow onto the card below; a wider one is
      the moat. Re-derive it if that shadow changes.
 
@@ -223,7 +206,7 @@
      `BandDivider` — a band↔band gutter is question (a), two sheets on a desk
      with no lower layer to read through, and it stays --pod-gap.
      See STYLE_GUIDE "Panels" → the seam rule. */
-  --pod-seam: 6px;
+  --pod-seam: 4px;
   /* ── The GRAB floor (SSOT, task 1241) ─────────────────────────────────
      How wide a resize gutter's POINTER TARGET is, as distinct from how wide
      it is painted (--pod-gap / --pod-seam / the Library's LIB_GRID_GUTTER).
@@ -234,7 +217,12 @@
   --gutter-grab: 18px;
   --pod-border: 1px solid var(--border-light);
   --panel-border: none; /* borderless: panels are warm sheets; separation via --pod-gap + shadow. Also derived at runtime in preferences-tree.ts — keep both in sync. */
-  --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
+  /* ── THE three depths (Sand) ──────────────────────────────────────────
+     RESTING --card-shadow-ambient, RAISED --pod-shadow, FLOATING
+     --shadow-float. Each is a faint warm edge plus a soft warm shadow, so
+     depth reads as paper on sand rather than a drawn outline. A surface picks
+     one by what it IS; a new surface does not get a fourth value. */
+  --pod-shadow: 0 0 0 0.5px rgba(70,50,30,0.08), 0 1px 2px rgba(70,50,30,0.05), 0 8px 24px rgba(70,50,30,0.10);
   /* ── MENU tier surface (SSOT, task 295) ───────────────────────────────
      The four axes of a dropdown / context-menu container, named once so a
      menu's chrome can be moved in ONE place. `--pod-radius` already called
@@ -264,20 +252,13 @@
    * --card-shadow-ambient so it can read as "lifted off the canvas" without
    * dragging card / docked-panel shadows along — thinning it must not flatten
    * cards (see task 2026-07-03-026/3a, which preserves --card-shadow-ambient). */
-  --shadow-float: 0 6px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-float: 0 0 0 0.5px rgba(70,50,30,0.08), 0 20px 48px rgba(70,50,30,0.18);
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
    * than the main editor pod's shadow but still readable as "raised". */
-  --card-shadow-ambient: 0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+  --card-shadow-ambient: 0 0 0 0.5px rgba(70,50,30,0.06), 0 1px 3px rgba(70,50,30,0.07);
   /* The KEYBOARD FOCUS RING, spelled once (task 503). Read by the shared
-   * `:focus-visible` block below AND by the one rule that has to COMPOSE
-   * with it — a pressed `.iconbtn-toggle`, whose own inset ring sits at a
-   * higher specificity and would otherwise replace the indicator outright.
-   * Two rules, one spelling, so the ring cannot drift into two rings. */
+   * `:focus-visible` block below, so the ring cannot drift into two rings. */
   --focus-ring-shadow: 0 0 0 2px var(--edge-strong);
-  /* …and the pressed toggle's inset ring, for the same reason: it is now
-   * read by the pressed rule and by the pressed+focused rule beside it. */
-  --control-selected-inset-ring: inset 0 0 0 1px
-    color-mix(in oklab, var(--control-selected-ink) 30%, transparent);
   /* Lift for a DRAG GHOST — the translucent copy of a grabbed thing that
    * follows the cursor on the topmost layer. Authored in the `filter:`
    * form (not `box-shadow`) because both consumers are clones whose
@@ -378,6 +359,9 @@
      and warns in dev, rather than reading "2ch" as 2px (task 1445).
      See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
+  /* The block-label column's right edge, left of the text edge: past the
+     chevron column plus a gap. MARGIN_LABEL_INSET in marginalia.ts. */
+  --margin-col-label: 52px;
   --margin-col-chevron-width: 14px;
   --margin-col-handle-inset: 22px;
   /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
@@ -496,7 +480,7 @@
      --note-marker-border — are promoted prefs; the fills below are not. */
   --comment-bg: rgba(147, 197, 253, 0.25);
   --comment-border: rgba(96, 165, 250, 0.5);
-  --latex-comment-bg: #f0f5fa;
+  --latex-comment-bg: #efece8;
   --citation-bg: #ffffff;
   /* Cream fill of the citation drag-ghost card (CitationCard / BibEntryCard).
      Distinct from --citation-bg (the in-text cite pill fill, #ffffff): the
@@ -596,6 +580,10 @@
   /* Surfaces & overlays */
   --surface-muted: #fafaf9;          /* list-hover, subpod resting bg (≈ stone-50) */
   --surface-muted-strong: #f5f5f4;   /* icon-button hover, chip bg (≈ stone-100) */
+  --card-surface: #fbf7f3;           /* a card at rest, one step behind the paper */
+  --segment-track: rgba(90, 70, 50, 0.08);  /* a segmented control's recessed track */
+  --gutter-number: #80756b;  /* a number beside text in a list: a label, set back from what it labels */
+  --segment-tile-edge: 0 0 0 0.5px rgba(70, 50, 30, 0.14);  /* the selected tile's hairline */
   /* The keyboard-roving "selection square" in action menus — the highlight the
      L/R/U/D arrow cursor moves. A darker, blue-tinted surface (derived from
      --accent-blue #2563eb) so the active item reads clearly against both the
@@ -603,12 +591,12 @@
      menu's roving-active state consumes it (grab/lightning/heading/tab/menubar/
      color/combobox), so the cursor looks the same everywhere + future menus
      inherit it. */
-  --menu-roving-bg: rgba(37, 99, 235, 0.14);
+  --menu-roving-bg: rgba(90, 70, 50, 0.1);
   /* Modal scrim — a warm-neutral translucent derived from --ink-strong
      (#292524, a stone/umber near-black) rather than a cool pure black, so
      every modal's backdrop reads warm against the manila canvas instead of
      graphite. The ONE un-warmed token in this otherwise stone-mapped block. */
-  --overlay-scrim: rgba(41, 37, 36, 0.3);
+  --overlay-scrim: rgba(70, 50, 30, 0.16);
   /* The Stack strip (task 860): a LIGHT warm-black tint over the canvas (the
      same --ink-strong umber as the scrim), and the empty-state hint on it in
      body ink. The hint used to be 72%-white — chosen for a documented dark
@@ -623,14 +611,14 @@
   --edge-strong: #a8a29e;   /* input focus border (≈ stone-400) */
 
   /* Text scale */
-  --ink-faint: #d6d3d1;     /* disabled, resting card grips (≈ stone-300) */
-  --ink-muted: #78716c;     /* placeholders, default icons, timestamps (≈ stone-500) */
-  --ink-subtle: #78716c;    /* subtitles (≈ stone-500) */
+  --ink-faint: #d6d3d1;     /* disabled (≈ stone-300) */
+  --ink-muted: #625a53;     /* placeholders, default icons, timestamps (≈ stone-500) */
+  --ink-subtle: #625a53;    /* subtitles (≈ stone-500) */
   --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
   --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
 
   /* Drag-handle ink. Two grips share one ladder: the card grip
-     (`.card-drag-handle`, rest `--ink-faint` → hover `--ink-subtle`) and the
+     (`.card-drag-handle`, `--ink-subtle`, shown with the card's hover) and the
      margin grab handle (`.text-object-grab-handle`, rest `--muted`, the META
      tier `iconbtn-meta` rests on). Both go to `--ink-body` when hovered,
      pressed or menu-open — the iconbtn hover ink (task 2026-10-23-1261). */
@@ -817,14 +805,14 @@
   --editor-font-size: 0.95rem;
   --editor-line-height: 1.6;
   --editor-text-color: #000000;
-  --topbar-bg: #c5dbe2;
-  --topbar-bg-bottom: #c4c4c4;
-  --topbar-border: #cbc3b8;
-  --tab-bg: #c5dbe2;
-  --library-bg: #ddeaee;
-  --virgil-bar-text: #78716c;
-  --heading-annotation-color: #6b9ac4;
-  --heading-annotation-border: #a8c4de;
+  --topbar-bg: #f6f1ed;
+  --topbar-bg-bottom: #f6f1ed;
+  --topbar-border: #ddd3cb;
+  --tab-bg: #f6f1ed;
+  --library-bg: #ede3de;
+  --virgil-bar-text: #625a53;
+  --heading-annotation-color: #3c6b86;
+  --heading-annotation-border: #dcd3cb;
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
   --blockquote-border: #d4cfc8;
@@ -832,11 +820,11 @@
   --code-bg: #f0eeeb;
   --code-block-bg: #f5f3f0;
   --math-color: #6b4fa0;
-  --accent: #7c5e3c;
+  --accent: #12669a;
   --background: #ede3de;
   --surface: #ffffff;
   --comment-color: #93c5fd;
-  --latex-comment-color: #7191b0;
+  --latex-comment-color: #7c5e3c;
   --citation-color: #6b6245;
   --citation-border-color: #e0d5a8;
   --label-ref-color: #555555;
@@ -849,17 +837,17 @@
   --latex-cmd-color: #9ca3af;
   --panel-font-size: 13px;
   --panel-header-size: 14px;
-  --header-bg: #c6cbcd;
+  --header-bg: #dcd3cb;
   --pod-panel: #fffdfa;
-  --pod-toolbar: #f5f3ef;
+  --pod-toolbar: #fffdfa;
   --pod-dark: #eae6df;
   --panel-admin-text-color: #000000;
-  --panel-header-text-color: #8a8580;
+  --panel-header-text-color: #625a53;
   --panel-admin-text-font: "Inter";
   --foreground: #1a1a1a;
   --border: #e5e2dd;
-  --border-light: #c6cbcd;
-  --muted: #8a8580;
+  --border-light: #dcd3cb;
+  --muted: #625a53;
   --muted-light: #b5b0aa;
   --drag-highlight: #3b82f6;
   --scrollbar-thumb: #dcd7d0;
@@ -933,6 +921,7 @@ body[data-zen-mode="on"] {
   --color-accent-light: var(--accent-light);
   --color-btn-primary: var(--btn-primary);
   --color-surface: var(--surface);
+  --color-card: var(--card-surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-muted-strong: var(--surface-muted-strong);
   --color-menu-roving: var(--menu-roving-bg);
@@ -1006,7 +995,7 @@ body[data-zen-mode="on"] {
        about an unknown value. Want that tier? Give it a token first. */
 @theme inline {
   --radius: var(--radius-sm);
-  --radius-xs: var(--radius-xs);
+  --radius-xs: initial;
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--pod-radius);
@@ -1015,6 +1004,28 @@ body[data-zen-mode="on"] {
   --radius-2xl: initial;
   --radius-3xl: initial;
   --radius-4xl: initial;
+}
+
+/* ── THE type scale (Sand) ───────────────────────────────────────────
+   Five UI sizes, each owned here so a Tailwind utility cannot fall back to a
+   vendor value the app never chose: 11 caption (the floor), 12 label, 13 body,
+   15 section heading, 20 page title. `--text-*: initial` clears the vendor
+   ladder first, so `text-2xl` and friends emit nothing at all. The paper keeps
+   its own scale (--editor-font-size and the header prefs), and em sizes inside
+   inline atoms stay relative to the text around them.
+   Census: src/__tests__/type-size-census.test.ts. */
+@theme inline {
+  --text-*: initial;
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 15px;
+  --text-base--line-height: 20px;
+  --text-lg: 20px;
+  --text-lg--line-height: 26px;
 }
 
 /* ── Motion timing (task 1413) ────────────────────────────────────
@@ -1131,26 +1142,47 @@ body[data-zen-mode="on"] {
 /* ── Omni "collected cards" bin pill ──────────────────────────────
    Shared recipe for the faint count-pill controls that collect cards
    which can't cascade inline: the outside-focus band and the unanchored
-   bin (OmniOutsideFocusBin / OmniUnanchoredBin). Both were a white chip
-   on the white Omni column with a ~1:1 border — effectively invisible.
-   This reads as a solid, clearly-bounded control: a tinted resting bg
-   that separates from the white column, a perceptible stone-300 edge,
-   and readable ink-body text. Hover deepens one step (bg + border) so
-   the feedback survives the already-tinted resting state (the hover
-   trap: don't rest at the same token .hover-on-light hovers to). The
-   leading glyph stays per-bin (◎ vs a BadgeOrphaned badge). */
+   bin (OmniOutsideFocusBin / OmniUnanchoredBin). Text on the gutter's own
+   ground, like the rest of the gutter, with a wash on hover; the leading
+   glyph stays per-bin (◎ vs a BadgeOrphaned badge). */
 .omni-bin-pill {
-  color: var(--ink-body);
-  background-color: var(--surface-muted);
-  border: 1px solid var(--edge-hover);
-  box-shadow: var(--card-shadow-ambient);
+  color: var(--ink-muted);
   transition:
     background-color var(--motion-fast) ease-out,
-    border-color var(--motion-fast) ease-out;
+    color var(--motion-fast) ease-out;
 }
 .omni-bin-pill:hover {
-  background-color: var(--surface-muted-strong);
-  border-color: var(--edge-strong);
+  color: var(--ink-body);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* What needs a look, on one strip: the pending-change navigator and the bins.
+   It spans the slot's horizontal inset and paints the gutter's ground, so a
+   card passes under it instead of showing between its parts, and the lower
+   edge dissolves. Empty, it paints nothing and only keeps its top offset. */
+.omni-notices {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  margin-inline: -8px;
+  padding-inline: 8px;
+  padding-bottom: 4px;
+}
+.omni-notices:not(:empty) {
+  background: var(--background);
+}
+.omni-notices:not(:empty)::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: linear-gradient(to bottom, var(--background), transparent);
+  pointer-events: none;
 }
 
 /* Timing/property list shared with .hover-on-light above. */
@@ -1345,6 +1377,11 @@ body[data-zen-mode="on"] {
   color: var(--ink-strong);
 }
 
+/* A toggle whose glyph already shows its state paints no pressed tile. */
+.iconbtn-md.iconbtn-bare[aria-pressed="true"]:not(:hover) {
+  background-color: transparent;
+}
+
 /* Danger variant — used for the card-trash button. */
 .iconbtn-xs.iconbtn-danger,
 .iconbtn-sm.iconbtn-danger,
@@ -1430,34 +1467,18 @@ body[data-zen-mode="on"] {
 
 /* Toggle variant — for icon buttons whose active state means "this mode
    is on" (sidebar strip toggles, code/compile mode buttons). When
-   `aria-pressed="true"`, paint with the brand accent on accent-light bg
-   and a thin inset accent ring — the look the topbar/strip toggles
-   used pre-codification. */
+   `aria-pressed="true"`, a tint and its ink say so: no drawn box, so the
+   shared `:focus-visible` ring reaches a pressed toggle unopposed. */
 .iconbtn-xs.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-sm.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-md.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-lg.iconbtn-toggle[aria-pressed="true"] {
-  /* F#12: toggle "on" reads as a shade of the paper (warm taupe), not
-     the saturated brown. Text uses --control-selected-ink (the darker
-     taupe) on the tint so glyph/label contrast clears AA. */
+  /* F#12: toggle "on" reads as a pale wash of the azure, not a fill. Text
+     uses --control-selected-ink on the tint so glyph/label contrast clears
+     AA. */
   background-color: var(--control-selected-tint);
   color: var(--control-selected-ink);
-  box-shadow: var(--control-selected-inset-ring);
 }
-/* …and the same toggle WHILE FOCUSED (task 503). The rule above is
-   (0,3,0) and the shared `:focus-visible` block is (0,2,0), so without
-   this the pressed state won the whole `box-shadow` property and the
-   focus ring vanished — leaving `outline: none` (which the focus rule
-   still applied) and nothing in its place, i.e. a keyboard-reachable
-   sidebar/mode toggle with NO visible focus at all. Both values are read
-   from their tokens, so this composes rather than re-spelling either. */
-.iconbtn-xs.iconbtn-toggle[aria-pressed="true"]:focus-visible,
-.iconbtn-sm.iconbtn-toggle[aria-pressed="true"]:focus-visible,
-.iconbtn-md.iconbtn-toggle[aria-pressed="true"]:focus-visible,
-.iconbtn-lg.iconbtn-toggle[aria-pressed="true"]:focus-visible {
-  box-shadow: var(--control-selected-inset-ring), var(--focus-ring-shadow);
-}
-
 /* ── Topbar button utility ─────────────────────────────────────────
    Single source of truth for buttons in the 40px Virgil bar. Covers
    icon-only, text-only, and icon+text shapes with one height, one
@@ -1494,9 +1515,20 @@ body[data-zen-mode="on"] {
   cursor: not-allowed;
 }
 .topbarbtn.topbarbtn-icon { padding: 0 4px; }
+/* Compile's tile: one step deeper than the bar, because it is not something
+   you do often. Nothing on the bar is filled. */
+.topbarbtn.topbarbtn-tile {
+  color: var(--control-selected-ink);
+  background-color: color-mix(in srgb, var(--control-selected) 16%, var(--topbar-bg));
+  border-radius: var(--radius-md);
+}
+.topbarbtn.topbarbtn-tile:hover {
+  color: var(--control-selected-ink);
+  background-color: color-mix(in srgb, var(--control-selected) 24%, var(--topbar-bg));
+}
 
 .topbarbtn[aria-pressed="true"] {
-  /* F#12: warm-taupe toggle "on" — darker ink on tint for AA contrast. */
+  /* F#12: toggle "on": darker ink on the pale tint for AA contrast. */
   color: var(--control-selected-ink);
   background-color: var(--control-selected-tint);
 }
@@ -1721,7 +1753,7 @@ textarea {
 .tiptap h6[data-section-number]::before,
 .tiptap .heading-wrapper-l0 > h0[data-section-number]::before {
   content: attr(data-section-number) "\00a0\00a0";
-  color: var(--muted, #8a8580);
+  color: var(--muted);
   font-weight: inherit;
 }
 
@@ -1768,7 +1800,7 @@ textarea {
   }
 }
 .margin-fold-chevron:hover {
-  color: var(--muted, #8a8580);
+  color: var(--muted);
 }
 .margin-fold-chevron.is-folded {
   /* Folded: faces in (pointing right). Tinted reddish so folded content
@@ -1916,7 +1948,7 @@ textarea {
    block is folded. Reads as a quiet shadow of the real editor. */
 .source-pod-preview {
   position: relative; /* stacks above .source-pod-row-sensor in overlap */
-  border: 1px dashed var(--heading-annotation-border, #a8c4de);
+  border: 1px dashed var(--heading-annotation-border);
   border-radius: var(--pod-radius);
   background: var(--code-block-bg);
   padding: 8px 12px;
@@ -1973,12 +2005,12 @@ textarea {
      a "shared class" that repaints the chip is a look change wearing a
      refactor's clothes. */
   padding: 1px 4px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.25;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--background) 85%, transparent);
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  color: var(--heading-annotation-color, #6b9ac4);
+  border: 1px solid var(--heading-annotation-border);
+  color: var(--heading-annotation-color);
   font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
   user-select: none;
   pointer-events: none;
@@ -1993,7 +2025,7 @@ textarea {
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: color-mix(in srgb, var(--background) 85%, transparent);
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--motion-base), border-color var(--motion-base), color var(--motion-base);
@@ -2005,7 +2037,7 @@ textarea {
   opacity: 1;
 }
 .source-pod-mode-toggle:hover {
-  border-color: var(--heading-annotation-border, #a8c4de);
+  border-color: var(--heading-annotation-border);
   color: var(--accent);
 }
 
@@ -2024,7 +2056,7 @@ textarea {
    ground) so switching modes moves nothing but the content. */
 .source-pod-derived {
   position: relative;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  border: 1px solid var(--heading-annotation-border);
   border-radius: var(--pod-radius);
   background: var(--code-block-bg);
   padding: 14px 70px 14px 16px;
@@ -2061,14 +2093,14 @@ textarea {
 }
 .source-pod-card-preview-title {
   margin-bottom: 0.25rem;
-  font-size: 10px; /* in-card META tier (STYLE_GUIDE "In-card type scale") */
+  font-size: 11px; /* in-card META tier (STYLE_GUIDE "In-card type scale") */
   font-weight: 500;
   color: var(--ink-muted);
 }
 .source-pod-static-source {
   margin: 0;
   padding: 6px 10px;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  border: 1px solid var(--heading-annotation-border);
   border-radius: var(--pod-radius);
   background: var(--code-block-bg);
   color: var(--ink-strong);
@@ -2222,17 +2254,13 @@ textarea {
 .heading-annotation {
   display: inline-flex;
   align-items: center;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
   margin-bottom: 1.2em;
   cursor: default;
   user-select: none;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs);
-  padding: 1px 6px;
 }
 
 .heading-annotation-type-chip {
@@ -2241,11 +2269,11 @@ textarea {
   gap: 2px;
   cursor: pointer;
   padding: 0 2px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .heading-annotation-type-chip:hover {
-  background: var(--heading-annotation-border, #a8c4de);
+  background: var(--heading-annotation-border);
   color: #fff;
 }
 
@@ -2263,13 +2291,13 @@ textarea {
   min-width: 13px;
   height: 13px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   font-weight: 600;
 }
 
 .heading-annotation-numbered-toggle:hover {
-  background: var(--heading-annotation-border, #a8c4de);
+  background: var(--heading-annotation-border);
   color: #fff;
 }
 
@@ -2294,7 +2322,7 @@ textarea {
   display: none;
   margin-left: 0.5em;
   cursor: pointer;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 .heading-label-add:hover {
@@ -2321,10 +2349,10 @@ textarea {
   min-width: 14px;
   height: 14px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-size: 0.95rem;
   line-height: 1;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 .heading-annotation:hover .heading-annotation-delete,
@@ -2340,11 +2368,11 @@ textarea {
 .heading-label-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
+  border-bottom: 1px solid var(--heading-annotation-color);
   outline: none;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   padding: 0;
@@ -2359,13 +2387,151 @@ textarea {
   display: block;
   margin-top: 0.2em;
   color: var(--danger-muted);
-  font-size: 0.62rem;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
 
 .hide-heading-labels .heading-annotation {
   display: none;
+}
+
+/* A note anchor is a SOFT TILE: the kind's glyph on a pale tint of its colour,
+   no outline, so it can be recognised and grabbed without shouting. The 22px
+   tile keeps the marginalia grid cell; `::after` widens the grab to 24px. */
+.marginalia-marker {
+  border: none;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--marker-tint) 14%, transparent);
+}
+.marginalia-marker:not(.absolute) {
+  position: relative;
+}
+.marginalia-marker::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+}
+.marginalia-marker:hover,
+.marginalia-marker[data-card-hovered="true"],
+.marginalia-marker[data-card-selected="true"] {
+  background: color-mix(in oklab, var(--marker-tint) 25%, transparent);
+}
+
+/* ── Block labels off the paper ───────────────────────────────────────
+   Title, Author, Date, a heading's type and \\label, a figure's and an
+   example's label are editor chrome. `data-margin-labels` on the prose pod
+   (useMarginLabelMode) says where they go:
+     side  — a right-aligned column in the left margin, outboard of the fold
+             chevron (--margin-col-label).
+     hover — the margin cannot hold a column (a code split, a narrow margin):
+             a raised pill above the block, on hover or keyboard focus.
+   Both are out of flow, so a label can never move the text. Surfaces outside
+   the pod (floats, card editors) carry no attribute and keep them in flow. */
+[data-margin-labels] .heading-wrapper {
+  margin-bottom: 1em;
+}
+
+[data-margin-labels="side"] .heading-annotation,
+[data-margin-labels="side"] .title-field-annotation {
+  position: absolute;
+  right: calc(100% + var(--margin-col-label));
+  top: 0.4em;
+  width: max-content;
+  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  margin: 0;
+  line-height: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Type on the first line, the \\label under it; # and × arrive on hover. */
+[data-margin-labels="side"] .heading-annotation:not(.expex-label-annotation, .expex-item-label-annotation) {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  justify-content: end;
+  justify-items: end;
+  column-gap: 4px;
+}
+[data-margin-labels="side"] .heading-annotation-type-chip { grid-area: 1 / 3; }
+[data-margin-labels="side"] .heading-annotation-numbered-toggle { grid-area: 1 / 2; margin: 0; opacity: 0; }
+[data-margin-labels="side"] .heading-annotation-delete { grid-area: 1 / 1; margin: 0; }
+[data-margin-labels="side"] .heading-annotation-sep { display: none; }
+[data-margin-labels="side"] :is(.heading-label-input, .figure-label-input) {
+  width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  text-align: right;
+}
+[data-margin-labels="side"] :is(.heading-label-text, .heading-label-warning) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-margin-labels="side"] :is(.heading-label-text, .heading-label-add, .heading-label-input, .heading-label-warning) {
+  grid-column: 1 / -1;
+}
+[data-margin-labels="side"] .heading-wrapper:hover .heading-annotation-numbered-toggle,
+[data-margin-labels="side"] .heading-annotation:focus-within .heading-annotation-numbered-toggle {
+  opacity: 1;
+}
+[data-margin-labels="side"] .heading-wrapper:hover .heading-label-add,
+[data-margin-labels="side"] .heading-wrapper:hover .heading-annotation-delete {
+  opacity: 1;
+}
+
+[data-margin-labels="hover"] .heading-annotation,
+[data-margin-labels="hover"] .title-field-annotation {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  width: max-content;
+  margin: 0;
+  padding: 2px 8px;
+  background: var(--menu-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--menu-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) ease;
+}
+[data-margin-labels="hover"] .heading-wrapper:hover > .heading-annotation,
+[data-margin-labels="hover"] .title-field-wrapper:hover > .title-field-annotation,
+[data-margin-labels="hover"] .heading-annotation:focus-within,
+[data-margin-labels="hover"] .title-field-annotation:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* An example's pod says nothing the number does not, until it has a label. */
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) {
+  position: absolute;
+  right: calc(100% + var(--margin-col-label));
+  left: auto;
+  top: auto;
+  bottom: auto;
+  margin: 0;
+  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-1.4em);
+}
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) > span:first-child,
+[data-margin-labels="side"] :is(.expex-label-annotation, .expex-item-label-annotation) > span:nth-child(2):not(.heading-label-text, .heading-label-add) {
+  display: none;
+}
+[data-margin-labels] :is(.expex-label-annotation, .expex-item-label-annotation):not([data-labelled]):not(:focus-within) {
+  opacity: 0;
+}
+[data-margin-labels] .expex-item:hover > .expex-item-label-annotation,
+[data-margin-labels] .expex-par-wrapper:hover > .expex-label-annotation {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Under "hover" an example's label is the same raised pill as a heading's, so
+   its item has to be the box the pill is raised from. */
+[data-margin-labels="hover"] .expex-item {
+  position: relative;
 }
 
 /* Paragraph title annotations — shown in gap above paragraph */
@@ -2490,7 +2656,7 @@ textarea {
 
 /* ── In-card type scale (UI-consistency sweep, 2026-06-12) ──────────
  * Two ratified tiers inside card bodies:
- *   META    — 10px / 500 / uppercase / tracking-wide / var(--muted):
+ *   META    — 11px / 500 / var(--muted):
  *             kind labels, key rows, chips, CODE rows.
  *   CONTENT — 12px: entry rows, inputs, previews (and the picker-styled
  *             body text, whose default is the same 12px).
@@ -2502,31 +2668,26 @@ textarea {
  * docked `CardTypeLabel`, the `CardKindDropdown` morph trigger, a float's
  * plain-title span (FloatChrome — so popping a card out keeps its label's
  * gray) and the suggestion-field section labels all wear this ONE class
- * instead of hand-typing `text-[10px] … uppercase tracking-wider`. It sits in
+ * instead of hand-typing its size and weight. It sits in
  * `@layer components` so a call site's utilities (`truncate`, a
  * `hover:text-*`) compose over it by layer — an unlayered class would beat
  * every Tailwind utility and silently kill a trigger's hover ink. */
 @layer components {
   .card-meta-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em; /* Tailwind v4 tracking-wider */
     color: var(--muted);
   }
   /* The PANEL/WINDOW-BODY section caption (task 1333) — "Request entry",
    * "Pending requests (n)", "Recent", "Browse", a font group, a preferences
-   * divider. The ONE spelling of the small uppercase caption outside card
-   * bodies (cards wear .card-meta-label above): 10px / 500 / uppercase /
-   * tracking-wide / --ink-muted. `<MenuSectionLabel>` composes this class,
+   * divider. The ONE spelling of the small caption outside card
+   * bodies (cards wear .card-meta-label above): 11px / 500 / --ink-muted. `<MenuSectionLabel>` composes this class,
    * so a menu caption and a panel caption cannot drift apart. In
    * @layer components so a call site's padding, `text-[var(--accent)]`, or
    * `hover:` ink composes over it. Census: section-caption-census.test.ts. */
   .section-caption {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.025em; /* Tailwind v4 tracking-wide */
     color: var(--ink-muted);
   }
 }
@@ -2615,7 +2776,7 @@ textarea {
   pointer-events: auto;
   cursor: grab;
   user-select: none;
-  color: var(--muted, #8a8580);
+  color: var(--muted);
   z-index: 20;
 }
 
@@ -2741,7 +2902,7 @@ textarea {
   background: transparent;
   border: none;
   box-shadow: none;
-  border-radius: var(--pod-radius, 8px);
+  border-radius: var(--pod-radius);
   transition:
     opacity var(--motion-fast) ease,
     background-color var(--motion-fast) ease,
@@ -2809,8 +2970,8 @@ textarea {
   background: var(--surface-muted-strong);
   border: var(--pod-border, 1px solid #e5e2dd);
   border-bottom: none;
-  border-top-left-radius: var(--pod-radius, 8px);
-  border-top-right-radius: var(--pod-radius, 8px);
+  border-top-left-radius: var(--pod-radius);
+  border-top-right-radius: var(--pod-radius);
   /* Matches the overlay's chrome transition timing so header + body
      border fade in together when popout mode engages. */
   opacity: 0;
@@ -3028,6 +3189,55 @@ textarea {
   content: none;
 }
 
+/* A card at rest shows its kind and its content. The dot is the only colour it
+   wears; the grip and the header controls come up with the card. */
+.card-kind-mark {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 6px;
+  height: 14px;
+}
+.card-kind-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  transition: opacity var(--motion-fast) ease-out;
+}
+.card-kind-mark .card-drag-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease-out;
+}
+[data-card]:hover > [data-card-header] .card-drag-handle,
+[data-card] .card-drag-handle.is-pressed {
+  opacity: 1;
+}
+[data-card]:hover > [data-card-header] .card-kind-mark[data-liftable] .card-kind-dot {
+  opacity: 0;
+}
+[data-card] .card-reveal {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease-out;
+}
+[data-card]:hover .card-reveal,
+[data-card]:focus-within .card-reveal,
+[data-card][data-selected] .card-reveal,
+[data-card] .card-reveal:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  [data-card] .card-reveal,
+  .card-kind-mark .card-drag-handle {
+    opacity: 1;
+  }
+}
+
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
    handle and by `.is-pressed` toggled on the handle from PanelCard's lift
    gesture, so pressing anywhere on the header (including outside the
@@ -3038,7 +3248,7 @@ textarea {
 .card-drag-handle.is-pressed {
   color: var(--ink-body) !important;
   background: rgba(0, 0, 0, 0.14) !important;
-  border-radius: var(--radius-xs) !important;
+  border-radius: var(--radius-sm) !important;
   transform: translateY(2px) scale(0.9) !important;
   cursor: grabbing !important;
   transition: none !important;
@@ -3125,18 +3335,15 @@ textarea {
 /* Title field blocks */
 .title-field-wrapper {
   display: block;
+  position: relative;
 }
 
 .title-field-annotation {
   display: inline-block;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs);
-  padding: 1px 6px;
   margin-bottom: 0.2em;
   user-select: none;
 }
@@ -3370,7 +3577,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  font-size: 0.9rem;
+  font-size: 13px;
 }
 
 .math-popover-preview {
@@ -3400,7 +3607,7 @@ textarea {
 .math-popover-input {
   width: 100%;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.85rem;
+  font-size: 13px;
   padding: 0.4em 0.5em;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -3416,7 +3623,7 @@ textarea {
 }
 
 .math-popover-hint {
-  font-size: 0.72rem;
+  font-size: 11px;
   color: var(--ink-muted);
 }
 /* kbd inside these hints now uses the global .kbd (see Kbd.tsx). */
@@ -3432,7 +3639,7 @@ textarea {
 
 .math-popover-cancel {
   flex: 0 0 auto;
-  font-size: 0.72rem;
+  font-size: 12px;
   color: var(--ink-muted);
   background: transparent;
   border: 1px solid transparent;
@@ -3612,17 +3819,31 @@ textarea {
 .figure-block .figure-annotation {
   display: inline-flex;
   align-items: center;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
   margin: 0.4em auto 0.6em;
   cursor: default;
   user-select: none;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs);
-  padding: 1px 6px;
+}
+
+[data-margin-labels="side"] .figure-block:not(.figure-block-wrapped) .figure-annotation {
+  position: absolute;
+  right: calc(100% + var(--margin-col-label));
+  top: 0;
+  width: max-content;
+  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  margin: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: 4px;
+  line-height: 14px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+[data-margin-labels="side"] .figure-block:not(.figure-block-wrapped) .figure-annotation-sep {
+  display: none;
 }
 
 .figure-block.figure-block-wrapped {
@@ -3634,7 +3855,7 @@ textarea {
   align-items: center;
   gap: 2px;
   padding: 0 2px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .figure-block .figure-annotation-numbered-toggle {
@@ -3645,13 +3866,13 @@ textarea {
   min-width: 13px;
   height: 13px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   font-weight: 600;
 }
 
 .figure-block .figure-annotation-numbered-toggle:hover {
-  background: var(--heading-annotation-border, #a8c4de);
+  background: var(--heading-annotation-border);
   color: #fff;
 }
 
@@ -3690,7 +3911,7 @@ textarea {
 .figure-block .figure-label-add {
   margin-left: 0.5em;
   cursor: pointer;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 .figure-block .figure-label-add:hover {
@@ -3700,11 +3921,11 @@ textarea {
 .figure-block .figure-label-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
+  border-bottom: 1px solid var(--heading-annotation-color);
   outline: none;
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   padding: 0;
@@ -3719,7 +3940,7 @@ textarea {
   display: inline-block;
   margin-left: 0.5em;
   color: var(--danger-muted);
-  font-size: 0.62rem;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
@@ -3732,10 +3953,10 @@ textarea {
   min-width: 14px;
   height: 14px;
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-size: 0.95rem;
   line-height: 1;
-  color: var(--heading-annotation-color, #6b9ac4);
+  color: var(--heading-annotation-color);
 }
 
 /* Hover for the mouse, focus-within for the keyboard — the heading strip's
@@ -3926,7 +4147,7 @@ textarea {
   color: var(--ink-muted);
   cursor: pointer;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
 }
 
@@ -3996,21 +4217,19 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  font-size: 0.9rem;
+  font-size: 13px;
 }
 
 .figure-popover-label {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.75rem;
+  font-size: 12px;
   color: var(--ink-muted);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .figure-popover-input {
   width: 100%;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.85rem;
+  font-size: 13px;
   padding: 0.4em 0.5em;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -4026,7 +4245,7 @@ textarea {
 }
 
 .figure-popover-hint {
-  font-size: 0.72rem;
+  font-size: 11px;
   color: var(--ink-muted);
 }
 
@@ -4051,7 +4270,7 @@ textarea {
 .linked-anchor {
   --link-anchor-color: #fbbf24; /* amber fallback for unrecognised kinds */
   background: transparent;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) ease-out;
 }
 /* The `var(…, <hex>)` fallback reproduces the shipped DEFAULT_PANEL_COLORS
@@ -4197,7 +4416,7 @@ textarea {
   line-height: 0;
   color: var(--footnote-color, #b45757);
   background: var(--footnote-bg, #fef2f2);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   cursor: pointer;
   font-weight: 600;
@@ -4267,7 +4486,7 @@ textarea {
 .footnote-marker[data-card-hovered="true"],
 .footnote-marker[data-card-selected="true"] {
   box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* Citation — lock the :hover yellow on, for both hover-from-card and
@@ -4462,7 +4681,7 @@ textarea {
   color: var(--note-color, #15803d);
   background: var(--note-bg, #f0fdf4);
   border: 1.5px solid var(--note-marker-border, #86efac);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base);
   line-height: 1;
@@ -4496,7 +4715,7 @@ textarea {
 /* RichTextField mini-editor (Tiptap-backed footnote/note bodies) */
 .rtf-content {
   padding: 0.25rem 0;
-  font-size: 0.875rem;
+  font-size: 13px;
   line-height: 1.5;
   min-height: 2.5rem;
   color: #44403c;
@@ -4579,23 +4798,24 @@ textarea {
    discarding all along. Same palette and family as the block so the two read
    as one construct; no chip background, since it sits mid-sentence. */
 .latex-comment-tail {
-  color: var(--latex-comment-color, #7191b0);
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  color: var(--latex-comment-color);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   font-size: 0.85em;
-  font-style: italic;
-  opacity: 0.9;
 }
 
-/* LaTeX comments */
+/* LaTeX comments: always on screen, plainly not paper. The chrome font and the
+   warm wash say "a note to yourself", and the `%` hangs left of the text edge so
+   the words themselves stay on the paper's column. */
 .latex-comment {
+  position: relative;
   display: flex;
   align-items: stretch;
-  color: var(--latex-comment-color, #7191b0);
-  background: var(--latex-comment-bg, #f0f5fa);
-  border-radius: var(--radius-xs);
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  margin-inline: -1.5em -0.6em;
+  color: var(--latex-comment-color);
+  background: var(--latex-comment-bg);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   font-size: 0.85em;
-  font-style: italic;
   transition: background var(--motion-base), outline-color var(--motion-base);
 }
 
@@ -4603,7 +4823,7 @@ textarea {
   /* Derived from `latexCommentColor` (preferences-tree DERIVED_CSS), so the
    * hover wash follows a comment recolor instead of staying frozen blue —
    * task 193, the task-175 `--footnote-bg-hover` class. */
-  background: var(--latex-comment-bg-hover, #e8f0f8);
+  background: var(--latex-comment-bg-hover);
 }
 
 /* Node-selection feedback (grab-handle / arrow-nav), matching the block-node
@@ -4613,35 +4833,31 @@ textarea {
  * (Task 2026-07-03-024: the atom-era `.latex-comment.selected` chrome is retired
  * in favor of PM-native selection.) */
 .latex-comment.ProseMirror-selectednode {
-  outline: 2px solid var(--heading-annotation-border, #a8c4de);
+  outline: 2px solid var(--heading-annotation-border);
   outline-offset: -1px;
   /* Node-selection wash, one derive step darker than :hover — likewise tracks
    * `latexCommentColor` (task 193). The outline stays on the shared
    * heading-annotation chrome token (see the handle note below). */
-  background: var(--latex-comment-bg-active, #e0ecf5);
+  background: var(--latex-comment-bg-active);
 }
 
 .latex-comment-handle {
-  width: 6px;
-  min-width: 6px;
-  background: var(--heading-annotation-border, #a8c4de);
-  border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 1.2em;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
   cursor: pointer;
-  flex-shrink: 0;
   transition: background var(--motion-base);
 }
 
 .latex-comment-handle:hover {
-  /* The handle chrome (rest bg, selectednode outline, prefix) is deliberately
-   * the shared heading-annotation blue, NOT the comment's text color — so its
-   * hover darkens THAT token rather than deriving from `latexCommentColor`,
-   * keeping the handle on one ray with its own rest state. Was a frozen
-   * `#7fa8c8`; now tracks a `headingAnnotationBorder` recolor (task 193). */
-  background: color-mix(in oklab, var(--heading-annotation-border, #a8c4de) 82%, #000);
+  background: var(--latex-comment-bg-active);
 }
 
 .latex-comment-content {
-  padding: 0.35em 0.75em;
+  position: relative;
+  padding: 0.35em 0.7em 0.35em 1.75em;
   flex: 1;
   min-width: 0;
   /* Editable content now holds a real caret — read as text, not a click target. */
@@ -4653,8 +4869,10 @@ textarea {
 }
 
 .latex-comment-prefix {
-  color: var(--heading-annotation-border, #a8c4de);
-  font-style: normal;
+  position: absolute;
+  left: 0.6em;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  pointer-events: none;
 }
 
 /* ── Drop mode ────────────────────────────────────────────────────────
@@ -4790,7 +5008,7 @@ body.perf-contain .static-borrowed-text {
   border-radius: 1px;
 }
 .dropmode-bar-vertical {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 @media (prefers-reduced-motion: no-preference) {
   .dropmode-bar-gap,
@@ -4890,7 +5108,7 @@ body.perf-contain .static-borrowed-text {
 .citation-node {
   display: inline;
   background: var(--citation-bg, #ffffff);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   border: 1px solid var(--citation-border-color);
@@ -4918,7 +5136,7 @@ body.perf-contain .static-borrowed-text {
 .citation-highlight-bib {
   background: var(--amber-highlight-wash-active);
   box-shadow: 0 0 0 2px var(--amber-highlight-edge);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* RETIRED (task 525): `.citation-node-bar` / `.citation-node-text` — the
@@ -4929,7 +5147,7 @@ body.perf-contain .static-borrowed-text {
 .label-ref-node {
   display: inline;
   background: var(--label-ref-bg, #f0f0f0);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   border: 1px solid var(--label-ref-border-color, #d5d3ce);
@@ -4950,21 +5168,22 @@ body.perf-contain .static-borrowed-text {
   color: var(--amber-highlight-ink);
 }
 
-/* A computed-text command chip (`\today`, task 1335) — the `\ref` chip's
-   quiet frame, with the prose ink: it reads as part of the sentence (a date),
-   not as a link. Nothing opens on click, so no hover wash and no `pointer`
-   (task 1443): its registry row says `opensOnClick: false`, so it rests on
-   `default` and is upgraded to `grab` only where the gesture is live — the
-   chip moves with the text. On paper it flattens to plain prose with the
-   other chips (`chip: true`; the print block below). */
+/* A computed-text command (`\today`, task 1335): plain prose at rest, because
+   it reads as part of the sentence (a date), not as a link or a field. Nothing
+   opens on click, so no `pointer` (task 1443): its registry row says
+   `opensOnClick: false`, so it rests on `default` and is upgraded to `grab` only
+   where the gesture is live — the chip moves with the text. With no frame at
+   rest, the wash under the pointer is how it can be found at all. On paper it
+   flattens to plain prose with the other chips (`chip: true`; the print block
+   below). */
 .latex-dynamic-node {
   display: inline;
-  background: var(--label-ref-bg, #f0f0f0);
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--label-ref-border-color, #d5d3ce);
-  padding: 0px 4px;
+  border-radius: var(--radius-sm);
   color: inherit;
   cursor: default;
+}
+.latex-dynamic-node:hover {
+  background: var(--label-ref-bg);
 }
 
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
@@ -5030,7 +5249,7 @@ body.perf-contain .static-borrowed-text {
     0 0 0 2px color-mix(in oklab, var(--amber-highlight-edge) 25%, transparent),
     var(--menu-shadow);
   overflow: visible;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 .label-ref-popover-pod {
@@ -5049,15 +5268,13 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-target:hover {
-  background: var(--accent-light, #f5f0ea);
+  background: var(--accent-light);
 }
 
 .label-ref-popover-type {
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 500;
-  color: var(--muted, #8a8580);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--muted);
 }
 
 .label-ref-popover-title {
@@ -5067,7 +5284,7 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-unresolved {
-  color: var(--muted, #8a8580);
+  color: var(--muted);
   font-style: italic;
 }
 
@@ -5080,20 +5297,20 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-label-display:hover {
-  background: var(--accent-light, #f5f0ea);
+  background: var(--accent-light);
   margin: -4px -8px;
   padding: 4px 8px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .label-ref-popover-label-key {
-  font-size: 0.7rem;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .label-ref-popover-label-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.78rem;
+  font-size: 12px;
   color: var(--foreground, #1a1a1a);
 }
 
@@ -5105,17 +5322,17 @@ body.perf-contain .static-borrowed-text {
 .label-ref-popover-input {
   width: 100%;
   border: 1px solid var(--border, #e5e2dd);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 4px 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.78rem;
+  font-size: 12px;
   outline: none;
   background: var(--surface);
   color: var(--foreground, #1a1a1a);
 }
 
 .label-ref-popover-input:focus {
-  border-color: var(--accent, #7c5e3c);
+  border-color: var(--accent);
   box-shadow: var(--focus-ring-shadow);
 }
 
@@ -5151,7 +5368,7 @@ body.perf-contain .static-borrowed-text {
 }
 
 .label-ref-popover-option:hover {
-  background: var(--accent-light, #f5f0ea);
+  background: var(--accent-light);
 }
 
 /* The row whose label the clicked chip already points at — it wears the CHIP's
@@ -5172,13 +5389,13 @@ body.perf-contain .static-borrowed-text {
 
 .label-ref-option-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.76rem;
+  font-size: 12px;
   color: var(--foreground, #1a1a1a);
 }
 
 .label-ref-option-info {
-  font-size: 0.66rem;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -5196,10 +5413,8 @@ body.perf-contain .static-borrowed-text {
 
 .label-ref-popover-group-heading {
   padding: 4px 8px 2px;
-  font-size: 0.64rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
   background: transparent;
   border-bottom: 1px solid var(--border, #e5e2dd);
 }
@@ -5215,11 +5430,11 @@ body.perf-contain .static-borrowed-text {
   flex: 1;
   padding: 2px 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  color: var(--muted, #8a8580);
+  font-size: 11px;
+  color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
@@ -5483,7 +5698,7 @@ body.perf-contain .static-borrowed-text {
    fallback background (so no stray yellow when a caller forgets a color) and
    no border-bottom (the highlight itself is the signal). */
 .tiptap mark {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 1px;
   border-bottom: none;
   background-color: transparent;
@@ -5505,7 +5720,7 @@ body.perf-contain .static-borrowed-text {
    footnote marker would land this padding/border on the ATOM's element and
    outrank `.citation-node` / `.footnote-marker`. */
 .tiptap .virgil-transient-highlight {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 0 1px;
   border-bottom: none;
 }
@@ -5556,7 +5771,7 @@ body.perf-contain .static-borrowed-text {
   background-color: transparent;
   border: 1px solid transparent;
   background-clip: padding-box;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -5849,8 +6064,8 @@ body.perf-contain .static-borrowed-text {
      still seam-matches the solid theme-color strip; ONLY the 1px border-b
      moves down 1px. Still one owner, no positioned pseudo (a prior WCO
      ::after landed a SECOND line one padding-box pixel higher → the doubled
-     edge; removed). The active-tab cover-rect merge is relative to the border
-     and shifts down with it, so tabs still merge bottom-lessly. */
+     edge; removed). The line matches the bar by default (topbarBorder), so
+     this only shows once a user sets a colour for it. */
   min-height: max(var(--bar-base-h), calc(var(--window-inset-top) + 1px));
 }
 :root[data-display-mode="window-controls-overlay"] .virgil-bar > * {
@@ -5861,10 +6076,6 @@ body.perf-contain .static-borrowed-text {
   -webkit-app-region: drag;
   app-region: drag;
 }
-
-/* Tab swoops removed — DocumentFolderTab now renders each tab as a single
-   SVG shape with a continuous border around its full outline, so the
-   pseudo-element radial-gradient swoops are no longer needed. */
 
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
@@ -5925,7 +6136,7 @@ body.perf-contain .static-borrowed-text {
   font-size: 0.85em;
   line-height: 1.4;
   padding: 0 0.4em;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: var(--code-bg, #f0eeeb);
   border: 1px solid var(--border);
   color: var(--ink-strong, #292524);
@@ -6203,26 +6414,16 @@ body.perf-contain .static-borrowed-text {
  * the cascade reads as a quiet gallery that lights up under the pointer.
  *
  * Selected cards are exempt via `:not([data-selected])` (PanelCard stamps
- * `data-selected` on the same root) so selection keeps its bright surface +
- * header tint + outline chrome. `transition-colors` (CARD_BASE) animates both
- * directions. All values are TOKENS so the effect tracks the active theme.
- *
- * Tuning knobs (the resting "recede"): the two declarations below. The resting
- * fill is `--surface-muted-strong` (one step beyond today's hover bg
- * `--surface-muted`) for a slightly-more-pronounced recede; the resting BORDER
- * is the faint `--edge-subtle` (the same light edge the editor sheet / inputs
- * use) so a quiet card reads recessed in BOTH fill and outline — never heavier
- * than the page outline. Hover firms the edge up to `--edge-hover` as the fill
- * brightens to `--surface`. Specificity (≥0,4,0 with `:hover`) beats Tailwind's
- * `hover:bg-surface-muted/50` / `bg-surface`; unselected cards carry no inline
- * background, so no `!important` is needed. */
+ * `data-selected` on the same root) so selection keeps its bright surface.
+ * CARD_BASE's transition animates both directions. Both values are TOKENS so
+ * the effect tracks the active theme, and specificity (≥0,4,0 with `:hover`)
+ * beats Tailwind's `bg-surface`; unselected cards carry no inline background,
+ * so no `!important` is needed. */
 [data-omni-dim="true"] [data-omni-entry]:not([data-selected]) {
-  background-color: var(--surface-muted-strong);
-  border-color: var(--edge-subtle);
+  background-color: var(--card-surface);
 }
 [data-omni-dim="true"] [data-omni-entry]:not([data-selected]):hover {
   background-color: var(--surface);
-  border-color: var(--edge-hover);
 }
 
 /* ── PrintAppendices: hidden in live UI, revealed in print media ──── */
@@ -6709,14 +6910,26 @@ body.perf-contain .static-borrowed-text {
   overflow-y: auto;
   scrollbar-width: thin;
   /* The column runs to the window edge (no strip column), so the gutter
-     carries its own edge inset. */
-  padding: 6px 4px 16px 6px;
+     carries its own edge inset. The bottom is `::after`'s. */
+  padding: 6px 4px 0 6px;
   /* The Outline's voice: the UI sans at text-sm — stated here because the
      pane around the gutter speaks the paper's serif. */
   font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-size: 13px;
   line-height: 1.375;
   color: var(--foreground);
+}
+/* The gutter's bottom edge. In flow it reserves room below the last row, so the
+   Stack button never sits on a list; stuck to the scrollport it dissolves the
+   list before it reaches that button. */
+.tool-gutter::after {
+  content: "";
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 56px;
+  background: linear-gradient(to bottom, transparent, var(--background) 62%);
+  pointer-events: none;
 }
 .tool-gutter-tools {
   display: flex;
@@ -6727,12 +6940,13 @@ body.perf-contain .static-borrowed-text {
 /* The right gutter's head (task 1440, edge to edge): the collapse toggle on
    a sticky row above the cards, where the left gutter's tools row sits —
    the strip column is gone. The omni's own sticky chrome (the pending
-   navigator, the bins) pins BELOW it through `--omni-sticky-top`, which the
-   rail sets to this row's height. */
+   navigator, the bins) shares this row: the sticky frame that holds it sits one
+   rung above (`--omni-frame-z`), and `--omni-sticky-top` holds the row's height,
+   so the first card starts under the row whether or not a notice is showing. */
 .gutter-side-head {
   position: sticky;
   top: 0;
-  z-index: 31;
+  z-index: 29;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -6741,6 +6955,42 @@ body.perf-contain .static-borrowed-text {
   height: calc(var(--pod-gap) + 42px);
   padding: calc(var(--pod-gap) + 2px) 4px 8px;
   background: var(--background);
+}
+.gutter-side-head::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: linear-gradient(to bottom, var(--background), transparent);
+  pointer-events: none;
+}
+/* A tool's header runs the gutter's width: the title in capitals at the left
+   edge, under the tool buttons, and its controls at the right. */
+.tool-gutter-tool .panel-header {
+  padding-inline: 2px 0;
+}
+.tool-gutter-tool .panel-header > .flex-1 {
+  display: none;
+}
+.tool-gutter-tool .panel-header-title {
+  margin-right: auto;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+}
+/* The gutter scrolls, not the tool, so a tool reserves no scrollbar lane; the
+   outline's rows run to the gutter's edges. */
+.tool-gutter-tool .panel-scroll {
+  scrollbar-gutter: auto;
+}
+.tool-gutter-tool[data-gutter-tool="outline"] .panel-scroll {
+  padding: 0;
+}
+.tool-gutter-tool .outline-header-rule {
+  display: none;
 }
 /* A tool body renders the dock's own panel body, frameless: no fixed
    height (it grows with its content inside the gutter's scroll), and its
@@ -6787,10 +7037,8 @@ body.perf-contain .static-borrowed-text {
   gap: 6px;
   padding: 2px 6px 2px 2px;
   border-radius: var(--radius-sm, 4px);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--panel-header-text-color, var(--muted));
 }
 .tool-gutter-count {
@@ -6861,10 +7109,157 @@ body.perf-contain .static-borrowed-text {
   padding-top: 2px;
   font-size: inherit;
   line-height: inherit;
-  color: var(--muted);
+  color: var(--gutter-number);
   font-variant-numeric: tabular-nums;
+}
+.outline-number {
+  color: var(--gutter-number);
 }
 .tool-gutter-row[data-selected] .tool-gutter-row-text {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ── Dialogs ───────────────────────────────────────────────────────────────
+   A blurred backdrop and one soft settle. `translate`, not `transform`: a
+   draggable frame is placed by an inline transform, which an animated one would
+   replace. No scale: an anchored frame is measured while this runs. */
+.dialog-scrim {
+  backdrop-filter: blur(6px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dialog-scrim {
+    animation: dialog-scrim-in var(--motion-fast) ease-out;
+  }
+  .dialog-frame {
+    animation: dialog-settle var(--motion-fade) var(--motion-ease-emphasis);
+  }
+}
+@keyframes dialog-scrim-in {
+  from { opacity: 0; }
+}
+@keyframes dialog-settle {
+  from { opacity: 0; translate: 0 6px; }
+}
+
+/* A section in a dialog's sidebar (`SystemDialogSidebarLayout`). */
+.dialog-nav-row {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  color: var(--ink-body);
+  transition: background-color var(--motion-fast) ease;
+}
+.dialog-nav-row:hover {
+  background: var(--segment-track);
+}
+.dialog-nav-row[aria-current="page"] {
+  background: var(--segment-track);
+  color: var(--ink-strong);
+  font-weight: 500;
+}
+
+/* A request's cancel shows with its row. */
+.ai-request-cancel {
+  opacity: 0;
+}
+.ai-request-row:hover .ai-request-cancel,
+.ai-request-cancel:focus-visible {
+  opacity: 1;
+}
+
+/* No form control falls back to the system's blue. */
+:root {
+  accent-color: var(--control-selected);
+}
+
+/* ── The one dropdown ──────────────────────────────────────────────────────
+   Still a real <select>, so the browser keeps its keyboard, focus and form
+   behaviour; `base-select` hands its list to this stylesheet as a Virgil menu.
+   A browser without it shows its own list, and nothing breaks. */
+.field-select,
+.field-select::picker(select) {
+  appearance: base-select;
+}
+.field-select {
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.field-select::picker-icon {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 6px;
+  margin-inline-start: auto;
+  background: var(--ink-muted);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.field-select::picker(select) {
+  margin-block: 4px;
+  padding: 4px;
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+}
+.field-select option {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-body);
+  cursor: default;
+}
+.field-select option:hover,
+.field-select option:focus-visible {
+  background: var(--menu-roving-bg);
+  outline: 1px solid transparent; /* the wash is the focus mark */
+}
+.field-select option:checked {
+  color: var(--ink-strong);
+  font-weight: 500;
+}
+.field-select option::checkmark {
+  order: 1;
+  margin-inline-start: auto;
+  padding-inline-start: 12px;
+  color: var(--accent);
+}
+.field-select optgroup {
+  font-weight: 400;
+}
+.field-select legend {
+  padding: 6px 8px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+/* ── One line weight ───────────────────────────────────────────────────────
+   Every icon draws at one real thickness, whatever grid it was drawn on: a
+   `stroke-width` of 2 on a 24 grid and 1.5 on a 16 grid are different lines at
+   the same size, so the number in the markup cannot be the weight.
+   `non-scaling-stroke` takes the grid out, and these rules state the weight.
+   Zero specificity on purpose: any real rule still wins, as a folded chevron
+   does. A glyph that is not a line of this weight (a ring, a tick) says so with
+   `data-icon-weight="own"`. */
+:root {
+  --icon-stroke: 1.5px;
+  --icon-stroke-small: 1.25px;
+}
+:where(svg[width="8"], svg[width="9"], svg[width="10"], svg[width="11"], svg[width="12"], svg[width="13"]) {
+  --icon-stroke: var(--icon-stroke-small);
+}
+:where(svg[stroke]:not([stroke="none"], [data-icon-weight="own"]))
+  :where(path, line, polyline, polygon, circle, ellipse, rect),
+:where(svg:not([data-icon-weight="own"]))
+  :where(path, line, polyline, polygon, circle, ellipse, rect):where([stroke]:not([stroke="none"])) {
+  vector-effect: non-scaling-stroke;
+  stroke-width: var(--icon-stroke);
+}
+

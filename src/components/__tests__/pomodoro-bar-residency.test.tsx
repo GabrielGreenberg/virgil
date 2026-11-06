@@ -75,6 +75,7 @@ import {
   getPomodoroState,
   pausePomodoro,
   setPomodoroDuration,
+  startPomodoro,
   togglePomodoroOpen,
 } from "@/lib/pomodoro-timer";
 
@@ -99,21 +100,17 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
     onEditIdentity: noop,
     onDisableCollab: noop,
     onToggleZen: noop,
-    preferencesOpen: false,
     setPreferencesOpen: noop,
     bugReportEnabled: false,
-    bugReportOpen: false,
     setBugReportOpen: noop,
     appVersion: "0.0.0-test",
     onInsertVirgilCommand: noop,
     currentDocId: "doc1",
     codeView: false,
     pdfView: false,
-    printOpen: false,
     setPrintOpen: noop,
     aiWindowOpen: false,
     setAiWindowOpen: noop,
-    manageStylesOpen: false,
     setManageStylesOpen: noop,
     onToggleCodeView: noop,
     onTogglePdfView: noop,
@@ -150,7 +147,7 @@ describe("a running timer does not repaint the Virgil bar", () => {
 
     // Opening is itself a store transition — and the cluster must not notice
     // that either, since it holds no state for the widget.
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
     expect(clock()).toBe("0:00 / 25:00");
     expect(clusterRenders.count).toBe(0);
@@ -171,11 +168,11 @@ describe("a running timer does not repaint the Virgil bar", () => {
   it("schedules nothing per second while the widget is CLOSED — and still completes", () => {
     mountCluster();
     act(() => { setPomodoroDuration(3000); });
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
     // Close the widget with the bar ICON: that hides it and keeps counting
     // (the × is the gesture that stops it).
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     expect(screen.getByTestId("bar").querySelector("[data-pomodoro-clock]")).toBeNull();
 
     act(() => { vi.advanceTimersByTime(4000); });
@@ -197,7 +194,7 @@ describe("the timer renders through the ONE bar pill (task 1214)", () => {
     const live = bar.querySelector('[data-bar-status-announcer="polite"]')!;
     expect(live.getAttribute("role")).toBe("status");
     act(() => { setPomodoroDuration(3000); });
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     const group = bar.querySelector("[data-bar-status-widget]")!;
     expect(group.getAttribute("role")).toBe("group");
     expect(group.getAttribute("aria-label")).toBe("Writing timer");
@@ -224,14 +221,14 @@ describe("the clock is truthful on the frame the widget appears", () => {
     // later" unobservable in a test, so the leg is written against what IS
     // observable: the first render after the open.
     mountCluster();
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
     // Close the widget with the bar ICON — the timer keeps counting.
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
 
     act(() => { vi.advanceTimersByTime(10 * 60_000); });
 
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     expect(clock()).toBe("10:00 / 25:00");
     // Re-opening is a store transition and still not the cluster's business.
     expect(clusterRenders.count).toBe(0);
@@ -241,7 +238,7 @@ describe("the clock is truthful on the frame the widget appears", () => {
 describe("the readout never discards a run in progress (task 905)", () => {
   it("a PAUSED clock is plain text, not the preset-cycle button", () => {
     mountCluster();
-    act(() => { fireEvent.click(screen.getByLabelText("Timer")); });
+    act(() => { togglePomodoroOpen(); });
     // Idle: the readout IS the preset control.
     expect(screen.getByTestId("bar").querySelector("[data-pomodoro-clock]")!.tagName).toBe("BUTTON");
     act(() => { fireEvent.click(screen.getByLabelText("Start timer")); });
@@ -257,32 +254,29 @@ describe("the readout never discards a run in progress (task 905)", () => {
 });
 
 describe("residency on the bar", () => {
-  it("the WIDGET survives a collapsed toolbar; the ICON does not", () => {
-    // The widget is rendered BEFORE the collapse gate and the icon inside it:
-    // a running timer must stay legible when the user collapses the toolbar,
-    // which is the whole point of the request.
+  it("the WIDGET survives a collapsed toolbar", () => {
+    // The widget is rendered BEFORE the collapse gate: a running timer must
+    // stay legible when the toolbar folds, which is the whole point of the
+    // request. Opening it is a ⋯ row, so nothing else about it is on the bar.
     act(() => { togglePomodoroOpen(); });
     mountCluster({ topbarRightCollapsed: true });
     expect(clock()).toBe("0:00 / 25:00");
-    // Renegotiated by task 395, same invariant, stronger question. The
-    // collapsible group now collapses by WIDTH rather than unmounting (the
-    // bar's occupancy rule needs its natural width in both states), so the
-    // icon's element survives inside an `aria-hidden` / `visibility: hidden`
-    // subtree. What the leg is actually about is REACHABILITY, so it asks the
-    // accessibility tree — a role query excludes an inaccessible subtree,
-    // where the old `queryByLabelText` only ever asked about the DOM.
-    expect(screen.queryByRole("button", { name: "Timer" })).toBeNull();
   });
 
-  it("the WIDGET survives zen mode; the icon is an ordinary tool and does not", () => {
-    // Stated rather than assumed: zen hides the whole tool group, and the timer
-    // icon takes that rule with every other tool rather than minting an
-    // exception. What zen must NOT do is hide a timer the user already has
-    // running — a timed sitting is exactly when zen is on.
+  it("the WIDGET survives zen mode", () => {
+    // What zen must NOT do is hide a timer the user already has running — a
+    // timed sitting is exactly when zen is on.
     act(() => { togglePomodoroOpen(); });
     mountCluster({ zenModeOn: true });
     expect(clock()).toBe("0:00 / 25:00");
-    expect(screen.queryByLabelText("Timer")).toBeNull();
+  });
+
+  it("a timer running behind a closed widget still shows, as a dot on ⋯", () => {
+    mountCluster();
+    const dot = () => screen.getByRole("button", { name: "More" }).querySelector(".absolute");
+    expect(dot()).toBeNull();
+    act(() => { startPomodoro(); });
+    expect(dot()).not.toBeNull();
   });
 });
 
@@ -293,10 +287,14 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
   const BAR = "src/components/editor-layout/TopBar.tsx";
   const TABS = "src/components/editor-layout/TabStrip.tsx";
 
-  it("both residents are rendered with NO props at all", () => {
-    const src = read(CLUSTER);
-    const hits = [...src.matchAll(/<(PomodoroTimer|PomodoroToggleButton)([^>]*)\/>/g)];
-    expect(hits.map((h) => h[1]).sort()).toEqual(["PomodoroTimer", "PomodoroToggleButton"]);
+  it("every resident is rendered with NO props at all", () => {
+    const src = read(CLUSTER) + read("src/components/editor-layout/BarMoreMenu.tsx");
+    const hits = [...src.matchAll(/<(Pomodoro\w+)([^>]*)\/>/g)];
+    expect(hits.map((h) => h[1]).sort()).toEqual([
+      "PomodoroMenuRow",
+      "PomodoroStatusDot",
+      "PomodoroTimer",
+    ]);
     for (const h of hits) expect(h[2].trim()).toBe("");
   });
 
@@ -346,7 +344,7 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
     expect(residents).toContain("PomodoroTimer");
     expect(residents.length).toBeGreaterThan(3);
 
-    const SHAPE = ["inline-flex", "items-center", "py-0.5", "rounded-full", "text-[11px]"];
+    const SHAPE = ["inline-flex", "items-center", "py-0.5", "rounded-full", "text-2xs"];
     let pills = 0;
     for (const name of residents) {
       const src = withStrings(`src/components/${name}.tsx`);

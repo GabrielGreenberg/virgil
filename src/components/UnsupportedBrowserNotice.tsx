@@ -13,7 +13,7 @@ export function UnsupportedBrowserNotice() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-muted p-6">
       <div className="max-w-lg space-y-4 text-ink-strong">
-        <h1 className="text-xl font-semibold">Virgil needs a Chromium browser</h1>
+        <h1 className="text-lg font-semibold">Virgil needs a Chromium browser</h1>
         <p className="text-sm leading-relaxed">
           Virgil stores your papers as ordinary files on your own disk, using
           the browser&apos;s File System Access API. Your current browser

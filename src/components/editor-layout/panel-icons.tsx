@@ -1,6 +1,6 @@
 import { PanelId } from "@/hooks/useViewPrefs";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
-import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { ICON_STROKE, ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 export function IconNotes({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
@@ -57,7 +57,7 @@ export function IconRevisions({ active, size = 18 }: { active?: boolean; size?: 
     return segs;
   };
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg data-icon-weight="own" width={size} height={size} viewBox="0 0 24 24" fill="none">
       <g transform="rotate(45 12 12)">
         {renderArc(Math.PI + gap, 2 * Math.PI - gap, "top")}
         {renderArc(gap, Math.PI - gap, "bot")}
@@ -177,17 +177,16 @@ export function IconBibliography({ active, size = 18 }: { active?: boolean; size
 }
 
 // Library icon — a shelf of upright books with the rightmost leaning
-// left, resting against its neighbor. Each book is a solid block of
-// color at a different opacity so they read as distinct spines.
+// left, resting against its neighbor.
 export function IconLibrary() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
       {/* Book 1 — upright */}
-      <rect x="3" y="5" width="4" height="15" rx="0.6" fill="currentColor" fillOpacity="0.6" />
+      <rect x="3" y="5" width="4.5" height="15" rx="0.8" />
       {/* Book 2 — upright, taller */}
-      <rect x="8" y="3" width="4" height="17" rx="0.6" fill="currentColor" fillOpacity="0.6" />
+      <rect x="7.5" y="3" width="4.5" height="17" rx="0.8" />
       {/* Book 3 — leaning LEFT, top resting against Book 2 */}
-      <path d="M12 5 L16 5 L20 20 L16 20 Z" fill="currentColor" fillOpacity="0.6" />
+      <path d="M12.5 5.5 L16.5 4.5 L21 19 L17 20 Z" />
     </svg>
   );
 }
@@ -268,8 +267,8 @@ export function IconSplit({ active, focusedHalf }: { active?: boolean; focusedHa
 export function IconWordCount({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill={c}>
-      <text x="3" y="15.5" fontSize="16" fontWeight="700" fontFamily="system-ui, sans-serif">#</text>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={ICON_STROKE} strokeLinecap="round">
+      <path d="M10 4 8 20M16 4l-2 16M4.5 9H20M4 15h15.5" />
     </svg>
   );
 }

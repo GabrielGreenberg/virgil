@@ -4,7 +4,7 @@ This directory is Mozilla's **prebuilt** pdf.js viewer (NOT `node_modules/pdfjs-
 which ships only `pdf.mjs`/`pdf.worker.mjs` and no `viewer.html`). It is committed
 to the repo and served same-origin at `/pdfjs/web/viewer.html`, so the parent app
 can drive `contentWindow.PDFViewerApplication`. Consumed by
-`library/components/PdfView.tsx`.
+`src/components/PdfViewer.tsx`, for both the Library and the compiled pane.
 
 ## Current version
 
@@ -30,12 +30,13 @@ pdf.js **4.10.38** (matches `pdfjs-dist` in `package.json`).
    Step 3 is the one thing here that a `unzip -o` silently undoes, and prose
    telling a human to re-apply an edit is exactly how an invariant drifts. That
    suite fails if the `<link>` line is gone, if a Virgil patch has appeared
-   anywhere in the dist JS, or if the runtime surface `PdfView.tsx` drives has
+   anywhere in the dist JS, or if the runtime surface `PdfViewer.tsx` drives has
    been renamed or restructured under it.
 
 ## The two hand-authored files (everything else is unmodified Apache-2.0 dist)
 
-- `web/virgil-overrides.css` — toolbar restyle + hide annotate/print/editor groups.
+- `web/virgil-overrides.css` — toolbar restyle + hide annotate/editor groups, and
+  print/download unless the wrapper marks the root `.virgil-compiled`.
 - the single `<link>` line in `web/viewer.html`.
 
 Both are pinned as an EXACT SET by the census above, together with this note.
@@ -43,9 +44,10 @@ Both are pinned as an EXACT SET by the census above, together with this note.
 ## Behaviour defaults live in the WRAPPER, never in here
 
 Virgil's preferences about how the viewer BEHAVES — today: the outline/thumbnail
-sidebar opens closed (task 498), the viewer is pinned LIGHT, and its chrome is
-painted from Virgil's live palette (task 890) — are stated in `applyViewerDefaults`
-in `library/components/PdfView.tsx` and applied per document open, not patched
+sidebar opens closed (task 498), external links open a new window, a compiled
+paper prints at 300 dpi, the viewer is pinned LIGHT, and its chrome is painted
+from Virgil's live palette (task 890) — are stated in `applyViewerDefaults`
+in `src/components/PdfViewer.tsx` and applied per document open, not patched
 into the dist. A third vendored patch would be dropped by the next re-vendor
 exactly as step 3 would be (and the census fails on it); the wrapper survives a
 re-vendor for free. See AGENTS.md,

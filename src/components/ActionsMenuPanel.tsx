@@ -144,6 +144,12 @@ const LIGHTNING_CARD_ROWS = cardActionRows("lightning");
  * renumbering. Two cells are bespoke nested-menu triggers and carry no glyph:
  * `block-type` (¶, no action row of its own) and `text-color` (the popover).
  */
+/** A tile whose glyph is a word: one size and weight, so the grid reads as one
+ *  set rather than a sampler of the paper's fonts. */
+function TileText({ children }: { children: React.ReactNode }) {
+  return <span className="text-xs font-medium">{children}</span>;
+}
+
 interface LightningGridCell {
   id: ActionId | "block-type";
   glyph?: React.ReactNode;
@@ -201,29 +207,21 @@ export const LIGHTNING_GRID: readonly LightningGridCell[] = [
   ) },
   { id: "example", glyph: <IconExample size={16} /> },
   { id: "inline-math", glyph: (
-    <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
-      $x$
-    </span>
+    <TileText>$x$</TileText>
   ) },
   { id: "display-math", glyph: (
-    <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
-      $$
-    </span>
+    <TileText>$$</TileText>
   ) },
   // A nested-menu trigger (opens the SelectionColorPopover) — ColorGridCell.
   { id: "text-color" },
   { id: "tex", glyph: (
-    <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
-      \tex
-    </span>
+    <TileText>\tex</TileText>
   ) },
   { id: "figure", glyph: (
-    <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
-      fig.
-    </span>
+    <TileText>fig.</TileText>
   ) },
   { id: "graphics", glyph: (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
       <circle cx="11" cy="6" r="1.25" fill="currentColor" stroke="none" />
       <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
@@ -232,9 +230,7 @@ export const LIGHTNING_GRID: readonly LightningGridCell[] = [
   // `\ref` — the registry's `refRun` → `ctx.openAtomCreate("ref")`, the SAME
   // create popover the slash `\ref` opens.
   { id: "ref", glyph: (
-    <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
-      \ref
-    </span>
+    <TileText>\ref</TileText>
   ) },
   // The `forest` syntax-tree block (task 385): a two-child tree, the shape the
   // starter template inserts.

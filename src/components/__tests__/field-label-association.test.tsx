@@ -40,7 +40,7 @@ describe("Field — the label is associated with its control", () => {
     expect(input.tagName).toBe("INPUT");
     const label = screen.getByText("Title");
     expect(label.tagName).toBe("LABEL");
-    expect(label.className).toContain("uppercase");
+    expect(label.className).toContain("font-medium");
   });
 
   it("group: the label is text the widget names via aria-labelledby", () => {

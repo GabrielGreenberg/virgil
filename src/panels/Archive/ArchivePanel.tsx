@@ -54,8 +54,8 @@ function ArchivePanel({
   return (
     <CardListPanel
       kind="archive"
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["archive"]} />
           <CardViewModeMenuItems kind="archive" />
         </ItemMenu>

@@ -159,19 +159,13 @@ describe("bar status policy · the census", () => {
  */
 const COLLAPSIBLE_TOGGLES: Record<string, string> = {
   zenModeOn: "Zen — the stripped-chrome layout is itself the indicator.",
-  codeView: "Code view — the code pane on screen is the indicator.",
-  pdfView: "PDF view — the PDF pane on screen is the indicator (its stale dot is low-value; stays a tool).",
-  bugReportOpen: "Opens the bug-report window, which is visible while open.",
-  preferencesOpen: "Opens Preferences, which is visible while open.",
-  printOpen: "Opens the print dialog, which is visible while open.",
   aiWindowOpen: "Opens the AI window, which is visible while open.",
-  manageStylesOpen: "Opens the Document style modal, which is visible while open.",
 };
 
 function collapsibleSlice(): string {
   const src = read(CLUSTER);
   const start = src.indexOf('data-bar-tier="collapsible"');
-  const end = src.indexOf("ref={collapseChipRef}", start);
+  const end = src.indexOf("<BarMoreMenu", start);
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return src.slice(start, end).replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\/.*$/gm, "");
@@ -309,7 +303,7 @@ describe("bar status policy · the surfaces", () => {
   it("the skills-updated note is NOT a bar pill — it lives on the Help menu's Refresh skills row", () => {
     expect(read("src/components/SkillSyncControls.tsx")).not.toMatch(/Skills updated to v|SkillSyncNotice/);
     // The Help menu left StatusCluster for its own file in task 1361.
-    const help = read("src/components/editor-layout/HelpMenu.tsx");
+    const help = read("src/components/editor-layout/BarMoreMenu.tsx");
     expect(help).toMatch(/Updated to v\{skillSyncNotice\.version\}/);
     expect(help).toMatch(/restart your Claude\s+Code\s+cowork session/);
   });

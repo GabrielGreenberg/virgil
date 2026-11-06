@@ -33,6 +33,7 @@ import { indexStateTier } from "@/lib/library/status-tone";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
 import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
+import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { iconHint } from "@/components/Hint";
 import { Chevron } from "@/components/Chevron";
 
@@ -428,7 +429,7 @@ export default function PaperHeader({
               showStatusRow={false}
               dedupeApaHeadline
             />
-            {/* raw citekey + copy + fields/edit — mono micro-controls under
+            {/* raw citekey + copy + fields/edit — micro-controls under
                 the headline, aligned with the chip column. */}
             <div
               style={{
@@ -443,7 +444,7 @@ export default function PaperHeader({
               <code
                 style={{
                   fontFamily: FONT_MONO,
-                  fontSize: 10,
+                  fontSize: 11,
                   color: "var(--muted)",
                   whiteSpace: "nowrap",
                 }}
@@ -487,14 +488,13 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: FONT_MONO,
-                    fontSize: 10,
+                    fontSize: 12,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
                 >
                   <Chevron expanded={expanded} />
-                  fields
+                  Fields
                 </button>
               )}
               {onEdit ? (
@@ -505,13 +505,12 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: FONT_MONO,
-                    fontSize: 10,
+                    fontSize: 12,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
                 >
-                  edit
+                  Edit
                 </button>
               ) : editPending ? (
                 <button
@@ -522,14 +521,13 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: FONT_MONO,
-                    fontSize: 10,
+                    fontSize: 12,
                     cursor: "not-allowed",
                     padding: "0 4px",
                     opacity: 0.55,
                   }}
                 >
-                  edit
+                  Edit
                 </button>
               ) : null}
             </div>
@@ -663,7 +661,7 @@ export default function PaperHeader({
               htmlFor="paper-ai-instructions"
               style={{
                 fontFamily: FONT_MONO,
-                fontSize: 10,
+                fontSize: 11,
                 color: "var(--muted)",
                 letterSpacing: 0.3,
               }}
@@ -708,72 +706,26 @@ function ViewToggle({
   indexedState: IndexedState;
   narrow?: boolean;
 }) {
+  const textLabel = narrow
+    ? "Text"
+    : indexedState === "deepIndexed"
+      ? "Virgil Text"
+      : "Raw Text";
   return (
-    <div
-      role="tablist"
-      aria-label="Document view"
-      style={{
-        display: "inline-flex",
-        border: "1px solid var(--border-light)",
-        borderRadius: "var(--radius-md)",
-        overflow: "hidden",
-      }}
-    >
-      <ToggleButton
-        active={mode === "text"}
-        onClick={() => onChange("text")}
-        label={
-          narrow
-            ? "Text"
-            : indexedState === "deepIndexed"
-              ? "Virgil Text"
-              : "Raw Text"
-        }
-      />
-      <ToggleButton
-        active={mode === "pdf"}
-        onClick={() => onChange("pdf")}
-        label="PDF"
-        disabled={!pdfAvailable}
-        disabledTitle="No PDF on disk for this paper"
-      />
-    </div>
-  );
-}
-
-function ToggleButton({
-  active,
-  onClick,
-  label,
-  disabled,
-  disabledTitle,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  disabled?: boolean;
-  disabledTitle?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      data-hint={disabled ? disabledTitle : undefined}
-      style={{
-        background: active ? "var(--control-selected)" : "transparent",
-        color: disabled ? "var(--muted)" : active ? "white" : "var(--foreground)",
-        border: "none",
-        padding: "4px 10px",
-        fontSize: 11,
-        fontFamily: FONT_SANS,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      {label}
-    </button>
+    <SegmentedToggle
+      ariaLabel="Document view"
+      size="sm"
+      value={mode}
+      onChange={onChange}
+      options={[
+        { value: "text", label: textLabel },
+        {
+          value: "pdf",
+          label: "PDF",
+          disabled: !pdfAvailable,
+          disabledHint: "No PDF on disk for this paper",
+        },
+      ]}
+    />
   );
 }

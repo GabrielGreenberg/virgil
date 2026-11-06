@@ -200,7 +200,6 @@ const exampleInfo: ExampleInfo = {
   label: "",
   preview: "Body.",
   subLabelRange: "",
-  dialect: "expex",
   bodyText: "Body.",
   bodyContent: {
     type: "doc",

@@ -30,7 +30,7 @@ import { sectionExtentFromHeadings } from "@/lib/tiptap/block-address";
  * the per-level step so nesting reads clearly (#5), and give a fixed number
  * column so wrapped heading text hangs like a numbered list (#2). */
 export const OUTLINE_BASE_INSET = 2;    // px — fixed left gutter (was 8)
-export const OUTLINE_INDENT_STEP = 20;  // px per tree depth (was 16)
+export const OUTLINE_INDENT_STEP = 12;  // px per tree depth: enough to read the tree, little enough to keep the width
 export const OUTLINE_TWIST_COL = 15;    // px — chevron / spacer column width
 export const OUTLINE_ROW_GAP = 4;       // px — gap between twist column and text
 

@@ -3,8 +3,8 @@
  * Radius-token guard.
  *
  * Corner radii are tokenized (STYLE_GUIDE.md "Radius scale"): every radius in
- * the app flows from the six-step scale defined in `src/app/globals.css`
- * (`--radius-xs` · `--radius-sm` · `--radius-md` · `--pod-radius` ·
+ * the app flows from the five-step scale defined in `src/app/globals.css`
+ * (`--radius-sm` · `--radius-md` · `--pod-radius` ·
  * `--panel-radius` · `--radius-pill`, plus the deliberate `--library-manila-radius`
  * exception). This is the same "tokens are the single source of truth" rule the
  * guide already imposes on colors — now enforced for radius so new literals
@@ -263,7 +263,7 @@ for (const t of targets.length ? targets : SCAN_DIRS) {
 if (violations.length) {
   console.error(`\n✖ Radius-token guard: ${violations.length} literal radius${violations.length === 1 ? "" : "es"} found.\n`);
   console.error("  Use a token from the scale (src/STYLE_GUIDE.md \"Radius scale\"):");
-  console.error("    var(--radius-xs) 3 · var(--radius-sm) 4 · var(--radius-md) 6 ·");
+  console.error("    var(--radius-sm) 3 · var(--radius-sm) 4 · var(--radius-md) 6 ·");
   console.error("    var(--pod-radius) 8 · var(--panel-radius) 14 · var(--radius-pill).");
   console.error("  Hairline bars (1px), circles (50%) and resets (0) are allowed as-is.");
   console.error("  A genuine exception can carry a `radius-allow` comment on the line.\n");

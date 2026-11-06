@@ -14,7 +14,7 @@ import { STACK_CHROME_Z } from "@/floats/float-policy";
 import type { StackItem } from "@/lib/stack/types";
 import { StackThumbnail, STACK_THUMB_W } from "./StackThumbnail";
 import {
-  STACK_ICON_DIAMETER,
+  STACK_ICON_WIDTH,
   STACK_INSET_LEFT,
   STACK_INSET_BOTTOM,
 } from "./StackIcon";
@@ -74,7 +74,7 @@ export function StackStrip({
     return Number.isFinite(t) && now - t <= RECENT_WINDOW_MS ? n + 1 : n;
   }, 0);
 
-  const left = STACK_INSET_LEFT + STACK_ICON_DIAMETER + ICON_GAP;
+  const left = STACK_INSET_LEFT + STACK_ICON_WIDTH + ICON_GAP;
   const maxW = Math.max(MIN_W, vw - left - STACK_INSET_LEFT);
   const contentW =
     STRIP_PADDING * 2 +

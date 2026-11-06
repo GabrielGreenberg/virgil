@@ -78,9 +78,9 @@ const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
     "Lives only while a selection slide is live (task 1179), on that ONE panel-list scroller: the callback reads the delivered contentRect (no DOM read, no write unless the list went zero-height = hidden, which releases the slide once and disconnects). Panel-local, never over editor content.",
   "components/figure-chrome-beside.ts":
     "Observes the figure block's own box + its column — node-local sizing, RAF-scheduled (lifted out of FigureBlockNodeView by task 837; its layout-gesture verdict — PARKED — lives in pane-drag-guardrail's two-silo gesture census).",
-  // DocumentFolderTab's chrome-measurement RO was deleted by the Library UI
-  // refactor P3 — the folder-tab silhouette is layout-driven FolderTabChrome
-  // now (src/components/chrome/), zero observers by construction.
+  // The folder tab's chrome-measurement RO was deleted by the Library UI
+  // refactor P3 — the silhouette is layout-driven FolderTabChrome now
+  // (src/components/chrome/), zero observers by construction.
   "components/editor-layout/editor-scrollbar.tsx":
     "Observes row/editor-column/page in ONE read-batched, equality-bailed measureAndApply() pass (typing-latency fix 1b): all reads before all writes, CSS vars + React state only on value change — no MutationObserver, no read-after-write, feedback loop self-terminates.",
   "components/chrome/tab-strip-occupancy.ts":

@@ -41,7 +41,7 @@ export interface LinkDefinition {
  */
 export const LINK_DEFINITIONS: LinkDefinition[] = [
   { parent: "topbarBackground", child: "tabBg",     label: "Tab background tracks Virgil bar" },
-  { parent: "topbarBackground", child: "libraryBg", label: "Library tab steps up from Virgil bar" },
+  { parent: "backgroundColor",  child: "libraryBg", label: "Library background tracks the document background" },
 ];
 
 export interface LinkState {

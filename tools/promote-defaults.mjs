@@ -40,6 +40,7 @@ import {
   splitPrefCssBlock,
 } from "../src/lib/pref-css-table.mjs";
 import { applyTransforms } from "../src/lib/color-transform-math.mjs";
+import { dropRetiredDefaults } from "../src/lib/retired-pref-defaults.mjs";
 
 const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -291,6 +292,14 @@ function main() {
     process.exit(0);
   }
   const snapshot = readJson(SNAPSHOT_PATH);
+  // A stale snapshot may still carry a default we retired on purpose. Promoting
+  // it would revert that change, so it never reaches a strategy below.
+  const prefsBlob = snapshot["virgil-editor-prefs"];
+  if (isPlainObject(prefsBlob)) {
+    const { next, dropped } = dropRetiredDefaults(prefsBlob);
+    snapshot["virgil-editor-prefs"] = next;
+    if (dropped.length) console.log(`  snapshot: ignored retired default(s) — ${dropped.join(", ")}`);
+  }
   const registry = readJson(REGISTRY_PATH);
 
   /** Root-relative paths this run changed (or, dry, WOULD change). */

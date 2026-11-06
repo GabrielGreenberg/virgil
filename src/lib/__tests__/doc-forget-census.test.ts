@@ -24,6 +24,7 @@ import { REPO_ROOT, walkFiles } from "./_source-scan";
 
 /** `file::name` → forgotten by its module's `registerDocForget`. */
 const FORGOTTEN: readonly string[] = [
+  "src/components/PdfViewer.tsx::compiledPlaces",
   "src/hooks/useAiRequestCardMigration.ts::migratedDocs",
   "src/lib/compile/compile-progress.ts::byDoc",
   "src/lib/compile/compile-record.ts::byDoc",

@@ -107,3 +107,38 @@ describe("Toaster lifecycle (F#6)", () => {
     expect(queryByText("done t1")).toBeNull();
   });
 });
+
+describe("Toaster wording and queue", () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ kind: "failed", at: `t${i}`, summary: `s${i}` }));
+
+  it("heads a toast in words, never a slug", () => {
+    const { queryByText } = render(
+      <Toaster
+        items={[attention("t1"), { kind: "triage-needs-title", at: "t2", summary: "x" }]}
+      />,
+    );
+    expect(queryByText("Library needs setup")).not.toBeNull();
+    expect(queryByText("Triage needs title")).not.toBeNull();
+    expect(queryByText("setup-needed")).toBeNull();
+  });
+
+  it("shows four at once; the rest wait, and take their place as one goes", () => {
+    const { queryByText, container } = render(<Toaster items={many(6)} />);
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(4);
+    expect(queryByText("2 more")).not.toBeNull();
+    expect(queryByText("s4")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(ATTN_TTL + 10);
+    });
+    expect(queryByText("s4")).not.toBeNull();
+  });
+
+  it("Dismiss all clears the queue", () => {
+    const { getByText, container } = render(<Toaster items={many(6)} />);
+    act(() => {
+      getByText("Dismiss all").click();
+    });
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(0);
+  });
+});

@@ -63,13 +63,13 @@ function provenanceChipStyle(
   switch (chip.kind) {
     case "local":
       return {
-        text: "local",
+        text: "Local",
         tooltip: "This citekey is in your paper's references.bib",
         className: "text-slate-700 bg-slate-50 border border-slate-200",
       };
     case "central":
       return {
-        text: "central",
+        text: "Central",
         tooltip: "This citekey is in your central library's master.bib",
         className: "text-blue-700 bg-blue-50 border border-blue-200",
       };
@@ -90,7 +90,7 @@ function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
         return (
           <span
             key={provenanceChipKey(c)}
-            className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${style.className}`}
+            className={`text-2xs px-1 py-0.5 rounded whitespace-nowrap ${style.className}`}
             {...describedHint(style.tooltip)}
           >
             {style.text}

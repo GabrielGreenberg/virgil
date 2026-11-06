@@ -382,7 +382,7 @@ export default function RightDetail({
             pgmarkPages={pdfPgmarkPages}
             textPodRect={textPodRect}
           />
-          <FramedViewerSurface backdrop="manila">
+          <FramedViewerSurface>
             <PdfView
               handle={handle}
               citekey={entry.citekey}

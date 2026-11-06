@@ -3,7 +3,7 @@
  * Task 950 — the ONE segmented choice: the active segment announces
  * `aria-pressed="true"` and every other `"false"`; a disabled segment keeps a
  * hint that says WHY (and exposes it as its description, the label stays its
- * name); the "on" paint is the solid control-selected path, never `--accent`.
+ * name); the "on" paint is a white tile on the track, never `--accent`.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";

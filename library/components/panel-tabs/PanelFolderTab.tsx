@@ -15,11 +15,9 @@ import {
   TAB_TOP_GUTTER,
 } from "@/components/chrome/folder-tab-geometry";
 
-// The library variant of the shared folder-tab chrome (geometry SSOT at
-// src/components/chrome/folder-tab-geometry.ts): tabH 32, --library-edge
-// stroke, body-span seam bridge, the F#8 +1 stroke cushion inside the
-// footprint. The outer Virgil-bar tabs render the SAME chrome module with the
-// "topbar" variant — one implementation, no forked geometry.
+// The library variant of the folder-tab chrome (geometry SSOT at
+// src/components/chrome/folder-tab-geometry.ts): tabH 32, no stroke, the F#8 +1
+// stroke cushion inside the footprint.
 const V = FOLDER_TAB_VARIANTS.library;
 const S = FOLDER_TAB_SWOOP;
 

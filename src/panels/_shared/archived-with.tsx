@@ -181,9 +181,9 @@ export function buildArchivedWithApi(
   };
 }
 
-const ROW = "mx-2 mb-1.5 mt-0.5 flex flex-wrap items-center gap-1 text-[11px] leading-snug text-[var(--muted)]";
+const ROW = "mx-2 mb-1.5 mt-0.5 flex flex-wrap items-center gap-1 text-2xs leading-snug text-[var(--muted)]";
 const CHIP =
-  "inline-flex max-w-full items-center gap-1 rounded-xs border border-[var(--border)] px-1.5 py-px cursor-pointer hover-on-light hover:text-ink-strong focus-ring";
+  "inline-flex max-w-full items-center gap-1 rounded-sm border border-[var(--border)] px-1.5 py-px cursor-pointer hover-on-light hover:text-ink-strong focus-ring";
 
 /**
  * THE shell slot. Renders the travelled-cards chip row on an Archive card and

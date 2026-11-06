@@ -432,6 +432,24 @@ export interface NotificationItem {
  *  have time to read and act on. F#6. */
 export type NotificationSeverity = "info" | "attention";
 
+/** A toast's heading, in words. A writer kind with no row here reads as itself
+ *  ("triage-needs-title" → "Triage needs title"), so a new skill kind never
+ *  reaches the screen as a slug. */
+const NOTIFICATION_TITLE: Record<NotificationCoreKind, string> = {
+  indexed: "Paper indexed",
+  authenticated: "Entry verified",
+  triaged: "Paper sorted",
+  failed: "Couldn't finish",
+  "setup-needed": "Library needs setup",
+};
+
+export function notificationTitle(item: Pick<NotificationItem, "kind">): string {
+  const known = (NOTIFICATION_TITLE as Record<string, string>)[item.kind];
+  if (known) return known;
+  const words = item.kind.replace(/[-_]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /** Held EQUAL to `_tools.NOTIFICATION_CORE_SEVERITY` by
  *  `notification-kind-parity.test.ts`. */
 export const NOTIFICATION_SEVERITY: Record<NotificationCoreKind, NotificationSeverity> = {

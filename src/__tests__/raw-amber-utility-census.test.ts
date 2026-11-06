@@ -10,8 +10,8 @@
  * it is v4's default oklch orange, a real colour, the wrong one, sitting next to
  * chips (`AMBER_PENDING_CHIP`, `AMBER_ATTENTION_STRIP`) that paint the token.
  * STYLE_GUIDE names this as the silent wrong-colour failure, and it had already
- * earned two per-surface guards (`examples-amber-token.test.ts`,
- * `bibliography-amber-strip-convergence.test.ts`) plus scoped legs in
+ * earned a per-surface guard (`bibliography-amber-strip-convergence.test.ts`)
+ * plus scoped legs in
  * `panel-chrome-palette-guardrail` and `card-chrome-shell-census` — each
  * watching one surface while the next surface over drifted (the Bibliography
  * pending dots, the suggestion `stale` dot). Task 951 drained the last four

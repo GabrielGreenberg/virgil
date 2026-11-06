@@ -391,7 +391,7 @@ export default function CodeEditor({
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
       {parseError && (
         <div
-          className="absolute top-2 left-4 right-4 z-10 text-[11px] px-3 py-1.5 rounded border"
+          className="absolute top-2 left-4 right-4 z-10 text-2xs px-3 py-1.5 rounded border"
           style={CM_PARSE_BANNER_STYLE}
           data-hint={parseError}
         >

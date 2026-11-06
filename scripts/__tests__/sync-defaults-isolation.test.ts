@@ -26,6 +26,7 @@ const COPIED = [
   "library/lib/list-columns.ts",
   "src/lib/pref-css-table.mjs",
   "src/lib/color-transform-math.mjs",
+  "src/lib/retired-pref-defaults.mjs",
   "src/lib/dev-prefs-registry.json",
   "src/hooks/useViewPrefs.defaults.json",
   "src/hooks/usePreferences.defaults.json",

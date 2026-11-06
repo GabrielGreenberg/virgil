@@ -127,8 +127,8 @@ function FootnotePanel({
     <CardListPanel
       kind="footnotes"
       onAdd={onAdd}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["footnote"]} />
           <CardViewModeMenuItems kind="footnotes" />
         </ItemMenu>

@@ -67,13 +67,13 @@ describe("menu rows are registered (task 477)", () => {
     // inside it degrades to Tab+Enter rather than to silence.
     expect(isWindowSourceShell(`<MenuProvider keyboardSource="input"`)).toBe(false);
     expect(isWindowSourceShell(`<MenuProvider role="listbox"`)).toBe(false);
-    expect(isWindowSourceShell(`<ItemMenu align="left"`)).toBe(true);
+    expect(isWindowSourceShell(`<ItemMenu panelHeader`)).toBe(true);
   });
 
   it("is non-empty over the real tree — the walk reaches real menus", () => {
     // If this ever reports zero, the census below is passing vacuously.
     const bodies = menuBodyRegions(
-      `<ItemMenu align="left"><Row /></ItemMenu>` +
+      `<ItemMenu panelHeader><Row /></ItemMenu>` +
         `<MenuProvider id="a" onClose={() => {}}><Row /></MenuProvider>`,
     );
     expect(bodies.map((b) => b.shell)).toEqual(["ItemMenu", "MenuProvider"]);

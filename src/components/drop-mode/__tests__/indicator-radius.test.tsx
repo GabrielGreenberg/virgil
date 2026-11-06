@@ -4,7 +4,7 @@
  *
  * `Indicator.tsx` used to set an inline `borderRadius: 1` on every bar, and an
  * inline style beats a class rule — so the expex tall bar's
- * `.dropmode-bar-vertical { border-radius: var(--radius-xs) }` was dead CSS and
+ * `.dropmode-bar-vertical { border-radius: var(--radius-sm) }` was dead CSS and
  * the tall bar always rendered at 1px. jsdom resolves no CSS vars, so this
  * asserts the SPECIFIED inline style (none) and the stated CSS rules.
  */
@@ -55,7 +55,7 @@ describe("DropModeIndicator — no inline radius overrides the per-shape CSS", (
     const hairline = css.indexOf(
       ".dropmode-bar-gap,\n.dropmode-bar-side,\n.dropmode-bar-inline {\n  border-radius: 1px;\n}",
     );
-    const vertical = css.indexOf(".dropmode-bar-vertical {\n  border-radius: var(--radius-xs);\n}");
+    const vertical = css.indexOf(".dropmode-bar-vertical {\n  border-radius: var(--radius-sm);\n}");
     expect(hairline).toBeGreaterThan(-1);
     expect(vertical).toBeGreaterThan(hairline);
   });

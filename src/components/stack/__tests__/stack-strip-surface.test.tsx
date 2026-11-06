@@ -20,7 +20,7 @@ import {
   STACK_THUMB_H,
 } from "@/components/stack/StackThumbnail";
 import {
-  STACK_ICON_DIAMETER,
+  STACK_ICON_WIDTH,
   STACK_INSET_LEFT,
 } from "@/components/stack/StackIcon";
 import type { StackItem } from "@/lib/stack/types";
@@ -75,7 +75,7 @@ describe("Stack strip surface (task 860)", () => {
     expect(thumb.style.height).toBe(`${STACK_THUMB_H}px`);
     // The strip sits right of the icon by the exported diameter.
     const left = parseFloat(strip().style.left);
-    expect(left).toBeGreaterThan(STACK_INSET_LEFT + STACK_ICON_DIAMETER);
+    expect(left).toBeGreaterThan(STACK_INSET_LEFT + STACK_ICON_WIDTH);
     for (const f of ["StackStrip.tsx", "StackThumbnail.tsx", "StackIcon.tsx"]) {
       const src = readFileSync(resolve(__dirname, "..", f), "utf8");
       expect(src, f).not.toMatch(/\b(const ICON_DIAMETER|const THUMB_W)\b/);

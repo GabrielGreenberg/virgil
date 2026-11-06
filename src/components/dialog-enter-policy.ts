@@ -21,7 +21,7 @@
  *
  *  - **Inside the frame**, a control that owns `Enter` keeps it. A `textarea` or
  *    contenteditable types a newline (CodeMirror inside `StyleEditorModal`), a
- *    `select` opens, a link navigates, a `<summary>` toggles, an input whose type
+ *    `select` opens (and an open one's `option` picks), a link navigates, a `<summary>` toggles, an input whose type
  *    natively activates does its own thing. A control that consumed the key by
  *    calling `preventDefault()` keeps it too — that is the platform's own way of
  *    saying "mine", and an in-dialog control that consumes Enter must say so.
@@ -53,7 +53,7 @@ export type DialogEnterVerdict =
   /** Not ours — the target owns this key, or the dialog has no claim on it. */
   | { kind: "hands-off" };
 
-const HANDS_OFF_TAGS = new Set(["TEXTAREA", "SELECT", "A", "SUMMARY"]);
+const HANDS_OFF_TAGS = new Set(["TEXTAREA", "SELECT", "OPTION", "A", "SUMMARY"]);
 
 /**
  * Input types the shell keeps its hands off.

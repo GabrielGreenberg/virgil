@@ -156,8 +156,8 @@ describe("Input / Select / Textarea", () => {
         <Textarea density="dense" />
       </>,
     );
-    const classes = ["input", "select", "textarea"].map(
-      (tag) => container.querySelector(tag)!.className,
+    const classes = ["input", "select", "textarea"].map((tag) =>
+      container.querySelector(tag)!.className.replace("field-select ", ""),
     );
     expect(new Set(classes).size).toBe(1);
   });

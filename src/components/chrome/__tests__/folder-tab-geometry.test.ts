@@ -31,7 +31,7 @@ const ROOT = path.resolve(__dirname, "..", "..", "..", "..");
  *   fill   (g translate(0.5,1.5)):
  *     M 32 0 H 183 A 10 10 0 0 1 193 10 V 20 A 12 12 0 0 0 205 32 H 10
  *     A 12 12 0 0 0 22 20 V 10 A 10 10 0 0 1 32 0 Z
- *   stroke (same g, --library-edge, width 1, no bottom edge):
+ *   stroke (same g, the variant's edge, width 1, no bottom edge):
  *     M 205 32 A 12 12 0 0 1 193 20 V 10 A 10 10 0 0 0 183 0 H 32
  *     A 10 10 0 0 0 22 10 V 20 A 12 12 0 0 1 10 32
  *   bridge rect: x 10.5, y 33, w 182.5 (→ right edge 193).
@@ -102,7 +102,7 @@ describe("ground-truth fidelity — the cap/middle composition reproduces the ca
     // wrapper bottom, forming the bridge across the stretchable span.
     const middle: [number, number] = [
       middleInsetLeft(true),
-      GT.W - middleInsetRight(false, v.capRightOverhang),
+      GT.W - middleInsetRight(false),
     ];
     // Right cap bridge (cap at right:0 ⇒ offset W − CAP_W).
     const rightBridge: [number, number] = [
@@ -123,9 +123,9 @@ describe("ground-truth fidelity — the cap/middle composition reproduces the ca
     // Left: cap viewport ends at its width; middle starts 1px inside it.
     expect(middleInsetLeft(true)).toBe(left.width - 1);
     expect(middleInsetLeft(false)).toBe(CAP_W - 1);
-    // Right (library, no overhang): cap starts at W − CAP_W; middle ends at
+    // Right: cap starts at W − CAP_W; middle ends at
     // W − (CAP_W − 1) — 1px inside the cap.
-    expect(middleInsetRight(false, 0)).toBe(CAP_W - 1);
+    expect(middleInsetRight(false)).toBe(CAP_W - 1);
     // The shoulder arc's ink begins STROKE_INSET past the middle's edge, so
     // the overlapped pixel carries the SAME 1px edge band from both pieces.
     expect(STROKE_INSET).toBeLessThan(1);
@@ -218,21 +218,12 @@ describe("open-bottom seam — exactly 1px overlap, by construction", () => {
     }
   });
 
-  it("a 'body'-span bridge leaves the foot valleys unbridged; a 'full'-span bridge covers the whole footprint", () => {
-    const lib = FOLDER_TAB_VARIANTS.library.caps; // body span
-    const top = FOLDER_TAB_VARIANTS.topbar.caps; // full span
-    // Inner tabs: bridge starts at the vertical side (x = S) — the valley
-    // [0, S) shows the body's top border (task 053 "feet land on the page").
+  it("the bridge leaves the foot valleys unbridged", () => {
+    const lib = FOLDER_TAB_VARIANTS.library.caps;
+    // The bridge starts at the vertical side (x = S) — the valley [0, S) shows
+    // the body's top border (task 053 "feet land on the page").
     expect(lib.left.bridgeX).toBe(S);
     expect(lib.right.bridgeX + lib.right.bridgeW).toBe(R); // ends at the side
-    // Outer tabs: full cover of the topbar border across the footprint,
-    // never past it (the overhang is subtracted on the right).
-    expect(top.left.bridgeX).toBe(0);
-    expect(top.left.bridgeW).toBe(CAP_W);
-    expect(top.right.bridgeX).toBe(0);
-    expect(top.right.bridgeW).toBe(
-      CAP_W - FOLDER_TAB_VARIANTS.topbar.capRightOverhang,
-    );
   });
 });
 
@@ -266,61 +257,29 @@ describe("ink-cushion invariant — stroke ink ≥ 1 CSS px from every clip boun
     // 1px bottom padding hosts exactly the FOLDER_TAB_SEAM_OVERLAP row.
     expect(FOLDER_TAB_SEAM_OVERLAP).toBe(1);
   });
-
-  it("outer strip: the topbar tab's top ink clears the bar's top edge by ≥ 1px (WCO/installed-PWA strip-edge safe)", () => {
-    const globals = readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
-    const m = globals.match(/--bar-base-h:\s*(\d+)px\s*;/);
-    expect(m, "--bar-base-h must be defined in globals.css").not.toBeNull();
-    const barContentH = Number(m![1]) - 1; // minus the bar's 1px border-b
-    const v = FOLDER_TAB_VARIANTS.topbar;
-    // Bottom-aligned tab: margin-box = svgH − seam overlap; its top offset
-    // from the bar's content top, plus the in-cap gutter, is the top ink's
-    // clearance from the bar's top edge.
-    const tabMarginBox = v.svgH - FOLDER_TAB_SEAM_OVERLAP;
-    const topInkClearance = barContentH - tabMarginBox + TAB_TOP_GUTTER;
-    expect(topInkClearance).toBeGreaterThanOrEqual(1);
-  });
 });
 
-describe("variant parameterization — named differences only, one geometry", () => {
+describe("the library variant's named values", () => {
   const lib = FOLDER_TAB_VARIANTS.library;
-  const top = FOLDER_TAB_VARIANTS.topbar;
 
-  it("heights: library 32 / topbar 30; both derive svgH from the shared gutters", () => {
+  it("height 32; svgH derives from the shared gutters", () => {
     expect(lib.tabH).toBe(32);
-    expect(top.tabH).toBe(30);
     expect(lib.svgH).toBe(34);
-    expect(top.svgH).toBe(32);
   });
 
-  it("edge tokens: library rides --library-edge, topbar rides --topbar-border (never crossed)", () => {
-    expect(lib.strokeVar).toContain("--library-edge");
-    expect(lib.strokeVar).not.toContain("--topbar-border");
-    expect(top.strokeVar).toContain("--topbar-border");
+  it("the tab has no stroke: only its fill draws it", () => {
+    expect(lib.strokeVar).toBe("transparent");
   });
 
-  it("footprint policy: library carries the F#8 +1 inside its box; topbar overhangs it (inline↔folder pixel parity preserved)", () => {
+  it("footprint policy: the F#8 +1 lives inside the box", () => {
     expect(lib.contentInsetLeft).toBe(S);
     expect(lib.contentInsetRight).toBe(S + 1);
-    expect(lib.capRightOverhang).toBe(0);
-    expect(top.contentInsetLeft).toBe(S);
-    expect(top.contentInsetRight).toBe(S);
-    expect(top.capRightOverhang).toBe(1);
     // Ground-truth wrapper width = content + insets: 206 = 181 + 25.
     expect(lib.contentInsetLeft + lib.contentInsetRight).toBe(25);
   });
 
-  it("the F#15 reserved floor survives, PER VARIANT: activeMinContent + flares + the +1 cushion", () => {
-    // RENEGOTIATED in place (task 561): the floor was a module-level
-    // `ACTIVE_MIN_CONTENT` read by ONE strip while the outer tab hand-wrote
-    // `minWidth: 80` — a shared SSOT with one consumer. It is a field of the
-    // variant spec now, because the two content rows genuinely differ (the
-    // library row carries pin + icon + menu + close beside its label; the
-    // topbar row a label + close), and BOTH strips read it from here. The
-    // library number and its wrapper floor are byte-identical to the old
-    // constant; the topbar number is the old hand-written 80, relocated.
+  it("the F#15 reserved floor survives: activeMinContent + flares + the +1 cushion", () => {
     expect(lib.activeMinContent).toBe(116);
     expect(2 * S + lib.activeMinContent + 1).toBe(141);
-    expect(top.activeMinContent).toBe(80);
   });
 });

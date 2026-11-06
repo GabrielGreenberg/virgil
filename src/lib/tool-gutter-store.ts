@@ -5,11 +5,12 @@
  * Three facts, all window-wide view state (like the dock stack it replaces —
  * panels were never per-document, so this is not a per-doc registry):
  *
- *  - `tool`   — which of the three TOOLS (Outline / Search / Word count) is
- *               written at the top of the gutter, or none.
- *  - `extra`  — the list sections the user added through "More", in the order
- *               added, after the three standing sections.
- *  - `folded` — sections the user folded shut.
+ *  - `tool`     — which of the three TOOLS (Outline / Search / Word count) is
+ *                 written at the top of the gutter, or none.
+ *  - `sections` — the list sections the gutter shows, in order. None is
+ *                 required: the user adds them through "More" and removes
+ *                 them, down to none at all.
+ *  - `folded`   — sections the user folded shut.
  *
  * Persisted to ONE `localStorage` key and re-hydrated on the native `storage`
  * event through `subscribeToStorageKey` (the cross-window store law), so two
@@ -29,11 +30,11 @@ export const TOOL_GUTTER_STORAGE_KEY = "virgil:tool-gutter";
 export const GUTTER_TOOLS = ["outline", "search", "wordcount"] as const;
 export type GutterTool = (typeof GUTTER_TOOLS)[number];
 
-/** Sections every gutter shows (fold-able, never removable). */
-export const STANDING_SECTIONS = ["footnotes", "examples", "todo"] as const;
-
-/** Sections offered under "More", in menu order. */
-export const MORE_SECTIONS = [
+/** Every list the gutter can show, in "More" menu order. */
+export const GUTTER_SECTIONS = [
+  "footnotes",
+  "examples",
+  "todo",
   "notes",
   "citations",
   "bibliography",
@@ -44,19 +45,20 @@ export const MORE_SECTIONS = [
   "errors",
 ] as const;
 
-export type GutterSection =
-  | (typeof STANDING_SECTIONS)[number]
-  | (typeof MORE_SECTIONS)[number];
+export type GutterSection = (typeof GUTTER_SECTIONS)[number];
+
+/** What a gutter shows until the user says otherwise. */
+export const DEFAULT_GUTTER_SECTIONS: readonly GutterSection[] = ["footnotes", "bibliography"];
 
 export interface ToolGutterState {
   tool: GutterTool | null;
-  extra: GutterSection[];
+  sections: GutterSection[];
   folded: GutterSection[];
 }
 
 export const DEFAULT_TOOL_GUTTER_STATE: ToolGutterState = {
   tool: null,
-  extra: [],
+  sections: [...DEFAULT_GUTTER_SECTIONS],
   folded: [],
 };
 
@@ -64,14 +66,8 @@ export function isGutterTool(id: string): id is GutterTool {
   return (GUTTER_TOOLS as readonly string[]).includes(id);
 }
 
-export function isMoreSection(id: string): id is (typeof MORE_SECTIONS)[number] {
-  return (MORE_SECTIONS as readonly string[]).includes(id);
-}
-
 export function isGutterSection(id: string): id is GutterSection {
-  return (
-    (STANDING_SECTIONS as readonly string[]).includes(id) || isMoreSection(id)
-  );
+  return (GUTTER_SECTIONS as readonly string[]).includes(id);
 }
 
 /** Parse a stored value; anything malformed degrades field-by-field to the
@@ -88,14 +84,19 @@ export function parseToolGutterState(raw: string | null): ToolGutterState {
   const o = v as Record<string, unknown>;
   const tool =
     typeof o.tool === "string" && isGutterTool(o.tool) ? o.tool : null;
-  const list = (x: unknown, ok: (s: string) => boolean): GutterSection[] =>
+  const list = (x: unknown): GutterSection[] =>
     Array.isArray(x)
-      ? [...new Set(x.filter((s): s is GutterSection => typeof s === "string" && ok(s)))]
+      ? [...new Set(x.filter((s): s is GutterSection => typeof s === "string" && isGutterSection(s)))]
       : [];
   return {
     tool,
-    extra: list(o.extra, isMoreSection),
-    folded: list(o.folded, isGutterSection),
+    // A blob from before `sections` kept only what the user added (`extra`);
+    // the three sections it took as read were never a choice, so the current
+    // default stands in for them. An empty `sections` is a choice, and stays.
+    sections: Array.isArray(o.sections)
+      ? list(o.sections)
+      : [...new Set([...DEFAULT_GUTTER_SECTIONS, ...list(o.extra)])],
+    folded: list(o.folded),
   };
 }
 
@@ -124,7 +125,7 @@ function emit(): void {
 function sameState(a: ToolGutterState, b: ToolGutterState): boolean {
   return (
     a.tool === b.tool &&
-    a.extra.join() === b.extra.join() &&
+    a.sections.join() === b.sections.join() &&
     a.folded.join() === b.folded.join()
   );
 }
@@ -177,18 +178,11 @@ export function toggleGutterTool(tool: GutterTool): void {
   commit({ ...s, tool: s.tool === tool ? null : tool });
 }
 
-export function closeGutterTool(): void {
-  commit({ ...current(), tool: null });
-}
-
-/** Make `section` present AND unfolded (adds a More section if absent). */
+/** Make `section` present AND unfolded (adds it if absent). */
 export function revealGutterSection(section: GutterSection): void {
   const s = current();
-  const extra =
-    isMoreSection(section) && !s.extra.includes(section)
-      ? [...s.extra, section]
-      : s.extra;
-  commit({ ...s, extra, folded: s.folded.filter((f) => f !== section) });
+  const sections = s.sections.includes(section) ? s.sections : [...s.sections, section];
+  commit({ ...s, sections, folded: s.folded.filter((f) => f !== section) });
 }
 
 export function toggleGutterSectionFold(section: GutterSection): void {
@@ -199,14 +193,12 @@ export function toggleGutterSectionFold(section: GutterSection): void {
   commit({ ...s, folded });
 }
 
-/** Remove an added (More) section from the gutter. Standing sections fold,
- *  they never leave. */
+/** Remove a section from the gutter. "More" brings it back. */
 export function removeGutterSection(section: GutterSection): void {
-  if (!isMoreSection(section)) return;
   const s = current();
   commit({
     ...s,
-    extra: s.extra.filter((x) => x !== section),
+    sections: s.sections.filter((x) => x !== section),
     folded: s.folded.filter((x) => x !== section),
   });
 }

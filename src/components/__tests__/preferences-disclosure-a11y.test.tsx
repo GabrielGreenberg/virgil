@@ -7,13 +7,14 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import PreferenceTree from "@/components/PreferenceTree";
-import SmartPreferences from "@/components/SmartPreferences";
+import SmartPreferencesSection from "@/components/SmartPreferences";
+import { SMART_PREFERENCES } from "@/lib/smart-preferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefNode } from "@/lib/preferences-tree";
 
 /**
  * Preferences' collapsible headers and its link-lock announce their state
- * (task 1305). Both headers were `<button onClick={() => setOpen(!open)}>`
+ * (task 1305). The headers were `<button onClick={() => setOpen(!open)}>`
  * around a bare rotating svg — no `aria-expanded`, no `type`, no ring — and
  * the lock conveyed on/off by accent ink alone. They now render through
  * `PodDisclosure`, and the lock is an `iconbtn-toggle` with `aria-pressed`.
@@ -29,18 +30,14 @@ describe("Preferences disclosures and lock announce their state", () => {
     expect(header.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("a SmartPreferences section header is a disclosure whose aria-expanded flips", () => {
-    render(<SmartPreferences prefs={DEFAULT_PREFS} onUpdate={() => {}} />);
-    const headers = document.querySelectorAll("button[aria-expanded]");
-    expect(headers.length).toBeGreaterThan(0);
-    const first = headers[0] as HTMLButtonElement;
-    expect(first.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(first);
-    expect(first.getAttribute("aria-expanded")).toBe("false");
-  });
-
   it("the link-lock is a pressed-state toggle with a fixed name", () => {
-    render(<SmartPreferences prefs={DEFAULT_PREFS} onUpdate={() => {}} />);
+    render(
+      <SmartPreferencesSection
+        section={SMART_PREFERENCES[0]}
+        prefs={DEFAULT_PREFS}
+        onUpdate={() => {}}
+      />,
+    );
     const locks = screen.getAllByRole("button", { name: "Lock to parent" });
     expect(locks.length).toBeGreaterThan(0);
     const lock = locks[0];

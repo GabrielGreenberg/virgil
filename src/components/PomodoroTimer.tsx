@@ -57,6 +57,7 @@
 
 import { memo, useCallback, useEffect, useState } from "react";
 import { iconHint } from "@/components/Hint";
+import { MenuToggleRow } from "@/components/menu";
 import { StatusDot } from "@/components/StatusDot";
 import { usePomodoro } from "@/hooks/usePomodoro";
 import { armPomodoroAudio } from "@/lib/pomodoro-chime";
@@ -74,27 +75,6 @@ import {
 } from "@/lib/pomodoro-timer";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 import { BarStatusPill } from "@/components/status/BarStatusPill";
-
-/** Tomato-clock: the house 16px stroke glyph — a round face with a leaf. */
-function TimerIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="13.5" r="7.5" />
-      <path d="M12 10v3.5l2.4 1.6" />
-      <path d="M8.6 4.6c1.4-.9 3-.9 3.4.4.4-1.3 2-1.3 3.4-.4" />
-    </svg>
-  );
-}
 
 function PlayIcon() {
   return (
@@ -118,31 +98,37 @@ function PauseIcon() {
  * carries a status dot so a timer left running behind a closed widget — or a
  * collapsed strip — is still visible as a state of the app.
  */
-function PomodoroToggleButtonImpl() {
-  const { open, status } = usePomodoro();
+/** The timer's row in the bar's ⋯ menu. A prop-less leaf, like the widget, so
+ *  the timer never reaches the cluster's props. */
+function PomodoroMenuRowImpl() {
+  const { open } = usePomodoro();
   return (
-    <button
-      type="button"
-      onClick={() => togglePomodoroOpen()}
-      className="topbarbtn relative"
-      aria-pressed={open}
-      {...iconHint({ label: "Timer" })}
-    >
-      <TimerIcon />
-      {/* The traffic-light SSOT's own vocabulary: `warn` is "pending /
-          working", `ok` is "done". Decorative — the button carries its own
-          name and hint. */}
-      {status === "running" && (
-        <StatusDot tone="warn" size="sm" className="absolute top-0 right-0" />
-      )}
-      {status === "done" && (
-        <StatusDot tone="ok" size="sm" className="absolute top-0 right-0" />
-      )}
-    </button>
+    <MenuToggleRow
+      id="more-timer"
+      label="Timer"
+      checked={open}
+      onToggle={() => togglePomodoroOpen()}
+    />
   );
 }
 
-export const PomodoroToggleButton = memo(PomodoroToggleButtonImpl);
+export const PomodoroMenuRow = memo(PomodoroMenuRowImpl);
+
+/** What keeps a timer visible behind a closed widget: a dot on the ⋯ trigger.
+ *  The traffic-light SSOT's own vocabulary: `warn` is "pending / working", `ok`
+ *  is "done". Decorative — the trigger carries its own name and hint. */
+function PomodoroStatusDotImpl() {
+  const { status } = usePomodoro();
+  if (status === "running") {
+    return <StatusDot tone="warn" size="sm" className="absolute top-0 right-0" />;
+  }
+  if (status === "done") {
+    return <StatusDot tone="ok" size="sm" className="absolute top-0 right-0" />;
+  }
+  return null;
+}
+
+export const PomodoroStatusDot = memo(PomodoroStatusDotImpl);
 
 /**
  * The two ghost controls inside the pill: the design system's indicator

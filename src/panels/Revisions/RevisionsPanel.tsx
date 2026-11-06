@@ -107,8 +107,8 @@ export default function RevisionsPanel({
     <CardListPanel<Item>
       kind="revisions"
       onAddOptions={onAddOptions}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["revision"]} />
           <CardViewModeMenuItems kind="revisions" />
         </ItemMenu>

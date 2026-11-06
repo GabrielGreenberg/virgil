@@ -112,7 +112,7 @@ const MENU_WIDTH_STYLE: CSSProperties = Object.freeze({
 
 /** The pill's chrome — the ONE class string, spelled here and nowhere else. */
 export const BAR_STATUS_PILL_CLASS =
-  "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border";
+  "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-2xs border";
 
 /** `quiet`: a grey statement, not an interruption — surface ground, light
  *  hairline, subtle ink. */
@@ -297,11 +297,11 @@ export function BarStatusMenuRow({
       style={menuRowRovingStyle(active, !!disabled)}
       data-bar-status-menu-row={id}
     >
-      <span className="text-[12px]">
+      <span className="text-xs">
         {label}
       </span>
       {detail && (
-        <span className="text-[10px] text-ink-subtle leading-snug">{detail}</span>
+        <span className="text-2xs text-ink-subtle leading-snug">{detail}</span>
       )}
     </button>
   );
@@ -310,7 +310,7 @@ export function BarStatusMenuRow({
 /** The detail block under a menu's rows — the sentence the pill truncates. */
 export function BarStatusMenuDetail({ children }: { children: ReactNode }) {
   return (
-    <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
+    <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-2xs text-ink-subtle leading-snug">
       {children}
     </div>
   );

@@ -750,12 +750,12 @@ export default function BibEntryCard({
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
           {addAction.alreadyAdded ? (
-            <span className="text-[10px] text-ink-muted">Added</span>
+            <span className="text-2xs text-ink-muted">Added</span>
           ) : (
             <button
               data-button-exempt="10px inline card-chrome chip, below Button's sm scale"
               onClick={(e) => { e.stopPropagation(); addAction.onAdd(); }}
-              className="focus-ring text-[10px] text-positive-ink hover:text-positive-strong hover:bg-positive-soft px-1.5 py-0.5 rounded"
+              className="focus-ring text-2xs text-positive-ink hover:text-positive-strong hover:bg-positive-soft px-1.5 py-0.5 rounded"
             >
               Add
             </button>
@@ -764,7 +764,7 @@ export default function BibEntryCard({
       ) : null}
       {hasOccCounter && (
         <span
-          className="inline-flex items-center gap-0.5 text-[10px] text-ink-muted"
+          className="inline-flex items-center gap-0.5 text-2xs text-ink-muted"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >

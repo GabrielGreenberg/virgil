@@ -125,7 +125,7 @@ export default function StyleApplyDialog({
                 </span>
                 {" "}
                 extra package{diff.extraPackages.length === 1 ? "" : "s"}:{" "}
-                <code className="font-mono text-[11px] text-ink-subtle">
+                <code className="font-mono text-2xs text-ink-subtle">
                   {diff.extraPackages.slice(0, 6).join(", ")}
                   {diff.extraPackages.length > 6
                     ? `, +${diff.extraPackages.length - 6} more`
@@ -137,7 +137,7 @@ export default function StyleApplyDialog({
               <p>
                 <span className="font-medium">{diff.extraMacros.length}</span>{" "}
                 custom macro{diff.extraMacros.length === 1 ? "" : "s"}:{" "}
-                <code className="font-mono text-[11px] text-ink-subtle">
+                <code className="font-mono text-2xs text-ink-subtle">
                   {diff.extraMacros.slice(0, 6).join(", ")}
                   {diff.extraMacros.length > 6
                     ? `, +${diff.extraMacros.length - 6} more`
@@ -152,7 +152,7 @@ export default function StyleApplyDialog({
                 </span>{" "}
                 length / counter setting
                 {diff.extraSetters.length === 1 ? "" : "s"}:{" "}
-                <code className="font-mono text-[11px] text-ink-subtle">
+                <code className="font-mono text-2xs text-ink-subtle">
                   {diff.extraSetters.slice(0, 6).join(", ")}
                 </code>
               </p>

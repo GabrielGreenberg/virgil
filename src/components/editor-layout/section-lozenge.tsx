@@ -22,7 +22,7 @@ export function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[
   if (sectionPath.length === 0) return null;
   return (
     <div
-      className="pointer-events-none text-[11px] whitespace-nowrap max-w-full truncate"
+      className="pointer-events-none text-2xs whitespace-nowrap max-w-full truncate"
       style={{ color: "var(--muted)" }}
     >
       {sectionPath.map((entry, i) => {

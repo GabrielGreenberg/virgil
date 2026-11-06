@@ -101,7 +101,7 @@ const SUBSTITUTIONS: Record<string, string> = {
 /**
  * Canonical form of an SVG subtree: tag + attributes sorted by name, recursive.
  *
- * Three normalizations, each a decision rather than a convenience:
+ * Four normalizations, each a decision rather than a convenience:
  *
  *  - **Attribute ORDER is not a rendering fact.** The primitive composes its
  *    `<rect>` in a different order than the two twins spelled it; nothing about
@@ -111,6 +111,7 @@ const SUBSTITUTIONS: Record<string, string> = {
  *    one says `fill="none"` explicitly. That is the same paint, so the
  *    canonicalizer resolves the inheritance instead of pretending the two
  *    strings match.
+ *  - **`data-icon-weight` is dropped**: it is what keeps these strokes as drawn.
  *  - **The root's `class` is dropped**, and only the root's. The shipped glyph
  *    carries `shrink-0` for both variants (the AI twin already did; the Todo
  *    one did not, and it is inert there — its `<button>` is not a flex
@@ -122,6 +123,9 @@ function canonical(el: Element, inheritedFill: string | null = null, isRoot = tr
   const fill = el.getAttribute("fill") ?? inheritedFill;
   const attrs: string[] = [];
   for (const a of [...el.attributes]) {
+    // Not a rendering fact of the glyph's own: it opts out of the app-wide icon
+    // weight, so the strokes compared here are the ones that actually paint.
+    if (a.name === "data-icon-weight") continue;
     if (isRoot && a.name === "class") continue;
     if (a.name === "fill") continue;
     attrs.push(`${a.name}=${a.value}`);
@@ -358,7 +362,7 @@ describe("nobody re-authors the glyph (the leg with teeth)", () => {
    * checkbox: take `Checkbox`, or be a declared holdout below. */
   it("no boolean-keyed tick glyph stands in for a checkbox", () => {
     // EMPTY since task 1361: the Help menu's "Helper mode" row — the last
-    // holdout — is a `MenuToggleRow` (in `HelpMenu.tsx`) now, not a hand-drawn
+    // holdout — is a `MenuToggleRow` (in `BarMoreMenu.tsx`) now, not a hand-drawn
     // tick. A new entry needs a stated owner, or it shelters the next one.
     const HOLDOUTS: string[] = [];
     const TICK = /\?\s*"(?:\\u2713|\u2713)"\s*:\s*""/;

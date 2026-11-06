@@ -10,9 +10,8 @@ import { describe, expect, it } from "vitest";
  * SSOT; THIS file pins the library-side wiring:
  *   - both strips share the ONE chrome module (no forked geometry),
  *   - the chrome constructs no measurement machinery,
- *   - the body frame is a plain CSS border on the manila-radius token,
- *   - the token guards (--library-edge derivation; no --topbar-border in
- *     library sources) carry over unchanged.
+ *   - the body is an unframed sheet on the manila-radius token,
+ *   - no --topbar-border in library sources.
  */
 
 // Repo root, up 4 from library/components/panel-tabs/__tests__.
@@ -30,16 +29,12 @@ describe("one shared folder-tab implementation (the forks are dead)", () => {
     ).toBe(false);
   });
 
-  it("inner AND outer tab wrappers render the shared FolderTabChrome + geometry SSOT", () => {
+  it("the inner tab wrapper renders the shared FolderTabChrome + geometry SSOT", () => {
     const inner = read("library/components/panel-tabs/PanelFolderTab.tsx");
-    const outer = read("src/components/editor-layout/DocumentFolderTab.tsx");
-    for (const src of [inner, outer]) {
-      expect(src).toContain('from "@/components/chrome/FolderTabChrome"');
-      expect(src).toContain('from "@/components/chrome/folder-tab-geometry"');
-      expect(src).toContain("<FolderTabChrome");
-    }
+    expect(inner).toContain('from "@/components/chrome/FolderTabChrome"');
+    expect(inner).toContain('from "@/components/chrome/folder-tab-geometry"');
+    expect(inner).toContain("<FolderTabChrome");
     expect(inner).toContain('variant="library"');
-    expect(outer).toContain('variant="topbar"');
   });
 
   it("both wrappers round their layout-owned width UP to a whole CSS px (calc-size) — fractional max-content widths would put the right cap's baked half-pixel stroke off device-pixel phase", () => {
@@ -50,7 +45,7 @@ describe("one shared folder-tab implementation (the forks are dead)", () => {
     // right edge to two ~50%-alpha columns at DPR 1 whenever the label's
     // text metrics land on a fraction.
     const inner = read("library/components/panel-tabs/PanelFolderTab.tsx");
-    const outer = read("src/components/editor-layout/DocumentFolderTab.tsx");
+    const outer = read("src/components/editor-layout/ActiveBarTab.tsx");
     for (const src of [inner, outer]) {
       expect(src).toContain(
         'width: "calc-size(max-content, round(up, size, 1px))"',
@@ -61,7 +56,7 @@ describe("one shared folder-tab implementation (the forks are dead)", () => {
   it("the chrome is measurement-free: no ResizeObserver / getBoundingClientRect anywhere in the tab-chrome sources", () => {
     for (const rel of [
       "library/components/panel-tabs/PanelFolderTab.tsx",
-      "src/components/editor-layout/DocumentFolderTab.tsx",
+      "src/components/editor-layout/ActiveBarTab.tsx",
       "src/components/chrome/FolderTabChrome.tsx",
       "src/components/chrome/folder-tab-geometry.ts",
     ]) {
@@ -77,11 +72,12 @@ describe("one shared folder-tab implementation (the forks are dead)", () => {
   });
 });
 
-describe("body frame — plain CSS border on the manila-radius token (measured SVG frame deleted)", () => {
+describe("body — an unframed sheet on the manila-radius token (measured SVG frame deleted)", () => {
   const body = read("library/components/TabbedLibraryPanel.tsx");
 
-  it("the page outline is a 1px --library-edge border + var(--library-manila-radius)", () => {
-    expect(body).toContain('border: "1px solid var(--library-edge)"');
+  it("the sheet has depth instead of an outline, on var(--library-manila-radius)", () => {
+    expect(body).not.toMatch(/border: "1px solid/);
+    expect(body).toContain('boxShadow: "var(--card-shadow-ambient)"');
     expect(body).toContain("var(--library-manila-radius)");
   });
 
@@ -131,8 +127,7 @@ describe("strip wiring — ink cushion + seam by construction", () => {
 /**
  * THE SEAM ROW HAS ONE PAINTER (task 2026-08-09-324).
  *
- * The page outline's top edge is the BODY's 1px `--library-edge` border. The
- * strip deliberately overlaps that row (`marginBottom: -1` + a 1px bottom
+ * The strip deliberately overlaps the sheet's top row (`marginBottom: -1` + a 1px bottom
  * padding) so its ACTIVE-TAB CHILD can cover the row under the tab's own
  * footprint — which means the strip is a CLIP/POSITIONING box, never a PAINT
  * box: CSS backgrounds fill the padding box, so an opaque field on the strip
@@ -257,25 +252,20 @@ describe("the seam row has ONE painter — the body's top border (task 324)", ()
     // only thing that had ever painted a continuous baseline — and being an
     // INSET shadow it painted above the strip's own background, which is why
     // the baseline looked continuous before 048 and had no owner after. The
-    // tempting fix is to re-add it re-toned onto --library-edge; that is
-    // rejected on purpose: it makes TWO painters own the same device row
+    // tempting fix is to re-add it re-toned; that is rejected on purpose: it makes TWO painters own the same device row
     // (shadow + body border), coinciding only at integer layout positions —
     // the sub-pixel double-line class task 050 spent a cycle killing.
     expect(strip).not.toMatch(/boxShadow:\s*["`]inset 0 -1px/);
   });
 
-  it("the library variant keeps bridgeSpan 'body' — the unbridged valleys now really do show the border", () => {
+  it("the bridge stays off the foot valleys — the unbridged valleys now really do show the border", () => {
     // folder-tab-geometry leaves the swoop-foot valleys unbridged ON THE
     // ASSUMPTION the body border shows through them (task 053's tuck
     // illusion). That assumption was false while the strip painted over the
-    // row; 324 makes it true. Flipping this to "full" would paper over the
-    // valleys with tab fill instead of letting the page outline run.
+    // row; 324 makes it true. Bridging them would paper over the valleys with
+    // tab fill instead of letting the page outline run.
     const geometry = read("src/components/chrome/folder-tab-geometry.ts");
-    const libraryVariant = geometry.slice(
-      geometry.indexOf("library: makeVariant({"),
-      geometry.indexOf("topbar: makeVariant({"),
-    );
-    expect(libraryVariant).toContain('bridgeSpan: "body"');
+    expect(geometry).toMatch(/bridgeX: S,\n\s*bridgeW: CAP_W - S,/);
   });
 });
 
@@ -304,32 +294,17 @@ function libFilesContaining(needle: string): string[] {
   return hits;
 }
 
-describe("library edge token — --library-edge re-pairing (task 2026-07-05-048)", () => {
-  it("--library-edge is defined in globals.css and DERIVED from --library-bg (can't drift to a warm-on-cool clash)", () => {
-    const globals = read("src/app/globals.css");
-    const m = globals.match(/--library-edge:\s*([^;]+);/);
-    expect(m, "--library-edge must be defined in globals.css").not.toBeNull();
-    // The deep fix: --library-edge's VALUE references var(--library-bg), so it
-    // is a function of the library surface — it tracks whichever --library-bg is
-    // live (the descriptive #eae7e2 or the promoted cool #ddeaee) and can never
-    // re-introduce the warm-taupe-on-cool clash task 048 removed. Defining it as
-    // a literal color (like the retired --topbar-border pairing) would fail this.
-    expect(m![1]).toContain("var(--library-bg)");
-  });
-
-  it("no library-surface chrome consumes --topbar-border (every library edge rides --library-edge)", () => {
+describe("library edges (task 2026-07-05-048)", () => {
+  it("no library-surface chrome consumes --topbar-border", () => {
     // The strip seam, tab stroke, body/page border, and NavPod all used to draw
-    // their edge in the top-bar token --topbar-border, which clashed over the
-    // library field. Task 048 re-pointed them at --library-edge; this guard
-    // fails the build if any library source re-grabs the top-bar token. (The
-    // shared chrome module carries BOTH tokens as named variants — the library
-    // variant's strokeVar is pinned to --library-edge by
-    // folder-tab-geometry.test.ts.)
+    // their edge in the top-bar token --topbar-border. The Library's surfaces
+    // are unframed now; this guard fails the build if any library source
+    // re-grabs the top-bar token.
     const offenders = libFilesContaining("var(--topbar-border)");
     expect(
       offenders,
-      `Library edges must derive from --library-edge, not the top-bar token ` +
-        `--topbar-border (task 048). Offending file(s): ${offenders.join(", ")}`,
+      `Library surfaces take no top-bar edge (task 048). ` +
+        `Offending file(s): ${offenders.join(", ")}`,
     ).toEqual([]);
   });
 });

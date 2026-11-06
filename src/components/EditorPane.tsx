@@ -343,6 +343,7 @@ import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
 import { PanelChromeProvider, useCycle } from "./panel-primitives";
 import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { useMarginLabelMode } from "@/lib/editor-geometry/use-margin-label-mode";
 import { useToolGutterState } from "@/lib/tool-gutter-store";
 import { ToolGutter } from "./editor-layout/tool-gutter/ToolGutter";
 import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
@@ -5611,6 +5612,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Task 1440 — the cards-right / tools-left layout. Read once per render
   // (one localStorage read; a flip takes effect on reload like every flag).
   const gutterLayout = gutterLayoutOn();
+  const marginLabelMode = useMarginLabelMode(editor, gutterLayout || !marginaliaLane.hosted);
   const toolGutterState = useToolGutterState();
   const visiblePanels = useMemo<PanelKind[]>(
     () =>
@@ -7611,6 +7613,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               <DocumentInterruptionBanner docId={docId} />
             )}
             <div
+              data-margin-labels={marginLabelMode}
               className="editor-pane-pod"
               {...{ [MARGINALIA_HOST_ATTR]: "" }}
               style={{
@@ -7638,9 +7641,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // `clip` (NOT `hidden`): `clip` doesn't establish a scroll
                 // container or new containing block, so the pod's sticky
                 // descendants (frame ring, caps, lozenge) still latch to the
-                // scroll root unchanged.
-                borderTopLeftRadius: "var(--editor-pod-radius)",
-                borderTopRightRadius: "var(--editor-pod-radius)",
+                // scroll root unchanged. Under a chrome header this top edge
+                // sits mid-page, so a rounded corner would be a notch there.
+                borderTopLeftRadius: podHeaderH > 0 ? 0 : "var(--editor-pod-radius)",
+                borderTopRightRadius: podHeaderH > 0 ? 0 : "var(--editor-pod-radius)",
                 overflow: "clip",
                 // Marginalia portals markers as `position: absolute`
                 // children of the closest `[data-marginalia-host]`. The
@@ -8578,7 +8582,7 @@ function SideCollapseToggle({
           viewPrefs.expandRight();
         }
       }}
-      className={bare ? "iconbtn-md" : "iconbtn-md iconbtn-toggle"}
+      className={bare ? "iconbtn-md iconbtn-bare" : "iconbtn-md iconbtn-toggle"}
       aria-pressed={isOpen}
       // Off the iconbtn ladder on purpose: the strip's 18px panel glyphs
       // (panel-icons.tsx) sit directly below, and this toggle matches them.
@@ -8799,8 +8803,8 @@ function PaneRail({
     // lives IN the column — first in the tool gutter's tools row on the left
     // (passed as its `leading`), on a sticky head row above the cards on the
     // right — so no strip column stands between the column and the window
-    // edge. The omni's own sticky chrome (navigator, bins) pins below that
-    // head through `--omni-sticky-top`, set on the rail below.
+    // edge. The omni's own sticky chrome (navigator, bins) shares that head
+    // row, through the variables set on the rail below.
     const omniNode: React.ReactNode =
       gutterLayout && !isLeft ? (
         <div data-gutter-side-host={side}>
@@ -8866,10 +8870,15 @@ function PaneRail({
           // establishing a scroll context, so descendants' sticky
           // positioning still latches to the row.
           overflow: 'clip',
-          // The right gutter's sticky head row (above): the omni's sticky
-          // navigator and bins read this and pin below it.
+          // The right gutter's sticky head row (above): the omni's navigator
+          // and bins sit ON it, to the left of the toggle, and the cards start
+          // below it.
           ...(gutterLayout && !isLeft
-            ? { ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)" }
+            ? {
+                ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)",
+                ["--omni-frame-z" as string]: 30,
+                ["--omni-head-clear" as string]: "28px",
+              }
             : null),
         }}
       >

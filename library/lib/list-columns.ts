@@ -117,7 +117,7 @@ export const DEFAULT_WIDTHS: Record<ResizableColId, number> = {
   author: 130,
   // F#14: bib-imp folded INTO status (a 4th "✓ imp" pill) — widened ~52px so
   // the freed bib-imp space holds the extra pill instead of flowing to title.
-  status: 208,
+  status: 148,
   citekey: 140,
 };
 
@@ -144,6 +144,62 @@ export const RESIZER_WIDTH = 4;
  *  drag ghost can re-anchor the RESOLVED value on its body-appended clone
  *  (outside the list root the var is undefined and the ghost's
  *  `grid-template-columns: var(...)` would collapse to `none`). */
+/** The title column's floor: the list's reason for being, so it is the last
+ *  thing to get squeezed. */
+export const TITLE_MIN_WIDTH = 160;
+
+/** How wide the title gets before the status column may take any slack. */
+const TITLE_COMFORT_WIDTH = 280;
+
+/** What gives way, first to last, when the list is narrower than its columns:
+ *  the citekey is one click away in the detail, the status reads again the
+ *  moment the list is wider, and author + title are what identify a paper. */
+const YIELD_ORDER: readonly ReorderableColId[] = ["citekey", "status", "year"];
+
+/** The status column gives up width before it gives up its place: this is as
+ *  narrow as its four facet labels stay readable. */
+const STATUS_FLOOR = 148;
+
+function statusFloor(widths: Record<ResizableColId, number>): number {
+  return Math.min(widths.status, STATUS_FLOOR);
+}
+
+/** A column's smallest acceptable width. */
+function floorFor(col: ReorderableColId, widths: Record<ResizableColId, number>): number {
+  if (col === "title") return TITLE_MIN_WIDTH;
+  if (col === "status") return statusFloor(widths);
+  return widths[col];
+}
+
+function columnsWidth(
+  order: readonly ReorderableColId[],
+  widths: Record<ResizableColId, number>,
+): number {
+  const tracks = order.reduce((sum, col) => sum + floorFor(col, widths), 0);
+  return tracks + (order.length - 1) * RESIZER_WIDTH;
+}
+
+/**
+ * The columns that fit `availablePx`, in their live order. A column that does
+ * not fit steps aside whole, so a narrow list shows fewer columns rather than
+ * clipping one to a letter. `availablePx <= 0` means unmeasured and keeps
+ * everything. Returns `order` itself when nothing yields, so a caller can
+ * compare by identity.
+ */
+export function fitColumns(
+  order: readonly ReorderableColId[],
+  widths: Record<ResizableColId, number>,
+  availablePx: number,
+): readonly ReorderableColId[] {
+  if (availablePx <= 0) return order;
+  let cols = order;
+  for (const col of YIELD_ORDER) {
+    if (columnsWidth(cols, widths) <= availablePx) break;
+    cols = cols.filter((c) => c !== col);
+  }
+  return cols;
+}
+
 export const COL_TEMPLATE_VAR = "--lib-col-template";
 export const COL_TEMPLATE_REF = `var(${COL_TEMPLATE_VAR})`;
 
@@ -153,8 +209,18 @@ export function clampWidth(col: ResizableColId, w: number): number {
 
 /** Track string for one content column: the 1fr filler for `title`, else its
  *  px width. */
-function trackFor(col: ReorderableColId, widths: Record<ResizableColId, number>): string {
-  return col === "title" ? "1fr" : `${widths[col]}px`;
+function trackFor(
+  col: ReorderableColId,
+  widths: Record<ResizableColId, number>,
+  fixedPx: number,
+): string {
+  // The floor decides what yields; the track itself can always shrink, so a
+  // list too narrow for even author + title still ellipsizes its titles.
+  if (col === "title") return "minmax(0, 1fr)";
+  if (col !== "status") return `${widths[col]}px`;
+  const floor = statusFloor(widths);
+  if (floor === widths.status) return `${floor}px`;
+  return `clamp(${floor}px, calc(100% - ${fixedPx + TITLE_COMFORT_WIDTH}px), ${widths.status}px)`;
 }
 
 /**
@@ -162,16 +228,23 @@ function trackFor(col: ReorderableColId, widths: Record<ResizableColId, number>)
  * columns we emit N tracks with a `RESIZER_WIDTH` track BETWEEN every adjacent
  * pair (N-1 resizers) — for the default 5 columns that's the same 9-track grid
  * as before (no trailing bib-imp track, dropped in F#14). `title` is always the
- * lone 1fr; every other column gets its px width. The header + every row import
+ * lone 1fr; `status` gives its slack to the title, down to its floor; every
+ * other column gets its px width. The header + every row import
  * this single builder so they line up pixel-for-pixel.
  */
 export function gridTemplate(
   widths: Record<ResizableColId, number>,
   order: readonly ReorderableColId[] = DEFAULT_COL_ORDER,
 ): string {
+  const fixedPx =
+    order.reduce(
+      (sum, col) => (col === "title" || col === "status" ? sum : sum + widths[col]),
+      0,
+    ) +
+    (order.length - 1) * RESIZER_WIDTH;
   const tracks: string[] = [];
   order.forEach((col, i) => {
-    tracks.push(trackFor(col, widths));
+    tracks.push(trackFor(col, widths, fixedPx));
     if (i < order.length - 1) tracks.push(`${RESIZER_WIDTH}px`);
   });
   return tracks.join(" ");

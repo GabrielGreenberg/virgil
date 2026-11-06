@@ -35,10 +35,8 @@ describe("card separator census (task 969)", () => {
     expect(offenders, `Render <CardSeparator selected={halo} theme={theme} /> instead`).toEqual([]);
   });
 
-  it("the primitive is read: PanelCard and the card bodies render CardSeparator", () => {
-    const prim = readFileSync(join(SRC, PRIMITIVE), "utf8");
-    expect(prim).toMatch(/<CardSeparator selected=\{selected\}/);
-    for (const rel of ["panels/Examples/ExampleCard.tsx", "panels/Citations/CitationCard.tsx"]) {
+  it("the primitive is read: the card bodies render CardSeparator", () => {
+    for (const rel of ["panels/Citations/CitationCard.tsx"]) {
       const t = readFileSync(join(SRC, rel), "utf8");
       expect(t, rel).toMatch(/<CardSeparator selected=\{isHaloed\}/);
     }

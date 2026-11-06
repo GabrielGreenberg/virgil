@@ -77,7 +77,7 @@ export function HexColorField({
   onChange,
   className = "flex items-center gap-2",
   swatchClassName = "w-6 h-6 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent",
-  inputClassName = "text-[11px] font-mono w-[70px] px-1 py-0.5",
+  inputClassName = "text-2xs font-mono w-[70px] px-1 py-0.5",
 }: HexColorFieldProps) {
   const [text, setText] = useState(value);
   const [invalid, setInvalid] = useState(false);

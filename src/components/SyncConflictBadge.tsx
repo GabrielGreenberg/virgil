@@ -147,7 +147,7 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
     const ok = await confirm({
       title: `Delete ${plan.length} file${plan.length === 1 ? "" : "s"}?`,
       message: (
-        <div className="flex flex-col gap-2 text-[12px]">
+        <div className="flex flex-col gap-2 text-xs">
           <p>
             These are the files in this paper&apos;s <code>virgil/</code> folder
             that Virgil can prove carry nothing:{" "}
@@ -161,7 +161,7 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
             {swaps.length > 0 && <>leftover browser temp files</>}. Deleting is
             permanent — Virgil keeps no copy.
           </p>
-          <ul className="list-none font-mono text-[11px] leading-snug max-h-[180px] overflow-y-auto">
+          <ul className="list-none font-mono text-2xs leading-snug max-h-[180px] overflow-y-auto">
             {plan.map((e) => (
               <li key={e.name} className="truncate">
                 {e.name}
@@ -306,7 +306,7 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
                 </>
               )}
             </BarStatusMenuDetail>
-            <ul className="px-3 pt-1.5 pb-1 text-[10px] text-ink-subtle leading-snug list-none">
+            <ul className="px-3 pt-1.5 pb-1 text-2xs text-ink-subtle leading-snug list-none">
               {groups.map((g) => (
                 <li key={g.base} className="flex items-baseline justify-between gap-2">
                   <span

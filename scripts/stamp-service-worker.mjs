@@ -86,7 +86,7 @@ export const PUBLIC_ASSET_CLASSES = [
   {
     entry: "pdfjs",
     mode: "precache",
-    why: "the Library's PDF viewer (PdfView) — the Library is offline-first, and content shas make it a one-time ~9 MB",
+    why: "the PDF viewer (PdfViewer) for the Library and the compiled pane — both work offline, and content shas make it a one-time ~9 MB",
   },
   {
     entry: "examples",

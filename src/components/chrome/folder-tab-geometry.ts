@@ -1,11 +1,8 @@
 /**
  * Folder-tab chrome geometry — the ONE SSOT for the manila folder-tab
- * silhouette shared by BOTH tab strips:
- *
- *   - the OUTER Virgil-bar document/paper/library tabs
- *     (src/components/editor-layout/DocumentFolderTab.tsx), and
- *   - the INNER Library panel tabs
- *     (library/components/panel-tabs/PanelFolderTab.tsx).
+ * silhouette of the INNER Library panel tabs
+ * (library/components/panel-tabs/PanelFolderTab.tsx). The Virgil bar's outer
+ * tabs are lozenges (src/components/editor-layout/ActiveBarTab.tsx).
  *
  * This module replaces the two forked measured-SVG path builders
  * (library/components/panel-tabs/folder-path.ts and
@@ -199,66 +196,33 @@ export interface FolderTabCapSet {
   rightTucked: FolderTabCapArt;
 }
 
-export type FolderTabVariant = "library" | "topbar";
+export type FolderTabVariant = "library";
 
 export interface FolderTabVariantSpec {
   /** Tab body height (top of tab to the flat base between the feet). */
   tabH: number;
   /** Wrapper/cap height: tabH + 1px bottom stroke gutter + TAB_TOP_GUTTER. */
   svgH: number;
-  /** Edge color for stroke + middle border-top. CSS var so theming works.
-   *  Library chrome MUST ride --library-edge (task 048); the top bar keeps
-   *  its own warm --topbar-border. */
+  /** Edge color for stroke + middle border-top. CSS var so theming works. */
   strokeVar: string;
   /** Content row inset from the wrapper's left edge (the foot flare). */
   contentInsetLeft: number;
-  /** Content row inset from the wrapper's right edge. The library variant
-   *  carries the F#8 +1 INSIDE its footprint (historical inner-tab box:
-   *  svgW = 2S + tabW + 1); the topbar variant keeps its historical
-   *  2S + content footprint and pokes the cap out instead (see
-   *  capRightOverhang) so the inline↔folder pixel-stability contract
-   *  (ACTIVE_TAB_*_SHIFT_PX / InlineTabLabel padding) is untouched. */
+  /** Content row inset from the wrapper's right edge, carrying the F#8 +1
+   *  INSIDE the footprint (historical inner-tab box: svgW = 2S + tabW + 1). */
   contentInsetRight: number;
   /** The content row's own inner padding (px), inside the insets above: the
-   *  gap from the flat body's edge to the first / last content item. Read by
-   *  the tab renderers AND by every surface that pre-reserves a folder's
-   *  footprint (InlineTabLabel's library-pinned padding), so the two cannot
-   *  drift apart. */
+   *  gap from the flat body's edge to the first / last content item. */
   contentPadLeft: number;
   contentPadRight: number;
-  /** How far the right cap's viewport extends PAST the wrapper's right edge
-   *  (px). 0 when the +1 stroke cushion is part of the footprint (library);
-   *  1 for the topbar variant, whose footprint historically excluded the
-   *  cushion — the previously-clipped outer half-pixel of the right foot
-   *  stroke now renders into the inter-tab gap instead of being cut off. */
-  capRightOverhang: number;
   /**
-   * The ACTIVE tab's reserved content floor (px) — the F#15 floor, per
-   * variant. An active tab RESISTS the tab-strip compression ladder
-   * (tab-strip-occupancy.ts): it is `flex-shrink: 0` and holds its full
-   * name, so this floor is a MINIMUM SIZE for a short name, never a
-   * compression stop. The two variants carry different numbers because
-   * their content rows differ — the library row holds a pin, an icon, a menu
-   * and a close beside the label; the topbar row holds a label and a close —
-   * and BOTH strips read the number here rather than hand-writing it
-   * (the outer tab used to spell `minWidth: 80` privately, task 561).
-   * The library wrapper's floor is `2*FOLDER_TAB_SWOOP + activeMinContent +
-   * 1` (the +1 is the F#8 cushion inside its footprint); the topbar variant
-   * places the floor on its content row directly.
+   * The ACTIVE tab's reserved content floor (px) — the F#15 floor. An active
+   * tab RESISTS the tab-strip compression ladder (tab-strip-occupancy.ts): it
+   * is `flex-shrink: 0` and holds its full name, so this floor is a MINIMUM
+   * SIZE for a short name, never a compression stop. The wrapper's floor is
+   * `2*FOLDER_TAB_SWOOP + activeMinContent + 1` (the +1 is the F#8 cushion
+   * inside its footprint).
    */
   activeMinContent: number;
-  /** Seam-bridge span: "body" bridges only the flat-body run so the body's
-   *  top border shows in the swoop valleys (inner tabs, task 053); "full"
-   *  bridges the entire base including the feet (outer tabs' historical
-   *  full-width cover of the topbar border). Either way the bridge is scoped
-   *  to ONE TAB's footprint — "full" never paints into the inter-tab gap, so a
-   *  baseline is expected there in both strips.
-   *  NB "body" assumes the body's top border is actually VISIBLE in those
-   *  valleys, which was false until task 324: the library strip's own opaque
-   *  background covered that border across the whole strip, valleys included.
-   *  See the seam-row comment in library/components/panel-tabs/PanelTabStrip.tsx
-   *  before making a valley look "unpainted" by flipping this to "full". */
-  bridgeSpan: "body" | "full";
   caps: FolderTabCapSet;
 }
 
@@ -272,13 +236,7 @@ const S = FOLDER_TAB_SWOOP;
  * ground-truth full-tab paths are exactly the union of these caps plus the
  * middle's straight border (locked by folder-tab-geometry.test.ts).
  */
-function buildCapSet(args: {
-  tabH: number;
-  bridgeSpan: "body" | "full";
-  capRightOverhang: number;
-}): FolderTabCapSet {
-  const { tabH, bridgeSpan, capRightOverhang } = args;
-
+function buildCapSet(tabH: number): FolderTabCapSet {
   // LEFT cap, untucked. Local space: foot outer edge at x=0, vertical side
   // at x=S, shoulder ending at x=S+R on the flat top (y=0). Fill closes out
   // to x=CAP_W so it overlaps the middle's background by 1px.
@@ -299,11 +257,14 @@ function buildCapSet(args: {
       `V ${tabH - S}`,
       `A ${S} ${S} 0 0 1 0 ${tabH}`,
     ].join(" "),
-    // "body": bridge from the vertical side (x=S) inward — the foot valley
-    // [0, S) is left unbridged so the body's top border shows under it.
-    // "full": bridge the whole cap footprint (feet included).
-    bridgeX: bridgeSpan === "body" ? S : 0,
-    bridgeW: bridgeSpan === "body" ? CAP_W - S : CAP_W,
+    // Bridge from the vertical side (x=S) inward: the foot valley [0, S) is
+    // left unbridged so the body's top border shows under it. NB this assumes
+    // that border is actually VISIBLE in the valleys, which was false until
+    // task 324: the strip's own opaque background covered it. See the seam-row
+    // comment in library/components/panel-tabs/PanelTabStrip.tsx before making
+    // a valley look "unpainted" by bridging it.
+    bridgeX: S,
+    bridgeW: CAP_W - S,
   };
 
   // LEFT cap, tucked (task 053): the same art slid inward by R. The exposed
@@ -337,7 +298,7 @@ function buildCapSet(args: {
   // outer half inks the final viewport column [CAP_INNER, CAP_W] — the F#8
   // cushion). NOTE the joint-overlap mechanism: the 1px overlap with the
   // middle comes from the MIDDLE reaching 1px into this cap's footprint
-  // (middleInsetRight = CAP_INNER − overhang, i.e. CAP_W − 1 inside the
+  // (middleInsetRight = CAP_INNER, i.e. CAP_W − 1 inside the
   // viewport) — the fill's x∈[−1, 0) lead-in is CLIPPED by the viewport
   // (viewBox starts at 0) and renders nothing on its own.
   const right: FolderTabCapArt = {
@@ -368,11 +329,9 @@ function buildCapSet(args: {
       `V ${tabH - S}`,
       `A ${S} ${S} 0 0 0 ${CAP_INNER} ${tabH}`,
     ].join(" "),
-    // "body": bridge ends at the vertical side (x=R). "full": bridge to the
-    // wrapper's right edge — the viewport minus the overhang, so the bridge
-    // never paints past the tab's footprint into the inter-tab gap.
+    // The bridge ends at the vertical side (x=R).
     bridgeX: 0,
-    bridgeW: bridgeSpan === "body" ? R : CAP_W - capRightOverhang,
+    bridgeW: R,
   };
 
   // RIGHT cap, tucked: same art in a wider viewport; the exposed strip on
@@ -395,8 +354,6 @@ function makeVariant(args: {
   contentInsetRight: number;
   contentPadLeft: number;
   contentPadRight: number;
-  capRightOverhang: number;
-  bridgeSpan: "body" | "full";
   activeMinContent: number;
 }): FolderTabVariantSpec {
   return {
@@ -411,45 +368,25 @@ function makeVariant(args: {
     contentInsetRight: args.contentInsetRight,
     contentPadLeft: args.contentPadLeft,
     contentPadRight: args.contentPadRight,
-    capRightOverhang: args.capRightOverhang,
-    bridgeSpan: args.bridgeSpan,
-    caps: buildCapSet({
-      tabH: args.tabH,
-      bridgeSpan: args.bridgeSpan,
-      capRightOverhang: args.capRightOverhang,
-    }),
+    caps: buildCapSet(args.tabH),
   };
 }
 
 /**
- * The two strips' named variants. Heights, paddings, edge tokens and seam
- * spans differ; every curve, cushion and crispness constant is shared.
+ * The folder tab's named variants. Only the Library's inner tabs are folders
+ * now: the Virgil bar's outer tabs are lozenges (ActiveBarTab).
  */
 export const FOLDER_TAB_VARIANTS: Record<FolderTabVariant, FolderTabVariantSpec> = {
   /** Inner Library panel tabs (PanelFolderTab). Historical box:
-   *  svgW = 2S + tabW + 1, svgH = 34, stroke --library-edge. */
+   *  svgW = 2S + tabW + 1, svgH = 34, no stroke: the tab is the top of the
+   *  unframed sheet it opens, and only its fill draws it. */
   library: makeVariant({
     tabH: 32,
-    strokeVar: "var(--library-edge, #b3c0c4)",
+    strokeVar: "transparent",
     contentInsetRight: S + 1, // the F#8 +1 lives inside the footprint
     contentPadLeft: 14,
     contentPadRight: 8,
-    capRightOverhang: 0,
-    bridgeSpan: "body",
     activeMinContent: 116,
-  }),
-  /** Outer Virgil-bar tabs (DocumentFolderTab). Historical box:
-   *  svgW = 2S + tabW (no +1 — preserved for inline↔folder pixel parity),
-   *  stroke --topbar-border. */
-  topbar: makeVariant({
-    tabH: 30,
-    strokeVar: "var(--topbar-border)",
-    contentInsetRight: S,
-    contentPadLeft: 14,
-    contentPadRight: 4,
-    capRightOverhang: 1, // the F#8 cushion pokes out instead
-    bridgeSpan: "full",
-    activeMinContent: 80,
   }),
 };
 
@@ -460,8 +397,7 @@ export function middleInsetLeft(tucked: boolean): number {
 }
 
 /** Middle-piece inset from the wrapper's RIGHT edge. The cap overlaps the
- *  middle by 1px of identical ink; a right-overhanging cap (topbar) sits 1px
- *  further out, so the middle follows it to keep the same 1px overlap. */
-export function middleInsetRight(tucked: boolean, capRightOverhang: number): number {
-  return CAP_INNER - capRightOverhang + (tucked ? MANILA_RADIUS : 0);
+ *  middle by 1px of identical ink. */
+export function middleInsetRight(tucked: boolean): number {
+  return CAP_INNER + (tucked ? MANILA_RADIUS : 0);
 }
