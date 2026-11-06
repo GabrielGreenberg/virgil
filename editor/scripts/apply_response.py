@@ -281,14 +281,21 @@ SUBCOMMANDS = {
 # no `links` array — the tie is id equality, anchoring.md). Re-anchoring or
 # archiving these means moving / orphaning the marker in the .tex, an atom edit
 # that's out of scope for the sidecar-level mutation ops — they refuse + flag.
-ATOM_BEARING_PANELS = {"footnotes", "citations"}
+# READ from card_tables.json (task 1486): the app derives the same set from its
+# atom registry (CARD_ATOMS → panelForCardKind), and the manifest suite pins the
+# JSON row to that derivation, so a new card-bearing atom cannot be mis-gated here.
+ATOM_BEARING_PANELS: frozenset[str] = frozenset(_CARD_TABLES["atomBearingPanels"])
 
 # The proposal family: a card carrying `original_text` / `suggested_text` / an
 # anchor, whose accept/reject transition is a .tex splice + a Task completion
 # (cmd_accept / cmd_reject, below). Declared here rather than beside those
 # handlers because BOTH policy tables read it: accept/reject are kind-gated
 # rather than panel-gated, and OP_OWNED_FIELDS qualifies `status` by it.
-SUGGESTION_KINDS = {"revision-suggestion", "cutter-suggestion"}
+# DERIVED, never spelled (task 1486): the family is exactly the key set of the
+# app's FAMILY_MEANS_DELETION (one row per pending-change family), which
+# card_tables.json already carries; the manifest suite pins those keys to the
+# app's SUGGESTION_KINDS.
+SUGGESTION_KINDS: frozenset[str] = frozenset(_SUGGESTION_LANDING["familyMeansDeletion"])
 
 # Card-hosting sidecars that are NOT writeback targets (WRITEBACK_EXEMPT_PANELS in
 # tools/check-coherence.mjs) but ARE stores a card id resolves into. Declared here,
