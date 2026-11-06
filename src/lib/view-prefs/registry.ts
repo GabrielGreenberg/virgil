@@ -44,6 +44,7 @@ import {
 import {
   ALL_MARKER_TYPES,
   HIDEABLE_MARKER_TYPES,
+  panelForHighlightType,
   panelForMarkerType,
   type HideableMarkerType,
 } from "@/cards/marker-meta";
@@ -224,6 +225,18 @@ const MARGINALIA_TYPE_LABELS: Record<HideableMarkerType, string> = Object.fromEn
   HIDEABLE_MARKER_TYPES.map((t) => [t, PANEL_REGISTRY[panelForMarkerType(t)].shortLabel]),
 ) as Record<HideableMarkerType, string>;
 
+/**
+ * Menu labels for the per-type highlight hide rows — each highlight type's
+ * owning panel's `PANEL_REGISTRY.shortLabel` (`panelForHighlightType`, derived
+ * from `CARD_REGISTRY` through the kinds' `cssToken`). Task 1490: this was the
+ * hand table `{ note: "Notes", todo: "Todo", … }` that 1475 missed, so the View
+ * menu called the Todo List "To-dos" under Marginalia and "Todo" under
+ * Highlights. Exhaustive over `MENU_HIGHLIGHT_TYPES`.
+ */
+const HIGHLIGHT_TYPE_LABELS: Record<MenuHighlightType, string> = Object.fromEntries(
+  MENU_HIGHLIGHT_TYPES.map((t) => [t, PANEL_REGISTRY[panelForHighlightType(t)].shortLabel]),
+) as Record<MenuHighlightType, string>;
+
 export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
   // promote:false — ship default frozen at the registry value (task 057). A prior
@@ -268,7 +281,7 @@ export const VIEW_PREF_REGISTRY = {
   hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: MENU_HIGHLIGHT_TYPES,
                           domain: ALL_HIGHLIGHT_TYPES,
                           polarity: "hidden", label: "Highlight types", menu: "highlights", memberRowIdPrefix: "highlights-type-",
-                          memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } satisfies Record<MenuHighlightType, string> },
+                          memberLabels: HIGHLIGHT_TYPE_LABELS },
   // Dividers
   dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: DIVIDER_LEVELS,
                    polarity: "present", label: "Divider levels", menu: "dividers", memberRowIdPrefix: "divider-level-",
