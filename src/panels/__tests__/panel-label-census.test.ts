@@ -30,7 +30,12 @@ import {
   ARCHIVE_ORIGIN_PANEL_LABEL,
 } from "@/lib/archive-origin";
 import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
-import { HIDEABLE_MARKER_TYPES, panelForMarkerType } from "@/cards/marker-meta";
+import {
+  HIDEABLE_MARKER_TYPES,
+  panelForHighlightType,
+  panelForMarkerType,
+} from "@/cards/marker-meta";
+import { MENU_HIGHLIGHT_TYPES } from "@/lib/view-prefs/highlight-types";
 
 const namesOf = (p: PanelKind) => [PANEL_REGISTRY[p].label, PANEL_REGISTRY[p].shortLabel];
 
@@ -69,6 +74,18 @@ describe("panel names derive from PANEL_REGISTRY (task 1475)", () => {
     }
   });
 
+  it("the highlight hide rows use the highlight type's panel's shortLabel (task 1490)", () => {
+    const labels = VIEW_PREF_REGISTRY.hiddenHighlightTypes.memberLabels as Record<string, string>;
+    for (const t of MENU_HIGHLIGHT_TYPES) {
+      expect(labels[t]).toBe(PANEL_REGISTRY[panelForHighlightType(t)].shortLabel);
+    }
+    // Both View-menu groups spell a shared panel identically.
+    const marg = VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.memberLabels as Record<string, string>;
+    expect(labels.todo).toBe(marg.todo);
+    expect(labels.note).toBe(marg.note);
+    expect(labels.cut).toBe(marg.cut);
+  });
+
   it("the Todo List is called by its two registry names and no other", () => {
     const seen = new Set([
       PANEL_BODY_LABELS.todo,
@@ -76,6 +93,7 @@ describe("panel names derive from PANEL_REGISTRY (task 1475)", () => {
       SCOPE_LABEL.todos,
       ARCHIVE_ORIGIN_PANEL_LABEL.todos,
       (VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.memberLabels as Record<string, string>).todo,
+      (VIEW_PREF_REGISTRY.hiddenHighlightTypes.memberLabels as Record<string, string>).todo,
     ]);
     for (const name of seen) expect(namesOf("todo")).toContain(name);
   });
@@ -94,7 +112,10 @@ const PANEL_NAME_SPELLINGS: ReadonlySet<string> = new Set([
   "Cutter cards",
 ]);
 
-const VALUE_RE = /^\s*["']?[\w-]+["']?\s*:\s*["']([^"'\n]+)["']/gm;
+/** A `key: "value"` pair ANYWHERE on a line — not anchored at line start
+ *  (task 1490): the anchored form saw one pair per line, so a table written on
+ *  one line (`{ note: "Notes", todo: "Todo", … }`) yielded zero hits. */
+const VALUE_RE = /["']?[\w-]+["']?\s*:\s*["']([^"'\n]+)["']/g;
 const TABLE_THRESHOLD = 3;
 
 function panelNameValues(src: string): string[] {
@@ -118,6 +139,11 @@ describe("CENSUS: no panel-name literal table outside PANEL_REGISTRY (task 1475)
   cut:      "Cutter cards",
   todo:     "To-dos",
 };`;
+    expect(isLabelTable(old)).toBe(true);
+  });
+
+  it("the scanner flags a one-line table (the pre-1490 highlight memberLabels)", () => {
+    const old = `memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },`;
     expect(isLabelTable(old)).toBe(true);
   });
 
