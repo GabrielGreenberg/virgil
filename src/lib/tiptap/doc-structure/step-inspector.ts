@@ -278,104 +278,89 @@ function collectRange(
 }
 
 // ---------------------------------------------------------------------------
-// Heading structural-attr comparison.
+// "Changed": EVERY field the snapshot holds, by one declared table.
 // ---------------------------------------------------------------------------
 
 /**
- * A NUMBERING input is anything that can change a counter's value — and
- * DOCUMENT ORDER is one (task 892). A section's number, a figure's number and
- * every `\ref` to either are functions of where the entity sits among its
- * siblings, so a same-uuid entity that SURVIVES at a different position (a
- * delete+insert MOVE: an Outline reorder, a block drag, the undo of either)
- * is a numbering change exactly as much as a level or label edit is. Until
- * 892 these two predicates compared attrs only, a moved heading reconciled to
- * nothing, and the numberer — whose gate reads `changedHeadings` /
- * `changedFigures` — never woke: the Outline showed "3, 1, 2" until some
- * unrelated edit happened to wake it. Examples (`exampleChanged`, task 101),
- * footnotes and citations already carried the position test; this is the
- * same rule, so all the numbered kinds now share one definition of "moved".
+ * How each field of a keyed entry takes part in "did this re-collected entity
+ * CHANGE?" (task 1495):
+ *   - `key`      — the entity's address; equal by construction on both sides.
+ *   - `pos`      — compared in ONE space (see below).
+ *   - `compared` — any difference is a change.
+ *   - `removal`  — attached only to a REMOVED entry on its way out; never on
+ *                  a snapshot row, so there is nothing to compare.
+ *
+ * There is no "ignored" rule, on purpose. Until 1495 each kind had a
+ * hand-written predicate over a hand-picked subset, and a field it forgot went
+ * stale in the snapshot with no test noticing: a cite's container
+ * (`nestedInContainerId`) re-collected in place under a re-minted example, or
+ * a paragraph joined into one, kept its old container, and the Citations panel
+ * showed the card un-nested until reload. Each table below is
+ * `satisfies Record<keyof Required<E>, …>`, so a new snapshot field is a
+ * compile error here until its rule is stated. A field that must NOT wake
+ * watchers (a heading's title text — keystroke sanctity; a figure's
+ * `figureNumber` — the numberer's own output) is not in the snapshot at all:
+ * readers take it off the live node.
  *
  * Position is compared in ONE space: `aPosInNewDoc` is the removed side mapped
  * through the transaction (`removedPosInNewDoc`), so an edit EARLIER in the
- * document — which shifts every later heading's raw position — maps the old
- * position onto the new one and reports nothing. Typing inside a heading is a
- * same-pos re-scan → false, so heading text edits stay on
- * `contentChangedUuids` and off the numberer's wake path (keystroke sanctity).
+ * document maps the old position onto the new one and reports nothing. A
+ * same-uuid entity that survives at a different position (a delete+insert
+ * MOVE: an Outline reorder, a block drag, the undo of either) IS a change —
+ * document order is a numbering input (task 892).
  */
-function headingStructurallyChanged(
-  aPosInNewDoc: number,
-  a: HeadingEntry,
-  b: HeadingEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.level !== b.level ||
-    a.label !== b.label ||
-    a.numbered !== b.numbered
-  );
-}
+type FieldRule = "key" | "pos" | "compared" | "removal";
+type FieldRules<E> = { readonly [K in keyof Required<E>]: FieldRule };
 
-/** The figure twin of `headingStructurallyChanged` — same order rule. */
-function figureStructurallyChanged(
-  aPosInNewDoc: number,
-  a: FigureEntry,
-  b: FigureEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.label !== b.label ||
-    a.numbered !== b.numbered ||
+const ENTRY_FIELDS = {
+  headings: {
+    uuid: "key", pos: "pos", level: "compared", label: "compared", numbered: "compared",
+  } satisfies FieldRules<HeadingEntry>,
+  footnotes: {
+    id: "key", pos: "pos", thanks: "compared", number: "compared", title: "compared",
+    removedCarried: "removal",
+  } satisfies FieldRules<FootnoteEntry>,
+  citations: {
+    id: "key", pos: "pos", command: "compared", displayText: "compared",
+    nestedInFootnoteId: "compared", nestedInContainerId: "compared",
+  } satisfies FieldRules<CitationEntry>,
+  examples: {
+    id: "key", uuid: "compared", pos: "pos", tag: "compared", label: "compared",
+    number: "compared",
+  } satisfies FieldRules<ExampleEntry>,
+  figures: {
+    uuid: "key", pos: "pos", label: "compared", numbered: "compared",
     // A NUMBERING input since tasks 318/319 — see `FigureEntry.emitsCaption`.
-    a.emitsCaption !== b.emitsCaption
+    emitsCaption: "compared",
+  } satisfies FieldRules<FigureEntry>,
+} as const;
+
+/** Value equality for snapshot fields: primitives by `Object.is`, a plain
+ *  record (a `CitationContainer`) one level deep. */
+function sameField(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const ak = Object.keys(a);
+  if (ak.length !== Object.keys(b).length) return false;
+  return ak.every((k) =>
+    Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
   );
 }
 
-/**
- * Returns true iff two citation entries differ in a way the cards show —
- * the LaTeX command (which `keys` are parsed from) or the rendered text.
- */
-function citationChanged(a: CitationEntry, b: CitationEntry): boolean {
-  return a.command !== b.command || a.displayText !== b.displayText;
+/** The "differs" rule `reconcileKeyed` takes, derived from a field table. */
+function differsBy<E extends { pos: number }>(rules: FieldRules<E>) {
+  const compared = (Object.keys(rules) as (keyof E)[]).filter((k) => rules[k] === "compared");
+  return (aPosInNewDoc: number, a: E, b: E): boolean =>
+    aPosInNewDoc !== b.pos || compared.some((k) => !sameField(a[k], b[k]));
 }
 
-/** A footnote that survived (same id) but whose position or attrs changed
- *  — the signature of an atom MOVE (delete+insert). `pos` is the load-
- *  bearing field for the structure index + renumber; thanks/number/title
- *  folded in so the snapshot stays exact (a title rename re-derives the card
- *  rows, task 705). */
-function footnoteChanged(
-  aPosInNewDoc: number,
-  a: FootnoteEntry,
-  b: FootnoteEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.thanks !== b.thanks ||
-    a.number !== b.number ||
-    (a.title ?? "") !== (b.title ?? "")
-  );
-}
-
-/** An example that survived (same id) but whose position or displayed attrs
- *  changed — the signature of a same-uuid drag-reorder MOVE (delete+insert,
- *  uuid preserved) or an in-place `setNodeMarkup` renumber. `pos` is load-
- *  bearing for the structure index; `number`/`tag`/`label` are what the
- *  ExampleCard renders, so a renumber `(9)`→`(10)` must count as changed and
- *  re-seed the card. Mirrors `footnoteChanged`. A same-id re-scan with every
- *  field equal (an edit at the block boundary that touched nothing) returns
- *  false, so it never fires spuriously. */
-function exampleChanged(
-  aPosInNewDoc: number,
-  a: ExampleEntry,
-  b: ExampleEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.number !== b.number ||
-    a.tag !== b.tag ||
-    a.label !== b.label
-  );
-}
+const DIFFERS = {
+  headings: differsBy<HeadingEntry>(ENTRY_FIELDS.headings),
+  footnotes: differsBy<FootnoteEntry>(ENTRY_FIELDS.footnotes),
+  citations: differsBy<CitationEntry>(ENTRY_FIELDS.citations),
+  examples: differsBy<ExampleEntry>(ENTRY_FIELDS.examples),
+  figures: differsBy<FigureEntry>(ENTRY_FIELDS.figures),
+};
 
 // ---------------------------------------------------------------------------
 // Anchorable-ancestor finder for content-change attribution.
@@ -497,7 +482,7 @@ interface BodyDerivedFactKind {
 const BODY_DERIVED_FACT_KINDS: readonly BodyDerivedFactKind[] = [
   {
     // `FigureEntry.emitsCaption` = `hasCaption || captionNodeHasContent(caption)`.
-    // The second disjunct is the body-derived half; `figureStructurallyChanged`
+    // The second disjunct is the body-derived half; `ENTRY_FIELDS.figures`
     // already compares it, so a filled-in pair reconciles to `changedFigures`
     // with no new branch downstream.
     typeName: "figureBlock",
@@ -1186,7 +1171,7 @@ export function inspectSteps(
     removed: removed.headings,
     prior: priorOf<HeadingEntry>("headings", (h) => h.uuid),
     live: (id) => liveKeyed().headings.get(id) ?? [],
-    differs: headingStructurallyChanged,
+    differs: DIFFERS.headings,
     removedPosInNewDoc,
     mapPrior,
   });
@@ -1201,7 +1186,7 @@ export function inspectSteps(
     removed: removed.footnotes,
     prior: priorOf<FootnoteEntry>("footnotes", (f) => f.id),
     live: (id) => liveKeyed().footnotes.get(id) ?? [],
-    differs: footnoteChanged,
+    differs: DIFFERS.footnotes,
     removedPosInNewDoc,
     mapPrior,
   });
@@ -1223,7 +1208,7 @@ export function inspectSteps(
     removed: removed.citations,
     prior: priorOf<CitationEntry>("citations", (c) => c.id),
     live: (id) => liveKeyed().citations.get(id) ?? [],
-    differs: (aPos, a, b) => citationChanged(a, b) || aPos !== b.pos,
+    differs: DIFFERS.citations,
     removedPosInNewDoc,
     mapPrior,
   });
@@ -1291,7 +1276,7 @@ export function inspectSteps(
     removed: removed.examples,
     prior: priorOf<ExampleEntry>("examples", (e) => e.id),
     live: (id) => liveKeyed().examples.get(id) ?? [],
-    differs: exampleChanged,
+    differs: DIFFERS.examples,
     removedPosInNewDoc,
     mapPrior,
   });
@@ -1303,7 +1288,7 @@ export function inspectSteps(
     removed: removed.figures,
     prior: priorOf<FigureEntry>("figures", (f) => f.uuid),
     live: (id) => liveKeyed().figures.get(id) ?? [],
-    differs: figureStructurallyChanged,
+    differs: DIFFERS.figures,
     removedPosInNewDoc,
     mapPrior,
   });
