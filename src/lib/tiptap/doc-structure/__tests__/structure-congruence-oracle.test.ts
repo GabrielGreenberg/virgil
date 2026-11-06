@@ -37,13 +37,17 @@ import {
   readDocStructure,
 } from "../observer-plugin";
 import { buildInitial } from "../structure-index";
-import { getBus } from "../bus";
+import { diffWakesStructuralWatchers, getBus } from "../bus";
+import { inspectSteps } from "../step-inspector";
 import type { DocStructure } from "../types";
 import {
   anchoredText,
   citationLiteral,
   citationNode,
   doc,
+  exampleBlock,
+  figureBlock,
+  footnoteNode,
   footnoteWithBody,
   heading,
   paragraph,
@@ -223,6 +227,110 @@ describe("congruence oracle — fixture schema, real observer plugin (task 1128)
 });
 
 // ---------------------------------------------------------------------------
+// Task 1493 — classify against the PRIOR SNAPSHOT, not the step bundles.
+// ---------------------------------------------------------------------------
+
+/** The diff the plugin computes for `tr` from `state` (prior snapshot handed
+ *  in, exactly as `docStructureStateSpec` does). */
+function diffOf(state: EditorState, tr: Transaction) {
+  return inspectSteps(tr, state.doc, tr.doc, readDocStructure(state)!);
+}
+
+/** Insert `node` at `at`, then re-mark it with `attrs` in the SAME
+ *  transaction — the footnote input rule + `writeFootnoteNumbers` shape. */
+function insertThenMarkup(at: number, node: PMNode, attrs: Record<string, unknown>) {
+  return (tr: Transaction) => {
+    tr.insert(at, node);
+    return tr.setNodeMarkup(at, undefined, { ...node.attrs, ...attrs });
+  };
+}
+
+describe("congruence oracle — prior-snapshot membership (task 1493)", () => {
+  const highlighted = () => doc(para("p1", t("aa"), anchoredText("XYZ", "a1"), t("bb")));
+
+  it("typing at a collapsed caret INSIDE a highlight reports no structural change", () => {
+    // "aa"=1..3, XYZ=3..6. A plain insert (from == to), not a replace.
+    roundTrip(highlighted(), (tr) => tr.insertText("q", 4));
+    const s0 = stateOf(highlighted());
+    const diff = diffOf(s0, s0.tr.insertText("q", 4));
+    expect(diff.addedAnchors).toEqual([]);
+    expect(diff.changedAnchors).toEqual([]);
+    expect(diffWakesStructuralWatchers(diff), "a keystroke wakes no structural watcher").toBe(
+      false,
+    );
+  });
+
+  it("typing just AFTER a highlight's end does not stretch the anchor", () => {
+    roundTrip(highlighted(), (tr) => tr.insertText("q", 6));
+  });
+
+  it("typing just BEFORE a highlight's start does not stretch the anchor", () => {
+    roundTrip(highlighted(), (tr) => tr.insertText("q", 3));
+  });
+
+  const base = () => doc(paragraph("p1", "text"), paragraph("p2", "more"));
+  const shapes: [string, number, PMNode, Record<string, unknown>, "footnotes" | "citations" | "headings" | "examples" | "figures"][] = [
+    ["a footnote", 3, footnoteNode("fnX", 0), { number: 1 }, "footnotes"],
+    ["a citation", 3, citationNode("cX", "cite", ""), { displayText: "X 2020" }, "citations"],
+    ["a heading", 0, heading("hX", 1, "Head"), { level: 2 }, "headings"],
+    ["an example", 0, exampleBlock("eX"), { number: 7 }, "examples"],
+    ["a figure", 0, figureBlock("gX"), { label: "fig:x" }, "figures"],
+  ];
+  for (const [name, at, node, attrs, table] of shapes) {
+    it(`${name} inserted and re-marked in ONE transaction is added, not lost`, () => {
+      roundTrip(base(), insertThenMarkup(at, node, attrs));
+      const s0 = stateOf(base());
+      const diff = diffOf(s0, insertThenMarkup(at, node, attrs)(s0.tr));
+      const key = table.slice(0, 1).toUpperCase() + table.slice(1);
+      expect(
+        (diff as unknown as Record<string, unknown[]>)[`added${key}`],
+        `${name} reaches the added channel`,
+      ).toHaveLength(1);
+      expect((diff as unknown as Record<string, unknown[]>)[`changed${key}`]).toEqual([]);
+    });
+  }
+
+  it("an anchor born and deleted in one transaction emits nothing", () => {
+    const s0 = stateOf(base());
+    const tr = s0.tr.insert(3, anchoredText("new", "aNew"));
+    tr.delete(3, 6);
+    const diff = diffOf(s0, tr);
+    expect(diff.addedAnchors).toEqual([]);
+    expect(diff.removedAnchors).toEqual([]);
+    expect(diff.changedAnchors).toEqual([]);
+    roundTrip(base(), (t2) => {
+      t2.insert(3, anchoredText("new", "aNew"));
+      return t2.delete(3, 6);
+    });
+  });
+
+  it("a citation born and deleted in one transaction emits nothing", () => {
+    const s0 = stateOf(base());
+    const tr = s0.tr.insert(3, citationNode("cNew", "cite", "N"));
+    tr.insertText("zz", 1);
+    tr.delete(5, 6);
+    const diff = diffOf(s0, tr);
+    expect(diff.addedCitations).toEqual([]);
+    expect(diff.removedCitations).toEqual([]);
+    expect(diff.changedCitations).toEqual([]);
+  });
+
+  it("deleting ONE of two same-id citations keeps the survivor indexed", () => {
+    // p1 content starts at 1: "a"=1, c1@2, "b"=3, c1@4, "c"=5.
+    const d = doc(
+      para("p1", t("a"), citationNode("c1", "cite", "X"), t("b"), citationNode("c1", "cite", "X"), t("c")),
+    );
+    roundTrip(d, (tr) => tr.delete(4, 5));
+    roundTrip(d, (tr) => tr.delete(2, 3));
+  });
+
+  it("deleting ONE of two same-id footnotes keeps the survivor indexed", () => {
+    const d = doc(para("p1", t("a"), footnoteNode("f1", 1), t("b"), footnoteNode("f1", 1), t("c")));
+    roundTrip(d, (tr) => tr.delete(4, 5));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Production-schema harness — wrap / lift need lists, blockquotes, the uuid
 // eligibility rules and the backfill appender.
 // ---------------------------------------------------------------------------
@@ -288,4 +396,43 @@ describe("congruence oracle — production schema (task 1128)", () => {
       }
     });
   }
+});
+
+describe("keystroke sanctity inside a highlight — production schema (task 1493)", () => {
+  it("typing inside a highlighted run leaves the bus emitCount flat", () => {
+    const editor = new Editor({
+      extensions: buildEditorExtensions(mainCtx()),
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { uuid: "uA" },
+            content: [
+              { type: "text", text: "aa" },
+              {
+                type: "text",
+                text: "marked",
+                marks: [{ type: "linkedAnchor", attrs: { anchorId: "a1", kind: "note" } }],
+              },
+              { type: "text", text: "bb" },
+            ],
+          },
+        ],
+      },
+    });
+    try {
+      const bus = getBus(editor);
+      expect(bus, "the bus is attached").toBeTruthy();
+      // "aa"=1..3, "marked"=3..9 — a caret strictly inside the run.
+      editor.commands.setTextSelection(6);
+      const before = bus!.emitCount;
+      for (const ch of "xyz") editor.commands.insertContent(ch);
+      expect(editor.state.doc.textContent).toContain("marxyzked");
+      expect(bus!.emitCount, "typing in a highlight publishes nothing").toBe(before);
+      expectCongruent(editor.state, "after typing in the highlight");
+    } finally {
+      editor.destroy();
+    }
+  });
 });
