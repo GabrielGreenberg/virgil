@@ -160,7 +160,11 @@ export function touchedRanges(trs: readonly Transaction[]): ChangedRange[] {
  * every mark step have exactly this shape, while `Fragment.nodesBetween` walks
  * the parent's children from index 0 until it passes `to` — cheap per step, but
  * proportional to the block's INDEX, so a keystroke deep in a long paper pays
- * for every block above it.
+ * for every block above it. (`doc.resolve` locates the position by the same
+ * child scan, but ProseMirror memoizes it per document — `resolveCached` — so
+ * the one scan is shared by every consumer asking about that position in the
+ * transaction, the selection's own resolve included, instead of each consumer
+ * re-walking the parent.)
  */
 function soleTextblockAround(
   doc: PMNode,
@@ -180,6 +184,41 @@ function soleTextblockAround(
     return to <= pos + node.nodeSize ? { pos, node } : null;
   }
   return null;
+}
+
+/**
+ * `doc.nodesBetween(from, to, f)` for a caller that asks only about nodes that
+ * START inside `[from, to)` or about INLINE content — the shape of every
+ * per-step "what entered / left in this range?" walk.
+ *
+ * When the range lies inside one textblock (a keystroke, a Backspace, a mark
+ * step) no block can start in it, so the visits `doc.nodesBetween` would spend
+ * on the textblock and its ancestors — each of which starts BEFORE `from` and
+ * is the scan this module exists to avoid (see `soleTextblockAround`) — are
+ * elided, and only the textblock's own inline children overlapping the range
+ * are visited, with document-absolute positions and the textblock as `parent`,
+ * exactly as `doc.nodesBetween` would have visited them. Any other range
+ * delegates to `doc.nodesBetween` unchanged.
+ *
+ * The contract a caller accepts: it must not depend on being shown an ancestor
+ * that merely CONTAINS the range. `[from, to)` must already be clamped into
+ * the document.
+ */
+export function nodesBetweenLocal(
+  doc: PMNode,
+  from: number,
+  to: number,
+  f: (node: PMNode, pos: number, parent: PMNode | null, index: number) => boolean | void,
+): void {
+  if (to <= from) return;
+  const sole = soleTextblockAround(doc, from, to);
+  if (!sole) {
+    doc.nodesBetween(from, to, f);
+    return;
+  }
+  const start = sole.pos + 1;
+  const size = sole.node.content.size;
+  sole.node.nodesBetween(from - start, Math.min(to - start, size), f, start);
 }
 
 /**

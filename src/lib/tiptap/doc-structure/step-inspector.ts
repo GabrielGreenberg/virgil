@@ -29,6 +29,7 @@ import {
   type StepMap,
 } from "@tiptap/pm/transform";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
+import { nodesBetweenLocal } from "@/lib/tiptap/changed-ranges";
 import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 import {
   cardAtomIdOf,
@@ -252,6 +253,10 @@ function bundleSink(out: EntityBundle): EntitySink {
  * Text nodes are special: their start may fall outside the range but
  * the touched portion (and its marks) still matters for linkedAnchor
  * tracking. For text, count any node whose extent overlaps the range.
+ *
+ * Neither rule ever wants an ancestor that merely contains the range, so the
+ * walk is `nodesBetweenLocal`: a keystroke's range visits only its own
+ * textblock's inline children, never the top-level blocks above it (task 1497).
  */
 function collectRange(
   doc: PMNode,
@@ -264,7 +269,7 @@ function collectRange(
   const clampedTo = Math.min(to, doc.content.size);
   const clampedFrom = Math.max(from, 0);
   if (clampedTo <= clampedFrom) return;
-  doc.nodesBetween(clampedFrom, clampedTo, (n, pos, parent) => {
+  nodesBetweenLocal(doc, clampedFrom, clampedTo, (n, pos, parent) => {
     if (n.isText) {
       inspectNodeAt(n, pos, out, doc, record, parent);
     } else if (pos >= clampedFrom && pos < clampedTo) {
@@ -579,13 +584,14 @@ const EXAMPLE_SHAPE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Shape-kind nodes whose OPENING token lies in `[from, to)` of `doc`. Never
- *  descends into a textblock (no shape kind lives in inline content), so a
- *  keystroke's range costs O(1). */
+ *  descends into a textblock (no shape kind lives in inline content), and a
+ *  range inside one textblock — a keystroke — takes `nodesBetweenLocal`'s fast
+ *  path, so it costs O(depth) rather than the caret block's index. */
 function shapeNodesStartingIn(doc: PMNode, from: number, to: number, out: string[]): void {
   const lo = Math.max(from, 0);
   const hi = Math.min(to, doc.content.size);
   if (hi <= lo) return;
-  doc.nodesBetween(lo, hi, (n, pos) => {
+  nodesBetweenLocal(doc, lo, hi, (n, pos) => {
     if (pos >= lo && EXAMPLE_SHAPE_TYPES.has(n.type.name)) out.push(n.type.name);
     return !n.isTextblock;
   });
@@ -707,8 +713,11 @@ function markStepSpan(step: Step, doc: PMNode): { from: number; to: number } {
  * formatting) without moving any boundary, so without this the per-block /
  * per-example content channels never heard about a bold or an italic — an open
  * Example card kept the un-formatted text and its next whole-block write-back
- * reverted the formatting (task 1494). O(span): `nodesBetween` stops at each
- * textblock, so it never descends into inline content.
+ * reverted the formatting (task 1494). O(span): the walk stops at each
+ * textblock, so it never descends into inline content — and a span inside ONE
+ * textblock (the common mark step) is wholly answered by `attribute(from)`,
+ * whose nearest anchorable / example ancestors are that textblock's, so
+ * `nodesBetweenLocal` skips the top-level scan entirely (task 1497).
  */
 function noteContentSpan(c: StepCoords, from: number, to: number, sink: DiffSink): void {
   const attribute = (pos: number) => {
@@ -719,7 +728,7 @@ function noteContentSpan(c: StepCoords, from: number, to: number, sink: DiffSink
   };
   attribute(from);
   if (to <= from) return;
-  c.newDoc.nodesBetween(from, to, (node, pos) => {
+  nodesBetweenLocal(c.newDoc, from, Math.min(to, c.newDoc.content.size), (node, pos) => {
     if (!node.isTextblock) return true;
     attribute(pos + 1);
     return false;
