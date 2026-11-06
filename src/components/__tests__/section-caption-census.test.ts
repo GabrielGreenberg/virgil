@@ -28,6 +28,19 @@ const ALLOWLIST: Record<string, string> = {
     "the dialog field-label `section` register (11px by spec, FieldLabel)",
 };
 
+/** A `<legend>` anywhere but the `Fieldset` primitive re-types a group's
+ *  section label by hand — the Print dialog's three did, in 12px sentence
+ *  case, invisible to the uppercase-twin scan above (task 1498). */
+const LEGEND_DOOR = "components/field-primitives.tsx";
+export function legendOffenders(rel: string, source: string): string[] {
+  if (rel === LEGEND_DOOR) return [];
+  const out: string[] = [];
+  source.split("\n").forEach((line, i) => {
+    if (/<legend\b/.test(line)) out.push(`${rel}:${i + 1}: ${line.trim()}`);
+  });
+  return out;
+}
+
 describe("section caption CENSUS (task 1333)", () => {
   it("no hand-rolled small uppercase caption outside the primitives and named registers", () => {
     const offenders: string[] = [];
@@ -48,6 +61,19 @@ describe("section caption CENSUS (task 1333)", () => {
         });
     }
     expect(offenders, "use the .section-caption class (or <MenuSectionLabel> inside a menu)").toEqual([]);
+  });
+
+  it("every <legend> goes through <Fieldset> (task 1498)", () => {
+    const offenders = walkFiles(SRC, { skipDirs: ["__tests__"] })
+      .filter((f) => f.endsWith(".tsx"))
+      .flatMap((f) => legendOffenders(relative(SRC, f), readFileSync(f, "utf8")));
+    expect(offenders, "use <Fieldset legend=…> from field-primitives").toEqual([]);
+  });
+
+  it("the legend scan catches a planted hand-styled legend", () => {
+    const planted = '<fieldset>\n  <legend className="text-xs text-ink-subtle">Group</legend>';
+    expect(legendOffenders("components/Planted.tsx", planted)).toHaveLength(1);
+    expect(legendOffenders(LEGEND_DOOR, planted)).toEqual([]);
   });
 
   it(".section-caption sits in @layer components so call-site utilities compose", () => {

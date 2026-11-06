@@ -356,3 +356,35 @@ export function Field({
     </div>
   );
 }
+
+export interface FieldsetProps {
+  legend: ReactNode;
+  register?: FieldLabelRegister;
+  /** Appended to the `<fieldset>` (margins, width). */
+  className?: string;
+  children: ReactNode;
+}
+
+/** A labelled GROUP of controls — a set of checkboxes or radios, a segmented
+ *  choice. `<Field>` labels ONE control with a `<label>`; a group's name is a
+ *  `<legend>`, which a screen reader announces on entering the set. This owns
+ *  both the semantics and the legend's typography (the same register map as
+ *  `<Field>`), so a checkbox group cannot re-type its section label by hand —
+ *  the Print dialog's three did, in 12px sentence case the size of the rows
+ *  under them (task 1498). `section-caption-census` holds every `<legend` in
+ *  `src/` to this file. */
+export function Fieldset({
+  legend,
+  register = "section",
+  className,
+  children,
+}: FieldsetProps) {
+  return (
+    <fieldset className={className}>
+      <legend className={`${FIELD_LABEL_REGISTER[register]} mb-1.5`}>
+        {legend}
+      </legend>
+      {children}
+    </fieldset>
+  );
+}

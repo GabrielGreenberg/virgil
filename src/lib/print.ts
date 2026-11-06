@@ -57,6 +57,28 @@ import {
 } from "@/lib/print-intent";
 import { panePrintPage } from "@/components/editor-layout/pane-dom";
 
+/** A condition a print element needs from the live editor before its toggle
+ *  means anything — keyed to the hint the disabled row shows. Marginalia
+ *  margins can't be conjured into the DOM at print time, so their row is
+ *  disabled unless they are rendered live (task 1498: this was a
+ *  `row.key === "marginalia"` special case inside the dialog's derived loop). */
+export const PRINT_REQUIREMENTS = {
+  "live-marginalia": { unmetHint: "Enable marginalia in the editor first." },
+} as const satisfies Record<string, { unmetHint: string }>;
+
+export type PrintRequirement = keyof typeof PRINT_REQUIREMENTS;
+
+/** One row of `PRINT_ELEMENTS`. */
+export interface PrintElementSpec {
+  group: "Document" | "Apparatus" | "Margin";
+  label: string;
+  selectors: readonly string[];
+  /** Set when the toggle is only meaningful while the editor meets a
+   *  condition; the dialog disables the row (with the requirement's hint)
+   *  otherwise. */
+  requires?: PrintRequirement;
+}
+
 /** The print ELEMENT toggles — the SINGLE source for which document elements
  *  the Print dialog can switch off, the label each row shows, the fieldset it
  *  sits in, and the CSS selectors its `html[data-print-e-<kebab>="false"]`
@@ -79,13 +101,9 @@ export const PRINT_ELEMENTS = {
   citations:              { group: "Apparatus", label: "Citations",                 selectors: [".citation-node"] },
   examples:               { group: "Apparatus", label: "Examples",                  selectors: [".expex-block"] },
   displayMath:            { group: "Apparatus", label: "Display math",              selectors: [".display-math"] },
-  marginalia:             { group: "Margin",    label: "Marginalia markers",        selectors: ["[data-marginalia-margin]"] },
+  marginalia:             { group: "Margin",    label: "Marginalia markers",        selectors: ["[data-marginalia-margin]"], requires: "live-marginalia" },
   linkedAnchorUnderlines: { group: "Margin",    label: "Anchor highlights & tints", selectors: [".linked-anchor"] },
-} as const satisfies Record<string, {
-  group: "Document" | "Apparatus" | "Margin";
-  label: string;
-  selectors: readonly string[];
-}>;
+} as const satisfies Record<string, PrintElementSpec>;
 
 /** A print element toggle key — derived from `PRINT_ELEMENTS`. */
 export type PrintElementKey = keyof typeof PRINT_ELEMENTS;

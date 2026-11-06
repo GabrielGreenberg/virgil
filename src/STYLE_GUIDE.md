@@ -2506,6 +2506,13 @@ dialogs had done exactly that, in four class strings. `<Field label="Name">
 | `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
 | `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
 
+A **group of checkboxes or radios** (the Print dialog's element and panel
+sets) is named by a `<legend>`, not a `<label>`: use `<Fieldset legend="…">`
+from the same file. It renders `<fieldset>` + `<legend>` in the same
+`register` map (default `section`), so a group's caption cannot drift off the
+field-label register — `section-caption-census` fails any other `<legend>` in
+`src/` (task 1498).
+
 A **single-choice set of cards or swatches** (NewDocumentModal's document
 type, the collaborator identity colours) is a radio group, not a row of
 buttons: `role="radiogroup"` labelled by its `Field`, each option
