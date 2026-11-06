@@ -40,6 +40,10 @@ export type BusEvent =
    *  after its transaction commits; an INVALIDATION like the one above —
    *  receivers re-read `listDocs()`. */
   | { type: "doc-index-changed"; windowId: string }
+  /** Task 1491 — a document's identity was purged (removed, or reset under
+   *  the same id): drop its popped-float slice from in-memory view prefs so
+   *  this window's next persist cannot write it back. */
+  | { type: "card-floats-forgotten"; docId: string }
   /** Task 610 — "is any of your work off disk?", asked by the window about to
    *  post `SKIP_WAITING`, whose activation reloads EVERY window. See
    *  `reload-door.ts`, "The multi-window half". */

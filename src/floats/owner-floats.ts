@@ -29,7 +29,9 @@ export type FloatRect = { x: number; y: number; width: number; height: number };
 
 /** One document's popped floats: the ordered open keys (insertion order is
  *  the fallback paint order) and the saved rect per key. A rect may exist for
- *  a key not (yet) in `keys` — `popOutAtRect` seeds the rect, then opens. */
+ *  a key not (yet) in `keys` — `popOutAtRect` seeds the rect, then opens, in
+ *  the same tick. Such a rect never outlives a reload: the load door keeps
+ *  only rects whose key is open (task 1491). */
 export interface CardFloatSlice {
   keys: string[];
   positions: Record<string, FloatRect>;
@@ -131,6 +133,17 @@ export function closeAllCardFloats(floats: CardFloats, owner?: string): CardFloa
   const positions = { ...slice.positions };
   for (const k of slice.keys) delete positions[k];
   return withSlice(floats, owner, { keys: [], positions });
+}
+
+/** Drop `owner`'s WHOLE slice — open keys and every remembered rect, seeded
+ *  or not — because the document itself is gone (removed, or reset under the
+ *  same id: task 1491). Unlike `closeAllCardFloats`, which closes floats of a
+ *  doc that still exists, nothing of the slice is kept. Same reference when
+ *  the owner holds nothing. */
+export function forgetCardFloatOwner(floats: CardFloats, owner: string): CardFloats {
+  if (!(owner in floats)) return floats;
+  const { [owner]: _forgotten, ...rest } = floats;
+  return rest;
 }
 
 /** Move the pre-1400 unowned slice into `owner` (appending; the owner's own

@@ -144,14 +144,19 @@ export function normalizeWindowPrefValue(
     case "rect-record":
       return rectRecordOf(v);
     case "float-slices":
-      return recordOf(v, (x) =>
-        isPlainObject(x)
-          ? {
-              keys: [...new Set(stringsOf(x.keys) ?? [])],
-              positions: rectRecordOf(x.positions) ?? {},
-            }
-          : undefined,
-      );
+      // Only an OPEN key's rect is kept (task 1491): a rect for a key not in
+      // `keys` is a seed `popOutAtRect` writes and opens in the same tick, so
+      // at load it can only be residue — and a slice left empty is dropped
+      // whole, the stored twin of `withSlice`'s in-memory rule.
+      return recordOf(v, (x) => {
+        if (!isPlainObject(x)) return undefined;
+        const keys = [...new Set(stringsOf(x.keys) ?? [])];
+        if (keys.length === 0) return undefined;
+        const rects = rectRecordOf(x.positions) ?? {};
+        const positions: Record<string, unknown> = {};
+        for (const k of keys) if (k in rects) positions[k] = rects[k];
+        return { keys, positions };
+      });
   }
 }
 
