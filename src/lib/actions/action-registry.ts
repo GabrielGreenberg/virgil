@@ -2043,7 +2043,11 @@ function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
     if (field === "date") {
       // The `\today` chip — what the parser reads `\date{\today}` into, so a
       // fresh field and a parsed one are the same model (task 1335). Falls back
-      // to an empty field on a schema without the atom.
+      // to an empty field on a schema without the atom. The term stays BARE
+      // (`""`) so the fresh field writes the canonical `\date{\today}` and
+      // equals its own re-parse; anything typed after the chip is safe because
+      // `emitDynamicCommand` re-adds the `{}` break before a letter OR a space
+      // (task 1492 — TeX gobbles the space after a bare control word).
       const dynamicType = state.schema.nodes[LATEX_DYNAMIC_NODE];
       if (dynamicType) nodeContent = dynamicType.create({ command: "today", term: "" });
     }
