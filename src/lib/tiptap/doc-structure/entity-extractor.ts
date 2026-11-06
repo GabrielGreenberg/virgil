@@ -84,7 +84,6 @@ export function figureEntryAt(n: PMNode, pos: number, uuid: string): FigureEntry
     pos,
     label: str(attrs.label),
     numbered: attrs.numbered !== false,
-    number: (attrs.figureNumber as number | null | undefined) ?? null,
     emitsCaption: figureNodeEmitsCaption(n),
   };
 }
@@ -218,7 +217,6 @@ export function extractEntitiesAt(
       uuid,
       pos: at,
       level: (attrs.level as number | undefined) ?? 1,
-      text: n.textContent,
       label: (attrs.label as string | null | undefined) ?? null,
       numbered: attrs.numbered !== false,
     });

@@ -28,7 +28,8 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import { Editor } from "@tiptap/core";
-import { EditorState, Plugin, type Transaction } from "@tiptap/pm/state";
+import { EditorState, Plugin, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { joinBackward } from "@tiptap/pm/commands";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import {
@@ -46,6 +47,8 @@ import {
   citationNode,
   doc,
   exampleBlock,
+  exampleItem,
+  exampleItemWith,
   figureBlock,
   footnoteNode,
   footnoteWithBody,
@@ -434,5 +437,45 @@ describe("keystroke sanctity inside a highlight — production schema (task 1493
     } finally {
       editor.destroy();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 1495 — "changed" compares EVERY snapshot field, not a hand-picked
+// subset: a re-collected entity whose ancestry-derived field moved (a cite's
+// container) or whose body-derived field moved (a heading's text) must fold
+// to the rebuild.
+// ---------------------------------------------------------------------------
+
+describe("congruence oracle — every snapshot field is compared (task 1495)", () => {
+  const citedExample = (uuid: string) =>
+    exampleBlock(uuid, {}, [exampleItemWith({}, [t("a"), citationNode("c1", "cite", "X")])]);
+
+  it("re-minting the example that contains a \\cite (setNodeMarkup uuid e1 → e9)", () => {
+    const d = doc(citedExample("e1"), paragraph("p2", "after"));
+    roundTrip(d, (tr) => tr.setNodeMarkup(0, undefined, { ...d.child(0).attrs, uuid: "e9" }));
+  });
+
+  it("joining a paragraph holding a \\cite backward into an example", () => {
+    const d = doc(
+      exampleBlock("e1", {}, [exampleItem({}, "ex")]),
+      para("p2", t("a"), citationNode("c1", "cite", "X"), t("b")),
+    );
+    const start = d.child(0).nodeSize + 1;
+    const s0 = stateOf(d).apply(
+      stateOf(d).tr.setSelection(TextSelection.create(d, start)),
+    );
+    let captured: Transaction | null = null;
+    expect(joinBackward(s0, (tr) => (captured = tr))).toBe(true);
+    const tr = captured!;
+    const s1 = s0.apply(tr);
+    expectCongruent(s1, "after the join");
+    const s2 = s1.apply(inverseOf(s1, tr));
+    expectCongruent(s2, "after its inverse (undo)");
+  });
+
+  it("typing inside a heading keeps its text congruent", () => {
+    const d = doc(heading("h1", 1, "One"), paragraph("p2", "x"));
+    roundTrip(d, (tr) => tr.insertText("Z", 2));
   });
 });
