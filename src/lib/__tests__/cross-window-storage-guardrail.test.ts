@@ -188,6 +188,11 @@ const STORE_LEDGER: Record<string, StoreLedgerEntry> = {
     reason:
       "The pre-paint replay record (task 902): each write reads the two pref blobs in the same call and stores them beside the paint, and the replay applies only while they still match storage — so a stale record is refused, never written back over a peer's.",
   },
+  "src/lib/dev-prefs-mirror.ts": {
+    kind: "read-fresh",
+    reason:
+      "Its one write mints the promotion-source id only when the same call's read found none (task 1487); the mirrored blobs are re-read every tick and never written back.",
+  },
   "src/components/InstallPwaPrompt.tsx": {
     kind: "write-once",
     reason: "The dismissed flag only ever becomes \"1\"; a stale window can only write what a fresh one would.",

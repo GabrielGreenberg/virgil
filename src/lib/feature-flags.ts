@@ -269,6 +269,14 @@ export const FLAG_REGISTRY = {
     legacy: "1",
     note: "Window-controls-overlay debug instrumentation; also enabled by a `wco-debug` query param.",
   },
+  "virgil:prefs-mirror-source": {
+    default: false,
+    status: "dev",
+    readAt: "call",
+    requires: [],
+    legacy: "1",
+    note: "Declares THIS browser profile the source of tools/personal-snapshot.json (what promotion bakes into shipped defaults); OFF = the dev prefs mirror never POSTs, so an agent's preview pane cannot write it (task 1487).",
+  },
   "virgil:lib-perf": {
     default: false,
     status: "dev",
@@ -310,6 +318,7 @@ export const NON_FLAG_VIRGIL_KEYS: Readonly<Record<string, string>> = {
   "virgil:tool-gutter": "the left tool gutter's view state — open tool, added list sections, folded sections (tool-gutter-store.ts, task 1440)",
   "virgil:pref-css-paint": "the editor-prefs custom properties last painted, replayed before first paint (pref-css-bootstrap.ts)",
   "virgil:collab-sessions:": "sessionStorage key prefix (+ checked window id): the collab sessions this window ran per paper, adopted after a reload (collab-session.ts, task 1392)",
+  "virgil:prefs-mirror-source-id": "this browser profile's promotion-source id, sent with every dev prefs-mirror POST (dev-prefs-mirror.ts, task 1487)",
   "virgil:tex-delimiters-changed": "DOM event name (not a storage key)",
   "virgil:tex-delimiters-will-change": "DOM event name (not a storage key)",
   "virgil:same-window-storage": "DOM event name (not a storage key) — the in-window twin of `storage` (cross-window-storage.ts, task 1014)",

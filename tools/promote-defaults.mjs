@@ -256,6 +256,31 @@ function extractSource(rawValue, subPath) {
   return rawValue?.[subPath] ?? {};
 }
 
+/** A blob the owning browser has not re-confirmed for this long is reported
+ *  stale (the mirror re-POSTs every blob on each dev-server mount). */
+const STALE_BLOB_DAYS = 30;
+
+/**
+ * Say, once per run, which blobs are stale (task 1487). Report-only: a stale blob still promotes — its values are the
+ * owner's last word — but a log reader can see promotion is running on old
+ * data. The route that writes the snapshot (and its ownership rule) is
+ * `src/app/api/dev/sync-prefs/route.dev.ts` → `src/lib/dev-prefs-snapshot.ts`.
+ */
+function reportSnapshotHealth(snapshot, registry) {
+  const stamps = snapshot.blobSavedAt && typeof snapshot.blobSavedAt === "object" ? snapshot.blobSavedAt : {};
+  const now = Date.now();
+  const keys = [...new Set(registry.promotable.map((e) => e.storageKey))];
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, key)) continue;
+    const at = Date.parse(stamps[key] ?? snapshot.savedAt ?? "");
+    if (Number.isNaN(at)) continue;
+    const days = Math.floor((now - at) / 86_400_000);
+    if (days >= STALE_BLOB_DAYS) {
+      console.log(`WARNING: snapshot blob ${key} is stale — last confirmed ${days} day(s) ago`);
+    }
+  }
+}
+
 /* ── Main ──────────────────────────────────────────────────────── */
 
 function main() {
@@ -275,8 +300,38 @@ function main() {
    *  the CSS managed block from authoritative post-merge values. */
   const finalByPath = {};
 
-  for (const entry of registry.promotable) {
+  // A snapshot with no source id has no declared writer — it predates task
+  // 1487's ownership rule, and the browser that wrote it may have been an
+  // agent's preview pane. Its values promote NOTHING until a browser opted in
+  // via `virgil:prefs-mirror-source` claims the file (the route replaces a
+  // source-less file on its owner's first POST).
+  const owned = typeof snapshot.source === "string" && snapshot.source !== "";
+  if (!owned) {
+    console.log(
+      "WARNING: snapshot has no source id — provenance unknown, nothing promoted " +
+        "(set virgil:prefs-mirror-source=1 in the owner's dev browser to claim it)",
+    );
+  } else {
+    reportSnapshotHealth(snapshot, registry);
+  }
+
+  for (const entry of owned ? registry.promotable : []) {
     const target = path.join(REPO_ROOT, entry.defaultsFile);
+    // A blob the snapshot does not hold promotes NOTHING — say so by name
+    // rather than feeding `{}` to the strategy and reporting "No changes."
+    // (task 1487: an editor blob missing from a fresh profile's snapshot
+    // silently stalled editor-defaults promotion).
+    const missing = [entry.storageKey, entry.rawFrom].filter(
+      (k) => k && !Object.prototype.hasOwnProperty.call(snapshot, k),
+    );
+    if (missing.length > 0) {
+      console.log(
+        `WARNING: snapshot has no ${missing.join(" / ")} blob — ${entry.defaultsFile} not promoted` +
+          (entry.subPath ? ` (${entry.subPath})` : "") +
+          ` [${entry.strategy}]`,
+      );
+      continue;
+    }
     const rawSnap = snapshot[entry.storageKey];
     const src = extractSource(rawSnap, entry.subPath);
     const cur = finalByPath[entry.defaultsFile] ?? readJson(target);

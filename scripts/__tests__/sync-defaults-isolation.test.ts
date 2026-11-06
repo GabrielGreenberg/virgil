@@ -56,7 +56,7 @@ function runSync(...args: string[]) {
 }
 
 function snapshot(value: unknown) {
-  writeFileSync(join(repo, "tools/personal-snapshot.json"), JSON.stringify(value));
+  writeFileSync(join(repo, "tools/personal-snapshot.json"), JSON.stringify({ source: "test", ...(value as object) }));
 }
 
 /** A drift only the defaults JSON sees (panel colours feed no CSS var). */
