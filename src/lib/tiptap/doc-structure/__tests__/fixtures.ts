@@ -99,6 +99,8 @@ export const testSchema = new Schema({
       inclusive: false,
       toDOM: () => ["span", { class: "linked-anchor" }],
     },
+    // A plain formatting mark — its steps are content edits (task 1494).
+    bold: { toDOM: () => ["strong", 0] },
   },
 });
 

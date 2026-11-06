@@ -3,6 +3,7 @@ import { EditorState } from "@tiptap/pm/state";
 import { Slice, Fragment } from "@tiptap/pm/model";
 import { AttrStep } from "@tiptap/pm/transform";
 import { inspectSteps } from "../step-inspector";
+import { diffWakesStructuralWatchers } from "../bus";
 import { applyDiff, buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
 import {
@@ -780,6 +781,44 @@ describe("inspectSteps — example content-change signal (#39 nit 1)", () => {
     const tr = s.tr.insertText("!", 3, 3);
     const d = inspectSteps(tr, s.doc, tr.doc);
     expect(d.exampleContentChangedUuids.size).toBe(0);
+  });
+});
+
+describe("inspectSteps — formatting marks are content edits (task 1494)", () => {
+  it("bolding a word in a paragraph reports that block content-changed, not structural", () => {
+    const s = stateOf(doc(paragraph("p1", "hello world"), paragraph("p2", "other")));
+    const tr = s.tr.addMark(1, 6, testSchema.marks.bold.create());
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect([...d.contentChangedUuids]).toEqual(["p1"]);
+    expect(d.exampleContentChangedUuids.size).toBe(0);
+    expect(diffWakesStructuralWatchers(d)).toBe(false);
+  });
+
+  it("un-bolding inside an example reports the item's block AND the example", () => {
+    const s0 = stateOf(doc(exampleBlock("exA", { tag: "a" }, [exampleItem({}, "alpha")])));
+    const s = s0.apply(s0.tr.addMark(2, 7, testSchema.marks.bold.create()));
+    const tr = s.tr.removeMark(2, 7, testSchema.marks.bold);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.exampleContentChangedUuids.has("exA")).toBe(true);
+    expect(d.exampleStructureChanged).toBe(false);
+    expect(diffWakesStructuralWatchers(d)).toBe(false);
+  });
+
+  it("a mark spanning two paragraphs reports both, and nothing outside the span", () => {
+    const s = stateOf(doc(paragraph("p1", "one"), paragraph("p2", "two"), paragraph("p3", "three")));
+    // p1 text 1..4, p2 opens at 5, text 6..9.
+    const tr = s.tr.addMark(2, 8, testSchema.marks.bold.create());
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect([...d.contentChangedUuids].sort()).toEqual(["p1", "p2"]);
+  });
+
+  it("a linkedAnchor added inside an example also re-seeds that example", () => {
+    const s = stateOf(doc(exampleBlock("exA", { tag: "a" }, [exampleItem({}, "alpha")])));
+    const mark = testSchema.marks.linkedAnchor.create({ anchorId: "a1", kind: "note" });
+    const tr = s.tr.addMark(2, 5, mark);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.addedAnchors.map((a) => a.id)).toEqual(["a1"]);
+    expect(d.exampleContentChangedUuids.has("exA")).toBe(true);
   });
 });
 
