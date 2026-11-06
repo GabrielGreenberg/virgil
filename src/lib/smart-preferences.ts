@@ -111,9 +111,9 @@ export const SMART_PREFERENCES: SmartSection[] = [
       }),
       {
         kind: "link-edge",
-        parent: "topbarBackground",
+        parent: "backgroundColor",
         child: "libraryBg",
-        label: "Library tab steps up from Virgil bar",
+        label: "Library background tracks the document background",
       },
       p({
         type: "color",
@@ -125,7 +125,7 @@ export const SMART_PREFERENCES: SmartSection[] = [
         type: "color",
         key: "topbarBorder",
         label: "Top bar line",
-        description: "Line under the top bar. Matches the bar by default, so it doesn't show.",
+        description: "Line under the top bar.",
       }),
       p({
         type: "color",

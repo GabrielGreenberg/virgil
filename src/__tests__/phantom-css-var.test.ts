@@ -772,7 +772,7 @@ describe("a fallback on a defined literal token agrees with it (task 1381)", () 
   });
 
   it("the population is real and the parser balances parens (non-vacuous)", () => {
-    expect(ROOT_VALUES.get("--accent")).toBe("#7c5e3c");
+    expect(ROOT_VALUES.get("--accent")).toBe("#12669a");
     // The SHIPPED promoted value — the old first-wins reader returned #c9c5c5.
     expect(ROOT_VALUES.get("--border-light")).toBe("#dcd3cb");
     expect(ROOT_VALUES.size).toBeGreaterThan(100);

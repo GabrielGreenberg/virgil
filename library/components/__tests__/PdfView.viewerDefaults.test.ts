@@ -215,18 +215,18 @@ describe("applyViewerPalette — the parent's LIVE tokens reach the iframe", () 
 
   it("follows a palette CHANGE and leaves an unchanged token unwritten", () => {
     const { win, style } = fakeViewerDoc();
-    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#c5dbe2", "--muted": "#8a8580" }));
+    applyViewerPalette(win, parentStyle({ "--background": "#ede3de", "--muted": "#8a8580" }));
     style.setProperty.mockClear();
-    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#ff0000", "--muted": "#8a8580" }));
-    expect(style.props.get("--virgil-topbar-bg")).toBe("#ff0000");
+    applyViewerPalette(win, parentStyle({ "--background": "#ff0000", "--muted": "#8a8580" }));
+    expect(style.props.get("--virgil-background")).toBe("#ff0000");
     expect(style.setProperty).toHaveBeenCalledTimes(1);
   });
 
   it("removes a token the parent leaves empty, so the CSS fallback applies", () => {
     const { win, style } = fakeViewerDoc();
-    applyViewerPalette(win, parentStyle({ "--topbar-bg": "#c5dbe2" }));
+    applyViewerPalette(win, parentStyle({ "--background": "#ede3de" }));
     applyViewerPalette(win, parentStyle({}));
-    expect(style.props.has("--virgil-topbar-bg")).toBe(false);
+    expect(style.props.has("--virgil-background")).toBe(false);
   });
 
   it("is a no-op on a window that is not there yet", () => {

@@ -302,7 +302,7 @@ export function carryCompiledPlace(app: PdfViewerApplication, id: string): void 
  * names a `--virgil-*` token that is not here, or carries a bare hex.
  */
 export const VIEWER_PALETTE_TOKENS = [
-  "--topbar-bg",
+  "--background",
   "--border-light",
   "--foreground",
   "--surface",
@@ -311,7 +311,7 @@ export const VIEWER_PALETTE_TOKENS = [
   "--pod-panel",
 ] as const;
 
-/** `--topbar-bg` → `--virgil-topbar-bg`: the name a token goes by in the iframe. */
+/** `--background` → `--virgil-background`: the name a token goes by in the iframe. */
 export function viewerPaletteVar(token: (typeof VIEWER_PALETTE_TOKENS)[number]): string {
   return `--virgil-${token.slice(2)}`;
 }

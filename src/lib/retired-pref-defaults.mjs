@@ -26,10 +26,10 @@
 export const RETIRED_PREF_DEFAULTS = Object.freeze({
   // The Sand ground: bar, tabs and Library stand on the one canvas colour, and
   // the cool hairlines and the sub-AA greys go warm.
-  topbarBackground: ["#c5dbe2"],
-  topbarBackgroundBottom: ["#c4c4c4"],
-  topbarBorder: ["#cbc3b8", "#dcd3cb"],
-  tabBg: ["#c5dbe2"],
+  topbarBackground: ["#c5dbe2", "#ede3de"],
+  topbarBackgroundBottom: ["#c4c4c4", "#ede3de"],
+  topbarBorder: ["#cbc3b8", "#dcd3cb", "#ede3de"],
+  tabBg: ["#c5dbe2", "#ede3de"],
   libraryBg: ["#ddeaee"],
   virgilBarText: ["#78716c"],
   headerBg: ["#c6cbcd"],
@@ -38,11 +38,14 @@ export const RETIRED_PREF_DEFAULTS = Object.freeze({
   panelHeaderTextColor: ["#8a8580"],
   // Block labels leave the blue chip for quiet margin text, and % comments go
   // warm so they read as editor notes rather than a foreign colour.
-  headingAnnotationColor: ["#6b9ac4"],
+  headingAnnotationColor: ["#6b9ac4", "#625a53"],
   headingAnnotationBorder: ["#a8c4de"],
   latexCommentColor: ["#7191b0"],
   // Tool windows lose their header band: the toolbar pod reads as the panel.
   podToolbar: ["#f5f3ef"],
+  // The bar steps paler than the sand, closed by a fine line; the accent leaves
+  // the brown family for azure; and those margin labels take a subdued blue.
+  accentColor: ["#7c5e3c"],
 });
 
 /**

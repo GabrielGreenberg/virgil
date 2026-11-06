@@ -417,11 +417,12 @@ function StatusClusterImpl(props: StatusClusterProps) {
       {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder. Disabled
           while a compile is in flight; the in-flight spinner is the protected
           tier's `compile` status item (task 1353), so it shows once, and shows
-          while the tools are collapsed. The bar's one filled control. */}
+          while the tools are collapsed. A soft tile, not a fill: compiling is not
+          something you do often. */}
       <button
         onClick={vbar.compilePdf}
         disabled={!!compileBlocked}
-        className="topbarbtn topbarbtn-primary"
+        className="topbarbtn topbarbtn-tile"
         data-hint={compileBlocked ?? "Compile"}
       >
         Compile

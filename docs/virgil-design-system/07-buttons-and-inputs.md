@@ -22,8 +22,7 @@ hover: brightness 92%  active: translate-y 0.5px
 disabled: opacity 40%
 ```
 
-Color: `--accent` (warm brown). Not blue. Blue isn't a Virgil color
-except for inline editor markers.
+Color: `--accent` (azure).
 
 ### `secondary`
 

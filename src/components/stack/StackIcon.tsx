@@ -116,7 +116,7 @@ export function StackIcon({ open, onToggle, hitRef }: StackIconProps) {
   // Illuminated (drag target): accent-blue ring, same family as
   // DockOutline + drop-mode indicator.
   const bg = illuminated
-    ? "var(--accent-light, #f5f0ea)"
+    ? "var(--accent-light)"
     : open
       ? "color-mix(in srgb, var(--background) 90%, #000)"
       : hover && !contentDragActive

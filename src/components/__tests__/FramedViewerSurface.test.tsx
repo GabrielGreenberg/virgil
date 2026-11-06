@@ -46,7 +46,7 @@ describe("FramedViewerSurface", () => {
 
   it("stands on the colour the viewer paints around its pages", () => {
     const { pod } = renderSurface({ children: <i /> });
-    expect(pod.style.background).toBe("var(--topbar-bg)");
+    expect(pod.style.background).toBe("var(--background)");
   });
 
   it("renders its children inside the pod (overlays anchor to it)", () => {

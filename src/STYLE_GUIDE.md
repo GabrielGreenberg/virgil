@@ -13,10 +13,15 @@
 ## Visual identity
 
 Virgil is a writing tool that reads like paper. The canvas is one warm
-sand (`--background: #ede3de`), and the bar, the tabs and the Library stand
-on that same ground rather than on colours of their own; the text is set in
-a serif (`--font-serif`); the chrome around it is sans (`--font-sans`); the
-brand accent is a warm brown (`--accent: #7c5e3c`). Pods sit on the canvas
+sand (`--background: #ede3de`), and the Library stands on that same ground.
+The Virgil bar is a paler step of it (`--topbar-bg: #f6f1ed`) with a fine line
+under it, so the bar reads as the one layer that belongs to the whole app and
+everything below it belongs to the page. The text is set in a serif
+(`--font-serif`); the chrome around it is sans (`--font-sans`); the accent is
+azure, the one cool colour against the sand (`--control-selected: #167bb6` for
+fills and on-states, `--accent: #12669a` where it has to read as text), and the
+labels in the page's left margin take a subdued blue of the same hue
+(`--heading-annotation-color: #3c6b86`). Pods sit on the canvas
 as raised paper surfaces with a subtle shadow.
 
 When in doubt, ask: *would this look right printed?* If the answer is
@@ -1445,7 +1450,8 @@ classes for topbar buttons; if you need a new visual state, extend
 `.topbarbtn` so every sibling stays in sync.
 
 **The bar keeps four controls out**: the Text/Code/PDF switch, Compile, AI
-requests and ⋯. Compile is the one filled control (`.topbarbtn-primary`). A tool
+requests and ⋯. Compile is a soft tile (`.topbarbtn-tile`), one step deeper than
+the bar, because it is not something you do often; nothing on the bar is filled. A tool
 used now and then is a row in ⋯ (`BarMoreMenu`), not another icon, and an off-
 switch for a state the user is in (the Zen button, a mode chip) is the only
 reason to add to the bar.
@@ -2484,7 +2490,7 @@ row.
 view switch — is a named `role="group"` of `aria-pressed` segments painted on
 a recessed `--segment-track`, the selected segment a white tile on it,
 `rounded-md` on the track and `rounded-sm` on a segment, so a choice stays
-quieter than the one filled action near it. A
+quieter than any filled action near it. A
 `.focus-ring` per segment (lifted above its neighbours; no `overflow-hidden`
 clipping it), and a disabled segment whose hint says WHY (`disabledHint`, also
 its `aria-description`). Four sites had hand-rolled it and drifted four ways
@@ -4458,7 +4464,7 @@ reload (or a successful re-anchor) restores it to the grid.
 
 ## Top bar
 
-40px, `--topbar-bg`, which is the canvas colour: the bar is part of the ground, not a band above it. One row. Slots: logo, project tabs, title bar, AI
+40px, `--topbar-bg`, a paler step of the sand canvas, closed by a fine `--topbar-border` line. It is the one band that belongs to the whole app; a pane's own toolbar, the PDF viewer's included, stands on the ground below it. One row. Slots: logo, project tabs, title bar, AI
 status, user menu. Hovers use `hover-on-dark`. The active tab is a
 lozenge: `SEGMENT_ON`, the same white tile as the view switch, so the bar
 has one way of saying what is selected. Inactive tabs are plain text in

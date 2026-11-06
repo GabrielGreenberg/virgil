@@ -50,7 +50,7 @@ export default function FramedViewerSurface({
       <div
         className="flex-1 flex flex-col min-h-0 overflow-hidden relative"
         style={{
-          background: "var(--topbar-bg)",
+          background: "var(--background)",
           borderRadius: "var(--pod-radius)",
           border: "var(--pod-border)",
           boxShadow: "var(--pod-shadow)",

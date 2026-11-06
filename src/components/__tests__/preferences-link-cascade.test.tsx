@@ -13,8 +13,8 @@ vi.mock("@/lib/storage", async () =>
 /**
  * The locked-link cascade belongs to the WRITER, not to a call site (task 625).
  *
- * `topbarBackground` is a linked parent: `libraryBg` and `tabBg` track it by a
- * lightness delta, and the links ship LOCKED. But the cascade used to be a
+ * `tabBg` tracks `topbarBackground` and `libraryBg` tracks `backgroundColor`, each
+ * by a lightness delta, and the links ship LOCKED. But the cascade used to be a
  * wrapper (`useLinkAwareUpdater`) that one section of the preferences dialog
  * applied and the rest didn't — so "Virgil bar background" in the Smart section
  * moved the linked shades, while "Top bar background" in the "All preferences"
@@ -123,22 +123,30 @@ describe("every door of the preferences dialog cascades a locked link", () => {
     typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
 
     expect(read().topbarBackground).toBe(PARENT_HEX);
-    expect(read().libraryBg).not.toBe(before.libraryBg);
     expect(read().tabBg).not.toBe(before.tabBg);
+    // The bar is a band of its own: the Library follows the page, not the bar.
+    expect(read().libraryBg).toBe(before.libraryBg);
+
+    typeHex(hexBoxFor("Document background"), PARENT_HEX);
+
+    expect(read().backgroundColor).toBe(PARENT_HEX);
+    expect(read().libraryBg).not.toBe(before.libraryBg);
   });
 
   it("an UNLOCKED link is inert", async () => {
     const { linksMod, read } = await mountDialog();
     act(() => {
-      linksMod.setLinkLocked("topbarBackground", "libraryBg", false);
+      linksMod.setLinkLocked("backgroundColor", "libraryBg", false);
       linksMod.setLinkLocked("topbarBackground", "tabBg", false);
     });
     const before = { libraryBg: read().libraryBg, tabBg: read().tabBg };
 
     openPage("Top bar");
     typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
+    typeHex(hexBoxFor("Document background"), PARENT_HEX);
 
     expect(read().topbarBackground).toBe(PARENT_HEX);
+    expect(read().backgroundColor).toBe(PARENT_HEX);
     expect(read().libraryBg).toBe(before.libraryBg);
     expect(read().tabBg).toBe(before.tabBg);
   });

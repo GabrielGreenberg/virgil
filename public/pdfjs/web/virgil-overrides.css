@@ -18,21 +18,22 @@
  * first copy lands. The token list is `VIEWER_PALETTE_TOKENS`; a census test
  * fails on a bare hex here or a --virgil-* name missing from that list.
  *
- * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip in the
- * Virgil top-bar colour, in the same register as the Library TopBar, keeping only page navigation +
- * zoom, and hiding the annotate / editor / open groups. Print and download show
+ * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip on the page's
+ * sand, keeping only page navigation + zoom, and hiding the annotate / editor /
+ * open groups. The strip belongs to the page, not to the app, so it stands on
+ * the ground rather than in the Virgil bar's colour. Print and download show
  * only on the compiled paper.
  */
 
 :root {
   /* The live Virgil palette, copied in by PdfView.applyViewerPalette. The
      fallbacks are the shipped defaults (globals.css promote-defaults block). */
-  --v-topbar-bg: var(--virgil-topbar-bg, #ede3de);
+  --v-ground: var(--virgil-background, #ede3de);
   --v-hairline: var(--virgil-border-light, #dcd3cb);
   --v-ink: var(--virgil-foreground, #1a1a1a);
   --v-surface: var(--virgil-surface, #ffffff);
   --v-muted: var(--virgil-muted, #8a8580);
-  --v-accent: var(--virgil-control-selected, #8a7355);
+  --v-accent: var(--virgil-control-selected, #167bb6);
   --v-sheet: var(--virgil-pod-panel, #fffdfa);
   --v-accent-hover: color-mix(in srgb, var(--v-accent) 16%, transparent);
   --v-accent-active: color-mix(in srgb, var(--v-accent) 28%, transparent);
@@ -41,9 +42,9 @@
 
   /* The canvas around the page and the sidebar stand on the same Sand as the
      toolbar. */
-  --body-bg-color: var(--v-topbar-bg);
-  --sidebar-narrow-bg-color: var(--v-topbar-bg);
-  --sidebar-toolbar-bg-color: var(--v-topbar-bg);
+  --body-bg-color: var(--v-ground);
+  --sidebar-narrow-bg-color: var(--v-ground);
+  --sidebar-toolbar-bg-color: var(--v-ground);
   --toolbarSidebar-box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 var(--v-hairline), 0 1px 0 var(--v-hairline);
   --progressBar-color: var(--v-accent);
 
@@ -58,8 +59,8 @@
   --treeitem-selected-color: var(--v-ink);
   --treeitem-selected-bg-color: var(--v-accent-active);
 
-  /* Toolbar surface + chrome -> Virgil topbar tokens */
-  --toolbar-bg-color: var(--v-topbar-bg);
+  /* Toolbar surface + chrome -> the ground */
+  --toolbar-bg-color: var(--v-ground);
   --toolbar-border-color: var(--v-hairline);
   --toolbar-height: 40px;
   --toolbar-box-shadow: none;
@@ -92,10 +93,10 @@
   --doorhanger-separator-color: var(--v-hairline);
 }
 
-/* Quiet the toolbar container: thin top-bar strip, no heavy gradient/shadow. */
+/* Quiet the toolbar container: a thin strip, no heavy gradient/shadow. */
 #toolbarContainer,
 .toolbar {
-  background-color: var(--v-topbar-bg);
+  background-color: var(--v-ground);
   border-bottom: 1px solid var(--v-hairline);
   box-shadow: none;
 }

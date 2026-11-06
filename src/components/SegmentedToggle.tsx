@@ -16,7 +16,7 @@
  *
  *  - a `role="group"` with a name; every segment `aria-pressed`
  *  - a recessed track with the selected segment as a white tile on it, never
- *    `--accent`, so a choice stays quieter than the one filled action near it
+ *    `--accent`, so a choice stays quieter than any filled action near it
  *  - `rounded-md` (the control radius) on the track, `rounded-sm` on a segment
  *  - `.focus-ring` per segment, lifted above its neighbours while focused so
  *    the ring is not painted under the next segment (no `overflow-hidden` on

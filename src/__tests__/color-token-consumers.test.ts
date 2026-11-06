@@ -511,7 +511,7 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
       "not a hover fill: a pressed toggle's resting tile, cleared while it is NOT hovered",
     ".field-select option:hover, .field-select option:focus-visible":
       "an open dropdown's row: the menus' one roving wash (--menu-roving-bg)",
-    ".topbarbtn.topbarbtn-primary:hover": "the bar's one filled control: its own fill, one step darker",
+    ".topbarbtn.topbarbtn-tile:hover": "Compile's tile: its own wash, one step deeper",
     ".omni-bin-pill:hover": "a tinted-rest pill that hovers one step deeper (the hover trap — its own comment in globals.css)",
     ".source-pod-preview:hover": "the source pod's code-block register (--code-block-bg-hover)",
     ".inline-math:hover, .inline-math.selected": WASH,

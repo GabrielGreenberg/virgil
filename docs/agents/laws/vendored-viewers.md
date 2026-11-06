@@ -102,9 +102,9 @@ live on the PARENT's `:root` and do not cross into an iframe. Now:
   (`is-dark` → `is-light`) is what lands; every dark rule in `viewer.css` is gated
   `:where(html:not(.is-light))`, which the runtime-surface census now pins.
 
-**Owed:** preview eyeball — Library → a paper with a PDF → toolbar matches the
-Virgil bar; change the top-bar colour in Preferences → the PDF toolbar follows
-without reopening.
+**Owed:** preview eyeball — Library → a paper with a PDF → toolbar stands on the
+page's ground; change the document background in Preferences → the PDF toolbar
+follows without reopening.
 
 ### The compiled half
 
@@ -137,7 +137,7 @@ The door sets the live `pdfLinkService.externalLinkTarget` to `BLANK` per open.
 
 Around the viewer: the pane sits in a `PaneFreeze` (`anchor="right"`, the edge the
 split's divider does not move), so a drag re-rasterizes once. `FramedViewerSurface`
-lost its `dark` backdrop with Chrome's viewer and now stands on `--topbar-bg`, the
+lost its `dark` backdrop with Chrome's viewer and now stands on `--background`, the
 colour the viewer paints around its pages. `PdfPaneOverlay` moved under the toolbar
 (`top-12`; the toolbar is 40px), because the toolbar's controls are live under it.
 
