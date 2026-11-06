@@ -78,12 +78,13 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf-8"));
 }
 
-function writeJson(file, value) {
+/** The bytes `value` would be written as, or null when the file already
+ *  holds exactly them. Computes only — `main` writes every planned file at the
+ *  end, together (task 1488). */
+function planJson(file, value) {
   const next = JSON.stringify(value, null, 2) + "\n";
   const prev = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (next === prev) return false;
-  if (!DRY_RUN) fs.writeFileSync(file, next, "utf-8");
-  return true;
+  return next === prev ? null : next;
 }
 
 /**
@@ -257,6 +258,31 @@ function extractSource(rawValue, subPath) {
   return rawValue?.[subPath] ?? {};
 }
 
+/** A blob the owning browser has not re-confirmed for this long is reported
+ *  stale (the mirror re-POSTs every blob on each dev-server mount). */
+const STALE_BLOB_DAYS = 30;
+
+/**
+ * Say, once per run, which blobs are stale (task 1487). Report-only: a stale blob still promotes — its values are the
+ * owner's last word — but a log reader can see promotion is running on old
+ * data. The route that writes the snapshot (and its ownership rule) is
+ * `src/app/api/dev/sync-prefs/route.dev.ts` → `src/lib/dev-prefs-snapshot.ts`.
+ */
+function reportSnapshotHealth(snapshot, registry) {
+  const stamps = snapshot.blobSavedAt && typeof snapshot.blobSavedAt === "object" ? snapshot.blobSavedAt : {};
+  const now = Date.now();
+  const keys = [...new Set(registry.promotable.map((e) => e.storageKey))];
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, key)) continue;
+    const at = Date.parse(stamps[key] ?? snapshot.savedAt ?? "");
+    if (Number.isNaN(at)) continue;
+    const days = Math.floor((now - at) / 86_400_000);
+    if (days >= STALE_BLOB_DAYS) {
+      console.log(`WARNING: snapshot blob ${key} is stale — last confirmed ${days} day(s) ago`);
+    }
+  }
+}
+
 /* ── Main ──────────────────────────────────────────────────────── */
 
 function main() {
@@ -284,8 +310,38 @@ function main() {
    *  the CSS managed block from authoritative post-merge values. */
   const finalByPath = {};
 
-  for (const entry of registry.promotable) {
+  // A snapshot with no source id has no declared writer — it predates task
+  // 1487's ownership rule, and the browser that wrote it may have been an
+  // agent's preview pane. Its values promote NOTHING until a browser opted in
+  // via `virgil:prefs-mirror-source` claims the file (the route replaces a
+  // source-less file on its owner's first POST).
+  const owned = typeof snapshot.source === "string" && snapshot.source !== "";
+  if (!owned) {
+    console.log(
+      "WARNING: snapshot has no source id — provenance unknown, nothing promoted " +
+        "(set virgil:prefs-mirror-source=1 in the owner's dev browser to claim it)",
+    );
+  } else {
+    reportSnapshotHealth(snapshot, registry);
+  }
+
+  for (const entry of owned ? registry.promotable : []) {
     const target = path.join(REPO_ROOT, entry.defaultsFile);
+    // A blob the snapshot does not hold promotes NOTHING — say so by name
+    // rather than feeding `{}` to the strategy and reporting "No changes."
+    // (task 1487: an editor blob missing from a fresh profile's snapshot
+    // silently stalled editor-defaults promotion).
+    const missing = [entry.storageKey, entry.rawFrom].filter(
+      (k) => k && !Object.prototype.hasOwnProperty.call(snapshot, k),
+    );
+    if (missing.length > 0) {
+      console.log(
+        `WARNING: snapshot has no ${missing.join(" / ")} blob — ${entry.defaultsFile} not promoted` +
+          (entry.subPath ? ` (${entry.subPath})` : "") +
+          ` [${entry.strategy}]`,
+      );
+      continue;
+    }
     const rawSnap = snapshot[entry.storageKey];
     const src = extractSource(rawSnap, entry.subPath);
     const cur = finalByPath[entry.defaultsFile] ?? readJson(target);
@@ -309,25 +365,35 @@ function main() {
     finalByPath[entry.defaultsFile] = next;
   }
 
-  // Write each defaults file ONCE, from its FINAL value (task 1120). Several
-  // entries may fold into one file (`replace-all` then `bake-transforms` on
-  // the editor defaults), so "changed" must be measured on the result against
-  // the untouched on-disk bytes — never per step, where an intermediate (raw
-  // colours) differs from the baked file it is about to be replaced by. That
-  // per-step write made --check report drift forever and listed a file in
-  // --changed-out that ended byte-identical, aborting sync-defaults' commit.
+  // PLAN every output before writing ANY (task 1488): a step that throws —
+  // `planCssBlock` on a globals.css missing its markers — must leave nothing on
+  // disk. Writing the JSON sidecars first used to half-write a direct run
+  // (`--root` defaults to the live checkout): JSONs updated, globals.css
+  // stale, the coverage guard red.
+  //
+  // Each defaults file is planned ONCE, from its FINAL value (task 1120).
+  // Several entries may fold into one file (`replace-all` then
+  // `bake-transforms` on the editor defaults), so "changed" must be measured
+  // on the result against the untouched on-disk bytes — never per step, where
+  // an intermediate (raw colours) differs from the baked file it is about to
+  // be replaced by. That per-step write made --check report drift forever and
+  // listed a file in --changed-out that ended byte-identical, aborting
+  // sync-defaults' commit.
+  /** rel path → the bytes to write. */
+  const planned = new Map();
   for (const [rel, next] of Object.entries(finalByPath)) {
-    if (writeJson(path.join(REPO_ROOT, rel), next)) {
-      changed.push(rel);
-      console.log(verb, rel);
-    }
+    const bytes = planJson(path.join(REPO_ROOT, rel), next);
+    if (bytes !== null) planned.set(rel, bytes);
   }
 
   // globals.css managed block — the ONE pref→CSS table rendered from the
   // post-merge editor defaults.
   const editorNext = finalByPath[EDITOR_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, EDITOR_PREFS_JSON_REL));
-  if (rewriteCssBlock(renderPrefCssSeed(editorNext))) {
-    const rel = path.relative(REPO_ROOT, GLOBALS_CSS).split(path.sep).join("/");
+  const css = planCssBlock(renderPrefCssSeed(editorNext));
+  if (css !== null) planned.set(path.relative(REPO_ROOT, GLOBALS_CSS).split(path.sep).join("/"), css);
+
+  for (const [rel, bytes] of planned) {
+    if (!DRY_RUN) fs.writeFileSync(path.join(REPO_ROOT, rel), bytes, "utf-8");
     changed.push(rel);
     console.log(verb, rel);
   }
@@ -340,7 +406,9 @@ function main() {
   if (DRY_RUN && changed.length > 0) process.exit(1);
 }
 
-function rewriteCssBlock(seed) {
+/** globals.css with its managed block re-rendered, or null when unchanged.
+ *  Throws when the markers are missing — before `main` has written anything. */
+function planCssBlock(seed) {
   const cur = fs.readFileSync(GLOBALS_CSS, "utf-8");
   const parts = splitPrefCssBlock(cur);
   if (!parts) {
@@ -350,9 +418,7 @@ function rewriteCssBlock(seed) {
   // indent captured from START is reused for END so re-runs don't drift.
   const next =
     parts.before + renderPrefCssBlockBody(seed, parts.indent) + PREF_CSS_BLOCK_END + parts.after;
-  if (next === cur) return false;
-  if (!DRY_RUN) fs.writeFileSync(GLOBALS_CSS, next, "utf-8");
-  return true;
+  return next === cur ? null : next;
 }
 
 main();

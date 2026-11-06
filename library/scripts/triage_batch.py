@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from work_identity import norm_year  # noqa: E402  (task 1485: one year parser)
 
 # ── The flag vocabulary ───────────────────────────────────────────────────
 #
@@ -712,9 +713,9 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
             proposed_fields["author"] = meta["author"]
         # \date{...} can be a 4-digit year, a free-form date, or empty.
         if meta.get("date"):
-            year_m = re.search(r"\b(\d{4})\b", meta["date"])
-            if year_m and 1800 <= int(year_m.group(1)) <= 2100:
-                proposed_fields.setdefault("year", year_m.group(1))
+            date_year = norm_year(meta["date"])
+            if date_year is not None and 1800 <= date_year <= 2100:
+                proposed_fields.setdefault("year", str(date_year))
     else:
         return {"filename": filename, "extension": ext, "flags": ["unsupported-ext"], "notes": []}
 

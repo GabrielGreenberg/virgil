@@ -7,15 +7,18 @@
  * `MARKER_META` (`src/lib/marginalia.ts`), which composes these helpers.
  *
  * **Cycle-safe by construction**: this module imports only the runtime-leaf
- * `card-registry.tsx` plus types (`./types`, and `PanelThemeKey` /
- * `PanelKind` type-only). It must never import `@/lib/marginalia`,
+ * `card-registry.tsx`, the zero-registry leaf `legacy-token-crosswalk`, plus
+ * types (`./types`, and `PanelThemeKey` / `PanelKind` / `HighlightType`
+ * type-only). It must never import `@/lib/marginalia`,
  * `panel-registry`, or any card UI — `lib/marginalia.ts` imports *this*
  * module at init time to build `MARKER_META`.
  */
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
+import type { HighlightType } from "@/lib/view-prefs/highlight-types";
 import type { CardKind, MarkerType } from "./types";
 import { CARD_REGISTRY } from "./card-registry";
+import { cssTokenForCardKind } from "./legacy-token-crosswalk";
 
 /**
  * Runtime mirror of the `MarkerType` union, type-pinned in both directions:
@@ -176,6 +179,29 @@ export function panelForMarkerType(t: MarkerType): PanelKind {
     throw new Error(`[MarkerMeta] no panel derived for markerType "${t}"`);
   }
   return panel;
+}
+
+/** The panel that owns highlight type `t` (task 1490) — the registry `.panel`
+ *  of the card kinds whose `cssToken` is `t` (e.g. `comment` →
+ *  `revision-comment` / `revision-suggestion` → `revisions`). The Highlights
+ *  menu's per-type rows are named by this panel's `shortLabel`, exactly as the
+ *  marginalia rows are named through `panelForMarkerType`, so the two View-menu
+ *  groups cannot spell one panel two ways. Throws when the token is unowned or
+ *  split across panels — a highlight row with no single panel has no name. */
+export function panelForHighlightType(t: HighlightType): PanelKind {
+  const panels = new Set<PanelKind>();
+  for (const kind of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    if (cssTokenForCardKind(kind) !== t) continue;
+    const panel = CARD_REGISTRY[kind].panel;
+    if (panel != null) panels.add(panel);
+  }
+  if (panels.size !== 1) {
+    throw new Error(
+      `[MarkerMeta] highlight type "${t}" must map to exactly one panel; got ` +
+        `${panels.size === 0 ? "none" : [...panels].join(", ")}.`,
+    );
+  }
+  return [...panels][0];
 }
 
 /** The user-overridable color slot for marker namespace `t` — the registry

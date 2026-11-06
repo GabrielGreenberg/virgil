@@ -151,6 +151,22 @@ describe("leg 3 — every publicAssetUrl literal lands in a classified entry", (
     const orphans = [...named].filter((p) => !classifyPublicPath(p));
     expect(orphans).toEqual([]);
   });
+
+  it("task 1482 — a literal requested WITH a query names a precached file the worker keys query-less", () => {
+    // public/sw.js's precacheKeyOf drops the query only when the query-less
+    // URL is a precache key, so a query-bearing literal under a PRECACHE row
+    // is served from the precache (offline included). Under a runtime row it
+    // is cached per query by design — the `?v=` cache-busted install icons.
+    const literal = /publicAssetUrl\(\s*["'`]\/?([^"'`?$]+)\?/g;
+    const queried = new Set<string>();
+    for (const file of [...sourceFiles(path.join(REPO, "src")), ...sourceFiles(path.join(REPO, "library"))]) {
+      for (const m of fs.readFileSync(file, "utf8").matchAll(literal)) queried.add(m[1]);
+    }
+    expect([...queried].filter((p) => !classifyPublicPath(p))).toEqual([]);
+    const pinned = [...queried].filter((p) => classifyPublicPath(p)?.mode === "precache");
+    expect(pinned).toContain("pdfjs/web/viewer.html");
+    expect(fs.readFileSync(path.join(PUBLIC, "sw.js"), "utf8")).toContain("function precacheKeyOf(");
+  });
 });
 
 describe("leg 4 — the stamper precaches by the table", () => {

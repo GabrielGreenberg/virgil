@@ -1,4 +1,4 @@
-<!-- last-verified: 25db9fea 2026-11-05 -->
+<!-- last-verified: 3010f199 2026-11-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/menu/, src/components/SkillSyncControls.tsx, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/cards/predicates.ts -->
 
@@ -86,7 +86,7 @@ left/right panel columns, the omni-view area, dock slots, and the code-view gutt
 
 ## Panels (what "panel" means)
 
-All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY` is SSOT). 11 card panels, 4 non-card panels.
+All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY` is SSOT). 11 card panels, 4 non-card panels. Panel display names live there too (`label` + `shortLabel`, task 1475) — theme, text-size, search scopes, archive restore, marginalia hide rows, gutter headings and the View menu's Highlights rows all derive from it (census `panel-label-census.test.ts`).
 
 ### Card panels (have cards anchored in the document)
 

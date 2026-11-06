@@ -1246,7 +1246,7 @@ function surfaceLacks(ctx: ActionContext, member: SchemaMember): boolean {
  * declaration IS the gate: `makes ∧ surfaceLacks → "disabled"`, else the row's
  * own `applies`, which asks only its container / capture questions.
  */
-export function withSchemaGate(spec: ActionSpec): ActionSpec {
+export function withSchemaGate<S extends Pick<ActionSpec, "makes" | "applies">>(spec: S): S {
   const member = spec.makes;
   if (!member) return spec;
   const own = spec.applies;
@@ -1278,7 +1278,7 @@ export type ActionGate = ReturnType<ActionSpec["applies"]> | "read-only";
 
 /** The run door's gate half — exported for a deferred commit with its own
  *  body (`applyTextColor`). Gesture-rate. */
-export function actionGate(spec: ActionSpec, ctx: ActionContext): ActionGate {
+export function actionGate(spec: Pick<ActionSpec, "applies">, ctx: ActionContext): ActionGate {
   if (!surfaceEditableNow(ctx.editor ?? ctx.view)) return "read-only";
   return spec.applies(ctx);
 }
@@ -1289,7 +1289,7 @@ export type ActionRunOutcome = "ran" | "disabled" | "read-only";
 
 /** Run `spec` at `ctx` iff its gate passes — THE run door (task 1299). */
 export function runAction(
-  spec: ActionSpec,
+  spec: Pick<ActionSpec, "applies" | "run">,
   ctx: ActionContext,
   opts?: { beforeRun?: () => void },
 ): ActionRunOutcome {
@@ -1341,11 +1341,17 @@ export interface ActionVerdict {
   reason: string | null;
 }
 
-export function verdictOf(spec: ActionSpec, ctx: ActionContext): ActionVerdict {
+export function verdictOf(spec: VerdictRow, ctx: ActionContext): ActionVerdict {
   const state = spec.applies(ctx);
   if (state !== "disabled") return { state, reason: null };
   return { state, reason: refusalPhrase(refusalOf(spec, ctx)) };
 }
+
+/** What `verdictOf` / `refusalOf` read off a row — every field but its
+ *  identity, so a SURFACE-LOCAL row built by the same factories (the card
+ *  toolbar's underline, `UNDERLINE_TOOLBAR_ROW`) is judged by the same ladder
+ *  without minting an `ActionId`. */
+export type VerdictRow = Pick<ActionSpec, "applies" | "makes" | "refusal" | "selection">;
 
 /** The refusal for a READ-ONLY surface: "host" when its host mounted it so
  *  (the Library Reader), else "pen" (the partner holds it). Shared by
@@ -1357,7 +1363,7 @@ export function readOnlyRefusal(target: Parameters<typeof surfaceReadOnlyByHost>
 
 /** The refusal behind a `"disabled"` verdict — `verdictOf`'s ladder. Exported
  *  for the per-gate unit tests; surfaces read `verdictOf`. */
-export function refusalOf(spec: ActionSpec, ctx: ActionContext): Refusal {
+export function refusalOf(spec: VerdictRow, ctx: ActionContext): Refusal {
   if (isCollabReadOnly(ctx)) return readOnlyRefusal(ctx.editor ?? ctx.view);
   // Task 1182: a surface that can never hold what the row makes says so before
   // any per-caret reason — no selection or container would change the answer.
@@ -3665,6 +3671,34 @@ const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.to
 // every mark toggle's (Mod-B / Mod-I are StarterKit's).
 const SMALL_CAPS_ACTION_ROW = formatToggleRow("small-caps", "Small caps", (c) => c.toggleSmallCaps(), { mark: "smallCaps", keybinding: "Mod-Shift-k" });
 const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode(), { mark: "code", keybinding: "Mod-e" });
+/**
+ * Underline (task 1481) — a SURFACE-LOCAL mark row: the card-body format
+ * toolbar's U button, and nowhere else. It is deliberately NOT an `ActionId`
+ * and not in `VIRGIL_ACTION_REGISTRY` — underline has no LaTeX spelling in
+ * the wrapper-mark table, so no slash name (`mark-slash.test.ts` pins it out
+ * of `VIRGIL_COMMAND_NAMES`), no ⚡ grid cell, no surface for
+ * `assertActionCoverage` to reconcile. But its PAINT and COMMIT are a mark
+ * toggle's like any other, so it is built by the same gate pieces as the five
+ * registry mark rows — `formatApplies` (grey where the caret's block admits no
+ * underline, e.g. a captured `codeBlock`), the schema gate composed the way the
+ * registry assembly composes it, and the collab no-op in `run` — and the
+ * toolbar reads it through `verdictOf` / `toggledMember` / `runAction` exactly
+ * as it reads B / I / Sc. Before, the toolbar special-cased it twice (paint
+ * never grey, press with no gate): lit and inert in a code block.
+ */
+export const UNDERLINE_TOOLBAR_ROW = withSchemaGate({
+  label: "Underline",
+  keybinding: "Mod-u",
+  selection: "ignored",
+  makes: { mark: "underline" },
+  toggle: true,
+  applies: formatApplies("underline"),
+  run: (ctx: ActionContext) => {
+    if (isCollabReadOnly(ctx)) return;
+    ctx.editor.chain().focus().toggleUnderline().run();
+  },
+} satisfies Pick<ActionSpec, "label" | "keybinding" | "selection" | "makes" | "toggle" | "applies" | "run">);
+
 /** The five MARK toggle rows — the format rows built on the `mark` arm. Their
  *  slash names feed `SLASH_NAME_TO_ACTION_ID` (task 891), and
  *  `assertActionCoverage` partitions the format slice on it (a mark owns the

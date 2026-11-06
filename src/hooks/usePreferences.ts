@@ -7,6 +7,13 @@ import { PREFS_STORAGE_KEY, TRANSFORMS_STORAGE_KEY } from "@/lib/pref-css-bootst
 import { DEFAULT_PREFS } from "./preferences-defaults";
 import { dropRetiredDefaults } from "@/lib/retired-pref-defaults.mjs";
 import { propagate, type LinkableKey } from "@/lib/pref-links";
+import { deepEqual } from "@/lib/sidecar-merge";
+import {
+  applySideSettings,
+  readSideSettings,
+  resolveSideSettings,
+  type SideSettings,
+} from "@/lib/settings-stores";
 
 export interface EditorPreferences {
   // Editor > Body Text
@@ -128,13 +135,41 @@ export { DEFAULT_PREFS } from "./preferences-defaults";
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
-/** The whole settings pair — what a reset replaces and an undo restores. */
-export interface SettingsSnapshot {
+/** The whole settings — what a reset replaces, a preset captures and an undo
+ *  restores: prefs + transforms + every side store the Preferences dialog
+ *  renders (`SIDE_SETTINGS_STORES`, task 1489). A side key that is ABSENT (an
+ *  older preset blob) resolves to that store's defaults. */
+export interface SettingsSnapshot extends Partial<SideSettings> {
   prefs: Partial<EditorPreferences>;
   transforms: Partial<GlobalTransforms>;
 }
 
-export interface PreferencePreset {
+/** A snapshot with nothing left implicit — exactly what applying it leaves. */
+export interface ResolvedSettings extends SideSettings {
+  prefs: EditorPreferences;
+  transforms: GlobalTransforms;
+}
+
+/** The empty snapshot: applying it is "Reset to defaults". */
+export const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = { prefs: {}, transforms: {} };
+
+/** What `applySettings(snapshot)` leaves in every store — the ONE merge rule,
+ *  shared by the door and by an undo offer that must recognise its result. */
+export function resolveSettings(snapshot: SettingsSnapshot): ResolvedSettings {
+  return {
+    prefs: { ...DEFAULT_PREFS, ...snapshot.prefs },
+    transforms: { ...DEFAULT_TRANSFORMS, ...snapshot.transforms },
+    ...resolveSideSettings(snapshot),
+  };
+}
+
+/** Do two snapshots mean the same settings? Compared RESOLVED, so an implicit
+ *  default and an explicit one are equal. */
+export function settingsEqual(a: SettingsSnapshot, b: SettingsSnapshot): boolean {
+  return deepEqual(resolveSettings(a), resolveSettings(b));
+}
+
+export interface PreferencePreset extends Partial<SideSettings> {
   name: string;
   prefs: EditorPreferences;
   transforms: GlobalTransforms;
@@ -372,23 +407,25 @@ export function usePreferences() {
   }, [persistTransforms]);
 
   /**
-   * The ONE door that replaces the whole settings pair — prefs AND transforms —
-   * in one go (task 903). Reset, preset load and an undo of either all mean
-   * "make these the settings", so they share it rather than each spelling the
-   * four writes. A partial snapshot (an older preset blob) is merged onto the
-   * defaults, exactly as `load*` merges a stored one.
+   * The ONE door that replaces the whole settings — prefs, transforms AND every
+   * side store (`SIDE_SETTINGS_STORES`: panel colours, panel typography, link
+   * deltas — task 1489) — in one go (task 903). Reset, preset load and an undo
+   * of any of them all mean "make these the settings", so they share it rather
+   * than each spelling the writes. A partial snapshot (an older preset blob) is
+   * merged onto the defaults by `resolveSettings`, exactly as `load*` merges a
+   * stored one.
    */
   const applySettings = useCallback((snapshot: SettingsSnapshot) => {
-    const nextPrefs = { ...DEFAULT_PREFS, ...snapshot.prefs };
-    const nextTransforms = { ...DEFAULT_TRANSFORMS, ...snapshot.transforms };
-    setPrefs(nextPrefs);
-    setTransforms(nextTransforms);
-    persistPrefs(nextPrefs);
-    persistTransforms(nextTransforms);
+    const next = resolveSettings(snapshot);
+    setPrefs(next.prefs);
+    setTransforms(next.transforms);
+    persistPrefs(next.prefs);
+    persistTransforms(next.transforms);
+    applySideSettings(next);
   }, [persistPrefs, persistTransforms]);
 
   const resetAll = useCallback(() => {
-    applySettings({ prefs: DEFAULT_PREFS, transforms: DEFAULT_TRANSFORMS });
+    applySettings(DEFAULT_SETTINGS_SNAPSHOT);
   }, [applySettings]);
 
   /** Returns false (and writes nothing) for an empty or reserved name. */
@@ -397,7 +434,10 @@ export function usePreferences() {
     if (!trimmed || isReservedPresetName(trimmed)) return false;
     setPresets((prev) => {
       const existing = prev.findIndex((p) => p.name === trimmed && !p.builtIn);
-      const preset: PreferencePreset = { name: trimmed, prefs, transforms, createdAt: Date.now() };
+      // A preset is THE settings (task 1489): it captures the side stores too.
+      const preset: PreferencePreset = {
+        name: trimmed, prefs, transforms, ...readSideSettings(), createdAt: Date.now(),
+      };
       let next: PreferencePreset[];
       if (existing >= 0) {
         next = [...prev];

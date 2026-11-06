@@ -116,27 +116,35 @@ function persist() {
 }
 
 /**
- * The ONE parse/validate path for the persisted blob — shared by the one-shot
- * hydrate and the cross-window re-sync below, so a peer's blob is filtered by
- * exactly the same rules as a local one. Absent/corrupt storage (and a peer's
- * `clear()`) resolve to the defaults.
+ * The ONE validate path for a link-state blob — the persisted one, a peer's,
+ * or one carried by a preset / undo snapshot (task 1489) — merged onto the
+ * defaults. Anything that is not an object resolves to the defaults.
+ */
+export function normalizeLinkStates(parsed: unknown): Record<LinkId, LinkState> {
+  const next: Record<LinkId, LinkState> = { ...DEFAULT_LINK_STATES };
+  if (!parsed || typeof parsed !== "object") return next;
+  const blob = parsed as Record<string, unknown>;
+  for (const k of Object.keys(blob)) {
+    const v = blob[k] as Partial<LinkState> | null;
+    if (v && typeof v === "object" && typeof v.deltaL === "number" && typeof v.locked === "boolean") {
+      next[k] = { deltaL: v.deltaL, locked: v.locked };
+    }
+  }
+  return next;
+}
+
+/**
+ * Parse the persisted blob through `normalizeLinkStates` — shared by the
+ * one-shot hydrate and the cross-window re-sync below. Absent/corrupt storage
+ * (and a peer's `clear()`) resolve to the defaults.
  */
 function readLinkStatesFromStorage(): Record<LinkId, LinkState> {
-  const next: Record<LinkId, LinkState> = { ...DEFAULT_LINK_STATES };
-  if (typeof window === "undefined") return next;
+  if (typeof window === "undefined") return { ...DEFAULT_LINK_STATES };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return next;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return next;
-    for (const k of Object.keys(parsed)) {
-      const v = parsed[k];
-      if (v && typeof v === "object" && typeof v.deltaL === "number" && typeof v.locked === "boolean") {
-        next[k] = { deltaL: v.deltaL, locked: v.locked };
-      }
-    }
-  } catch { /* ignore */ }
-  return next;
+    if (!raw) return { ...DEFAULT_LINK_STATES };
+    return normalizeLinkStates(JSON.parse(raw));
+  } catch { return { ...DEFAULT_LINK_STATES }; }
 }
 
 export function loadPrefLinks(): void {
@@ -172,6 +180,18 @@ export function setLinkField<F extends keyof LinkState>(
 ): void {
   const cur = states[id] ?? { deltaL: 0, locked: false };
   states = { ...states, [id]: { ...cur, [field]: value } };
+  persist();
+  notify();
+}
+
+/** Replace EVERY link state in one write — the whole-settings door's half for
+ *  this store (task 1489: reset, preset load, and an undo of either).
+ *  Normalized onto the defaults; `undefined` restores them all. A locked
+ *  child is NOT re-derived here (the header's "re-applies on the next parent
+ *  edit"). Latches `loaded` so a late first hydrate cannot clobber it. */
+export function replaceLinkStates(next: unknown): void {
+  loaded = true;
+  states = normalizeLinkStates(next);
   persist();
   notify();
 }

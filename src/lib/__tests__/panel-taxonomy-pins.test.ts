@@ -4,7 +4,7 @@
 // shadow the registry with no guard; this pins both so they can no longer drift:
 //
 //  1. `PANEL_KIND_TO_BODY_KEY` (panel-typography) is now DERIVED by inverting
-//     `PANEL_BODY_PRIMARY_KIND` through each primary kind's owning panel. This
+//     `PANEL_BODY_PANEL` (the body-key → panel crosswalk, task 1475). This
 //     test freezes the resulting `PanelKind → PanelBodyKey` map and asserts full
 //     coverage, so adding a body-tunable panel or losing a primary kind's panel
 //     is caught here instead of silently dropping a panel's font-size tuning.

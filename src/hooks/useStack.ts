@@ -56,8 +56,15 @@ const STACK_PAYLOAD_KINDS: Record<StackPayload["kind"], true> = {
  * "there is nothing there" — its next write would replace every stored item
  * with the one new capture.
  *
- * - `ok` — absent (truly empty) or a v1 envelope; malformed ITEMS are dropped
- *   one by one, so one bad item costs only itself.
+ * - `ok` — absent (truly empty) or a v1 envelope. Item by item it splits
+ *   three ways (task 1478): READABLE (a payload kind this build knows) is in
+ *   `items` and in `stored`; FOREIGN (a structurally sound item — string `id`,
+ *   payload object — of a payload kind this build does not know: another
+ *   build's capture, e.g. an un-updated window beside an updated one) is in
+ *   `stored` only, verbatim, so every write carries it back untouched;
+ *   CORRUPT (no string `id`, no payload object) is dropped — no build can
+ *   read it, so one bad item costs only itself. The whole-envelope rule of
+ *   task 1100 ("never overwrite what you could not read") at item grain.
  * - `foreign` — parses, but is not a v1 envelope (another build's version, or
  *   no `items` array). Some build may own it: never overwrite.
  * - `corrupt` — does not parse. No build can ever read it.
@@ -66,21 +73,32 @@ const STACK_PAYLOAD_KINDS: Record<StackPayload["kind"], true> = {
  *   apart from `foreign` so the refusal can say which (task 1285).
  */
 type EnvelopeRead =
-  | { state: "ok"; items: StackItem[] }
+  | {
+      state: "ok";
+      /** What this build can show and edit, newest first. */
+      items: StackItem[];
+      /** Every entry a WRITE must carry, in stored order: the readable items
+       *  (normalized) interleaved with foreign-kind ones (verbatim). */
+      stored: unknown[];
+    }
   | { state: "foreign" }
   | { state: "corrupt"; raw: string }
   | { state: "unavailable" };
 
-function isStackItem(v: unknown): v is StackItem {
+/** Structurally an item — a string `id` and a payload object — whether or
+ *  not this build knows its payload kind. What fails this is corrupt. */
+function isStoredItem(v: unknown): v is { id: string; payload: { kind?: unknown } } {
   if (!v || typeof v !== "object") return false;
   const it = v as { id?: unknown; payload?: unknown };
-  if (typeof it.id !== "string") return false;
-  const payload = it.payload as { kind?: unknown } | null | undefined;
+  return typeof it.id === "string" && !!it.payload && typeof it.payload === "object";
+}
+
+function isStackItem(v: unknown): v is StackItem {
+  if (!isStoredItem(v)) return false;
+  const kind = v.payload.kind;
   return (
-    !!payload &&
-    typeof payload === "object" &&
-    typeof payload.kind === "string" &&
-    Object.prototype.hasOwnProperty.call(STACK_PAYLOAD_KINDS, payload.kind)
+    typeof kind === "string" &&
+    Object.prototype.hasOwnProperty.call(STACK_PAYLOAD_KINDS, kind)
   );
 }
 
@@ -94,7 +112,7 @@ function readEnvelope(): EnvelopeRead {
     // written either (the write door reports the same failure).
     return { state: "unavailable" };
   }
-  if (!raw) return { state: "ok", items: [] };
+  if (!raw) return { state: "ok", items: [], stored: [] };
   let parsed: Partial<StackEnvelope> | null;
   try {
     parsed = JSON.parse(raw) as Partial<StackEnvelope> | null;
@@ -114,11 +132,20 @@ function readEnvelope(): EnvelopeRead {
   // — the hook's state, its cross-window re-read, and the non-React
   // `readStackItem` the pull spec uses all come through here — so no consumer
   // downstream ever sees the old shape (or a payload-less item: the thumbnail
-  // reads `item.payload.kind` unguarded) and needs no legacy branch.
-  return {
-    state: "ok",
-    items: (parsed.items as unknown[]).filter(isStackItem).map(normalizeStackItemBib),
-  };
+  // reads `item.payload.kind` unguarded) and needs no legacy branch. A
+  // foreign-kind item is not shown, but it is KEPT for the write (task 1478).
+  const items: StackItem[] = [];
+  const stored: unknown[] = [];
+  for (const entry of parsed.items as unknown[]) {
+    if (isStackItem(entry)) {
+      const item = normalizeStackItemBib(entry);
+      items.push(item);
+      stored.push(item);
+    } else if (isStoredItem(entry)) {
+      stored.push(entry);
+    }
+  }
+  return { state: "ok", items, stored };
 }
 
 /** The items to DISPLAY / look up — an unreadable envelope shows as empty. */
@@ -152,9 +179,6 @@ function writeSerialized(json: string): boolean {
   }
 }
 
-function writeEnvelope(env: StackEnvelope): boolean {
-  return writeSerialized(serializeStackEnvelope(env.items));
-}
 
 // ── Same-window listeners ──────────────────────────────────────────────
 //   localStorage's `storage` event only fires in OTHER tabs, not the
@@ -197,20 +221,23 @@ export function useStack(): UseStackValue {
   // State follows the WRITE, never leads it: a failed persist used to leave
   // React holding a list storage does not have, so the strip showed the
   // removal and the next cross-window re-read undid it (task 591).
-  const persist = useCallback((next: StackItem[]): boolean => {
-    if (!writeEnvelope({ version: 1, items: next })) return false;
-    setItems(next);
+  const persist = useCallback((stored: unknown[]): boolean => {
+    if (!writeSerialized(serializeStackEnvelope(stored))) return false;
+    setItems(stored.filter(isStackItem));
     notifySameWindow();
     return true;
   }, []);
 
   const remove = useCallback(
     (id: string) => {
-      // An unreadable envelope reads as no items, so nothing matches and
-      // nothing is written — the stored blob is left exactly as it was.
-      const cur = readItems();
-      const next = cur.filter((it) => it.id !== id);
-      if (next.length === cur.length) return false;
+      // An unreadable envelope matches nothing and writes nothing — the
+      // stored blob is left exactly as it was. Only a READABLE item can be
+      // removed (it is the only kind the strip shows); foreign-kind entries
+      // are written back untouched (task 1478).
+      const env = readEnvelope();
+      if (env.state !== "ok") return false;
+      const next = env.stored.filter((e) => !(isStackItem(e) && e.id === id));
+      if (next.length === env.stored.length) return false;
       return persist(next);
     },
     [persist],
@@ -238,8 +265,8 @@ export function readStackItem(id: string): StackItem | null {
  * Returns whether the item actually LANDED, and when it did not, WHY (task
  * 1285) — a {@link StackAddReport}. Only `ok: true` may be reported as a
  * capture (task 591); the reason is what the terminal's notice is derived
- * from, so a refusal never tells the user to remove items from a Stack that
- * holds none.
+ * from, so a refusal never offers a remedy that cannot change the outcome
+ * (tasks 1285, 1477).
  *
  * `bib` is REQUIRED (task 235). The referenced bibliography is resolved HERE,
  * once, for every payload family, so a producer cannot land an item without
@@ -262,8 +289,12 @@ export function addStackItem(item: StackItem, bib: StackBibCtx): StackAddReport 
   if (env.state === "corrupt" && !quarantine(env.raw)) {
     return { ok: false, reason: "quarantine-failed" };
   }
-  const cur = env.state === "ok" ? env.items : [];
-  let candidate = [withBibCarry(item, bib), ...cur];
+  // `stored`, not `items`: an entry this build could not read is carried, not
+  // erased (task 1478). It spends from the budget like any other, so FIFO
+  // eviction may still take it — the documented loss, never a silent one
+  // for being unreadable.
+  const cur: unknown[] = env.state === "ok" ? env.stored : [];
+  let candidate: unknown[] = [withBibCarry(item, bib), ...cur];
   // The cap is applied here, once, in BOTH its halves — count then the real
   // localStorage budget, FIFO, never at the expense of the item being added
   // ([budget.ts](../lib/stack/budget.ts)).
@@ -278,11 +309,11 @@ export function addStackItem(item: StackItem, bib: StackBibCtx): StackAddReport 
     // throw well inside it. Make room the same way and try again. When only
     // the new item is left there is nothing further to give, and the add
     // REFUSES: a failed write is never reported as a capture, because its
-    // report is what closes the float and tears down the lift. Whether
-    // "remove some items" is honest copy depends on whether there were any
-    // (task 1285).
+    // report is what closes the float and tears down the lift. That last
+    // write REPLACED the whole stored Stack, so the Stack's own items were
+    // not what blocked it — one reason, whatever the strip held (task 1477).
     if (fitted.items.length <= 1) {
-      return { ok: false, reason: cur.length > 0 ? "full" : "no-room" };
+      return { ok: false, reason: "too-large" };
     }
     candidate = fitted.items.slice(0, fitted.items.length - 1);
   }

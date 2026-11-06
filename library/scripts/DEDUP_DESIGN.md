@@ -25,7 +25,7 @@ records collapsed keys so nothing is ever truly lost.
 
 ### Identity signals (strongest → weakest)
 
-1. **DOI** — normalized (lowercase, strip `https?://(dx.)?doi.org/`, trim).
+1. **DOI** — normalized (lowercase, strip every `doi:`/`DOI `, `https?://`, `(www.|dx.)?doi.org/` prefix until none applies, trim).
 2. **ISBN** — digits+X only, book-ish types.
 3. **(title_norm, year, first-author surname)** — exact.
 4. **Fuzzy title** (token-set Jaccard / prefix / subtitle) + surname + year window.

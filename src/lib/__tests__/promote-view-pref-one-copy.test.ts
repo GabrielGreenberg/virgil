@@ -51,7 +51,7 @@ describe("promoting a changed View pref (task 900)", () => {
         dividerLevels: [1, 2],
       };
       const snapshot = path.join(root, "snapshot.json");
-      fs.writeFileSync(snapshot, JSON.stringify({ "virgil-view-prefs/global": flipped }));
+      fs.writeFileSync(snapshot, JSON.stringify({ source: "test", "virgil-view-prefs/global": flipped }));
       const changedOut = path.join(root, "changed.txt");
 
       const run = spawnSync(

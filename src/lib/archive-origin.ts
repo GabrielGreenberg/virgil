@@ -26,6 +26,8 @@
  * their `.tex` marker.
  */
 import type { ArchivedSnippet } from "./types";
+import type { PanelKind } from "@/panels/_shared/types";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 
 export const ARCHIVE_ORIGIN_PANELS = [
   "notes",
@@ -37,14 +39,24 @@ export const ARCHIVE_ORIGIN_PANELS = [
 
 export type ArchiveOriginPanel = (typeof ARCHIVE_ORIGIN_PANELS)[number];
 
-/** The panel name a user reads ("Restore to Notes"). */
-export const ARCHIVE_ORIGIN_PANEL_LABEL: Record<ArchiveOriginPanel, string> = {
-  notes: "Notes",
-  todos: "Todos",
-  cutter: "Cutter",
-  revisions: "Revisions",
-  reports: "Reports",
+/** Each origin panel token's registry `PanelKind`. The tokens are the wire
+ *  vocabulary `cmd_archive` writes (frozen — `todos`, the sidecar's name), so
+ *  they cannot simply BE `PanelKind`s; this crosswalk is the one place the two
+ *  meet. */
+export const ARCHIVE_ORIGIN_PANEL_KIND: Readonly<Record<ArchiveOriginPanel, PanelKind>> = {
+  notes: "notes",
+  todos: "todo",
+  cutter: "cutter",
+  revisions: "revisions",
+  reports: "reports",
 };
+
+/** The panel name a user reads ("Restore to Notes") — the panel's full
+ *  `PANEL_REGISTRY.label`, the name on its header (task 1475; was a hand table
+ *  that called the Todo List "Todos"). */
+export const ARCHIVE_ORIGIN_PANEL_LABEL: Record<ArchiveOriginPanel, string> = Object.fromEntries(
+  ARCHIVE_ORIGIN_PANELS.map((p) => [p, PANEL_REGISTRY[ARCHIVE_ORIGIN_PANEL_KIND[p]].label]),
+) as Record<ArchiveOriginPanel, string>;
 
 export type ArchiveOrigin =
   /** A document excerpt — no origin record. */

@@ -40,7 +40,7 @@ function makeRoot(): string {
 
 function promote(root: string, snapshot: Record<string, unknown>) {
   const snap = path.join(root, "snapshot.json");
-  fs.writeFileSync(snap, JSON.stringify(snapshot));
+  fs.writeFileSync(snap, JSON.stringify({ source: "test", ...snapshot }));
   const run = spawnSync(
     process.execPath,
     [path.join(REPO, "tools/promote-defaults.mjs"), "--root", root, "--snapshot", snap],

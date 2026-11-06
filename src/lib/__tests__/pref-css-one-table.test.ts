@@ -166,7 +166,7 @@ describe("promoter bakes colour transforms into the shipped palette", () => {
   const runPromoter = (snapshot: object, dryRun = false) => {
     const snap = path.join(tmp, "snapshot.json");
     const changedOut = path.join(tmp, "changed.txt");
-    writeFileSync(snap, JSON.stringify(snapshot));
+    writeFileSync(snap, JSON.stringify({ source: "test", ...snapshot }));
     const r = spawnSync(
       process.execPath,
       [

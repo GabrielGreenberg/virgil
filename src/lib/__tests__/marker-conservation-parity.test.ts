@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  ATOM_ID_MARKERS,
   CUT_MAY_DROP_MARKERS,
   describeMarkerViolation,
   markerConservationViolation,
@@ -44,7 +45,7 @@ const PY_COMMON = readFileSync(
 describe("marker conservation — the shared corpus", () => {
   it("covers every rule and both verdicts", () => {
     const rules = new Set(CORPUS.cases.map((c) => c.expected?.rule ?? "ok"));
-    for (const r of ["ok", "introduced", "dropped", "unpaired", "atom-left"])
+    for (const r of ["ok", "introduced", "dropped", "atom-detached", "unpaired", "atom-left"])
       expect(rules, r).toContain(r);
     for (const c of CORPUS.cases)
       expect(c.why.length, `${c.name} states no reason`).toBeGreaterThan(20);
@@ -79,6 +80,16 @@ describe("marker conservation — the Python twin's tables", () => {
     expect(m, "CUT_MAY_DROP_MARKERS not found in _common.py").not.toBeNull();
     const py = [...m![1].matchAll(/"([a-z]+)"/g)].map((x) => x[1]);
     expect(py).toEqual([...CUT_MAY_DROP_MARKERS]);
+  });
+
+  it("ATOM_ID_MARKERS is mirrored verbatim (task 1484)", () => {
+    // The TS list is derived (inline .tex markers delimiting no range); the
+    // Python copy is hand-held, so pin it — and pin the derivation's answer.
+    expect([...ATOM_ID_MARKERS]).toEqual(["vfid", "vcid"]);
+    const m = PY_COMMON.match(/^ATOM_ID_MARKERS = \(([^)]*)\)/m);
+    expect(m, "ATOM_ID_MARKERS not found in _common.py").not.toBeNull();
+    const py = [...m![1].matchAll(/"([a-z]+)"/g)].map((x) => x[1]);
+    expect(py).toEqual([...ATOM_ID_MARKERS]);
   });
 
   it("the twin scans the full marker vocabulary", () => {

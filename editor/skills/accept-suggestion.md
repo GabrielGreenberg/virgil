@@ -118,7 +118,9 @@ transaction — never hand-assemble a `texEdit` here.
   `card_tables.json` → `suggestionLanding`); and a replacement that does not
   **conserve the span's identity markers** (task 1426): every `\vcid{…}` /
   `\vfid{…}` / `\vlid{…}`…`\vlidend{…}` in `original_text` must reappear in
-  the replacement, verbatim, and none may be added — else accepting would
+  the replacement, verbatim, and none may be added; a `\vfid`/`\vcid` must
+  still be followed by its own footnote/citation atom, byte-for-byte
+  (task 1484) — else accepting would
   detach a citation card or delete a footnote's prose. A whole Cutter cut may
   drop a citation (with its atom) or another card's range lying wholly inside
   it, never a footnote. The refusal names the marker. The op refuses these with

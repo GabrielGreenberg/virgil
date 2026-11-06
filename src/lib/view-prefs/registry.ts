@@ -32,7 +32,9 @@ import type { MarkerType } from "@/cards/types";
 // validator.
 import {
   ALL_HIGHLIGHT_TYPES,
+  MENU_HIGHLIGHT_TYPES,
   type HighlightType,
+  type MenuHighlightType,
 } from "@/lib/view-prefs/highlight-types";
 // Runtime import, and cycle-safe: `marker-meta` imports only the runtime-leaf
 // `card-registry` (itself type-only apart from the zero-import
@@ -42,8 +44,13 @@ import {
 import {
   ALL_MARKER_TYPES,
   HIDEABLE_MARKER_TYPES,
+  panelForHighlightType,
+  panelForMarkerType,
   type HideableMarkerType,
 } from "@/cards/marker-meta";
+// Runtime, cycle-safe for the same reason: `panel-registry` imports only
+// `card-registry` and the zero-import `float-key`.
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 // The SHIPPED defaults — the one copy `tools/promote-defaults.mjs` rewrites
 // (task 900). A JSON import, so it adds no module to the graph and no cycle.
 import shippedDefaultsJson from "@/hooks/useViewPrefs.defaults.json";
@@ -144,7 +151,8 @@ interface SetDef<E extends string | number> {
    *  They are two different jobs, and conflating them silently deletes live
    *  state. `hiddenMarginaliaTypes` may legitimately hold the `error` marker
    *  type, which is deliberately NOT hideable and so absent from `members`
-   *  (`NON_HIDEABLE_MARKER_TYPES`); `hiddenHighlightTypes` may hold `report`,
+   *  (`NON_HIDEABLE_MARKER_TYPES`); `hiddenHighlightTypes` may hold `report`
+   *  (`NON_MENU_HIGHLIGHT_TYPES`),
    *  which the menu likewise does not render. Validating either against
    *  `members` would drop exactly those — which is why
    *  `toggleViewPrefMember` refuses to validate against `members` at all.
@@ -206,25 +214,28 @@ const SHIPPED = shippedDefaultsJson as unknown as {
   dividerWidth: DividerWidth;
 };
 /**
- * Menu labels for the per-type marginalia hide rows. The ANNOTATION is the
- * coverage assertion task 672 asked for: `Record<HideableMarkerType, string>`
- * is exhaustive, so a marker type added to `MarkerType` and not opted out in
- * `NON_HIDEABLE_MARKER_TYPES` fails to compile here until it is given a row
- * label — it can no longer ship invisible.
- *
- * Declared rather than derived from `MARKER_META.label`: those are singular
- * marker names ("Note", "Task") and reading them would make this
- * dependency-light module import the marginalia UI lib. Menu plurals are a
- * menu concern.
+ * Menu labels for the per-type marginalia hide rows — each marker type's
+ * owning panel's `PANEL_REGISTRY.shortLabel` (`panelForMarkerType`, derived
+ * from `CARD_REGISTRY`). Task 1475: this was a hand table that called the Todo
+ * List "Todo" beside four other spellings. Exhaustive over
+ * `HIDEABLE_MARKER_TYPES` (task 672's coverage concern): a new hideable marker
+ * type gets its panel's name, so it can no longer ship unlabelled.
  */
-const MARGINALIA_TYPE_LABELS: Record<HideableMarkerType, string> = {
-  note: "Notes",
-  archive: "Archive",
-  revision: "Revisions",
-  cut: "Cuts",
-  todo: "Todo",
-  report: "Reports",
-};
+const MARGINALIA_TYPE_LABELS: Record<HideableMarkerType, string> = Object.fromEntries(
+  HIDEABLE_MARKER_TYPES.map((t) => [t, PANEL_REGISTRY[panelForMarkerType(t)].shortLabel]),
+) as Record<HideableMarkerType, string>;
+
+/**
+ * Menu labels for the per-type highlight hide rows — each highlight type's
+ * owning panel's `PANEL_REGISTRY.shortLabel` (`panelForHighlightType`, derived
+ * from `CARD_REGISTRY` through the kinds' `cssToken`). Task 1490: this was the
+ * hand table `{ note: "Notes", todo: "Todo", … }` that 1475 missed, so the View
+ * menu called the Todo List "To-dos" under Marginalia and "Todo" under
+ * Highlights. Exhaustive over `MENU_HIGHLIGHT_TYPES`.
+ */
+const HIGHLIGHT_TYPE_LABELS: Record<MenuHighlightType, string> = Object.fromEntries(
+  MENU_HIGHLIGHT_TYPES.map((t) => [t, PANEL_REGISTRY[panelForHighlightType(t)].shortLabel]),
+) as Record<MenuHighlightType, string>;
 
 export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
@@ -267,10 +278,10 @@ export const VIEW_PREF_REGISTRY = {
                           memberLabels: MARGINALIA_TYPE_LABELS },
   // Highlights
   showHighlights:       { kind: "toggle", scope: "global", default: SHIPPED.showHighlights, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
-  hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
+  hiddenHighlightTypes: { kind: "set", scope: "global", default: SHIPPED.hiddenHighlightTypes, members: MENU_HIGHLIGHT_TYPES,
                           domain: ALL_HIGHLIGHT_TYPES,
                           polarity: "hidden", label: "Highlight types", menu: "highlights", memberRowIdPrefix: "highlights-type-",
-                          memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
+                          memberLabels: HIGHLIGHT_TYPE_LABELS },
   // Dividers
   dividerLevels: { kind: "set", scope: "global", default: SHIPPED.dividerLevels, members: DIVIDER_LEVELS,
                    polarity: "present", label: "Divider levels", menu: "dividers", memberRowIdPrefix: "divider-level-",

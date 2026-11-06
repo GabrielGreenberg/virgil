@@ -34,15 +34,20 @@ import {
 
 /** The ONE serialization of the envelope — shared by the fit and the write so
  *  a fitted result is never re-stringified (and never re-measured against a
- *  different string than the one that lands). */
-export function serializeStackEnvelope(items: StackItem[]): string {
-  const env: StackEnvelope = { version: 1, items };
+ *  different string than the one that lands). Takes STORED entries, not only
+ *  readable items: an item of a payload kind this build cannot read rides
+ *  along untouched (task 1478, `useStack`'s read door). */
+export function serializeStackEnvelope(items: readonly unknown[]): string {
+  const env: Omit<StackEnvelope, "items"> & { items: readonly unknown[] } = {
+    version: 1,
+    items,
+  };
   return JSON.stringify(env);
 }
 
-export interface FittedStack {
+export interface FittedStack<T = StackItem> {
   /** Newest-first, within both caps. */
-  items: StackItem[];
+  items: T[];
   /** Exactly what should be written for {@link FittedStack.items}. */
   serialized: string;
   /** How many were dropped off the old end to get there. */
@@ -55,13 +60,13 @@ export interface FittedStack {
  * Costs one `JSON.stringify` per item plus one for the result, not one per
  * eviction — an over-budget envelope is measured, not repeatedly re-serialized.
  */
-export function fitStackItems(items: StackItem[]): FittedStack {
+export function fitStackItems<T = StackItem>(items: T[]): FittedStack<T> {
   const capped = items.slice(0, STACK_MAX_ITEMS);
   // The wrapper's own cost (`{"version":1,"items":[]}`) is fixed; each item
   // adds its serialization plus the comma that joins it to the previous one.
   const overhead = serializeStackEnvelope([]).length;
   let used = overhead;
-  const kept: StackItem[] = [];
+  const kept: T[] = [];
   for (const item of capped) {
     const cost = JSON.stringify(item).length + (kept.length > 0 ? 1 : 0);
     // `kept.length > 0`: the newest item — the one being added — is kept

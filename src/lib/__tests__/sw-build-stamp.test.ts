@@ -777,3 +777,87 @@ describe("task 888 — content-addressed precache", () => {
     expect(world.stores.get(cacheName)!.get(page)?.body).toBe("fresh");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 1482 — ONE request→cache-key resolver. PdfView's iframe loads
+// `pdfjs/web/viewer.html?file=`; the precache holds `pdfjs/web/viewer.html`.
+// Keyed by the raw URL, the navigation missed its precache offline and the
+// shell fallback booted Virgil inside the PDF pane.
+// ---------------------------------------------------------------------------
+
+const VIEWER = `${SCOPE}pdfjs/web/viewer.html`;
+const VIEWER_SRC = `${VIEWER}?file=`;
+const FONTS_CSS = "https://fonts.googleapis.com/css2?family=Inter";
+
+function viewerWorker(body = "<html>pdf.js</html>") {
+  const root = fixture({ "pdfjs/web/viewer.html": body });
+  const { stamp } = stampServiceWorker(root);
+  return { source: fs.readFileSync(path.join(root, "sw.js"), "utf8"), cacheName: `virgil-${stamp}` };
+}
+
+describe("task 1482 — a precached path requested with a query is the precached file", () => {
+  it("offline, a fresh install's viewer.html?file= navigation renders pdf.js, not the shell", async () => {
+    const { source } = viewerWorker();
+    const network: Record<string, FakeResponse> = {
+      [SCOPE]: new FakeResponse("<html>shell</html>"),
+      [VIEWER]: new FakeResponse("<html>pdf.js</html>"),
+    };
+    const world = makeWorld(network);
+    const worker = loadWorker(source, world);
+    await worker.install();
+    for (const k of Object.keys(network)) delete network[k];
+    const resp = await worker.request(VIEWER_SRC, "navigate");
+    expect(resp?.body).toBe("<html>pdf.js</html>");
+    // The shell fallback still answers an unknown route.
+    expect((await worker.request(`${SCOPE}deep/route?x=1`, "navigate"))?.body).toBe("<html>shell</html>");
+  });
+
+  it("online, the navigation is stored once, under the precache key, pinned by sha", async () => {
+    const { source, cacheName } = viewerWorker();
+    const world = makeWorld({
+      [SCOPE]: new FakeResponse("<html>shell</html>"),
+      [VIEWER_SRC]: new FakeResponse("<html>pdf.js</html>"),
+    });
+    const worker = loadWorker(source, world);
+    await worker.install(); // the query-less precache fetch fails here
+    const cache = world.stores.get(cacheName)!;
+    expect(cache.has(VIEWER)).toBe(false);
+    expect((await worker.request(VIEWER_SRC, "navigate"))?.body).toBe("<html>pdf.js</html>");
+    expect(cache.has(VIEWER_SRC)).toBe(false);
+    expect(cache.get(VIEWER)?.headers.get("x-virgil-sha")).toBe(contentSha("<html>pdf.js</html>"));
+  });
+
+  it("a query-bearing answer with ANOTHER build's bytes is not stored under the precache key", async () => {
+    const { source, cacheName } = viewerWorker("<html>pdf.js v1</html>");
+    const world = makeWorld({ [VIEWER_SRC]: new FakeResponse("<html>pdf.js v2</html>") });
+    const worker = loadWorker(source, world);
+    await worker.install();
+    expect((await worker.request(VIEWER_SRC, "navigate"))?.body).toBe("<html>pdf.js v2</html>");
+    const cache = world.stores.get(cacheName)!;
+    expect(cache.has(VIEWER)).toBe(false);
+    expect(cache.has(VIEWER_SRC)).toBe(false);
+  });
+
+  it("a non-navigation of a precached path with a query is served cache-first", async () => {
+    const { source } = viewerWorker();
+    const world = makeWorld({ [VIEWER]: new FakeResponse("<html>pdf.js</html>") });
+    const worker = loadWorker(source, world);
+    await worker.install();
+    world.fetched.length = 0;
+    expect((await worker.request(`${VIEWER}?v=2`))?.body).toBe("<html>pdf.js</html>");
+    expect(world.fetched).toEqual([]);
+  });
+
+  it("an unpinned query URL (Google Fonts CSS) still caches per full URL", async () => {
+    const { source } = stampedWorker();
+    const world = makeWorld({ [FONTS_CSS]: new FakeResponse("@font-face{}", 200, "cors") });
+    await loadWorker(source, world).request(FONTS_CSS);
+    expect(world.stores.get("virgil-fonts")!.get(FONTS_CSS)?.body).toBe("@font-face{}");
+  });
+
+  it("source pin: the fetch path keys by the resolver, never by the raw request", () => {
+    const body = SW_SOURCE.slice(SW_SOURCE.indexOf("async function handle("));
+    expect(body).toContain("precacheKeyOf(request)");
+    expect(body).not.toMatch(/\.match\(request\)|heldCopy\(cache, request\)|put(?:Pinned|Cached)\(cache, request\b|BUILD_SHAS\.get\(request/);
+  });
+});

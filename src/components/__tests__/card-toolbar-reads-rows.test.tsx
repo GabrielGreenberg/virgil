@@ -31,7 +31,8 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import RichTextField from "@/components/RichTextField";
-import { VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
+import { runAction, UNDERLINE_TOOLBAR_ROW, VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
+import { lightningContext } from "@/lib/actions/lightning-context";
 import { commentsStripped } from "@/lib/__tests__/_source-scan";
 
 afterEach(() => {
@@ -96,11 +97,44 @@ describe("task 1352 — the card toolbar reads the registry rows", () => {
     expect(bold.getAttribute("aria-pressed")).toBe("true");
   });
 
+  // Task 1481: U was the one button outside the row verdict — painted lit in a
+  // code block (never `d`, never a reason) over a press with no gate.
+  it("U reads the surface-local underline row: grey with a reason in a codeBlock, the door refuses, lit in prose", () => {
+    const editor = mount();
+    const codePos = editor.state.doc.child(0).nodeSize + 2;
+    act(() => {
+      editor.commands.setTextSelection(codePos);
+    });
+    const u = btn("Underline");
+    expect(u.disabled, "U in a code block").toBe(true);
+    expect(u.getAttribute("aria-description"), "U must say why").toBeTruthy();
+    expect(u.getAttribute("data-hint")).toContain("Underline — ");
+    expect(u.getAttribute("data-hint-keys"), "U advertises its chord").toBeTruthy();
+    // The press door re-asks the gate: a commit in the code block writes nothing.
+    const before = editor.state.doc;
+    let outcome: string | undefined;
+    act(() => {
+      outcome = runAction(UNDERLINE_TOOLBAR_ROW, lightningContext(editor));
+    });
+    expect(outcome).toBe("disabled");
+    expect(editor.state.doc.eq(before)).toBe(true);
+    // …and in a paragraph it is lit and one press = one toggle.
+    act(() => {
+      editor.commands.setTextSelection({ from: 1, to: 6 });
+    });
+    expect(u.disabled).toBe(false);
+    act(() => {
+      fireEvent.click(u, { detail: 0 });
+    });
+    expect(editor.isActive("underline")).toBe(true);
+    expect(u.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("census: the toolbar spells no TipTap toggle for a row it can run through the door", () => {
     const SRC = commentsStripped(
       readFileSync(join(resolve(__dirname, "../../.."), "src/components/RichTextField.tsx"), "utf8"),
     );
-    for (const cmd of ["toggleBold", "toggleItalic", "toggleSmallCaps", "toggleBulletList", "toggleOrderedList"]) {
+    for (const cmd of ["toggleBold", "toggleItalic", "toggleUnderline", "toggleSmallCaps", "toggleBulletList", "toggleOrderedList"]) {
       expect(SRC, `${cmd} must go through the row's run`).not.toMatch(new RegExp(`\\b${cmd}\\(`));
     }
   });

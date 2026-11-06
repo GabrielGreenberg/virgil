@@ -329,27 +329,70 @@ function flattenText(n: JSONContent): string {
   return (n.content ?? []).map(flattenText).join("");
 }
 
-/** Per-category WORD counts for one block (or any subtree). Deliberately not
- *  `computeCategoryCounts(node).words`: the per-block path runs once per block
- *  of the document, and the character pass costs a whole-text copy per
- *  category that the Outline never reads. Same walker either way — this is a
- *  cheaper projection of it, not a second rule. */
-export function countCategories(node: JSONContent): Record<Category, number> {
-  const parts = collectCategoryParts(node);
-  const out = {} as Record<Category, number>;
+/** Turn one walk's parts into a tally. The ONE place parts become numbers. */
+function tallyParts(cats: Record<Category, string[]>): CategoryCounts {
+  const words = {} as Record<Category, number>;
+  const characters = {} as Record<Category, number>;
   for (const cat of ALL_CATEGORIES) {
-    out[cat] = countWords(parts[cat].join(" "));
+    const joined = cats[cat].join(" ");
+    words[cat] = countWords(joined);
+    characters[cat] = joined.replace(/\s/g, "").length;
   }
-  return out;
+  return { words, characters };
+}
+
+/**
+ * Per-BLOCK tally cache, keyed on block-JSON identity (task 1479).
+ *
+ * The tally is EXACTLY ADDITIVE over top-level blocks: entering any non-text
+ * node resets the walker's `glue`, so no part ever spans two blocks; parts are
+ * joined with `" "`, so no word spans two blocks either; and `characters`
+ * strips whitespace. The whole-document tally is therefore the per-category
+ * SUM of per-block tallies — pinned against the direct walk in
+ * `word-count-core.test.ts`.
+ *
+ * The DocProducts pipeline hands every consumer a `docJson` whose unchanged
+ * top-level children keep their object identity (block-caches.ts: composed
+ * JSON is cached per PM node and never mutated), so a WeakMap keyed on the
+ * block's JSON IS the incremental diff: a typing pause recounts the edited
+ * blocks only, in the Outline AND in Tier B. A caller holding fresh JSON
+ * (`doc.toJSON()`, a selection slice) simply misses every time — the same cost
+ * as the direct walk, and the entries die with the JSON.
+ *
+ * Cached records are frozen: they are shared by every reader of that block.
+ */
+const blockTallyCache = new WeakMap<JSONContent, CategoryCounts>();
+const tallyCacheStats = { hits: 0, misses: 0 };
+
+/** Test/diagnostic probe — cumulative hits/misses of the per-block cache. */
+export function getBlockTallyCacheStats(): Readonly<typeof tallyCacheStats> {
+  return { ...tallyCacheStats };
+}
+
+/** THE per-block door: one top-level block's tally, cached by JSON identity. */
+export function blockCategoryCounts(block: JSONContent): CategoryCounts {
+  const hit = blockTallyCache.get(block);
+  if (hit) {
+    tallyCacheStats.hits++;
+    return hit;
+  }
+  tallyCacheStats.misses++;
+  const t = tallyParts(collectCategoryParts(block));
+  Object.freeze(t.words);
+  Object.freeze(t.characters);
+  const frozen = Object.freeze(t);
+  blockTallyCache.set(block, frozen);
+  return frozen;
 }
 
 /**
  * Precompute per-top-level-block category word counts so per-heading section
- * sums are O(blocks) instead of O(blocks × headings).
+ * sums are O(blocks) instead of O(blocks × headings). Through the per-block
+ * cache, so a re-render after a typing pause recounts only the changed blocks.
  */
 export function buildPerBlockCounts(doc: JSONContent | null): Record<Category, number>[] {
   if (!doc?.content) return [];
-  return doc.content.map((node) => countCategories(node));
+  return doc.content.map((node) => blockCategoryCounts(node).words);
 }
 
 /**
@@ -414,16 +457,20 @@ export function sumIncludedWords(
  * per-category character count.
  */
 export function computeCategoryCounts(doc: JSONContent): CategoryCounts {
-  const cats = collectCategoryParts(doc);
-
-  const words = {} as Record<Category, number>;
-  const characters = {} as Record<Category, number>;
-
-  for (const cat of ALL_CATEGORIES) {
-    const joined = cats[cat].join(" ");
-    words[cat] = countWords(joined);
-    characters[cat] = joined.replace(/\s/g, "").length;
+  // A whole document SUMS its cached per-block tallies (additivity: see
+  // `blockCategoryCounts`), so an idle recount costs O(changed blocks) walks
+  // plus O(blocks) integer adds. Any other subtree is walked directly.
+  if (doc.type !== "doc" || !doc.content) {
+    return tallyParts(collectCategoryParts(doc));
   }
-
+  const words = zeroByCategory();
+  const characters = zeroByCategory();
+  for (const block of doc.content) {
+    const t = blockCategoryCounts(block);
+    for (const cat of ALL_CATEGORIES) {
+      words[cat] += t.words[cat];
+      characters[cat] += t.characters[cat];
+    }
+  }
   return { words, characters };
 }

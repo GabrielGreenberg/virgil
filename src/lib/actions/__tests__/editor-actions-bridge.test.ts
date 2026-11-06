@@ -53,6 +53,7 @@ import {
   __resetEditorActionsRegistry,
 } from "@/lib/actions/editor-actions-bridge";
 import { resolveActionOrigin } from "@/lib/actions/action-origin";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -92,9 +93,10 @@ function makeEditor(caretPos = 3, isEditable = true) {
   state = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, caretPos)),
   );
-  const view = { state } as unknown as ActionContext["view"];
-  // `isEditable` mirrors the live editor's editability — the CHIP 7b collab gate
-  // the bridge reads (`!ed.isEditable` → no-op).
+  // `editable` on the view is the pen the bridge's gate reads — asked of the
+  // ORIGIN view (task 1480; `surfaceEditableNow(originView)`); `isEditable`
+  // mirrors it on the editor.
+  const view = { state, editable: isEditable } as unknown as ActionContext["view"];
   const editor = { state, view, isEditable } as unknown as ActionContext["editor"];
   return { editor, state };
 }
@@ -118,21 +120,20 @@ function buildHandle(
       const spec = VIRGIL_ACTION_REGISTRY[id];
       if (!spec) return "no-row"; // unknown id → no-op (dev-warns in the real effect)
       const ed = editor;
-      // CHIP 7b: the uniform collab read-only gate — the bridge no-ops entirely
-      // when the partner holds the pen (mirrors EditorPane's `if (!ed.isEditable)
-      // return`). Treat a missing `isEditable` as editable (no over-gating).
-      if (ed.isEditable === false) return "read-only";
       // Task 642: the document-local half comes from the invocation's ORIGIN —
       // the view the gesture fired in — not from this pane's editor. Imported
       // from the SSOT `EditorPane` itself calls, so this fixture cannot drift
       // from production on the very thing the legs below pin.
       const { view, editor: originEd, ref } = resolveActionOrigin(ed, seed.origin);
+      // CHIP 7b / task 1480: the collab read-only gate — the bridge no-ops
+      // entirely when the ORIGIN surface is read-only (mirrors EditorPane).
+      if (!surfaceEditableNow(view)) return "read-only";
       const ctx: ActionContext = {
         editor: originEd,
         view,
         ref,
         surface: seed.surface,
-        canEdit: ed.isEditable,
+        canEdit: surfaceEditableNow(view),
         cardCreation: deps.cardCreation,
         dispatch: deps.dispatch,
         payload: seed.payload,

@@ -24,6 +24,16 @@
  *   5. The Library column-order default is a permutation of its union.
  *
  * Fails fast with a human-readable list of missing keys. No deps.
+ *
+ * It is also the promotion CONTRACT GATE (task 1488): `tools/sync-defaults.sh`
+ * runs it against every promotion before the commit may reach main, so every
+ * value check here guards the unattended promote too. `--root <dir>` checks
+ * another tree (default: this script's own repo).
+ *
+ * Key presence is tested with `Object.hasOwn` — the promoter's own test
+ * (`promote-defaults.mjs` → `intersectShape`) — never `key in`, which consults
+ * the prototype chain and so would pass a row spelled `constructor` that the
+ * promoter can never promote.
  */
 
 import fs from "node:fs";
@@ -37,7 +47,14 @@ import {
   splitPrefCssBlock,
 } from "../src/lib/pref-css-table.mjs";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+function rootArg(argv) {
+  const i = argv.indexOf("--root");
+  if (i === -1) return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  if (argv[i + 1] === undefined) throw new Error("--root needs a value");
+  return path.resolve(argv[i + 1]);
+}
+
+const REPO_ROOT = rootArg(process.argv.slice(2));
 
 const EDITOR_DEFAULTS = path.join(REPO_ROOT, "src/hooks/usePreferences.defaults.json");
 const REGISTRY = path.join(REPO_ROOT, "src/lib/dev-prefs-registry.json");
@@ -71,7 +88,7 @@ function readJson(file) {
     const target = path.join(REPO_ROOT, entry.defaultsFile);
     const defaults = readJson(target);
     for (const key of entry.whitelist ?? []) {
-      if (!(key in defaults)) {
+      if (!Object.hasOwn(defaults, key)) {
         fail(
           `registry whitelist for "${entry.storageKey}" includes "${key}" but it's missing from ${entry.defaultsFile}`,
         );
@@ -80,7 +97,7 @@ function readJson(file) {
   }
 
   for (const row of PREF_CSS_ROWS) {
-    if (!(row.key in editorDefaults)) {
+    if (!Object.hasOwn(editorDefaults, row.key)) {
       fail(`pref-css-table row ${row.cssVar} — key "${row.key}" missing from the editor defaults`);
     }
   }

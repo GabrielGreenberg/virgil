@@ -10,7 +10,7 @@
  * starts fresh.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import {
   addStackItem,
   readStackItem,
@@ -111,6 +111,61 @@ describe("Stack read door — unreadable is not empty", () => {
  * the user "The Stack is full — remove some items" for all of them, including
  * the ones where the strip is empty and nothing can be removed.
  */
+/**
+ * **An item this build cannot read is carried, not erased (task 1478).** The
+ * read door used to drop a foreign payload kind for DISPLAY and the write
+ * doors then built their write from that filtered list — so another build's
+ * capture vanished on this build's next add or remove.
+ */
+describe("Stack write doors — a foreign-kind item rides along", () => {
+  beforeEach(() => localStorage.clear());
+
+  const future = {
+    id: "future",
+    capturedAt: "2026-10-13T00:00:00.000Z",
+    source: { docId: "docA" },
+    payload: { kind: "future-kind", data: { whatever: [1, 2] } },
+  };
+  function storedEntries(): unknown[] {
+    return JSON.parse(localStorage.getItem(STACK_STORAGE_KEY)!).items;
+  }
+
+  it("addStackItem keeps the future item verbatim, in its place", () => {
+    store({ version: 1, items: [textItem("old"), future] });
+    expect(addStackItem(textItem("new"), NO_BIB)).toEqual({ ok: true });
+    const entries = storedEntries() as { id: string }[];
+    expect(entries.map((e) => e.id)).toEqual(["new", "old", "future"]);
+    expect(entries[2]).toEqual(future);
+  });
+
+  it("remove deletes only the readable target and keeps the future item", () => {
+    store({ version: 1, items: [future, textItem("gone"), textItem("stay")] });
+    const { result } = renderHook(() => useStack());
+    expect(result.current.items.map((i) => i.id)).toEqual(["gone", "stay"]);
+    let ok = false;
+    act(() => {
+      ok = result.current.remove("gone");
+    });
+    expect(ok).toBe(true);
+    expect(result.current.items.map((i) => i.id)).toEqual(["stay"]);
+    expect(storedEntries()).toEqual([future, textItem("stay")]);
+  });
+
+  it("remove of a foreign-kind id writes nothing (the strip never offered it)", () => {
+    store({ version: 1, items: [future] });
+    const before = localStorage.getItem(STACK_STORAGE_KEY);
+    const { result } = renderHook(() => useStack());
+    expect(result.current.remove("future")).toBe(false);
+    expect(localStorage.getItem(STACK_STORAGE_KEY)).toBe(before);
+  });
+
+  it("a structurally corrupt entry is still dropped on write", () => {
+    store({ version: 1, items: [null, { id: "no-payload" }, { payload: { kind: "text" } }, textItem("ok")] });
+    expect(addStackItem(textItem("new"), NO_BIB).ok).toBe(true);
+    expect((storedEntries() as { id: string }[]).map((e) => e.id)).toEqual(["new", "ok"]);
+  });
+});
+
 describe("Stack add door — a refusal carries its own reason", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -139,19 +194,53 @@ describe("Stack add door — a refusal carries its own reason", () => {
     });
   });
 
-  it("a write that fails with items stored → full; with the Stack empty → no-room", () => {
-    expect(addStackItem(textItem("resident"), NO_BIB).ok).toBe(true);
-    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw quotaError();
+  /**
+   * A FAITHFUL quota (task 1477): `setItem` REPLACES the key's value, and the
+   * quota is measured on what storage holds AFTER the replacement — the old
+   * value's bytes are given back. An unconditional throw (the task-1285 shim)
+   * made "remove some items" look like a remedy it can never be.
+   */
+  function fakeQuota(limit: number) {
+    const real = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      let total = 0;
+      for (let i = 0; i < this.length; i++) {
+        const k = this.key(i)!;
+        if (k !== key) total += k.length + (this.getItem(k) ?? "").length;
+      }
+      if (total + key.length + value.length > limit) throw quotaError();
+      return real.call(this, key, value);
     });
-    expect(addStackItem(textItem("new"), NO_BIB)).toEqual({ ok: false, reason: "full" });
-    set.mockRestore();
+  }
 
-    localStorage.clear();
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw quotaError();
-    });
-    expect(addStackItem(textItem("new"), NO_BIB)).toEqual({ ok: false, reason: "no-room" });
+  it("a write that fails even for the new item alone → too-large, whatever the strip holds", () => {
+    expect(addStackItem(textItem("resident"), NO_BIB).ok).toBe(true);
+    const stored = localStorage.getItem(STACK_STORAGE_KEY)!;
+    // Room for the Stack exactly as it is, and nothing more.
+    localStorage.setItem("virgil:other-prefs", "x".repeat(200));
+    const used = STACK_STORAGE_KEY.length + stored.length + "virgil:other-prefs".length + 200;
+    fakeQuota(used);
+    const big = textItem("big");
+    big.payload = { kind: "text", slice: null, plain: "y".repeat(stored.length * 3) };
+    expect(addStackItem(big, NO_BIB)).toEqual({ ok: false, reason: "too-large" });
+
+    // The remedy the old copy offered: empty the Stack, retry. Same refusal —
+    // the final attempt had already written over every byte the Stack held.
+    vi.restoreAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    localStorage.removeItem(STACK_STORAGE_KEY);
+    fakeQuota(used);
+    expect(addStackItem(big, NO_BIB)).toEqual({ ok: false, reason: "too-large" });
+  });
+
+  it("the notice for that refusal never tells the user to remove items", () => {
+    const notice = STACK_ADD_REFUSAL_NOTICE["too-large"];
+    expect(notice.message).not.toMatch(/remove/i);
+    expect(notice.title).not.toMatch(/full/i);
   });
 
   it("a quarantine that cannot land → quarantine-failed", () => {
@@ -192,8 +281,7 @@ describe("Stack add door — a refusal carries its own reason", () => {
 describe("Stack refusal copy — derived per reason", () => {
   it("is exhaustive over the reason union", () => {
     const reasons: Record<StackAddRefusal, true> = {
-      full: true,
-      "no-room": true,
+      "too-large": true,
       foreign: true,
       "unreadable-storage": true,
       "quarantine-failed": true,
@@ -201,10 +289,10 @@ describe("Stack refusal copy — derived per reason", () => {
     expect(Object.keys(STACK_ADD_REFUSAL_NOTICE).sort()).toEqual(Object.keys(reasons).sort());
   });
 
-  it("only `full` tells the user to remove items — the one case the strip holds any", () => {
+  it("no refusal tells the user to remove items — the add door refuses only after the new item ALONE failed", () => {
     for (const [reason, notice] of Object.entries(STACK_ADD_REFUSAL_NOTICE)) {
       const says = /remove some items/i.test(notice.message) || /full/i.test(notice.title);
-      expect(says, `"${reason}" must not claim the Stack is full`).toBe(reason === "full");
+      expect(says, `"${reason}" must not offer removing items as a remedy`).toBe(false);
     }
   });
 });

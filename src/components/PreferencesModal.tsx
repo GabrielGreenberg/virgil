@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useState, useRef } from "react";
-import type { EditorPreferences, PreferencePreset, SettingsSnapshot } from "@/hooks/usePreferences";
-import { isReservedPresetName } from "@/hooks/usePreferences";
+import { useCallback, useMemo, useState, useRef } from "react";
+import type { EditorPreferences, PreferencePreset, ResolvedSettings, SettingsSnapshot } from "@/hooks/usePreferences";
+import {
+  DEFAULT_SETTINGS_SNAPSHOT,
+  isReservedPresetName,
+  resolveSettings,
+  settingsEqual,
+} from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
-import { DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
-import { DEFAULT_PREFS } from "@/hooks/preferences-defaults";
-import { deepEqual } from "@/lib/sidecar-merge";
+import { useSideSettings } from "@/lib/settings-stores";
 import { PREFERENCES_TREE, isLeaf } from "@/lib/preferences-tree";
 import { SMART_PREFERENCES } from "@/lib/smart-preferences";
 import PreferenceTree from "./PreferenceTree";
@@ -34,15 +37,15 @@ interface PreferencesModalProps {
   onSavePreset: (name: string) => void;
   onLoadPreset: (name: string) => void;
   onDeletePreset: (name: string) => void;
-  /** Undo doors (task 903): put the settings pair / a preset back as it was. */
+  /** Undo doors (task 903): put the settings / a preset back as it was. */
   onRestoreSettings: (snapshot: SettingsSnapshot) => void;
   onRestorePreset: (preset: PreferencePreset) => void;
 }
 
-/** What an undo offer is checked against: the LIVE settings and presets. */
+/** What an undo offer is checked against: the LIVE settings — every store the
+ *  dialog renders, side stores included (task 1489) — and presets. */
 interface UndoLiveState {
-  prefs: EditorPreferences;
-  transforms: GlobalTransforms;
+  settings: ResolvedSettings;
   presets: PreferencePreset[];
 }
 
@@ -128,6 +131,7 @@ function PresetBar({
   onDelete,
   onUndoable,
   onRestore,
+  onRestoreSettings,
   settings,
 }: {
   /** The picker's id, for the field label above it. */
@@ -138,8 +142,10 @@ function PresetBar({
   onDelete: (name: string) => void;
   onUndoable: (pending: PendingUndo) => void;
   onRestore: (preset: PreferencePreset) => void;
-  /** The live settings pair — what a save writes into the preset. */
-  settings: SettingsSnapshot;
+  onRestoreSettings: (snapshot: SettingsSnapshot) => void;
+  /** The live settings — what a save writes into the preset, and what a load
+   *  replaces (and its Undo restores). */
+  settings: ResolvedSettings;
 }) {
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState("");
@@ -169,7 +175,7 @@ function PresetBar({
             // Current while the preset still holds what THIS save wrote.
             stillCurrent: ({ presets: live }) => {
               const p = userPreset(live, name);
-              return !!p && deepEqual(p.prefs, saved.prefs) && deepEqual(p.transforms, saved.transforms);
+              return !!p && settingsEqual(p, saved);
             },
           });
         }
@@ -194,13 +200,28 @@ function PresetBar({
   // defaults" it went on naming a preset that was no longer in effect. The DOM
   // reset is imperative because React re-renders on an UNCHANGED `target` are
   // bailed out, which would leave the picked option stuck in the DOM.
+  //
+  // Loading replaces EVERY setting, so it is undoable like reset (task 1489):
+  // mis-picking "Default" used to destroy unsaved tweaks irrecoverably. No
+  // offer when the load changed nothing.
   const handleSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const name = e.currentTarget.value;
     e.currentTarget.value = "";
     if (!name) return;
     setTarget(name);
+    const picked = presets.find((p) => p.name === name);
+    const before = settings;
     onLoad(name);
-  }, [onLoad]);
+    if (!picked) return;
+    const after = resolveSettings(picked);
+    if (settingsEqual(before, after)) return;
+    onUndoable({
+      message: `Preset \u201c${name}\u201d loaded`,
+      undo: () => onRestoreSettings(before),
+      // Current while the settings are still exactly what the load made them.
+      stillCurrent: ({ settings: live }) => settingsEqual(live, after),
+    });
+  }, [onLoad, presets, settings, onUndoable, onRestoreSettings]);
 
   const targetPreset = presets.find((p) => p.name === target);
   const canDelete = !!targetPreset && !targetPreset.builtIn;
@@ -326,24 +347,29 @@ export default function PreferencesModal({
   const [offeredUndo, setPendingUndo] = useState<PendingUndo | null>(null);
   // DERIVED (task 1121): the offer shows only while the live state is still
   // what its action produced — any writer's change retires it by construction.
-  const pendingUndo = offeredUndo?.stillCurrent({ prefs, transforms, presets }) ? offeredUndo : null;
-  const settings: SettingsSnapshot = { prefs, transforms };
+  // Every store the dialog renders (task 1489): prefs + transforms from the
+  // host, plus the Smart section's panel colours / typography / link deltas.
+  const side = useSideSettings();
+  const settings: ResolvedSettings = useMemo(
+    () => ({ prefs, transforms, ...side }),
+    [prefs, transforms, side],
+  );
+  const pendingUndo = offeredUndo?.stillCurrent({ settings, presets }) ? offeredUndo : null;
 
-  // "Reset to defaults" wipes every preference and transform in one click. It
-  // stays one click — a confirm in front of an UNDOABLE action is friction with
-  // no protection — but it is undoable now (task 903): the settings it replaced
-  // are snapshotted and offered back in the footer.
+  // "Reset to defaults" wipes every setting — every store above — in one
+  // click. It stays one click — a confirm in front of an UNDOABLE action is
+  // friction with no protection — but it is undoable now (task 903): the
+  // settings it replaced are snapshotted and offered back in the footer.
   const handleReset = useCallback(() => {
-    const snapshot: SettingsSnapshot = { prefs, transforms };
+    const snapshot = settings;
     onReset();
     setPendingUndo({
       message: "Preferences reset",
       undo: () => onRestoreSettings(snapshot),
       // `onReset` makes the settings exactly the shipped defaults.
-      stillCurrent: (live) =>
-        deepEqual(live.prefs, DEFAULT_PREFS) && deepEqual(live.transforms, DEFAULT_TRANSFORMS),
+      stillCurrent: ({ settings: live }) => settingsEqual(live, DEFAULT_SETTINGS_SNAPSHOT),
     });
-  }, [prefs, transforms, onReset, onRestoreSettings]);
+  }, [settings, onReset, onRestoreSettings]);
 
   const runUndo = useCallback(() => {
     if (!pendingUndo) return;
@@ -416,6 +442,7 @@ export default function PreferencesModal({
                     onDelete={onDeletePreset}
                     onUndoable={setPendingUndo}
                     onRestore={onRestorePreset}
+                    onRestoreSettings={onRestoreSettings}
                     settings={settings}
                   />
                 )}

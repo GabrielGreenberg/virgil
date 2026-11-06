@@ -18,12 +18,16 @@ import type { JSONContent } from "@tiptap/react";
 import {
   ALL_CATEGORIES,
   type IncludeSet,
+  blockCategoryCounts,
   buildPerBlockCounts,
+  categoryCountsEqual,
   computeCategoryCounts,
+  getBlockTallyCacheStats,
   countWords,
   includedTotals,
   sumIncludedWords,
 } from "@/lib/word-count-core";
+import { LATEX_COMMENT_TAIL_MARK, LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 
 const ALL_ON = Object.fromEntries(
   ALL_CATEGORIES.map((c) => [c, true]),
@@ -355,5 +359,86 @@ describe("a word split by a mark change is ONE word (task 767)", () => {
     };
     // unbelievable / words / x / tail / next
     expect(words(d).mainText).toBe(5);
+  });
+});
+
+describe("whole-doc tally = sum of cached per-block tallies (task 1479)", () => {
+  // Every construct whose glue/separator handling could make the tally
+  // NON-additive across block boundaries: adjacent-mark text runs (glued
+  // within a block), heading → heading, prose → prose with no trailing space,
+  // comment tails, verbatim carriers, hard breaks, inline/display math,
+  // footnotes, nested containers.
+  const blocks = (): JSONContent[] => [
+    { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "First" }] },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "head" }] },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "glu" },
+        { type: "text", text: "ed", marks: [{ type: "bold" }] },
+        { type: "text", text: " word" },
+        { type: "hardBreak" },
+        { type: "text", text: "after" },
+        { type: "inlineMath", attrs: { latex: "a+b" } },
+        { type: "text", text: "% tail words", marks: [{ type: LATEX_COMMENT_TAIL_MARK }] },
+      ],
+    },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "next" },
+        { type: "text", text: "\\verb|x| \\caption{Cap here}", marks: [{ type: LATEX_VERBATIM_MARK }] },
+        {
+          type: "footnote",
+          attrs: {
+            content: {
+              type: "doc",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "fn body" }] }],
+            },
+          },
+        },
+      ],
+    },
+    { type: "displayMath", attrs: { latex: "x^2" } },
+    { type: "latexComment", content: [{ type: "text", text: "a comment" }] },
+    ...(doc.content ?? []),
+  ];
+
+  it("summed per-block tallies equal the DIRECT walk for every category", () => {
+    const content = blocks();
+    const summed = computeCategoryCounts({ type: "doc", content });
+    // A non-doc container is walked directly (same mainText context as doc).
+    const direct = computeCategoryCounts({ type: "blockquote", content });
+    expect(summed).toEqual(direct);
+    expect(categoryCountsEqual(summed, direct)).toBe(true);
+    // Non-vacuous: the fixture exercises every category.
+    for (const cat of ALL_CATEGORIES) expect(direct.words[cat], cat).toBeGreaterThan(0);
+  });
+
+  it("a second pass over the same block objects is all cache hits", () => {
+    const content = blocks();
+    const docJson: JSONContent = { type: "doc", content };
+    const first = computeCategoryCounts(docJson);
+    const before = getBlockTallyCacheStats();
+    const again = computeCategoryCounts(docJson);
+    buildPerBlockCounts(docJson);
+    const after = getBlockTallyCacheStats();
+    expect(after.misses).toBe(before.misses);
+    expect(after.hits - before.hits).toBe(content.length * 2);
+    expect(categoryCountsEqual(first, again)).toBe(true);
+
+    // Replacing ONE block recounts exactly that block.
+    const edited = [...content];
+    edited[2] = { type: "paragraph", content: [{ type: "text", text: "changed now" }] };
+    const b2 = getBlockTallyCacheStats();
+    computeCategoryCounts({ type: "doc", content: edited });
+    expect(getBlockTallyCacheStats().misses - b2.misses).toBe(1);
+  });
+
+  it("per-block records are the cached tallies' words, frozen", () => {
+    const content = blocks();
+    const per = buildPerBlockCounts({ type: "doc", content });
+    expect(per[0]).toBe(blockCategoryCounts(content[0]).words);
+    expect(Object.isFrozen(per[0])).toBe(true);
   });
 });

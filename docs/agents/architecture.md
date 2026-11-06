@@ -1,4 +1,4 @@
-<!-- last-verified: 25db9fea 2026-11-05 -->
+<!-- last-verified: 3010f199 2026-11-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-dom-contract.ts, src/links/resolve-card-anchor.ts, src/lib/anchor-mint-signal.ts, src/text-objects/text-object-registry.ts, src/text-objects/LiftHost.tsx, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/view-prefs/registry.ts, src/lib/focus-view.ts, src/lib/identity, src/lib/bib-uid.ts, src/cards/has-content.ts, src/cards/lifecycle, src/lib/input-modality.ts, src/lib/pomodoro-timer.ts -->
 
@@ -164,6 +164,8 @@ Riding it today: `panel-theme.ts`, `panel-typography.ts`, `outline-prefs-store.t
 `InstallPwaPrompt` (a monotonic `"1"` sentinel) is recorded as degenerate-but-safe.
 
 **A shipped default is DERIVED, never stored** (task 624). `usePreferences` persists only the user's *own* presets: `persistPresets` filters the built-ins out of the write, `loadPresets` drops any stored built-in (migration) and prepends the live `BUILT_IN_PRESETS`. Storing one froze a copy of that day's `DEFAULT_PREFS`, so once `promote-defaults` shipped new colours "Reset to defaults" and picking "Default" disagreed — and the stored copy won, writing the stale values back as the user's prefs. Built-in names are reserved (`isReservedPresetName`, read by BOTH the hook's refusal and the Save button); a stored shadow is RENAMED on read rather than dropped. The picker is an ACTION, not a bound value — it applies and returns to its placeholder — so re-picking the preset you are on re-applies it, and the control never claims a preset is active after an edit or a reset.
+
+**Whole-settings operations span every store the Preferences dialog renders** (task 1489). Panel colours, panel typography and pref-link deltas are declared once in [src/lib/settings-stores.ts](../../src/lib/settings-stores.ts) (normalize/read/replace per store); `SettingsSnapshot` = prefs + transforms + that table's product, and apply, Reset (and its Undo), and preset save/load all iterate it — loading a preset now offers Undo like Reset. The dev prefs mirror ([src/lib/dev-prefs-snapshot.ts](../../src/lib/dev-prefs-snapshot.ts), task 1487) gives `tools/personal-snapshot.json` ONE declared writer: only a browser opted in via `virgil:prefs-mirror-source` (default OFF) POSTs, first source claims, others get 409.
 
 ### External-change detection
 

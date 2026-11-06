@@ -359,9 +359,9 @@ export function IconZap({ size = 16, muted = false }: { size?: number; muted?: b
 }
 
 // Per-panel-id icon renderer for the strip + omni button. Labels for
-// these ids come from PANEL_REGISTRY (or the "Blank" fallback below);
-// only the icon factory lives here, since icons reference local
-// components and aren't part of the registry.
+// these ids come from PANEL_REGISTRY (`label` / `shortLabel`); only the
+// icon factory lives here, since icons reference local components and
+// aren't part of the registry.
 export const PANEL_ICONS: Record<PanelId, (active: boolean) => React.ReactNode> = {
   outline: (a) => <IconOutline active={a} />,
   todo: (a) => <IconTodo active={a} />,

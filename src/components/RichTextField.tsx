@@ -36,13 +36,13 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { PaneRootContext } from "@/components/editor-layout/pane-dom";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
-import { iconHint } from "@/components/Hint";
 import { pressProps } from "@/lib/press-props";
 import { posHostsInlineAtom } from "@/text-objects/text-object-registry";
 import {
   runAction as runRegistryAction,
   toggledMember,
   verdictOf,
+  UNDERLINE_TOOLBAR_ROW,
   VIRGIL_ACTION_REGISTRY,
   type ActionId,
 } from "@/lib/actions/action-registry";
@@ -122,8 +122,10 @@ const RICH_TEXT_MAX_WAIT_MS = 1000;
  * name, each TipTap command and each mark it tested, and asked no row whether
  * it applied: in a card body's `codeBlock` (task 427) B / I / Sc stayed lit
  * over a click that did nothing, while the grid's twin cell greyed and said
- * why. `underline` has no registry row (a card-body-only mark) and stays the
- * one local button.
+ * why. `underline` has no registry row (a card-body-only mark, no slash name,
+ * no grid cell) — it reads the registry's surface-local `UNDERLINE_TOOLBAR_ROW`
+ * through the SAME verdict / toggle / run door (task 1481), so no button is
+ * special-cased.
  */
 type ToolbarButton =
   | { id: ActionId; glyph: ReactNode; className?: string; style?: CSSProperties; divider?: true }
@@ -163,6 +165,12 @@ const TOOLBAR_BUTTONS: readonly ToolbarButton[] = [
   },
 ];
 
+/** The row a button reads — its registry row, or (underline) the registry's
+ *  surface-local row. One lookup, so paint, hint and press cannot disagree. */
+function rowOf(b: ToolbarButton) {
+  return b.id === "underline" ? UNDERLINE_TOOLBAR_ROW : VIRGIL_ACTION_REGISTRY[b.id];
+}
+
 /** One button's live verdict: ON, and — when greyed — why ("" = no reason). */
 interface ToolbarState {
   on: boolean;
@@ -179,8 +187,7 @@ interface ToolbarState {
 function toolbarSignature(ed: NonNullable<ReturnType<typeof useEditor>>): string {
   const ctx = lightningContext(ed);
   return TOOLBAR_BUTTONS.map((b) => {
-    if (b.id === "underline") return ed.isActive("underline") ? "1" : "0";
-    const spec = VIRGIL_ACTION_REGISTRY[b.id];
+    const spec = rowOf(b);
     const member = toggledMember(spec);
     const on = member !== null && ed.isActive(member) ? "1" : "0";
     const verdict = verdictOf(spec, ctx);
@@ -221,13 +228,9 @@ function FormatToolbar({
   if (!editor) return null;
   const states = sig ? decodeToolbar(sig) : [];
   const press = (b: ToolbarButton) => {
-    if (b.id === "underline") {
-      editor.chain().focus().toggleUnderline().run();
-      return;
-    }
     // The registry's run door: the commit re-asks the gate the paint read, so
     // a press that races a caret move into a refusing block writes nothing.
-    runRegistryAction(VIRGIL_ACTION_REGISTRY[b.id], lightningContext(editor));
+    runRegistryAction(rowOf(b), lightningContext(editor));
   };
   // Every toggle acts on MOUSEDOWN so the press lands before it blurs the
   // field (the editor keeps its selection); `pressProps` adds the keyboard /
@@ -250,10 +253,7 @@ function FormatToolbar({
     >
       {TOOLBAR_BUTTONS.map((b, i) => {
         const st = states[i] ?? { on: false, disabled: false, why: "" };
-        const hint =
-          b.id === "underline"
-            ? iconHint({ label: "Underline" })
-            : actionHint(VIRGIL_ACTION_REGISTRY[b.id], st.disabled && st.why ? st.why : null);
+        const hint = actionHint(rowOf(b), st.disabled && st.why ? st.why : null);
         return (
           <Fragment key={b.id}>
             {"divider" in b && b.divider && <div className={dividerClass} />}

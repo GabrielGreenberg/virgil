@@ -34,6 +34,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from work_identity import norm_year  # noqa: E402  (task 1485: one year parser)
 from queue_slot import ALREADY_QUEUED, REFUSED_RESULTS, WRITTEN, write_request  # noqa: E402
 from _tools import (
     _atomic_write_text,
@@ -278,14 +279,7 @@ def _upsert_catalog_row_bib_only(
     authors_str = fields.get("author", "") or ""
     authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
     year_str = fields.get("year", "") or ""
-    year_int: int | None = None
-    if year_str:
-        m = re.search(r"\b(\d{4})\b", year_str)
-        if m:
-            try:
-                year_int = int(m.group(1))
-            except ValueError:
-                year_int = None
+    year_int = norm_year(year_str) if year_str else None  # THE year parser
     doi = fields.get("doi", "") or ""
 
     bib_status: dict[str, Any] = {"state": bib_state}

@@ -33,6 +33,10 @@ export type PanelThemeKey =
 // promotion pipeline can rewrite them without touching TS source.
 import defaultPanelColorsJson from "./panel-theme.defaults.json";
 import { subscribeToStorageKey } from "./cross-window-storage";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import type { CardKind } from "@/cards/types";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import type { PanelKind } from "@/panels/_shared/types";
 import {
   hexToRgb,
   rgbToHex,
@@ -77,30 +81,74 @@ export const PANEL_THEME_FAMILIES: Readonly<
   system: { label: "System", keys: ["error"] },
 });
 
+/** Theme keys that name no PANEL — a card sub-kind's accent (`highlight`, worn
+ *  inside Notes) or a system accent — and so carry their own name. Every other
+ *  key is a panel's accent and is named by that panel (below). */
+const NON_PANEL_THEME_LABELS: Readonly<Partial<Record<PanelThemeKey, string>>> = {
+  highlight: "Highlights",
+  aiRequest: "AI requests",
+};
+
+/** The panel a theme key is the accent of — the ONE panel whose card kinds wear
+ *  it (`CARD_REGISTRY[kind].themeKey` / `.panel`). Throws when that is not one
+ *  panel, so a key shared across panels has to be given its own name above
+ *  rather than silently borrowing one panel's. */
+function panelForThemeKey(key: PanelThemeKey): PanelKind {
+  const panels = new Set(
+    (Object.keys(CARD_REGISTRY) as CardKind[])
+      .filter((k) => CARD_REGISTRY[k].themeKey === key)
+      .map((k) => CARD_REGISTRY[k].panel),
+  );
+  const [panel] = panels;
+  if (panels.size !== 1 || panel == null) {
+    throw new Error(
+      `[panel-theme] theme key "${key}" is worn in ${panels.size} panels; name it in NON_PANEL_THEME_LABELS`,
+    );
+  }
+  return panel;
+}
+
+const PANEL_THEME_DESCRIPTIONS: Readonly<Record<PanelThemeKey, string>> = {
+  footnote:  "Footnote cards, superscript markers, and anchor highlights.",
+  citation:  "Citation cards, badges, and in-text highlights.",
+  bib:       "Bibliography entries and linked citation anchors.",
+  highlight: "Highlight cards and the in-text highlight band.",
+  example:   "Example cards and their in-text anchors.",
+  revision:  "Revision cards and change markers.",
+  report:    "Report cards and their margin markers.",
+  aiRequest: "AI-request accents (system colour, not editable).",
+  note:      "Note cards and margin markers.",
+  archive:   "Archived-snippet cards and anchors.",
+  todo:      "Task cards and checklist markers.",
+  cut:       "Deleted-text cards and strikethrough markers.",
+  error:     "Compile-error cards (system colour, not editable).",
+};
+
 /** User-facing name of each theme key — the ONE label table (task 977, moved
  *  here from `smart-preferences.ts` by task 1163). A TOTAL record, so a new
- *  `PanelThemeKey` fails tsc until it has a label. Two readers: the
- *  Preferences "Panel theme" rows (label + description) and every panel
- *  kebab's colour picker (`panelThemeColorLabel`), so the same colour is named
- *  the same way in both places. System keys carry copy too (the record stays
- *  total) but never reach either surface — they are not user-overridable. */
+ *  `PanelThemeKey` fails tsc until it has a description. A panel's accent is
+ *  named by its panel's `PANEL_REGISTRY.shortLabel` (task 1475 — this table
+ *  used to spell "Margin notes" / "To-dos" / "Cuts" by hand, beside four other
+ *  spellings of the same panels). Two readers: the Preferences "Panel theme"
+ *  rows (label + description) and every panel kebab's colour picker
+ *  (`panelThemeColorLabel`), so the same colour is named the same way in both
+ *  places. System keys carry copy too (the record stays total) but never reach
+ *  either surface — they are not user-overridable. */
 export const PANEL_THEME_COPY: Readonly<
   Record<PanelThemeKey, { label: string; description: string }>
-> = Object.freeze({
-  footnote:  { label: "Footnotes",    description: "Footnote cards, superscript markers, and anchor highlights." },
-  citation:  { label: "Citations",    description: "Citation cards, badges, and in-text highlights." },
-  bib:       { label: "Bibliography", description: "Bibliography entries and linked citation anchors." },
-  highlight: { label: "Highlights",   description: "Highlight cards and the in-text highlight band." },
-  example:   { label: "Examples",     description: "Example cards and their in-text anchors." },
-  revision:  { label: "Revisions",    description: "Revision cards and change markers." },
-  report:    { label: "Reports",      description: "Report cards and their margin markers." },
-  aiRequest: { label: "AI requests",  description: "AI-request accents (system colour, not editable)." },
-  note:      { label: "Margin notes", description: "Note cards and margin markers." },
-  archive:   { label: "Archive",      description: "Archived-snippet cards and anchors." },
-  todo:      { label: "To-dos",       description: "Task cards and checklist markers." },
-  cut:       { label: "Cuts",         description: "Deleted-text cards and strikethrough markers." },
-  error:     { label: "Errors",       description: "Compile-error cards (system colour, not editable)." },
-});
+> = Object.freeze(
+  Object.fromEntries(
+    (Object.keys(PANEL_THEME_DESCRIPTIONS) as PanelThemeKey[]).map((key) => [
+      key,
+      {
+        label:
+          NON_PANEL_THEME_LABELS[key] ??
+          PANEL_REGISTRY[panelForThemeKey(key)].shortLabel,
+        description: PANEL_THEME_DESCRIPTIONS[key],
+      },
+    ]),
+  ) as Record<PanelThemeKey, { label: string; description: string }>,
+);
 
 /** The colour picker's trigger name for a theme key ("Cuts color") — derived
  *  from `PANEL_THEME_COPY`, never hand-spelled at a call site (task 1163). */
@@ -378,29 +426,35 @@ function persist() {
   catch { /* ignore */ }
 }
 
-/** Parse + validate the persisted blob into a fresh overrides object.
- *  The ONE validation path: used by the initial hydrate AND by the
- *  cross-window re-hydrate below, so a peer's blob is filtered exactly like a
- *  local one (system accents skipped, non-hex values dropped) rather than
- *  through a second, drifting copy of the rules. Returns `{}` for a missing,
- *  unparseable, or non-object blob. */
-function readOverridesFromStorage(): Partial<Record<PanelThemeKey, string>> {
+/** Validate an overrides blob — the persisted one, a peer's, or one carried
+ *  by a preset / undo snapshot (task 1489) — into a fresh overrides object.
+ *  The ONE validation path: system accents skipped, non-hex values dropped,
+ *  hex lowercased (as `setPanelColor` stores it). Anything that is not an
+ *  object resolves to `{}` — i.e. every panel at its default. */
+export function normalizePanelColorOverrides(parsed: unknown): Partial<Record<PanelThemeKey, string>> {
   const next: Partial<Record<PanelThemeKey, string>> = {};
-  if (typeof window === "undefined") return next;
+  if (!parsed || typeof parsed !== "object") return next;
+  const blob = parsed as Record<string, unknown>;
+  for (const k of Object.keys(blob) as PanelThemeKey[]) {
+    if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
+    const v = blob[k];
+    if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
+      next[k] = v.toLowerCase();
+    }
+  }
+  return next;
+}
+
+/** Parse the persisted blob through `normalizePanelColorOverrides` — used by
+ *  the initial hydrate AND the cross-window re-hydrate below, so a peer's blob
+ *  is filtered exactly like a local one. */
+function readOverridesFromStorage(): Partial<Record<PanelThemeKey, string>> {
+  if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return next;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return next;
-    for (const k of Object.keys(parsed) as PanelThemeKey[]) {
-      if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
-      const v = parsed[k];
-      if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
-        next[k] = v;
-      }
-    }
-  } catch { /* ignore */ }
-  return next;
+    if (!raw) return {};
+    return normalizePanelColorOverrides(JSON.parse(raw));
+  } catch { return {}; }
 }
 
 /** Load overrides from localStorage. Safe to call multiple times. */
@@ -447,6 +501,23 @@ export function setPanelColor(key: PanelThemeKey, hex: string): void {
 export function clearPanelColor(key: PanelThemeKey): void {
   if (SYSTEM_THEME_KEYS.has(key)) return; // system accents have no override to clear (chokepoint-trio uniform)
   delete overrides[key];
+  persist();
+  notify();
+}
+
+/** Every override, as a fresh copy — what a whole-settings snapshot captures
+ *  (task 1489; `src/lib/settings-stores.ts`). */
+export function getPanelColorOverrides(): Partial<Record<PanelThemeKey, string>> {
+  return { ...overrides };
+}
+
+/** Replace EVERY override in one write — the whole-settings door's half for
+ *  this store (reset, preset load, and an undo of either). Normalized like a
+ *  stored blob; `undefined` clears every override. Latches `loaded` so a late
+ *  first hydrate cannot clobber what was just applied. */
+export function replacePanelColorOverrides(next: unknown): void {
+  loaded = true;
+  overrides = normalizePanelColorOverrides(next);
   persist();
   notify();
 }

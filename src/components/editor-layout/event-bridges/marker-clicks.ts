@@ -18,6 +18,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import { CARD_KINDS, panelForCardKind } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { MODE_B_CARD_KINDS } from "@/cards/mode-b-collections";
+import { CARD_ATOMS, type CardAtomKind } from "@/lib/tiptap/atom-registry";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
@@ -134,11 +135,20 @@ function routeAnchorClick(
 
 /** The inline-atom kinds, routed by the SAME body as the anchor kinds (task
  *  1252) on their own events — derived from the registry exactly as
- *  `ANCHOR_CLICK_ROUTES` is. */
-const ATOM_CLICK_ROUTES = {
-  footnote: { panelId: panelForCardKind("footnote") as PanelId, cardKind: "footnote" },
-  citation: { panelId: panelForCardKind("citation") as PanelId, cardKind: "citation" },
-} as const satisfies Record<string, { panelId: PanelId; cardKind: CardKind }>;
+ *  `ANCHOR_CLICK_ROUTES` is: one row per Card-bearing atom (`CARD_ATOMS`),
+ *  `panelId` from `panelForCardKind` (task 1476 — it used to be a literal
+ *  footnote/citation table that only CLAIMED to be derived). */
+export const ATOM_CLICK_ROUTES: Readonly<
+  Record<CardAtomKind, { panelId: PanelId; cardKind: CardKind }>
+> = Object.fromEntries(
+  CARD_ATOMS.map(({ kind }) => {
+    const panel = panelForCardKind(kind);
+    if (panel == null) {
+      throw new Error(`[marker-clicks] no owning panel for atom-click kind "${kind}"`);
+    }
+    return [kind, { panelId: panel as PanelId, cardKind: kind }];
+  }),
+) as Record<CardAtomKind, { panelId: PanelId; cardKind: CardKind }>;
 
 /** Select → `openForCard` → place, in the routed doc's env. */
 function routeCardClick(

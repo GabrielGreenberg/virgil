@@ -46,6 +46,7 @@
  */
 
 import type { Editor, JSONContent } from "@tiptap/react";
+import type { CardKind } from "@/panels/_shared/types";
 import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import {
   findNodeByUuid,
@@ -81,7 +82,15 @@ export type ApplyMode = "replace" | "delete";
  *  "cutter-suggestion"). Threading it keeps the in-text mark's token in lockstep
  *  with the gutter marker + panel/omni card so the three-surface hover halo
  *  resolves for BOTH families. */
-export type PendingChangeFamily = "revision-suggestion" | "cutter-suggestion";
+export const PENDING_CHANGE_FAMILIES = [
+  "revision-suggestion",
+  "cutter-suggestion",
+] as const satisfies readonly CardKind[];
+/** One pending-change family per SUGGESTION kind — `PENDING_CHANGE_FAMILIES`
+ *  ≡ `SUGGESTION_KINDS` is pinned by `card-kind-literal-census.test.ts` (task
+ *  1476), so a third suggestion family cannot join the registry without
+ *  joining the auto-apply driver too. */
+export type PendingChangeFamily = (typeof PENDING_CHANGE_FAMILIES)[number];
 
 export interface ApplyArgs {
   /** The uuid of the paragraph the suggestion is anchored to. */

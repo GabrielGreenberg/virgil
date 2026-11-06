@@ -130,7 +130,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "Margin notes",
+        label: "Note markers",
         children: [
           { type: "color", key: "noteColor", label: "Marker color", description: "Note indicator icons and numbers" },
           { type: "color", key: "noteMarkerBorder", label: "Border color", description: "Border around note markers" },

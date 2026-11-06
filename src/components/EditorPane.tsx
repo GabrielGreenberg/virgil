@@ -319,8 +319,8 @@ import {
   labelClearConfirmCopy,
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
-import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { archiveRestoreRefusal } from "@/lib/archive-restore-gate";
+import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   buildMarginItemHandlers,
   deleteMarginItem,
@@ -4685,23 +4685,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // — robust to an HMR remount between publish and call.
         const ed = innerRef.current?.getEditor();
         if (!ed) return "no-editor";
-        // CHIP 7b: the UNIFORM collab read-only gate for the PM-land surfaces
-        // (slash / typed). `ed.isEditable` is the in-editor mirror of
-        // `collab.canEditMainText` (EditorLayout flips it via `setEditable` when
-        // the partner holds the pen — [EditorLayout.tsx:946]). When read-only the
-        // bridge no-ops entirely: no card registration, no soft-route, no popover
-        // open. (The synchronous `\cite`/`\footnote` ATOM the PM caller inserts
-        // before this call is ALSO suppressed at its own editability check — see
-        // commands.ts / citation.ts / footnote.ts — and would be rejected by the
-        // `readOnlyEnforcer` regardless.) No over-gating: a non-collab editor is
-        // always editable, so this is inert outside collaborator read-only.
-        // TASK 733 — the HOST axis too. `ed.isEditable` is `view.editable`,
-        // which MAIN pins `true` for the view's whole life, so this read alone
-        // was a constant on the only surface the bridge serves. The React
-        // `editable` prop (a Library Reader pane's `false`) lives in
-        // `editableRef`, published by `readOnlyEnforcer`'s storage and read
-        // through the one door.
-        if (!surfaceEditableNow(ed)) return "read-only";
         const deps = bridgeDepsRef.current;
         // ── THE ORIGIN (task 642) ──────────────────────────────────────────
         // `ed` is THIS PANE's editor — the source of the app-global React APIs
@@ -4731,6 +4714,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           ed,
           seed.origin,
         );
+        // CHIP 7b / task 733: the collab (pen) ∧ host read-only gate for the
+        // PM-land surfaces (slash / typed). When read-only the bridge no-ops
+        // entirely: no card registration, no soft-route, no popover open.
+        // TASK 1480 — asked of the ORIGIN, not of `ed`. A card body carries its
+        // own claim scope (`cardEditable`), so main's pen is not its answer:
+        // asking `ed` here refused `\textbf` / `\quote` / `\footnote` typed in
+        // a note body while the partner held MAIN — AFTER the slash commit door
+        // had already deleted the typed `\name` on the popup's say-so, which
+        // asks the firing view (`buildSlashActionContext`'s
+        // `surfaceEditableNow(view)`). Offer, this gate and the run door
+        // (`actionGate`) now ask one question of one surface. For every
+        // pane-fired action the origin IS `ed`, so this is inert there.
+        if (!surfaceEditableNow(originView)) return "read-only";
         const ctx: ActionContext = {
           editor: originEd,
           view: originView,
@@ -4738,8 +4734,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           surface: seed.surface,
           // CHIP 7b: thread the collab gate into the ctx too (the early-return
           // above already short-circuits, so this is `true` whenever we reach
-          // here — but it keeps the `run()` guards' invariant honest).
-          canEdit: surfaceEditableNow(ed),
+          // here — but it keeps the `run()` guards' invariant honest). The
+          // ORIGIN's answer, like the gate (task 1480).
+          canEdit: surfaceEditableNow(originView),
           cardCreation: deps.cardCreation,
           dispatch: deps.dispatch,
           payload: seed.payload,
@@ -6668,8 +6665,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return;
         }
         const ok = await confirmArchiveAtom({
-          title: kind === "footnote" ? "Archive footnote?" : "Archive citation?",
-          message: `Archiving this ${kind} removes its marker from your document. The card moves to this panel's archive — you can unarchive it later, but the marker won't be restored automatically.`,
+          title: `Archive ${CARD_REGISTRY[kind].label.toLowerCase()}?`,
+          message: `Archiving this ${CARD_REGISTRY[kind].label.toLowerCase()} removes its marker from your document. The card moves to this panel's archive — you can unarchive it later, but the marker won't be restored automatically.`,
           confirmLabel: "Archive",
           suppressId: "archive-atom-marker",
         });

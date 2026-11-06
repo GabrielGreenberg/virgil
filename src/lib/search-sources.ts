@@ -10,6 +10,7 @@ import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
 import { DEFAULT_PANEL_COLORS, type PanelThemeKey } from "./panel-theme";
 import type { PanelKind } from "@/panels/_shared/types";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import {
   SUGGESTION_SEARCH_FIELDS,
   type SuggestionField,
@@ -147,20 +148,6 @@ function clipFlags(s: Pick<Snippet, "clippedBefore" | "clippedAfter">) {
 }
 const UNANCHORED = Number.MAX_SAFE_INTEGER;
 
-/** Human-readable label shown next to chips / in result labels. */
-export const SCOPE_LABEL: Record<SearchScope, string> = {
-  mainText: "Main text",
-  footnotes: "Footnotes",
-  notes: "Notes",
-  citations: "Citations",
-  todos: "Todos",
-  archive: "Archive",
-  cuts: "Cuts",
-  reports: "Reports",
-  revisions: "Revisions",
-  bibliography: "Bibliography",
-};
-
 /** Literal-typed source for SCOPE_PANEL: the `as const` keeps each value a
  *  literal so `SearchJumpPanel` is the exact value union; the `satisfies`
  *  pins every value to a real registry `PanelKind`. */
@@ -187,6 +174,23 @@ export type SearchJumpPanel =
 /** Native panel a result of this scope lives in. Headings/mainText have none. */
 export const SCOPE_PANEL: Partial<Record<SearchScope, SearchJumpPanel>> =
   SCOPE_PANEL_MAP;
+
+/** Human-readable label shown next to chips / in result labels — the scope's
+ *  panel's `PANEL_REGISTRY.shortLabel` (task 1475; this was a hand table that
+ *  spelled the Todo List "Todos" beside four other spellings). Only the
+ *  panel-less scopes are named here. */
+const PANELLESS_SCOPE_LABEL = { mainText: "Main text" } as const;
+export const SCOPE_LABEL: Record<SearchScope, string> = {
+  ...PANELLESS_SCOPE_LABEL,
+  // Typed by SCOPE_PANEL_MAP's own keys, so a scope that is neither panel-less
+  // nor mapped to a panel fails tsc here (the record is total).
+  ...(Object.fromEntries(
+    (Object.keys(SCOPE_PANEL_MAP) as (keyof typeof SCOPE_PANEL_MAP)[]).map((scope) => [
+      scope,
+      PANEL_REGISTRY[SCOPE_PANEL_MAP[scope]].shortLabel,
+    ]),
+  ) as Record<keyof typeof SCOPE_PANEL_MAP, string>),
+};
 
 /** Map a search-result scope to the card theme (panel-theme key) it wears.
  *  This makes the selected border + scope accent track the source kind:
