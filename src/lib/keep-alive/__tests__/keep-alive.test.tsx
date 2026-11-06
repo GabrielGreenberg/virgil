@@ -6,7 +6,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { renderHook, act, render, cleanup } from "@testing-library/react";
-import { useKeepAliveLRU } from "../useKeepAliveLRU";
+import { useKeepAliveLRU, nextKeepAliveOrder } from "../useKeepAliveLRU";
 import { KeepAliveSlot } from "../KeepAliveSlot";
 import { useIsVisible } from "../visibility-context";
 
@@ -70,6 +70,70 @@ describe("useKeepAliveLRU", () => {
     rerender({ id: null });
     expect(result.current.map((e) => e.id)).toEqual(["b", "a"]); // kept warm
     expect(result.current.every((e) => !e.isVisible)).toBe(true); // none shown
+  });
+});
+
+describe("useKeepAliveLRU — LIVE population (task 1456)", () => {
+  type P = { id: string | null; isLive: (id: string) => boolean };
+  const liveExcept = (...dead: string[]) => (id: string) => !dead.includes(id);
+
+  it("a dead id does not spend a slot: closing B then opening D keeps A warm", () => {
+    const all = liveExcept();
+    const { result, rerender } = renderHook(
+      ({ id, isLive }: P) => useKeepAliveLRU(id, 3, isLive),
+      { initialProps: { id: "a", isLive: all } as P },
+    );
+    rerender({ id: "b", isLive: all });
+    rerender({ id: "c", isLive: all }); // [c, b, a]
+    rerender({ id: "c", isLive: liveExcept("b") }); // close B
+    expect(result.current.map((e) => e.id)).toEqual(["c", "a"]); // pruned at the SOURCE
+    rerender({ id: "d", isLive: liveExcept("b") }); // open D
+    expect(result.current.map((e) => e.id)).toEqual(["d", "c", "a"]); // A survives
+  });
+
+  it("prunes in the same transition as the activation (dead on arrival)", () => {
+    const all = liveExcept();
+    const { result, rerender } = renderHook(
+      ({ id, isLive }: P) => useKeepAliveLRU(id, 3, isLive),
+      { initialProps: { id: "a", isLive: all } as P },
+    );
+    rerender({ id: "b", isLive: all });
+    rerender({ id: "c", isLive: all });
+    rerender({ id: "d", isLive: liveExcept("b") }); // B failed + D opened at once
+    expect(result.current.map((e) => e.id)).toEqual(["d", "c", "a"]);
+  });
+
+  it("never prunes the ACTIVE id, even if the predicate calls it dead", () => {
+    const { result } = renderHook(
+      ({ id, isLive }: P) => useKeepAliveLRU(id, 3, isLive),
+      { initialProps: { id: "a", isLive: liveExcept("a") } as P },
+    );
+    expect(result.current).toEqual([{ id: "a", isVisible: true }]);
+  });
+
+  it("an unchanged live set returns the SAME entries (no churn, no remount)", () => {
+    const all = liveExcept();
+    const { result, rerender } = renderHook(
+      ({ id, isLive }: P) => useKeepAliveLRU(id, 3, isLive),
+      { initialProps: { id: "a", isLive: all } as P },
+    );
+    rerender({ id: "b", isLive: all });
+    const before = result.current;
+    rerender({ id: "b", isLive: liveExcept("zzz") }); // new predicate, same verdicts
+    expect(result.current).toBe(before);
+  });
+});
+
+describe("nextKeepAliveOrder", () => {
+  it("returns prev by identity when nothing changes", () => {
+    const prev = ["c", "b", "a"];
+    expect(nextKeepAliveOrder(prev, "c", 3, () => true)).toBe(prev);
+    expect(nextKeepAliveOrder(prev, null, 3, () => true)).toBe(prev);
+  });
+  it("prunes before slicing so capacity counts only live ids", () => {
+    expect(
+      nextKeepAliveOrder(["c", "b", "a"], "d", 3, (id) => id !== "b"),
+    ).toEqual(["d", "c", "a"]);
   });
 });
 

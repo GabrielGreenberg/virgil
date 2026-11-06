@@ -1,14 +1,18 @@
 import { Extension, InputRule } from "@tiptap/core";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 import { createTypeTimeRewriter } from "./type-time-rewrite";
+import { straightQuoteRole } from "@/lib/latex-typography";
 
 /**
  * Type-time typographic input rules: smart curly quotes and en/em dashes.
  *
  * Quotes:
- * - At start of a text run, or right after whitespace / opening punctuation:
- *   the typed `"` becomes `“` (U+201C, opening).
+ * - At start of a text run, or right after whitespace / opening punctuation
+ *   (incl. `/`) or a dash: the typed `"` becomes `“` (U+201C, opening).
+ * - After an odd backslash run (`\"`, the umlaut accent): left straight.
  * - Otherwise: it becomes `”` (U+201D, closing).
+ *   The decision is `straightQuoteRole` in `latex-typography.ts` — the SAME
+ *   predicate the save-side `smartenStraightQuotes` reads (task 1440).
  *
  * Dashes (following the LaTeX convention that the parse/serialize round-trip
  * already encodes — see `dashesToGlyphs` / `typographyToLatex`):
@@ -65,20 +69,25 @@ export const SmartQuotes = Extension.create({
 
   addInputRules() {
     return [
-      new InputRule({
-        find: /(^|[\s([{—–—–])"$/,
-        handler: ({ state, range, match }) => {
-          const lead = match[1] ?? "";
-          // Task 578: replace only what the rule rewrites, and only over text.
-          if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
-          rewriter.land(state, range, match, '"', range.from + lead.length, "“");
-        },
-      }),
+      // ONE quote rule (task 1440). Direction — and whether the `"` is a
+      // quote at all — is asked of the save side's `straightQuoteRole`, over
+      // the text TipTap already matched against (the textblock before the
+      // caret, O(match)), so typing and saving cannot disagree: `\"` (the
+      // umlaut accent) stays a straight byte, and `/"` opens.
       new InputRule({
         find: /"$/,
         handler: ({ state, range, match }) => {
           if (!rangeHoldsOnlyText(state.doc, range.from, range.to)) return null;
-          rewriter.land(state, range, match, '"', range.from, "”");
+          const role = straightQuoteRole(match.input ?? "", match.index ?? 0);
+          if (role === "escaped") return null;
+          rewriter.land(
+            state,
+            range,
+            match,
+            '"',
+            range.from,
+            role === "open" ? "“" : "”",
+          );
         },
       }),
       // Em dash — must precede the en-dash rule so `–-` (the incremental

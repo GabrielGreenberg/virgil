@@ -27,6 +27,7 @@
 
 import { useEffect, useRef } from "react";
 import { isKeyOwner, popDialog, pushDialog } from "./dialog-stack";
+import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 
 /**
  * Give focus back, on close, to whatever held it when the dialog opened.
@@ -111,9 +112,14 @@ export function useNonModalDialogKeys({
     // controller (window capture) still wins while a picker's menu is up, so
     // the first Escape closes the menu and only the next one the window.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      // Not the IME's composition-cancel Escape (task 1448).
+      if (!isCancelEscape(e)) return;
       if (!isKeyOwner(token)) return;
       e.preventDefault();
+      // A cancel answers the first press; its repeats end nothing and are
+      // eaten until keyup, so they cannot cancel what lies beneath (task 1448).
+      if (e.repeat) return;
+      swallowRepeatsUntilKeyup(e);
       onCancelRef.current();
     };
     window.addEventListener("keydown", onKey);

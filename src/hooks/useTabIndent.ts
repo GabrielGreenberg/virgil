@@ -1,3 +1,4 @@
+import { isCancelEscape } from "@/lib/key-intent";
 import { useCallback } from "react";
 
 type AnyKeyTarget = HTMLTextAreaElement | HTMLElement;
@@ -63,7 +64,7 @@ export function useTabIndent<T extends AnyKeyTarget>(
         }
         return;
       }
-      if (e.key === "Escape") {
+      if (isCancelEscape(e)) {
         const el = e.currentTarget;
         if (cancel) cancel(el);
         else (el as HTMLElement).blur();

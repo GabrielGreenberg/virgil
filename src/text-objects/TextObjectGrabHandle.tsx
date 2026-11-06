@@ -77,9 +77,12 @@ import {
 } from "@/lib/input-modality";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import {
+  claimGestureKey,
   isMissedRelease,
   isPrimaryDragStart,
 } from "@/lib/pane-resize/pointer-invariants";
+import { useUnmountEnding } from "@/lib/pane-resize/use-unmount-ending";
+import { isCancelEscape } from "@/lib/key-intent";
 import { LAYOUT_SITE_GRAB_HANDLE } from "@/lib/layout-gesture-probe";
 import {
   TEXT_OBJECT_REGISTRY,
@@ -816,10 +819,28 @@ export function TextObjectGrabHandle({ editor }: Props) {
     dragHandleMenuRef.current = dragHandleMenu;
   }, [dragHandleMenu]);
 
+  // The LIVE pre-threshold press, if any (task 1444). A press used to end
+  // only on its own events — release, threshold hand-off, missed release — so
+  // nothing ended it when its handle unmounted, the editor went away, or the
+  // user pressed Escape, and a later stray release opened the action menu over
+  // a DETACHED handle (a zero rect: the viewport's top-left corner) or lifted
+  // from a dead editor. Its endings are now named: `release` (click → menu),
+  // `lift` (threshold → LiftHost), `cancel` (Escape; the pressed handle's
+  // unmount via its `useUnmountEnding`; the editor swap/loss in the `[editor]`
+  // effect cleanup; a docChanged tx under a SELECTION press, whose raw
+  // positions the tx has just made stale; a detached handle or destroyed
+  // editor seen on a move/release). Every ending runs the press's ONE
+  // teardown (`cleanup`), exactly once.
+  const pressRef = useRef<{
+    cancel: () => void;
+    startRef: TextObjectRef | SelectionRef;
+  } | null>(null);
+
   const beginGesture = useCallback((
     downEv: MouseEvent,
     handleEl: HTMLDivElement,
     startRef: TextObjectRef | SelectionRef,
+    endingRef: { current: (() => void) | null },
   ) => {
     // The engine's start gate (SSOT, never re-derived).
     if (!isPrimaryDragStart(downEv)) return;
@@ -838,13 +859,24 @@ export function TextObjectGrabHandle({ editor }: Props) {
         // tentativeKey check below in the drag branch reuses this.
       }
     }
+    // One live press at a time: a new press ends any stale one first.
+    pressRef.current?.cancel();
     handleEl.classList.add("is-pressed");
     const startX = downEv.clientX;
     const startY = downEv.clientY;
     let triggered = false;
+    let ended = false;
+
+    // A press that can no longer act on what it captured: the handle left the
+    // DOM (its rect would be all zeros) or the editor was destroyed.
+    const isStale = () => !handleEl.isConnected || editor.isDestroyed;
 
     const onMove = (mv: MouseEvent) => {
       if (triggered) return;
+      if (isStale()) {
+        cleanup();
+        return;
+      }
       // Missed-release failsafe (task 185/333) — PRE-threshold only, which is
       // this handler's exclusive ownership window: once the threshold is
       // crossed the gesture belongs to `LiftHost`, which carries its own
@@ -859,6 +891,10 @@ export function TextObjectGrabHandle({ editor }: Props) {
       const dy = mv.clientY - startY;
       if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
       triggered = true;
+      // The PRESS ends here, whatever follows (a lift hand-off or a refusal):
+      // ending it before hydration also keeps the hydrating tx below from
+      // reading as a doc change under a live selection press.
+      cleanup();
 
       // Threshold crossed → this is a LIFT, not a click. Resolve the ref
       // (hydrating a live selection into a transient `linkedRange`), derive
@@ -946,6 +982,12 @@ export function TextObjectGrabHandle({ editor }: Props) {
       // host and called `cleanup()`, removing this listener — so this only
       // ever runs for the pre-threshold click.)
       if (triggered) return;
+      // A detached handle has no rect to anchor a menu to — a cancel, never a
+      // menu at (0,0).
+      if (isStale()) {
+        cleanup();
+        return;
+      }
       const open = dragHandleMenuRef.current?.open;
       if (open) {
         const rect = handleEl.getBoundingClientRect();
@@ -953,13 +995,31 @@ export function TextObjectGrabHandle({ editor }: Props) {
       }
       cleanup();
     };
+    // Escape before the threshold CANCELS the press (escape-means-cancel):
+    // capture phase, claimed, so the same key does not also cancel something
+    // the press was sitting on top of.
+    const onKey = (e: KeyboardEvent) => {
+      if (!isCancelEscape(e)) return;
+      claimGestureKey(e);
+      cleanup();
+    };
+    // The ONE teardown. Every ending — release, lift hand-off, cancel — runs
+    // it, and it runs once.
     const cleanup = () => {
+      if (ended) return;
+      ended = true;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("keydown", onKey, true);
       handleEl.classList.remove("is-pressed");
+      if (pressRef.current?.cancel === cleanup) pressRef.current = null;
+      if (endingRef.current === cleanup) endingRef.current = null;
     };
+    pressRef.current = { cancel: cleanup, startRef };
+    endingRef.current = cleanup;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("keydown", onKey, true);
   }, [editor]);
 
   // ---------------------------------------------------------------------------
@@ -1109,6 +1169,13 @@ export function TextObjectGrabHandle({ editor }: Props) {
       transaction: import("@tiptap/pm/state").Transaction;
     }) {
       if (!transaction.docChanged) return;
+      // A SELECTION press captured raw positions this tx has just made stale
+      // (a tx above it would hydrate the transient range onto the wrong text),
+      // so it ends as a cancel. An identity-addressed press survives: its
+      // handle's unmount is its ending if the block itself went away. O(1).
+      if (pressRef.current?.startRef.kind === "selection") {
+        pressRef.current.cancel();
+      }
       scheduleRaf();
     }
 
@@ -1189,6 +1256,10 @@ export function TextObjectGrabHandle({ editor }: Props) {
       // notifies only on the flip edge, so a 240 Hz move stream costs one
       // boolean compare per event.
       notePointerInput();
+      // A held press freezes hover discovery: re-resolving under it could drop
+      // the very handle being pressed (its unmount would cancel the press) for
+      // a pointer that is only travelling toward the lift threshold.
+      if (pressRef.current) return;
       // Always-on tracking: hover is the primary discovery mechanism, so
       // the position must update during text selection / node selection
       // too. (The resolver prioritizes selection/node refs above hover,
@@ -1278,6 +1349,9 @@ export function TextObjectGrabHandle({ editor }: Props) {
       document.addEventListener("selectionchange", onDocSelectionChange);
     }
     return () => {
+      // The editor a live press closed over is leaving (swap, loss, unmount):
+      // that ends the press as a cancel (task 1444).
+      pressRef.current?.cancel();
       if (editor) {
         editor.off("selectionUpdate", onSelectionUpdate);
         editor.off("update", onDocUpdate);
@@ -1350,7 +1424,12 @@ export function TextObjectGrabHandle({ editor }: Props) {
 
 interface GrabHandleRenderProps {
   placement: Placement;
-  onBeginGesture: (ev: MouseEvent, el: HTMLDivElement, ref: TextObjectRef | SelectionRef) => void;
+  onBeginGesture: (
+    ev: MouseEvent,
+    el: HTMLDivElement,
+    ref: TextObjectRef | SelectionRef,
+    endingRef: { current: (() => void) | null },
+  ) => void;
 }
 
 function GrabHandleRender({
@@ -1358,17 +1437,20 @@ function GrabHandleRender({
   onBeginGesture,
 }: GrabHandleRenderProps) {
   const elRef = useRef<HTMLDivElement | null>(null);
+  // This handle unmounting mid-press (its block deleted or moved under the
+  // held press, the pane swapped) is an ENDING of that press (task 1444).
+  const endingRef = useUnmountEnding();
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
     const handler = (ev: MouseEvent) => {
-      onBeginGesture(ev, el, placement.ref);
+      onBeginGesture(ev, el, placement.ref, endingRef);
     };
     el.addEventListener("mousedown", handler);
     return () => {
       el.removeEventListener("mousedown", handler);
     };
-  }, [placement.ref, onBeginGesture]);
+  }, [placement.ref, onBeginGesture, endingRef]);
   // `position: absolute` against the `[data-grab-handle-portal]` wrapper
   // (which is itself absolute inside the editor-pane-column — escapes the
   // pod's `overflow: clip`, which clips descendants at its box edge). The

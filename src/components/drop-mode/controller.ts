@@ -31,6 +31,7 @@
  * Cancellation is idempotent and routes through `endDropSession()`.
  */
 
+import { isCancelEscape } from "@/lib/key-intent";
 import { attrSelector } from "@/lib/attr-selector";
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
@@ -569,7 +570,7 @@ function installListeners(opts: { attachMouseUp: boolean }) {
     feedAutoScroll(readMoveGeometry().scroll, e.clientY, reHitTestAtPointer);
   };
   onKey = (e: KeyboardEvent) => {
-    if (e.key !== "Escape") return;
+    if (!isCancelEscape(e)) return;
     // The gesture CLAIMS the press (task 504 — task 471's rule, member 2). A
     // content drag is the innermost transient thing on screen, so ONE press
     // ends exactly ONE thing: without the claim the same Escape also ran

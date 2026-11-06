@@ -8,7 +8,7 @@
  * toggle that flips the LIVE in-document paragraph between the pre-splice
  * original and the AI suggestion so you can compare in place WITHOUT committing.
  * That preview direction is:
- *   - keyed by card id,
+ *   - keyed by (paper, card id) — task 1455, see `PreviewDocKey`,
  *   - NEVER persisted to the sidecar (it's a UI compare state, not a decision),
  *   - default `"suggested"` (matches the live doc right after auto-apply), and
  *   - read by BOTH the card body (to render the active segment) AND the commit
@@ -25,58 +25,111 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
+import { registerDocForget } from "@/lib/doc-forget";
 
 export type PreviewDir = "suggested" | "original";
 
-/** Only cards currently previewing the ORIGINAL are stored; a missing id means
- *  the default `"suggested"` (so the map stays empty in the common case). */
-const dirs = new Map<string, PreviewDir>();
-const listeners = new Map<string, Set<() => void>>();
+/** TASK 1455 — the store is a REGISTRY keyed by the owning paper, never one
+ *  namespace of bare card ids. Card ids are unique only WITHIN a paper (and
+ *  identical across a duplicated folder), while N papers are warm at once
+ *  (multi-doc keep-alive), so a bare-id map let paper A's "original" toggle
+ *  read as B's — and B's Check then cleared it, so A's Check finalized the
+ *  ORIGINAL text. `null` is the doc-less bucket (a card rendered with no
+ *  controller, e.g. in isolation); it is a bucket of its own, never a
+ *  wildcard. */
+export type PreviewDocKey = string | null;
 
-function emit(id: string): void {
-  const set = listeners.get(id);
+/** Only cards currently previewing the ORIGINAL are stored; a missing id means
+ *  the default `"suggested"` (so the maps stay empty in the common case). */
+const dirs = new Map<PreviewDocKey, Map<string, PreviewDir>>();
+const listeners = new Map<PreviewDocKey, Map<string, Set<() => void>>>();
+
+function emit(docId: PreviewDocKey, id: string): void {
+  const set = listeners.get(docId)?.get(id);
   if (set) for (const cb of set) cb();
 }
 
-/** The current preview direction for card `id` (default `"suggested"`). */
-export function getPreviewDir(id: string): PreviewDir {
-  return dirs.get(id) ?? "suggested";
+/** The current preview direction for card `id` of paper `docId` (default
+ *  `"suggested"`). */
+export function getPreviewDir(docId: PreviewDocKey, id: string): PreviewDir {
+  return dirs.get(docId)?.get(id) ?? "suggested";
 }
 
-/** Set the preview direction for card `id`; no-op (no emit) when unchanged. */
-export function setPreviewDir(id: string, dir: PreviewDir): void {
-  if (getPreviewDir(id) === dir) return;
-  if (dir === "suggested") dirs.delete(id);
-  else dirs.set(id, dir);
-  emit(id);
+/** Set the preview direction for card `id` of paper `docId`; no-op (no emit)
+ *  when unchanged. */
+export function setPreviewDir(
+  docId: PreviewDocKey,
+  id: string,
+  dir: PreviewDir,
+): void {
+  if (getPreviewDir(docId, id) === dir) return;
+  if (dir === "suggested") {
+    const doc = dirs.get(docId);
+    doc?.delete(id);
+    if (doc && doc.size === 0) dirs.delete(docId);
+  } else {
+    let doc = dirs.get(docId);
+    if (!doc) {
+      doc = new Map();
+      dirs.set(docId, doc);
+    }
+    doc.set(id, dir);
+  }
+  emit(docId, id);
 }
 
-/** Reset card `id` back to the default `"suggested"` — called on commit
- *  (Check / Cross) so a re-applied card next time starts on the suggested view. */
-export function resetPreviewDir(id: string): void {
-  setPreviewDir(id, "suggested");
+/** Reset card `id` of paper `docId` back to the default `"suggested"` —
+ *  called on commit (Check / Cross) so a re-applied card next time starts on
+ *  the suggested view. */
+export function resetPreviewDir(docId: PreviewDocKey, id: string): void {
+  setPreviewDir(docId, id, "suggested");
 }
 
-function subscribe(id: string, cb: () => void): () => void {
-  let set = listeners.get(id);
+/** Task 1465 (`purgeDoc`): card ids are minted per paper and a re-seeded
+ *  example reuses them, so a surviving "original" toggle would apply to the
+ *  reset paper's card of the same id. Each stored card is told it is back on
+ *  `"suggested"`; listeners are their subscribers' to remove. */
+registerDocForget("pending-preview", (docId) => {
+  const doc = dirs.get(docId);
+  if (!doc) return;
+  dirs.delete(docId);
+  for (const id of doc.keys()) emit(docId, id);
+});
+
+function subscribe(
+  docId: PreviewDocKey,
+  id: string,
+  cb: () => void,
+): () => void {
+  let doc = listeners.get(docId);
+  if (!doc) {
+    doc = new Map();
+    listeners.set(docId, doc);
+  }
+  let set = doc.get(id);
   if (!set) {
     set = new Set();
-    listeners.set(id, set);
+    doc.set(id, set);
   }
   set.add(cb);
   return () => {
     set.delete(cb);
-    if (set.size === 0) listeners.delete(id);
+    if (set.size === 0) doc.delete(id);
+    if (doc.size === 0) listeners.delete(docId);
   };
 }
 
-/** Subscribe a card body to its own preview direction. Re-renders ONLY when
- *  `setPreviewDir(id, …)` runs for this id (a click), never on a keystroke. */
-export function usePreviewDir(id: string): PreviewDir {
-  const sub = useCallback((cb: () => void) => subscribe(id, cb), [id]);
+/** Subscribe a card body to its own preview direction in its own paper.
+ *  Re-renders ONLY when `setPreviewDir(docId, id, …)` runs for this pair (a
+ *  click), never on a keystroke. */
+export function usePreviewDir(docId: PreviewDocKey, id: string): PreviewDir {
+  const sub = useCallback(
+    (cb: () => void) => subscribe(docId, id, cb),
+    [docId, id],
+  );
   return useSyncExternalStore(
     sub,
-    () => getPreviewDir(id),
+    () => getPreviewDir(docId, id),
     () => "suggested",
   );
 }

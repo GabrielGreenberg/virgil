@@ -413,12 +413,24 @@ export function useCollab(
   // EditorLayout — for nothing. The pen-holder gate keeps the live-
   // updating "idle 4m" → "idle 5m" label working when it matters and
   // makes the idle case zero-cost.
+  //
+  // Also gated on the pane being VISIBLE (task 1457): a keep-alive pane parked
+  // `display:none` has no label anyone can read, and each tick would re-render
+  // its whole EditorPane subtree once a second while the user types in another
+  // paper. The show edge needs no tick to be fresh — `visible` is a dep of the
+  // derived `pen` memo below, so the re-render that shows the pane re-derives
+  // idle/stale against the current clock.
+  //
+  // The 5 s sidecar poll above is deliberately NOT gated: it is the one writer
+  // of the cowork-pen store (`noteCoworkPen`) that the autosave pause — and so
+  // a hidden doc's eviction flush — reads, and it already costs zero renders
+  // while nothing on disk changes (the serialized-equality and pen-key bails).
 
   useEffect(() => {
-    if (!sidecar.pen.holder) return;
+    if (!sidecar.pen.holder || !visible) return;
     const i = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(i);
-  }, [sidecar.pen.holder]);
+  }, [sidecar.pen.holder, visible]);
 
   /* ── Heartbeats: pen + claimed card ──────────────────────────── */
 
@@ -722,7 +734,9 @@ export function useCollab(
     }
     prevPenRef.current = next;
     return next;
-  }, [sidecar.pen, tick]);
+    // `tick` and `visible` are clock-refresh signals (read by no expression
+    // here): derivePen reads Date.now(), so either bump re-derives the labels.
+  }, [sidecar.pen, tick, visible]);
   const me = identity?.name ?? null;
   const iHavePen = !!me && holdsPen(sidecar.pen, { name: me, session });
   const penHeldElsewhere = !!me && sidecar.pen.holder === me && !iHavePen;

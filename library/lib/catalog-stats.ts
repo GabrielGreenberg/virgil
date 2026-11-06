@@ -12,7 +12,7 @@
 // hooks, no I/O) so it's trivially testable and safe to memoize on the
 // `entries` array identity.
 
-import type { CatalogEntry } from "./catalog";
+import { BIB_ACTION_NEEDED_STATES, type CatalogEntry } from "./catalog";
 import type { BibEntry } from "./types";
 
 export interface CatalogStats {
@@ -39,7 +39,8 @@ export interface CatalogStats {
    *  caller passes the merged universe rows, whose fileless entries carry the
    *  bib-index-projected state — F#4). */
   authenticated: number;
-  /** bib.state ∈ {unverified, failed} — entries that want a human/skill pass. */
+  /** bib.state ∈ BIB_ACTION_NEEDED_STATES (unverified / failed / needs-reauth)
+   *  — entries that want a human/skill pass. */
   bibNeedsAction: number;
   /** The strict complement of `authenticated` over the bibliography total:
    *  `bibEntries − authenticated` (folds unverified / failed / manuscript /
@@ -115,7 +116,7 @@ export function computeCatalogStats(
     // when the caller passes the merged universe rows).
     const bib = bibState(e);
     if (bib === "authenticated") stats.authenticated++;
-    if (bib === "unverified" || bib === "failed") stats.bibNeedsAction++;
+    if ((BIB_ACTION_NEEDED_STATES as ReadonlySet<string>).has(bib)) stats.bibNeedsAction++;
   }
 
   // Strict binary complement over the bibliography total (F#1). Clamp so a

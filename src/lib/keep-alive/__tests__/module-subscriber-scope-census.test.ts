@@ -32,10 +32,11 @@ type Scope =
   /** Keyed by — or gated on — the document's `docId`. */
   | "doc-keyed"
   /** Keyed by an owner object/string minted per mount (a pod, a pane). */
-  | "owner-keyed"
-  /** KNOWN RESIDUAL: keyed by an identity that is unique only within one
-   *  paper (a card id). Declared so it is visible, not blessed — see `why`. */
-  | "residual-per-paper-key";
+  | "owner-keyed";
+// There is deliberately NO "keyed by a per-paper identity" scope. A card id is
+// unique only within one paper, so a collection keyed by it alone is the
+// defect, not a scope: task 739 declared the one such row as a residual and
+// task 1455 retired it (the preview store is now keyed by docId first).
 
 interface Row {
   scope: Scope;
@@ -48,7 +49,6 @@ const SCOPE_TEETH: Record<Scope, RegExp> = {
   gesture: /./,
   "doc-keyed": /\bdocId\b/,
   "owner-keyed": /new Map</,
-  "residual-per-paper-key": /new Map<string/,
 };
 
 /** `file#binding` → scope. */
@@ -99,9 +99,8 @@ const LEDGER: Record<string, Row> = {
   "links/_shared/stored-kind-resolver.ts#_resolvers": { scope: "owner-keyed", why: "kind resolvers are keyed by the doc's CardStore object; a pane releases only its own (task 1296)" },
 
   "links/pending-preview-store.ts#listeners": {
-    scope: "residual-per-paper-key",
-    why:
-      "RESIDUAL (found by task 739): the applied-suggestion Original/Suggested preview is keyed by CARD ID only, so two open papers sharing an id (a duplicated folder) share the toggle's display state. Needs a doc (or pane) key threaded through pending-change-actions.",
+    scope: "doc-keyed",
+    why: "the applied-suggestion Original/Suggested preview is keyed by (docId, card id) — a card id is unique only within one paper (task 1455; was task 739's residual)",
   },
 };
 

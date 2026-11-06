@@ -343,14 +343,43 @@ describe("CSS census — the affordance is scoped to the attribute", () => {
     }
   });
 
-  it("each atom keeps a base `cursor: pointer` — the honest read-only answer", () => {
-    for (const meta of Object.values(ATOM_REGISTRY)) {
-      const re = new RegExp(
-        `\\.${meta.domClass}[^{}]*\\{[^{}]*cursor:\\s*pointer`,
-        "s",
-      );
-      expect(re.test(code), `${meta.domClass} has no base cursor: pointer`).toBe(true);
+  // Task 1443: the rest cursor is a REGISTRY fact (`opensOnClick`), not a
+  // uniform answer. The old leg required `pointer` for EVERY row ("the honest
+  // read-only answer"), which was false for `\today` — a click opens nothing,
+  // so its pointer was the task-524 false affordance on every read-only pane.
+  /** The declaration blocks of every rule whose selector names `cls` OUTSIDE
+   *  the graspable scope (the scoped grab rules are pinned above). */
+  function restBlocks(cls: string): string[] {
+    const out: string[] = [];
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    const named = new RegExp(`\\.${cls}(?![\\w-])`);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(code))) {
+      if (named.test(m[1]) && !m[1].includes("data-atoms-graspable")) out.push(m[2]);
     }
+    return out;
+  }
+
+  it("each atom's rest cursor is `pointer` IFF a click opens something (`opensOnClick`)", () => {
+    for (const meta of Object.values(ATOM_REGISTRY)) {
+      const blocks = restBlocks(meta.domClass);
+      const pointer = blocks.some((b) => /cursor:\s*pointer/.test(b));
+      if (meta.opensOnClick) {
+        expect(pointer, `${meta.domClass} opens on click but has no base cursor: pointer`).toBe(true);
+      } else {
+        expect(pointer, `${meta.domClass} opens NOTHING on click but advertises cursor: pointer`).toBe(false);
+        expect(
+          blocks.some((b) => /cursor:\s*default/.test(b)),
+          `${meta.domClass} (opensOnClick: false) must rest on cursor: default`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("the facet is not vacuous — both answers are live in the registry", () => {
+    const rows = Object.values(ATOM_REGISTRY);
+    expect(rows.some((m) => m.opensOnClick)).toBe(true);
+    expect(rows.some((m) => !m.opensOnClick)).toBe(true);
   });
 });
 

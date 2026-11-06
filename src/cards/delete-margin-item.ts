@@ -255,11 +255,17 @@ type AddParagraphLink = (
  *  own collection. */
 type DetachAnchorSources = (id: string, sources: readonly AnchorRowSource[]) => void;
 
+/** The notes sidecar — its WHOLE collection (`useNotes().cards`: notes AND
+ *  highlights), never the per-kind `notes` slice. A highlight carries no margin
+ *  marker, but it can hold a paragraph link (the drop-mode re-anchor strips its
+ *  mark and keeps the pid), and the capture-retarget / archive-carry sweeps ask
+ *  this bundle's COLLECTION which cards name a removed uuid — a card absent
+ *  from every bundle is carried nowhere and re-homed nowhere (task 1473). */
 interface NotesDep {
-  notes: ReadonlyArray<CardWithLinks>;
-  addNoteTextObjectId: AddParagraphLink;
-  removeNoteTextObjectId: (id: string, paragraphId: string) => void;
-  detachNoteAnchorSources: DetachAnchorSources;
+  cards: ReadonlyArray<CardWithLinks & { kind: "note" | "highlight" }>;
+  addCardParagraphId: AddParagraphLink;
+  removeCardParagraphId: (id: string, paragraphId: string) => void;
+  detachAnchorSources: DetachAnchorSources;
   deleteNote: DeclinableCardDelete;
 }
 interface ArchiveDep {
@@ -312,12 +318,12 @@ export function buildMarginItemHandlers(
 ): Record<MarginItemKind, MarginItemHandlers> {
   return {
     note: {
-      findCard: (id) => deps.notes.notes.find((n) => n.id === id),
-      cards: deps.notes.notes,
-      contentKind: "note",
-      unanchor: deps.notes.removeNoteTextObjectId,
-      detach: deps.notes.detachNoteAnchorSources,
-      reanchor: deps.notes.addNoteTextObjectId,
+      findCard: (id) => deps.notes.cards.find((n) => n.id === id),
+      cards: deps.notes.cards,
+      contentKind: (card) => cardKindFromRecord(card as { kind?: string }, "notes"),
+      unanchor: deps.notes.removeCardParagraphId,
+      detach: deps.notes.detachAnchorSources,
+      reanchor: deps.notes.addCardParagraphId,
       delete: deps.notes.deleteNote,
     },
     archive: {

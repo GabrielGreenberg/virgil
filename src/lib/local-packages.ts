@@ -28,6 +28,7 @@ import {
   extractDocumentClass,
 } from "@/lib/document-class";
 import { listPackageLoads, projectDetectableLatex } from "@/lib/latex-lexer";
+import { registerDocForget } from "@/lib/doc-forget";
 
 /** Per-paper: what each LOCAL `.sty` / `.cls` loads (direct loads only; the
  *  resolver walks local-to-local loads itself). Keys are the names a preamble
@@ -192,6 +193,19 @@ export function publishLocalPackages(
   const fns = listenersByDoc.get(docId);
   if (fns) for (const fn of [...fns]) fn();
 }
+
+/**
+ * Forget `docId`'s manifest (task 1465 — `purgeDoc`): the folder it was read
+ * from is the identity's. Listeners are KEPT — they are their subscribers' to
+ * remove — and told, when a reader could have seen local files.
+ */
+function forgetLocalPackages(docId: string): void {
+  const prev = manifestByDoc.get(docId) ?? null;
+  if (!manifestByDoc.delete(docId) || prev === null) return;
+  const fns = listenersByDoc.get(docId);
+  if (fns) for (const fn of [...fns]) fn();
+}
+registerDocForget("local-packages", forgetLocalPackages);
 
 /** The manifest last read for `docId`, or `null` before the first read. */
 export function localPackagesFor(docId: string): LocalPackageManifest | null {

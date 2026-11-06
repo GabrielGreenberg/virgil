@@ -43,6 +43,7 @@
 //   - begin/end edges publish on the app-wide pane-drag bus; the end edge and
 //     all chrome teardown run on EVERY end variant (finally-style).
 
+import { isCancelEscape } from "@/lib/key-intent";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   beginLayoutGesture,
@@ -361,7 +362,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     // invariant, not a local preventDefault pair — its docblock carries the
     // full rationale and the stated limit.
     const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key !== "Escape") return;
+      if (!isCancelEscape(ev)) return;
       claimGestureKey(ev);
       finish("cancel");
     };

@@ -43,6 +43,7 @@
  * this door. `drop-session-press-census.test.ts` pins the split.
  */
 
+import { isCancelEscape } from "@/lib/key-intent";
 import { beginDropSession } from "./controller";
 import {
   claimGestureKey,
@@ -117,7 +118,7 @@ export function pendDrag(opts: {
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
+    if (!isCancelEscape(e)) return;
     // A held press is the innermost transient thing on screen even before it
     // is a drag — one press ends exactly one thing (task 504), so the gesture
     // CLAIMS it: the press stops being a would-be drag and nothing else closes.

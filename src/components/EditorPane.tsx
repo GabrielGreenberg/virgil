@@ -383,7 +383,7 @@ import {
 } from "./PendingChangePill";
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
-import { PANE_ROOT_ATTR, PaneRootContext } from "./editor-layout/pane-dom";
+import { PANE_ROOT_ATTR, PaneRootContext, paneRootById } from "./editor-layout/pane-dom";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import {
   OmniFilterMenu,
@@ -688,8 +688,8 @@ export interface EditorPaneViewPrefs {
     value: import("@/lib/view-prefs/registry").RegistryPrefs[K],
   ) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
-   *  Reader has none; the main app feeds these via EditorPane's own
-   *  footnote-add handler (`handleAddFootnote`). */
+   *  Reader has none; the main app feeds these from its footnote
+   *  orphan tracking. */
   orphanedFootnotes: import("@/lib/types").OrphanedFootnote[];
   onEditOrphan: (id: string, newContent: unknown) => void;
   onDeleteOrphan: (id: string) => void;
@@ -2966,8 +2966,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const n = notesHook.notes.find((nn) => nn.id === id);
         return n ? getLinkedTextObjectIds(n) : [];
       },
-      addTextObjectLink: notesHook.addNoteTextObjectId,
-      removeTextObjectLink: notesHook.removeNoteTextObjectId,
+      addTextObjectLink: notesHook.addCardParagraphId,
+      removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
       // Card-id keyed: a note and a highlight may share one anchorId.
       modeB: releaseModeB(
@@ -2975,7 +2975,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         (id) => notesHook.clearTextAnchorById(id),
       ),
     }),
-    [notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.preserveModeBAnchor, notesHook.clearTextAnchorById],
+    [notesHook.notes, notesHook.addCardParagraphId, notesHook.removeCardParagraphId, notesHook.preserveModeBAnchor, notesHook.clearTextAnchorById],
   );
   const dropHighlightsApi = useMemo(
     () => ({
@@ -2984,15 +2984,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const h = notesHook.highlights.find((hh) => hh.id === id);
         return h ? getLinkedTextObjectIds(h) : [];
       },
-      addTextObjectLink: notesHook.addHighlightTextObjectId,
-      removeTextObjectLink: notesHook.removeHighlightTextObjectId,
+      addTextObjectLink: notesHook.addCardParagraphId,
+      removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
       modeB: {
         policy: "intrinsic" as const,
         why: "a highlight IS its text range — re-anchoring snapshots the range to originalAnchor and strips the mark, but keeps the link",
       },
     }),
-    [notesHook.highlights, notesHook.addHighlightTextObjectId, notesHook.removeHighlightTextObjectId, notesHook.preserveModeBAnchor],
+    [notesHook.highlights, notesHook.addCardParagraphId, notesHook.removeCardParagraphId, notesHook.preserveModeBAnchor],
   );
   const dropTodosApi = useMemo(
     () => ({
@@ -3272,7 +3272,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         reports: reportsHook,
       }),
     [
-      notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.detachNoteAnchorSources, notesHook.deleteNote,
+      notesHook.cards, notesHook.addCardParagraphId, notesHook.removeCardParagraphId, notesHook.detachAnchorSources, notesHook.deleteNote,
       archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId, archiveHook.detachAnchorSources, archiveHook.deleteSnippet,
       cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId, cutterHook.detachAnchorSources, cutterHook.deleteCard,
       todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId, todosHook.detachAnchorSources, todosHook.deleteItem,
@@ -3418,6 +3418,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // render nor hands the bridge a stale prefs snapshot. A pane mounted with no
   // view-prefs bundle registers nothing: its clicks are dropped after the local
   // select, which is the honest answer when there is nowhere to open a card.
+  // The pane's identity for `[data-pane-root]` (task 1393) — stable for the
+  // pane's lifetime, so a caller can find THIS pane's root by id at call time.
+  // The click host hands it to the bridge as the scope for every card lookup
+  // a click from this pane makes (task 1458).
+  const paneRootId = useId();
   const clickHostDepsRef = useRef({ viewPrefs, setSelectedErrorId });
   clickHostDepsRef.current = { viewPrefs, setSelectedErrorId };
   const hasViewPrefs = viewPrefs != null;
@@ -3431,8 +3436,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setActiveRight: (id) => live().setActiveRight(id),
       getOmniEnabled: (side) => live().getOmniEnabled(side),
       setSelectedErrorId: (id) => clickHostDepsRef.current.setSelectedErrorId(id),
+      getPaneRoot: () => paneRootById(paneRootId),
     });
-  }, [docId, cardStoreInst, hasViewPrefs]);
+  }, [docId, cardStoreInst, hasViewPrefs, paneRootId]);
 
   // ── Marginalia markers — THE live margin-marker builder ───────────
   // Walks every card hook (notes, reports, archive, todos, cutter,
@@ -3771,6 +3777,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // sanctity for every consuming card body.
   const pendingController = useMemo<PendingChangeController>(
     () => ({
+      docId,
       canProduce: canProducePendingChanges() && !!editor,
       canResolve: !!editor,
       apply: (family, id) => {
@@ -4957,9 +4964,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const editorColRef = useRef<HTMLDivElement | null>(null);
   const rowScrollRef = useRef<HTMLElement | null>(null);
   const editorPaneRootRef = useRef<HTMLDivElement | null>(null);
-  // The pane's identity for `[data-pane-root]` (task 1393) — stable for the
-  // pane's lifetime, so a caller can find THIS pane's root by id at call time.
-  const paneRootId = useId();
+  // (`paneRootId`, the pane's `[data-pane-root]` identity, is minted above —
+  // the click host needs it too.)
   useLayoutEffect(() => {
     const root = editorPaneRootRef.current;
     if (!root) {
@@ -5417,17 +5423,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setSelectedArchiveId(null);
   }, [archiveHook]);
 
-  // Footnote add/edit/delete bridges — wrap the editor handle's
-  // imperative API. The Reader (`editable: false`) won't invoke
+  // Footnote edit/delete bridges — wrap the editor handle's imperative
+  // API. (The panel "+" is not here: FootnotesHost creates through the
+  // shared `CardCreationApi.createFootnote` door, like every panel.) The Reader (`editable: false`) won't invoke
   // these (TipTap blocks mutations), but the hosts wire them anyway.
-  const handleAddFootnote = useCallback((): string => {
-    // Inserts an empty footnote atom at the cursor (or doc start)
-    // via the editor's imperative API. Reader chrome's
-    // `editableCardKinds` filter still hides the panel "+" button —
-    // this is the path FootnotesHost takes when the affordance is
-    // visible (main app post-7.8).
-    return innerRef.current?.createEmptyFootnote()?.footnoteId ?? "";
-  }, []);
   const handleEditFootnote = useCallback(
     (id: string, newContent: JSONContent) => {
       innerRef.current?.updateFootnoteContent(id, newContent);
@@ -6104,15 +6103,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // a switch, so a captured value would freeze at its mount-time answer. A pane
   // outside any keep-alive provider (the Library reader) reads `true` and
   // behaves exactly as before.
+  //
+  // OWNER GATE (task 1453): visibility alone is not ownership. The Library can
+  // show TWO Reader panes at once (task 1393), both visible, and a per-doc key
+  // (a footnote / citation id) can resolve in both — so both captured the item
+  // and both closed a popout, one in the doc the user never dragged from. The
+  // float is mounted by exactly one pane's `FloatHost`, and `FloatingPanel`
+  // names that pane (`PaneRootContext`) in the detail; a drop that names
+  // another pane — or none — is not this pane's to answer.
   useEffect(() => {
     const onDrop = (raw: Event) => {
       if (!isVisibleRef.current) return;
       const detail = (raw as CustomEvent<{
         cardKey: string;
+        ownerPane: string | null;
         clientX: number;
         clientY: number;
       }>).detail;
       if (!detail || typeof detail.cardKey !== "string") return;
+      if (detail.ownerPane !== paneRootId) return;
       const cardKey = detail.cardKey;
       // Nothing captured → leave the user holding their float, and leave the
       // Stack strip closed. The drag can no longer OFFER a capture this branch
@@ -6130,7 +6139,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return () => {
       window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
     };
-  }, [viewPrefs, captureKeyToStack]);
+  }, [viewPrefs, captureKeyToStack, paneRootId]);
 
   // ── Bubble per-doc state up to the shell ────────────────────────
   // Step 7.1 (Path A): emit a synthesized `PaneState` so EditorLayout's
@@ -6812,7 +6821,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisionsHook,
     sortedArchiveSnippets,
     onArchiveDelete: handleArchiveDelete,
-    onAddFootnote: handleAddFootnote,
     onEditFootnote: handleEditFootnote,
     onEditFootnoteTitle: handleEditFootnoteTitle,
     onDeleteFootnote: handleDeleteFootnote,
@@ -8087,7 +8095,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         revisionsHook={revisionsHook}
                         sortedArchiveSnippets={sortedArchiveSnippets}
                         onArchiveDelete={handleArchiveDelete}
-                            onAddFootnote={handleAddFootnote}
                         onEditFootnote={handleEditFootnote}
                         onEditFootnoteTitle={handleEditFootnoteTitle}
                         onDeleteFootnote={handleDeleteFootnote}
@@ -8936,7 +8943,6 @@ interface PaneRailBodyProps {
   revisionsHook: WithMorphDoor<ReturnType<typeof useRevisions>>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   onArchiveDelete: (id: string) => void;
-  onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
   onDeleteFootnote: (id: string) => void;
@@ -9010,7 +9016,6 @@ function PaneRailBody({
   revisionsHook,
   sortedArchiveSnippets,
   onArchiveDelete,
-  onAddFootnote,
   onEditFootnote,
   onEditFootnoteTitle,
   onDeleteFootnote,
@@ -9088,7 +9093,6 @@ function PaneRailBody({
         // it removes only the sidecar ref (the anchored onDelete would no-op on
         // the missing atom and leave the ref behind).
         onDeleteUnanchored={onDeleteUnanchoredFootnote}
-        onAdd={onAddFootnote}
         onDeleteOrphan={viewPrefs?.onDeleteOrphan ?? (() => {})}
         onEditOrphan={viewPrefs?.onEditOrphan ?? (() => {})}
         onEditOrphanTitle={viewPrefs?.onEditOrphanTitle ?? (() => {})}

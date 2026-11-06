@@ -1,8 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 
 import type { FsaDocMeta } from "@/lib/doc-index";
-
-type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
+import type { DocPermState } from "@/lib/doc-access-view";
 
 /**
  * Document-lifecycle action handlers: opening an existing file via the

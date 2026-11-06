@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { registerDocForget } from "@/lib/doc-forget";
 import { generateEntityId } from "@/lib/uuid";
 import { migrateUnlinkedCardRequests } from "@/lib/migrate-ai-request-cards";
 import type { AiRequest, TodoItem, UserNote } from "@/lib/types";
@@ -25,6 +26,11 @@ import type { AiRequest, TodoItem, UserNote } from "@/lib/types";
  * requests already linked on disk and converts nothing (idempotent).
  */
 const migratedDocs = new Set<string>();
+// Task 1465 (`purgeDoc`): the one-per-session claim is the identity's; a
+// reset paper's sources have not been migrated.
+registerDocForget("ai-request-card-migration", (docId) => {
+  migratedDocs.delete(docId);
+});
 
 /**
  * The read state of ONE sidecar, in the shape both sidecar primitives publish

@@ -17,6 +17,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import {
   useKeepAliveLRU,
   type KeepAliveEntry,
+  type KeepAliveLivePredicate,
 } from "@/lib/keep-alive/useKeepAliveLRU";
 import { KeepAliveSlot } from "@/lib/keep-alive/KeepAliveSlot";
 import { useCardStoreLease } from "@/links/_shared/anchored-card-store";
@@ -31,13 +32,16 @@ export const DOC_KEEP_ALIVE_CAPACITY = 3;
  * Authored-doc keep-alive LRU. Thin wrapper over the shared primitive so the
  * call site reads intent. `activeId` is the BARE docId (= the `<DocPipeline
  * key>`), or null when no granted doc is active (which leaves the order intact
- * — warm docs stay hidden).
+ * — warm docs stay hidden). `isLive` is the slot-eligibility predicate (open
+ * tab ∧ not failed-to-load, task 1456) — the SAME one the layout filters its
+ * rendered slots by, so a closed or failed paper never spends a slot.
  */
 export function useDocKeepAliveLRU(
   activeId: string | null,
   capacity: number = DOC_KEEP_ALIVE_CAPACITY,
+  isLive?: KeepAliveLivePredicate,
 ): KeepAliveEntry[] {
-  return useKeepAliveLRU(activeId, capacity);
+  return useKeepAliveLRU(activeId, capacity, isLive);
 }
 
 /**

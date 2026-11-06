@@ -582,7 +582,13 @@ The token scales:
   The `\today` chip (`.latex-dynamic-node`, task 1335) BORROWS the label-ref
   frame tokens (`--label-ref-bg`/`-border-color`) with `color: inherit`: it is
   a computed WORD of the sentence (a date), so it wears the prose ink and no
-  hover wash — the frame alone says "this is computed, not typed".
+  hover wash — the frame alone says "this is computed, not typed". Nothing
+  opens on click, so it rests on `cursor: default` (never `pointer`), upgraded
+  to `grab` only where atoms are graspable; on paper it flattens to plain prose
+  like `\ref`/`\cite` (task 1443). Both are REGISTRY facets, not per-kind CSS
+  folklore: `AtomMeta.opensOnClick` decides `pointer` vs `default`
+  (`atom-grab-affordance.test.ts`), and `AtomMeta.chip` puts a kind in the
+  print flatten (`print-atom-chip-posture.test.ts`).
 - **Rendered math ink** (`--math-color`, pref `mathColor`, shipped `#6b4fa0`):
   the one atom whose chrome is not a pill — KaTeX glyphs, painted by a `color`
   on `.inline-math` / `.display-math` / `.math-popover-preview`. KaTeX's own
@@ -1873,6 +1879,17 @@ AI-request row via `EditableCard`'s `aiRequest` prop / `AiRequestRow`
 `cardBodyPlaceholder(kind)`, and the bib card's pending-request amber via
 the `amber-attention` tokens.
 
+**The same rule on the float body (task 1452).** A `FloatingPanel`'s body
+wrapper (`data-float-drag-surface`) drags the WINDOW on press — except over
+any `WINDOW_DRAG_BLOCK_SELECTOR` descendant (the interactive controls +
+`[data-card]`), where the press belongs to the control or lifts the card. The
+grab hand is therefore not an inline style over the whole body: `globals.css`
+paints `grab` on the surface and lifts it to `auto` under a `:where()` list
+that IS that selector, in `@layer components` so any control's own cursor
+utility still wins. The hand shows exactly where a window drag starts. Pinned
+by `components/__tests__/float-drag-cursor-parity.test.tsx` (list equality +
+per-target press/cursor parity).
+
 **The same rule in CSS: the in-text atom grab (task 524).** The four
 inline atoms (footnote marker, citation, `\ref`, inline math) upgrade
 their base `cursor: pointer` to `grab` — but only under
@@ -2905,6 +2922,16 @@ strip **+** → *Reset example document*). Both now read
 carry a BARE `autoFocus` (censused in `dialog-cued-default-census.test.ts`,
 allowlist EMPTY).
 
+**One queue, read by EVERY imperative ask door** (`hooks/useAskQueue.ts`,
+task 1447). An ask asked while another is open WAITS behind it — it never
+replaces it. Every door that hands its caller a Promise (`useSystemDialog`,
+`useConfirmDialog`, `useDocumentClassMismatchDialog`, `useCollaboratorIdentity`)
+queues FIFO, renders the head with `key={head.id}` so each question mounts its
+own dialog (fresh focus, fresh cued default), and resolves every outstanding
+ask as its CANCEL when the door unmounts. A new imperative dialog hook uses the
+same primitive; parking `resolve` in a `setPending` slot is censused in
+`use-confirm-dialog-queue.test.tsx`.
+
 **`tone` describes the MESSAGE; a button's paint describes what pressing it
 DOES.** The same leaf owns `confirmActionVariant(tone)` — the tone→variant map
 both doors used to spell by hand, four attributes from the cue they also spelled
@@ -3768,9 +3795,10 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
 [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts) — which
 knows the px / em / rem ladder and takes the token's SIGN POLICY as an argument
 (`"signed"` for the chevron OFFSET, which is legitimately negative;
-`"positive"` for every distance). So a token's **spelling is a free variable**:
-re-author `--margin-col-handle-inset` as `1.375em` and the JS follows, no code
-change. Never hand-`parseFloat` a `--margin-*` property — `getComputedStyle`
+`"positive"` for every distance). So a token's **spelling is a free variable on
+that ladder**: re-author `--margin-col-handle-inset` as `1.375em` and the JS
+follows, no code change. Any other unit (`ch`, `ex`, `%`, `vw`, `calc(…)`) falls
+back to the shipped value with a dev-only warning — never read as px (task 1445). Never hand-`parseFloat` a `--margin-*` property — `getComputedStyle`
 returns the LITERAL `"1.375em"` and `parseFloat` answers `1.375`, a finite
 positive number that passes any `> 0` guard and silently collapses the distance
 (task 661). And where a token's geometry is relative to an element, read the

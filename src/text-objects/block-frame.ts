@@ -350,14 +350,17 @@ type MarginTokenSign = "positive" | "signed";
  * `font-size`. A `rem` token resolves against the DOCUMENT-ROOT font-size instead
  * (CSS semantics) — and MUST be matched before the `em` branch, since
  * `"1.25rem".endsWith("em")` is `true` and would otherwise mis-scale a rem token
- * against the block font-size. A px value passes through. O(1) — reads an
+ * against the block font-size. A px value (or a bare number) passes through. ANY
+ * other spelling — `2ch`, `3%`, `1vw`, `calc(…)` — is outside the ladder and
+ * returns `fallbackPx` (with a dev-only warning), never its leading number read
+ * as px (task 1445). O(1) — reads an
  * already-fetched computed style (+ one root read only for the rem path).
  *
  * The RESOLVED px is what `sign` validates, not the authored factor: the number
  * the caller is about to use is the number that has to be legal.
  *
  * Every reader of a `--margin-*` token comes through this door, so a token's
- * SPELLING is a free variable — `globals.css` can move `--margin-col-handle-inset`
+ * SPELLING is a free variable ON THE px / em / rem LADDER — `globals.css` can move `--margin-col-handle-inset`
  * from `22px` to `1.375em` without a code change. A hand `parseFloat` cannot say
  * that: it returns `1.375` for `"1.375em"`, which passes a `> 0` guard and
  * silently collapses the distance to a rounding error (task 661 — that number is
@@ -379,16 +382,45 @@ export function resolveMarginEm(
   const legal = (px: number) =>
     Number.isFinite(px) && (sign === "signed" || px > 0);
   const raw = cs.getPropertyValue(varName).trim();
-  if (raw.endsWith("rem")) {
-    const px = parseFloat(raw) * rootFontSizePx();
-    return legal(px) ? px : fallbackPx;
+  const m = MARGIN_LENGTH_RE.exec(raw);
+  if (!m) {
+    // Empty is the ordinary "token not declared here" case; anything else is a
+    // spelling this ladder cannot read (`2ch`, `3%`, `calc(…)`), which must
+    // FALL BACK rather than pass as px — `parseFloat("2ch")` is 2 (task 1445).
+    if (raw !== "") warnUnknownMarginUnit(varName, raw);
+    return fallbackPx;
   }
-  if (raw.endsWith("em")) {
-    const px = parseFloat(raw) * fontSizePx;
-    return legal(px) ? px : fallbackPx;
-  }
-  const px = parseFloat(raw);
+  const n = parseFloat(m[1]);
+  const unit = m[2]?.toLowerCase();
+  const px =
+    unit === "rem"
+      ? n * rootFontSizePx()
+      : unit === "em"
+        ? n * fontSizePx
+        : n; // `px` or a bare number
   return legal(px) ? px : fallbackPx;
+}
+
+/**
+ * The WHOLE input domain of {@link resolveMarginEm}: a number with an optional
+ * `px` / `em` / `rem` unit and nothing else. Anchored at both ends, so the unit
+ * is matched as a token — `rem` can no longer be swallowed by an `endsWith("em")`
+ * test, and an unknown unit (`ch`, `ex`, `%`, `vw`) cannot fall through to a
+ * bare `parseFloat` that reads its number as px (task 1445).
+ */
+const MARGIN_LENGTH_RE = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(px|rem|em)?$/i;
+
+const warnedMarginTokens = new Set<string>();
+/** Dev-only, once per token+spelling: the reader runs per block per measure. */
+function warnUnknownMarginUnit(varName: string, raw: string): void {
+  if (process.env.NODE_ENV === "production") return;
+  const key = `${varName}=${raw}`;
+  if (warnedMarginTokens.has(key)) return;
+  warnedMarginTokens.add(key);
+  console.warn(
+    `[virgil] ${varName}: "${raw}" is not a px / em / rem length; using the fallback. ` +
+      "resolveMarginEm (text-objects/block-frame.ts) reads only that ladder.",
+  );
 }
 
 /**

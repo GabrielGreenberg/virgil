@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // CENSUS — task 1376: an advertised chord is a CONSTANT its binding matches.
 //
 // Task 998 pinned this for `MenuActionRow shortcut=` (NEW_WINDOW_SHORTCUT) but
@@ -9,15 +10,20 @@
 //
 //   1. No string-literal ⌘/Ctrl chord (`"Mod+…"`, `"Meta+…"`, `"Ctrl+…"`) is
 //      passed as a `keys` / `shortcut` value — it must be an identifier.
-//   2. Every UPPER_CASE identifier passed that way is matched by some binding:
-//      `matchesPortableChord(e, ID)` or `chordPress(e, ID)`.
+//   2. Every UPPER_CASE identifier passed that way is bound through
+//      `chordPress(e, ID)` (task 1450 — a bare `matchesPortableChord` binding
+//      fired once per auto-repeat: a held ⌘⇧N opened a window per repeat).
+//   3. `matchesPortableChord(` is CALLED only inside `lib/portable-chord.ts` —
+//      the bare matcher answers "which keys", never "is this a press", so no
+//      binding (window, document, or a field's own onKeyDown) may stand on it.
 //
 // `Hint.tsx` / `Kbd.tsx` are the renderers (their docblocks carry examples).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { chordPress, matchesPortableChord } from "@/lib/portable-chord";
+import { NEW_WINDOW_SHORTCUT, newWindowChordHandler } from "@/lib/multi-window/new-window-shortcut";
 import { trackedFiles } from "./_source-scan";
 
 const SRC = path.resolve(__dirname, "../..");
@@ -47,7 +53,7 @@ describe("advertised chords read a constant the binding matches (task 1376)", ()
     expect(offenders).toEqual([]);
   });
 
-  it("every advertised *_SHORTCUT constant is matched by a binding", () => {
+  it("every advertised *_SHORTCUT constant is bound through chordPress", () => {
     const advertised = new Set<string>();
     for (const f of FILES) {
       if (RENDERERS.has(f.rel)) continue;
@@ -66,9 +72,16 @@ describe("advertised chords read a constant the binding matches (task 1376)", ()
     const all = FILES.map((f) => f.text).join("\n");
     const unmatched = [...advertised].filter(
       (id) =>
-        !new RegExp(`\\b(?:matchesPortableChord|chordPress)\\(e, ${id}\\)`).test(all),
+        !new RegExp(`\\bchordPress\\(e, ${id}\\)`).test(all),
     );
     expect(unmatched).toEqual([]);
+  });
+
+  it("the bare matcher is called only by its own module (task 1450)", () => {
+    const offenders = FILES.filter(
+      (f) => f.rel !== "lib/portable-chord.ts" && /\bmatchesPortableChord\(/.test(f.text),
+    ).map((f) => f.rel);
+    expect(offenders).toEqual([]);
   });
 
   it("the window-level bindings no longer hand-spell their modifiers", () => {
@@ -76,6 +89,9 @@ describe("advertised chords read a constant the binding matches (task 1376)", ()
     expect(text("components/SelectionActionsMenu.tsx")).not.toMatch(/e\.metaKey|e\.ctrlKey/);
     expect(text("components/AIWindow.tsx")).not.toMatch(/e\.metaKey \|\| e\.ctrlKey/);
     expect(text("components/NodeEditPopover.tsx")).not.toMatch(/e\.metaKey \|\| e\.ctrlKey/);
+    expect(text("panels/Bibliography/BibliographyPanel.tsx")).not.toMatch(
+      /e\.metaKey \|\| e\.ctrlKey/,
+    );
     const layout = text("components/EditorLayout.tsx");
     expect(layout).toMatch(/chordPress\(e, PRINT_SHORTCUT\)/);
     expect(layout).toMatch(/chordPress\(e, SAVE_SHORTCUT\)/);
@@ -111,5 +127,51 @@ describe("chordPress — match ∧ deliberate", () => {
     expect(matchesPortableChord(ev("Enter", { metaKey: true }), "Mod+Enter")).toBe(true);
     expect(matchesPortableChord(ev("Enter", { ctrlKey: true }), "Mod+Enter")).toBe(true);
     expect(matchesPortableChord(ev("Enter"), "Mod+Enter")).toBe(false);
+  });
+});
+
+describe("the new-window chord opens ONE window per press (task 1450)", () => {
+  const key = (init: KeyboardEventInit) =>
+    new KeyboardEvent("keydown", { key: "N", shiftKey: true, cancelable: true, ...init });
+
+  it("a held ⌘⇧N opens once; its repeats are swallowed and open nothing", () => {
+    expect(NEW_WINDOW_SHORTCUT).toBe("Mod+Shift+N");
+    const open = vi.fn();
+    const onKey = newWindowChordHandler(open);
+    const first = key({ metaKey: true });
+    const repeat = key({ metaKey: true, repeat: true });
+    onKey(first);
+    onKey(repeat);
+    onKey(key({ metaKey: true, repeat: true }));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(first.defaultPrevented).toBe(true);
+    expect(repeat.defaultPrevented).toBe(true);
+    onKey(key({ ctrlKey: true })); // a fresh press (Ctrl spelling) opens again
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it("an IME composition's keydown is not the chord", () => {
+    const open = vi.fn();
+    const onKey = newWindowChordHandler(open);
+    const composing = key({ metaKey: true, isComposing: true });
+    onKey(composing);
+    onKey(key({ metaKey: true, keyCode: 229 }));
+    expect(open).not.toHaveBeenCalled();
+    expect(composing.defaultPrevented).toBe(false);
+  });
+
+  it("chordPress reads a React event's IME flag from nativeEvent", () => {
+    const react = {
+      key: "Enter",
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      repeat: false,
+      keyCode: 13,
+      nativeEvent: { isComposing: true },
+    };
+    expect(chordPress(react, "Mod+Enter")).toBeNull();
+    expect(chordPress({ ...react, nativeEvent: {} }, "Mod+Enter")).toBe("press");
   });
 });

@@ -8,6 +8,7 @@ import type { FootnoteInfo } from "../../Editor";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 
 export interface FootnotesHostProps {
@@ -23,7 +24,6 @@ export interface FootnotesHostProps {
   onEdit: (id: string, newContent: JSONContent) => void;
   onEditTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
-  onAdd: () => string;
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: unknown) => void;
   onEditOrphanTitle: (id: string, title: string) => void;
@@ -38,6 +38,10 @@ export function FootnotesHost(p: FootnotesHostProps) {
   const { selectedFootnoteId, setSelectedFootnoteId } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const recentlyAddedId = useRecentlyAddedId("footnote");
+  // The panel "+" creates through the ONE footnote door (task 1474), so a
+  // blank footnote made here is pristine (click-away-discardable), selected,
+  // pinned and body-focused exactly like the menu / slash footnote.
+  const { createFootnote } = useCardCreationContext();
   return (
     <FootnotePanel
       footnotes={p.footnotes}
@@ -53,7 +57,9 @@ export function FootnotesHost(p: FootnotesHostProps) {
       onDeleteOrphan={p.onDeleteOrphan}
       onEditOrphan={p.onEditOrphan}
       onEditOrphanTitle={p.onEditOrphanTitle}
-      onAdd={p.onAdd}
+      onAdd={() => {
+        createFootnote({});
+      }}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       onEditTitle={p.onEditTitle}

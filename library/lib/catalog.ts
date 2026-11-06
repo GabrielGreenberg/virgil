@@ -29,6 +29,26 @@ export type BibAuthState =
   // canonical Python set in library/scripts/_tools.py CANONICAL_BIB_STATES.
   | "needs-reauth";
 
+/** The SETTLED states — "do not overwrite from a lower-evidence source".
+ *  Mirrors `TERMINAL_BIB_STATES` in library/scripts/_tools.py. */
+export const TERMINAL_BIB_STATES: ReadonlySet<BibAuthState> = new Set<BibAuthState>([
+  "authenticated",
+  "manuscript",
+  "canonical",
+]);
+
+/** The states that want a human/skill pass: every non-terminal state except
+ *  `none` (never attempted — pending, not a verdict). The Python door's
+ *  `bib_state_to_notification_kind` sends all of these to the attention toast.
+ *  Terminal ∪ action-needed ∪ {none} is the whole vocabulary — pinned against
+ *  `CANONICAL_BIB_STATES` by `__tests__/bib-vocabulary-parity.test.ts`
+ *  (task 1471: a hand list here had forgotten `needs-reauth`). */
+export const BIB_ACTION_NEEDED_STATES: ReadonlySet<BibAuthState> = new Set<BibAuthState>([
+  "unverified",
+  "failed",
+  "needs-reauth",
+]);
+
 export type SourceFormat = "pdf" | "docx" | "tex";
 
 export interface PdfStatus {
@@ -66,8 +86,9 @@ export interface IndexedStatus {
   pgmarkSource?: string;
   footnoteCount?: number;
   // Top-level numbered examples (`\ex` / `\pex`) — stamped by
-  // /library/deep-index's catalog patch (deep-index.md §8), never by the
-  // indexer.
+  // /library/deep-index's catalog patch (deep-index.md §5), never by the
+  // indexer — which CLEARS it on a re-index, since the counted text is gone
+  // (index_paper.py INDEX_PAPER_INDEXED_KEYS, task 1469).
   exampleCount?: number;
   warnings?: string[];
 }

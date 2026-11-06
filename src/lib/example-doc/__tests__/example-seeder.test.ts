@@ -361,6 +361,107 @@ describe("resetExample", () => {
   });
 });
 
+// Task 1461 — the in-flight slot and the no-marker heal.
+describe("seed/reset concurrency + unreadable marker", () => {
+  /** Hold every asset fetch (not the manifest) until released. */
+  function gateAssetFetches() {
+    const baseImpl = fetchMock.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (!url.includes("manifest.json")) await gate;
+      const m = url.match(/\/examples\/example0\/(.+)$/);
+      const entry = m ? bundle.get(m[1]) : undefined;
+      if (!entry) return { ok: false, status: 404 } as unknown as Response;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => JSON.parse(entry.text!),
+        text: async () => entry.text!,
+        arrayBuffer: async () =>
+          entry.bytes ? entry.bytes.buffer : new TextEncoder().encode(entry.text!).buffer,
+      } as unknown as Response;
+    });
+    return () => {
+      release();
+      fetchMock.mockImplementation(baseImpl);
+    };
+  }
+
+  it("reset during a slow seed: the seed settles BEFORE the wipe; one pristine tree after", async () => {
+    const order: string[] = [];
+    const { purgeDoc } = await import("@/lib/doc-index");
+    const { setDocHandle } = await import("@/lib/doc-index");
+    vi.mocked(setDocHandle).mockImplementation(async (id, h) => {
+      order.push("setDocHandle");
+      mockState.handles.set(id, h);
+    });
+    vi.mocked(purgeDoc).mockImplementationOnce(async (id) => {
+      order.push("purge");
+      mockState.handles.delete(id);
+    });
+    const release = gateAssetFetches();
+
+    const seed = ensureExampleSeeded();
+    await new Promise((r) => setTimeout(r, 0));
+    const reset = resetExample();
+    // An open during the reset joins the reset, not a parallel seed.
+    const open = ensureExampleSeeded();
+    release();
+    const [a, b, c] = await Promise.all([seed, reset, open]);
+    expect([a.id, b.id, c.id]).toEqual([EXAMPLE_DOC_ID, EXAMPLE_DOC_ID, EXAMPLE_DOC_ID]);
+    // The orphan's handle push landed BEFORE the purge; only the reset's after.
+    expect(order).toEqual(["setDocHandle", "purge", "setDocHandle"]);
+    expect(mockState.handles.get(EXAMPLE_DOC_ID)).toBeTruthy();
+    expect(mockState.index.docs).toHaveLength(1);
+    expect(await readFile("document.tex")).toBe(PRISTINE_TEX);
+    vi.mocked(setDocHandle).mockImplementation(async (id, h) => {
+      mockState.handles.set(id, h);
+    });
+  });
+
+  it("a superseded seed settling does not clear its successor's slot", async () => {
+    const release = gateAssetFetches();
+    const seed = ensureExampleSeeded();
+    await new Promise((r) => setTimeout(r, 0));
+    const reset = resetExample();
+    release();
+    await seed;
+    // The reset is still in the slot: a fresh open joins it (no third seed
+    // pass — the old identity-blind finally let this one start beside it).
+    const open = ensureExampleSeeded();
+    await Promise.all([reset, open]);
+    const manifests = fetchedPaths().filter((u) => u.includes("manifest.json"));
+    expect(manifests).toHaveLength(2);
+  });
+
+  it("unreadable marker over an edited sandbox: keeps the edits, fills only gaps", async () => {
+    await ensureExampleSeeded();
+    await writeFile("document.tex", "USER EDIT");
+    await writeFile("virgil/.example-seed.json", "{not json");
+    const dir = await exampleDir();
+    dir.dirs.get("figures")!.files.delete("a.png");
+    fetchMock.mockClear();
+
+    await ensureExampleSeeded();
+    expect(await readFile("document.tex")).toBe("USER EDIT");
+    expect(await readFile("figures/a.png")).not.toBeNull();
+    expect(fetchedPaths().some((u) => u.includes("document.tex"))).toBe(false);
+    expect(await readMarker()).toBe("v1");
+  });
+
+  it("absent marker over existing files (failed marker write): no overwrite", async () => {
+    await ensureExampleSeeded();
+    await writeFile("document.tex", "USER EDIT");
+    const dir = await exampleDir();
+    dir.dirs.get("virgil")!.files.delete(".example-seed.json");
+
+    await ensureExampleSeeded();
+    expect(await readFile("document.tex")).toBe("USER EDIT");
+    expect(await readMarker()).toBe("v1");
+  });
+});
+
 // ── Bundle-generator fidelity (node fs) ─────────────────────────────────────
 // The assertion is about the GENERATOR (scripts/build-example-bundle.mjs), not
 // its gitignored public/ output: that artifact is stale between builds by

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/field-primitives";
 import { iconHint } from "@/components/Hint";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 /**
  * PanelGoalStrip — THE panel goal strip (task 2026-08-02-286).
@@ -121,7 +121,7 @@ export function PanelGoalStrip({
             if (isCommitEnter(e)) {
               e.preventDefault();
               commit();
-            } else if (e.key === "Escape") {
+            } else if (isCancelEscape(e)) {
               e.preventDefault();
               cancel();
             }

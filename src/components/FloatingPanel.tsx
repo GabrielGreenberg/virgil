@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -39,6 +40,7 @@ import { WINDOW_DRAG_BLOCK_SELECTOR, pressFromInteractiveControl } from "@/lib/d
 import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 import { DOCKED_POD_Z } from "@/components/editor-layout/constants";
+import { PANE_OWNER_ATTR, PaneRootContext } from "@/components/editor-layout/pane-dom";
 import {
   paneDockSlot,
   usePaneRoot,
@@ -552,8 +554,16 @@ function FloatingPanelInner({
   // `useImperativeHandle` with an empty dep list, so both would otherwise read
   // the MOUNT-time popout key — and the stack-capture capability must be
   // resolved from the same key the release then reports.
-  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode, cardKey });
-  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode, cardKey };
+  //
+  // `ownerPane` rides along for the stack drop (task 1453): the release is a
+  // window event, and every visible pane listens — two Library Readers can be
+  // on screen at once, and a per-doc card key can resolve in both. The float is
+  // mounted by exactly one pane (its `FloatHost`), so the drop names THAT pane
+  // and only it answers. `null` outside any pane (a shell with no `cardKey`
+  // never dispatches a capture anyway).
+  const ownerPane = useContext(PaneRootContext);
+  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode, cardKey, ownerPane });
+  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode, cardKey, ownerPane };
 
   // Sync local pos when the parent's float rect changes (e.g. on
   // undock the parent calls onUndock which writes a new floatPosition;
@@ -1015,6 +1025,7 @@ function FloatingPanelInner({
             new CustomEvent("virgil-stack-drop", {
               detail: {
                 cardKey: dropKey,
+                ownerPane: handlersRef.current.ownerPane,
                 clientX: cursor?.x ?? finalRect.x,
                 clientY: cursor?.y ?? finalRect.y,
               },
@@ -1378,6 +1389,9 @@ function FloatingPanelInner({
     <div
       ref={rootRef}
       data-floating-panel="true"
+      // Portalled OUTSIDE the pane root, so it names its pane: a scoped card
+      // lookup searches the pane's whole territory (pane-dom, task 1458).
+      {...(ownerPane ? { [PANE_OWNER_ATTR]: ownerPane } : {})}
       data-panel-shell-mode={mode}
       data-panel-shell-id={panelId}
       // The float's SURFACE as a stated fact (task 1246): the popped-card
@@ -1397,7 +1411,11 @@ function FloatingPanelInner({
     >
       <div
         onMouseDown={onHeaderMouseDown}
-        style={{ cursor: "grab" }}
+        // The grab cursor is NOT inline (task 1452): globals.css paints it on
+        // this attribute and lifts it off every WINDOW_DRAG_BLOCK_SELECTOR
+        // descendant — the same predicate `onHeaderMouseDown` refuses on — so
+        // the hand shows exactly where a press starts the window drag.
+        data-float-drag-surface=""
         className="flex flex-col min-h-0 flex-1"
       >
         {children}

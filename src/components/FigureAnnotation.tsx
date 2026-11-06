@@ -15,7 +15,7 @@ import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { iconHint } from "@/components/Hint";
 import { figureDeleteLabel, requestFigureDelete } from "@/lib/figures/delete-figure";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
 // `src/components/Editor.tsx` (vanilla-DOM extension) but built as a React
@@ -312,7 +312,7 @@ export default function FigureAnnotation({
                   setEditing(false);
                   void commitRename();
                 });
-              } else if (e.key === "Escape") {
+              } else if (isCancelEscape(e)) {
                 e.preventDefault();
                 session.cancel(e.currentTarget, cancel);
               }

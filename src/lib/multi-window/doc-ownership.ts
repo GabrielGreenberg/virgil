@@ -84,6 +84,61 @@ const exclusiveSections = new Set<string>();
  *  browser has not yet taken back — still this window's lock for that span. */
 const releasing = new Map<string, Promise<unknown>>();
 
+/*
+ * ── The per-doc claim/release state machine (task 1454) ──────────────────
+ *
+ * A doc moves through these states in ONE window; this module is the only
+ * owner of the transitions, so no caller has to know which one is in flight:
+ *
+ *   free ──claimDoc──▶ CLAIMING ──grant──▶ HELD ──releaseDoc──▶ DRAINING
+ *     ▲                                     ▲                     │
+ *     │                                     └──claimDoc (cancel)──┤
+ *     └───────────── RELEASING ◀────────── drain done, not wanted ┘
+ *
+ *  - CLAIMING (`claiming`): a second `claimDoc` in this window joins the
+ *    first rather than racing it — before, both reached `ifAvailable`
+ *    before either set `heldReleasers`, and the second read this window's
+ *    own pending lock as a peer's (a false "open elsewhere" prompt whose
+ *    handoff goes to ourselves and times out).
+ *  - DRAINING (`draining`): the hold is still ours (`ownsDoc` is true, so
+ *    the drain's writes take `withDocLock`'s short-circuit). A `claimDoc`
+ *    here is a RE-ADMIT — the paper was reopened while its close was still
+ *    flushing — and CANCELS the release: the drain finishes, the hold is
+ *    kept, nothing is published. Before, the reopen saw `ownsDoc` and
+ *    skipped the claim, the drain then dropped the lock under the open doc,
+ *    and a peer window could claim it and write beside us.
+ *  - RELEASING (`releasing`): the hold is gone from `heldReleasers` but the
+ *    browser has not taken the lock back. A `claimDoc` here waits it out and
+ *    claims afresh — our own lock is not a peer's.
+ *
+ * So "open" means "claimed": every door that shows a paper calls
+ * `claimDoc` (cheap when HELD), never `ownsDoc` as a stand-in for it.
+ */
+
+type ClaimResult = { owned: true } | { owned: false; currentOwner?: string };
+
+/** In-flight claims, so concurrent claims in one window are ONE claim. */
+const claiming = new Map<string, Promise<ClaimResult>>();
+
+/** In-flight releases still in their drain. `wanted` flips true when the
+ *  doc is re-claimed mid-drain; the release then keeps the hold. */
+interface Drain {
+  done: Promise<void>;
+  wanted: boolean;
+}
+const draining = new Map<string, Drain>();
+
+/** Wait out this window's own lock hand-back for `docId` (RELEASING). The
+ *  first mark covers the owner-record clear; `release()` then re-points it
+ *  at the lock's settle — so loop until the mark is gone. */
+async function awaitOwnRelease(docId: string): Promise<void> {
+  while (releasing.has(docId)) {
+    const pending = releasing.get(docId);
+    await pending;
+    if (releasing.get(docId) === pending) releasing.delete(docId);
+  }
+}
+
 /**
  * Try to claim a doc for this window. Returns `{ owned: true }` if we
  * got the lock; otherwise returns the current owner's windowId so the
@@ -93,12 +148,31 @@ const releasing = new Map<string, Promise<unknown>>();
  * passed to `request`. We park the callback on a release-signal
  * promise so the lock stays held until `releaseDoc` resolves it.
  */
-export async function claimDoc(
-  docId: string,
-): Promise<{ owned: true } | { owned: false; currentOwner?: string }> {
+export async function claimDoc(docId: string): Promise<ClaimResult> {
   if (typeof navigator === "undefined" || !navigator.locks) {
     return { owned: true }; // graceful degrade — single-window environments
   }
+  // DRAINING: a re-admit cancels the release in flight (see the state
+  // machine above). HELD: already ours.
+  const drain = draining.get(docId);
+  if (drain) drain.wanted = true;
+  if (heldReleasers.has(docId)) return { owned: true };
+  // CLAIMING: join the claim already in flight.
+  const inFlight = claiming.get(docId);
+  if (inFlight) return inFlight;
+  const claim = takeLock(docId);
+  claiming.set(docId, claim);
+  try {
+    return await claim;
+  } finally {
+    if (claiming.get(docId) === claim) claiming.delete(docId);
+  }
+}
+
+/** The free → HELD transition: wait out our own RELEASING, then try the
+ *  lock. Only `claimDoc` calls this (it owns the in-flight dedup). */
+async function takeLock(docId: string): Promise<ClaimResult> {
+  await awaitOwnRelease(docId);
   if (heldReleasers.has(docId)) return { owned: true };
 
   const windowId = getWindowId();
@@ -192,23 +266,47 @@ export function __resetDocDrainForTest(): void {
  * can claim is worse than a write we already failed to make.
  */
 export async function releaseDoc(docId: string): Promise<void> {
-  if (!heldReleasers.has(docId)) return;
-  if (drainHook) {
-    try {
-      await drainHook(docId);
-    } catch {
-      /* a failed write must not strand the lock */
-    }
+  // A claim in flight lands first, so a close that races its own open
+  // releases the hold rather than missing it and leaking it.
+  const inFlight = claiming.get(docId);
+  if (inFlight) await inFlight.catch(() => {});
+  // DRAINING already: this close supersedes any re-admit since — join it.
+  const drain = draining.get(docId);
+  if (drain) {
+    drain.wanted = false;
+    return drain.done;
   }
-  // Re-read after the await: a concurrent release may have won while
-  // the drain was in flight, and releasing twice would publish two
-  // handoff-released events for one hold.
+  if (!heldReleasers.has(docId)) return;
+  // Registered BEFORE the drain starts: with no drain hook it runs to its
+  // first real await synchronously and unregisters itself on the way.
+  const entry: Drain = { done: Promise.resolve(), wanted: false };
+  draining.set(docId, entry);
+  entry.done = drainThenRelease(docId, entry);
+  return entry.done;
+}
+
+/** HELD → DRAINING → (RELEASING | HELD). Only `releaseDoc` calls this. */
+async function drainThenRelease(docId: string, entry: Drain): Promise<void> {
+  try {
+    if (drainHook) {
+      try {
+        await drainHook(docId);
+      } catch {
+        /* a failed write must not strand the lock */
+      }
+    }
+  } finally {
+    if (draining.get(docId) === entry) draining.delete(docId);
+  }
+  // Re-admitted mid-drain: the doc is open again, so the hold stays.
+  if (entry.wanted) return;
   const release = heldReleasers.get(docId);
   if (!release) return;
   heldReleasers.delete(docId);
   // The lock is still OURS until the browser takes it back; mark it so
-  // `withDocIfUnclaimed` waits this out rather than mistake our own hold
-  // for a peer's. `release()` re-points the mark at the lock's settle.
+  // `claimDoc` and `withDocIfUnclaimed` wait this out rather than mistake
+  // our own hold for a peer's. `release()` re-points the mark at the
+  // lock's settle.
   let cleared!: () => void;
   releasing.set(docId, new Promise<void>((r) => (cleared = r)));
   // Owner record cleared first so a peer reading the cache after the
@@ -227,7 +325,9 @@ export async function releaseDoc(docId: string): Promise<void> {
   publish({ type: "doc-closed", windowId: getWindowId(), docId });
 }
 
-/** True iff this window currently holds the lock for `docId`. */
+/** True iff this window currently holds the lock for `docId` (HELD or
+ *  DRAINING). A door that OPENS a paper calls `claimDoc` instead — a
+ *  reopen mid-drain must cancel the release, which this read cannot. */
 export function ownsDoc(docId: string): boolean {
   return heldReleasers.has(docId);
 }
@@ -317,12 +417,14 @@ export async function withDocIfUnclaimed<T>(
   ) {
     return { ran: true, value: await fn() };
   }
-  // Our own release in flight is not a peer: let it finish first (the
-  // first mark covers the owner-record clear, the second the lock).
-  while (releasing.has(docId)) {
-    const pending = releasing.get(docId);
-    await pending;
-    if (releasing.get(docId) === pending) releasing.delete(docId);
+  // Our own release in flight is not a peer: let it finish first. Nor is
+  // our own claim in flight — let it land, and if it took the doc, the doc
+  // is ours.
+  await awaitOwnRelease(docId);
+  const inFlight = claiming.get(docId);
+  if (inFlight) await inFlight.catch(() => {});
+  if (heldReleasers.has(docId) || exclusiveSections.has(docId)) {
+    return { ran: true, value: await fn() };
   }
   const NOT_GRANTED = Symbol("not-granted");
   const out = await navigator.locks.request(

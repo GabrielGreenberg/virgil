@@ -35,6 +35,8 @@
  *    generic empty state.
  */
 
+import { registerDocForget } from "@/lib/doc-forget";
+
 /** What the compile is currently doing, in the user's terms. */
 export type CompilePhase =
   /** No compile has run for this doc in this session. */
@@ -220,14 +222,21 @@ export function finishCompile(
 }
 
 /**
- * Test-only: drop every record.
- *
- * There is deliberately NO per-doc reset door. A record that survives a doc
- * close is CORRECT — it describes that document's last compile, which is what
- * the pane should say if the paper is reopened before it is compiled again —
- * and a dead export is worse than an absent one (AGENTS.md, "A registry earns
- * its name by being read"). A page load clears the map.
+ * Forget one doc's record. A record that survives a doc CLOSE is correct — it
+ * describes that document's last compile, which is what the pane should say if
+ * the paper is reopened before it is compiled again. A record that survives
+ * the doc's IDENTITY is not: `purgeDoc` (a delete, or "Reset example" re-seeding
+ * under the same id) forgets it here (task 1465), so the pristine paper does
+ * not repeat the discarded one's outcome. Also called by `runCompileForDoc`
+ * when a run the reset outlived finally ends.
  */
+export function forgetCompileProgress(docId: string): void {
+  if (!byDoc.delete(docId)) return;
+  emit();
+}
+registerDocForget("compile-progress", forgetCompileProgress);
+
+/** Test-only: drop every record. A page load clears the map. */
 export function __resetAllCompileProgress(): void {
   byDoc.clear();
   emit();

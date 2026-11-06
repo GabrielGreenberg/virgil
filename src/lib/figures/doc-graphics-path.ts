@@ -18,6 +18,7 @@ import {
   TEX_DELIMITERS_CHANGED_EVENT,
   type TexDelimitersChangedDetail,
 } from "@/lib/tex-delimiters-event";
+import { registerDocForget } from "@/lib/doc-forget";
 
 type ReadTex = (docId: string) => Promise<string>;
 
@@ -111,6 +112,25 @@ function ensureDelimitersListener(): void {
     );
   });
 }
+
+/**
+ * Forget `docId`'s search path (task 1465 — `purgeDoc`): it was parsed from the
+ * identity's preamble. A doc with live subscribers keeps its entry (they are
+ * theirs to remove) with the path and loader cleared, so the next resolve
+ * re-reads the reset paper.
+ */
+function forgetDocGraphicsPath(docId: string): void {
+  const e = entries.get(docId);
+  if (!e) return;
+  if (e.listeners.size === 0) {
+    entries.delete(docId);
+    return;
+  }
+  e.dirs = undefined;
+  e.load = null;
+  e.read = null;
+}
+registerDocForget("doc-graphics-path", forgetDocGraphicsPath);
 
 /** Test-only: forget every doc. */
 export function __resetDocGraphicsPathForTests(): void {

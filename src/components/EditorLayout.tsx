@@ -28,11 +28,7 @@ import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
 import { applyPerfBodyFlags } from "@/lib/perf-feature-flags";
-import {
-  isLayoutGestureActive,
-  parkDuringLayoutGesture,
-  PaneFreeze,
-} from "@/lib/pane-resize";
+import { parkDuringLayoutGesture, PaneFreeze } from "@/lib/pane-resize";
 import { LAYOUT_SITE_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import {
@@ -133,6 +129,7 @@ import { useRefActions } from "./editor-layout/card-actions/ref";
 import type { ActiveRef } from "@/lib/tiptap/label";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
+import type { PaneScope } from "./editor-layout/pane-dom";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
@@ -188,6 +185,7 @@ import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
 import { useCloseFloatChord } from "@/hooks/useCloseFloatChord";
+import { useParaNavHistory } from "@/hooks/useParaNavHistory";
 import { frontmostOnScreen } from "@/floats/owner-floats";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
@@ -223,8 +221,6 @@ const EMPTY_ERR_SET: Set<string> = new Set();
 const EMPTY_ERR_MAP: Map<string, string> = new Map();
 const EMPTY_LATEX_ERRORS_L: LatexError[] = [];
 import { hasFsaSupport } from "@/lib/fsa-support";
-import { queryRW } from "@/lib/fsa-permissions";
-import { getDocHandle } from "@/lib/doc-index";
 import { CompilePaneStatus, PdfPaneOverlay } from "@/components/CompilePaneStatus";
 import { useSystemDialog } from "@/components/system-dialog-host";
 import { asBibFamily } from "@/lib/bib-family";
@@ -234,12 +230,13 @@ import { DocPermissionGate } from "./DocPermissionGate";
 import { DocUnreachableGate } from "./DocUnreachableGate";
 import {
   hasDocLoadFailure,
-  probeDocFolder,
   publishDocLoadFailure,
   useDocLoadFailure,
   useDocLoadFailureRevision,
 } from "@/lib/doc-load-failure";
 import { pdfFilenameFromTex, relocateDoc } from "@/lib/storage";
+import { resolveDocAccessView } from "@/lib/doc-access-view";
+import { useDocAccessCheck } from "@/hooks/useDocAccessCheck";
 import { RecentPapersList } from "./RecentPapersList";
 import { InstallPwaPrompt } from "./InstallPwaPrompt";
 import { LibraryTabView } from "./library/LibraryTabView";
@@ -250,8 +247,8 @@ import {
 } from "@/lib/doc-index";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 import { iconHint } from "@/components/Hint";
-import { chordPress, matchesPortableChord } from "@/lib/portable-chord";
-import { NEW_WINDOW_SHORTCUT } from "@/lib/multi-window/new-window-shortcut";
+import { chordPress } from "@/lib/portable-chord";
+import { newWindowChordHandler } from "@/lib/multi-window/new-window-shortcut";
 
 
 export default function EditorLayout() {
@@ -322,12 +319,16 @@ export default function EditorLayout() {
     | null
   >(null);
 
-  // Per-doc permission gate state. We query (without prompting) when
-  // the active doc changes; if it isn't already granted we show the
-  // gate, which calls requestRW from inside its click handler.
-  type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
-  const [docPermState, setDocPermState] = useState<DocPermState>("loading");
-  const [activeDocHandle, setActiveDocHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  // Per-doc access check (task 1459: `useDocAccessCheck`). We query (without
+  // prompting) when the active doc changes; if it isn't already granted the
+  // permission gate calls requestRW from inside its click handler. What the
+  // pane shows is ONE total function of this state — `docAccessView` below.
+  const {
+    docPermState,
+    setDocPermState,
+    handle: activeDocHandle,
+    recheck: retryDocAccess,
+  } = useDocAccessCheck(currentDocId, currentDoc?.texFilename ?? null);
 
   // EditorPane bubbles its per-doc state here via `onPaneStateChange` so the
   // Virgil bar can read editor / compile / view-switch / AI-dot status against
@@ -419,8 +420,17 @@ export default function EditorLayout() {
   // folder that is not there. One per-doc registry carries the outcome, fed by
   // the access check below (before mount) and by `useDocument`'s load (after).
   const activeLoadFailure = useDocLoadFailure(currentDocId);
+  // Task 1459: the ONE answer to "what does the active paper's pane show?" —
+  // exhaustive over the access state, so no state renders a blank pane. The
+  // gates, the hooks' doc id and the keep-alive lead all read it.
+  const docAccessView = resolveDocAccessView({
+    hasDoc: currentDocId !== null,
+    docPermState,
+    handle: activeDocHandle,
+    loadFailure: activeLoadFailure,
+  });
   const docIdForHooks: string | null =
-    docPermState === "granted" && !activeLoadFailure ? currentDocId : null;
+    docAccessView.kind === "editor" ? currentDocId : null;
 
   // Per-doc write pipeline lifecycle is now owned by the `<DocPipeline
   // key={currentDocId}>` boundary that wraps the EditorPane mount below
@@ -839,7 +849,7 @@ export default function EditorLayout() {
   // permission test in here is what lets `docPermState` stay a single
   // active-doc state — no per-doc permission effects needed.
   const grantedActiveDocId =
-    activePane === "doc" && docPermState === "granted" && !activeLoadFailure
+    activePane === "doc" && docAccessView.kind === "editor"
       ? currentDocId
       : null;
   // Flag-gated capacity. Default ON → keep the last N papers warm so a
@@ -852,24 +862,32 @@ export default function EditorLayout() {
     () => (isMultiDocKeepAliveOn() ? DOC_KEEP_ALIVE_CAPACITY : 1),
     [],
   );
+  // Slot eligibility = open tab ∧ not failed-to-load, defined ONCE (task 1456):
+  // the LRU prunes its ORDER by it (so capacity counts only live papers — a
+  // closed tab or failed load can no longer evict a warm paper to hold a slot)
+  // and the render block filters by it. A slot whose paper failed to load
+  // YIELDS (task 1102): it unmounts, so the gate shows instead of a contentless
+  // pane, and a successful Locate/Try again (which clears the failure)
+  // remounts it fresh — a fresh load. The predicate's identity is the LRU's
+  // live-set change signal, so it is memoized on exactly what it reads.
+  const loadFailureRevision = useDocLoadFailureRevision();
+  const isKeepAliveSlotLive = useCallback(
+    (id: string) => openTabs.some((t) => t.id === id) && !hasDocLoadFailure(id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFailureRevision is the registry's change signal
+    [openTabs, loadFailureRevision],
+  );
   const docKeepAliveEntries = useDocKeepAliveLRU(
     grantedActiveDocId,
     docKeepAliveCapacity,
+    isKeepAliveSlotLive,
   );
-  // The actually-rendered keep-alive slots = LRU order ∩ open tabs (a just-closed
-  // id can linger in the LRU order; filter it out). Derived once so the render
-  // block and the DiskWatcher's live-set reconciliation agree on the set.
-  // A slot whose paper failed to load YIELDS (task 1102): it unmounts, so the
-  // gate shows instead of a contentless pane, and a successful Locate/Try again
-  // (which clears the failure) remounts it fresh — a fresh load.
-  const loadFailureRevision = useDocLoadFailureRevision();
+  // The actually-rendered keep-alive slots. The LRU never holds a dead id
+  // except the active one (never pruned while shown), so this filter is the
+  // same predicate applied to that one remaining case. Derived once so the
+  // render block and the DiskWatcher's live-set reconciliation agree.
   const renderedKeepAliveEntries = useMemo(
-    () =>
-      docKeepAliveEntries.filter(
-        (e) => openTabs.some((t) => t.id === e.id) && !hasDocLoadFailure(e.id),
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFailureRevision is the registry's change signal
-    [docKeepAliveEntries, openTabs, loadFailureRevision],
+    () => docKeepAliveEntries.filter((e) => isKeepAliveSlotLive(e.id)),
+    [docKeepAliveEntries, isKeepAliveSlotLive],
   );
   const keepAliveDocIds = renderedKeepAliveEntries.map((e) => e.id);
 
@@ -1019,10 +1037,17 @@ export default function EditorLayout() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { omniKey?: string; pinTop?: number }
+        | { omniKey?: string; pinTop?: number; paneRoot?: HTMLElement | null }
         | undefined;
       if (!detail?.omniKey || typeof detail.pinTop !== "number") return;
-      requestOmniCardPlacement(detail.omniKey, { podTop: detail.pinTop });
+      // Pinned in the jump's OWN pane (task 1458), never another visible
+      // Reader's card under the same per-document key.
+      requestOmniCardPlacement(
+        detail.omniKey,
+        { podTop: detail.pinTop },
+        "necessity",
+        detail.paneRoot,
+      );
     };
     window.addEventListener("virgil-card-jumped", handler);
     return () => window.removeEventListener("virgil-card-jumped", handler);
@@ -1335,121 +1360,42 @@ export default function EditorLayout() {
     paneStateRef.current?.setSelectedErrorId?.(id);
   }, []);
 
-  // Paragraph navigation history (back/forward) — ref-based to avoid stale closures
-  const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
-  const currentParaRef = useRef<string | null>(null);
-  const navigatingRef = useRef(false);
-  // Bumped only to re-render the toolbar — the value itself is never read.
-  const [, setParaNavVersion] = useState(0);
-
-  // Track active paragraph and build navigation history
-  // Model: stack always includes current position, idx points to where we are now.
-  // Back: idx--, Forward: idx++, New position: truncate forward + push.
-  useEffect(() => {
-    if (!editorInstance && !codeView) return;
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-
-    const checkParagraph = () => {
-      if (navigatingRef.current) return;
-      // Wave-2b C6: this runs on a bare 2s wall clock — gate it on
-      // page visibility (a backgrounded tab must not poll layout) and on
-      // layout gestures (mid-drag geometry is in flux; the post-gesture
-      // tick reads the settled truth). Hidden keep-alive PANES are handled
-      // inside getActiveParagraphId itself (offsetHeight bail → null).
-      if (typeof document !== "undefined" && document.hidden) return;
-      if (isLayoutGestureActive()) return;
-      let paraId: string | null = null;
-      if (codeView) {
-        paraId = codeEditorHandleRef.current?.getActiveParagraphId() ?? null;
-      } else if (editorRef.current) {
-        paraId = editorRef.current.getActiveParagraphId();
-      }
-      if (!paraId || paraId === currentParaRef.current) return;
-      currentParaRef.current = paraId;
-      // Soft-presence: broadcast cursor paragraph for the partner. The
-      // hook de-dupes if unchanged, so safe to call every tick.
-      collab.updateCursorParagraph(paraId);
-      const h = paraHistoryRef.current;
-      h.stack = h.stack.slice(0, h.idx + 1);
-      h.stack.push(paraId);
-      if (h.stack.length > 100) h.stack.shift();
-      h.idx = h.stack.length - 1;
-      setParaNavVersion((v) => v + 1);
-    };
-
-    const debouncedCheck = () => {
-      if (timerId) clearTimeout(timerId);
-      timerId = setTimeout(checkParagraph, 1000);
-    };
-
-    if (!codeView && editorInstance) {
-      const scrollEl = findEditorScrollFor(editorInstance.view.dom);
-      scrollEl?.addEventListener("scroll", debouncedCheck, { passive: true });
-      const interval = setInterval(debouncedCheck, 2000);
-      return () => {
-        scrollEl?.removeEventListener("scroll", debouncedCheck);
-        clearInterval(interval);
-        if (timerId) clearTimeout(timerId);
-      };
-    } else if (codeView) {
-      const interval = setInterval(debouncedCheck, 2000);
-      return () => {
-        clearInterval(interval);
-        if (timerId) clearTimeout(timerId);
-      };
-    }
-  }, [editorInstance, codeView]);
-
-  // Clear history on document change
-  useEffect(() => {
-    paraHistoryRef.current = { stack: [], idx: -1 };
-    currentParaRef.current = null;
-    setParaNavVersion((v) => v + 1);
-  }, [currentDocId]);
-
-  const scrollToParagraph = useCallback((uuid: string) => {
-    // Sentinel for document top / title area
-    if (uuid === "__DOC_TOP__") {
-      editorRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
-      return;
-    }
-    if (codeView) {
-      codeEditorHandleRef.current?.scrollToParagraphId?.(uuid);
-    } else {
-      editorRef.current?.scrollToParagraphId(uuid);
-    }
-  }, [codeView]);
-
-  const paraNavBack = useCallback(() => {
-    const h = paraHistoryRef.current;
-    if (h.idx <= 0) return;
-    h.idx--;
-    const targetId = h.stack[h.idx];
-    navigatingRef.current = true;
-    currentParaRef.current = targetId;
-    scrollToParagraph(targetId);
-    setParaNavVersion((v) => v + 1);
-    setTimeout(() => { navigatingRef.current = false; }, 1500);
-  }, [scrollToParagraph]);
-
-  const paraNavForward = useCallback(() => {
-    const h = paraHistoryRef.current;
-    if (h.idx >= h.stack.length - 1) return;
-    h.idx++;
-    const targetId = h.stack[h.idx];
-    navigatingRef.current = true;
-    currentParaRef.current = targetId;
-    scrollToParagraph(targetId);
-    setParaNavVersion((v) => v + 1);
-    setTimeout(() => { navigatingRef.current = false; }, 1500);
-  }, [scrollToParagraph]);
-
-  // Para nav disabled state — derived from `paraHistoryRef.current` so it
-  // updates when setParaNavVersion bumps. Bumped from `paraNavBack` and
-  // `paraNavForward` plus the history-recording effect.
-  const paraNavBackDisabled = paraHistoryRef.current.idx <= 0;
-  const paraNavForwardDisabled =
-    paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1;
+  // Paragraph navigation history (back/forward) — the ONE recorder the
+  // Reader also runs (`useParaNavHistory`, task 1451): its 1.5 s "navigating"
+  // latch is one owned timer slot (a second press re-arms it; a doc switch or
+  // unmount ends it), and the source is read LIVE each tick, so cursor
+  // presence follows the real collab even when it bubbles up after the editor.
+  const paraNavScrollEl = useMemo(
+    () => (!codeView && editorInstance ? findEditorScrollFor(editorInstance.view.dom) : null),
+    [editorInstance, codeView],
+  );
+  const { paraNavBack, paraNavForward, paraNavBackDisabled, paraNavForwardDisabled } =
+    useParaNavHistory(
+      {
+        getActiveParagraphId: () =>
+          codeView
+            ? codeEditorHandleRef.current?.getActiveParagraphId() ?? null
+            : editorRef.current?.getActiveParagraphId() ?? null,
+        scrollToParagraph: (uuid) => {
+          // Sentinel for document top / title area
+          if (uuid === "__DOC_TOP__") {
+            editorRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
+          } else if (codeView) {
+            codeEditorHandleRef.current?.scrollToParagraphId?.(uuid);
+          } else {
+            editorRef.current?.scrollToParagraphId(uuid);
+          }
+        },
+        // Soft-presence: broadcast the cursor paragraph for the partner (the
+        // hook de-dupes if unchanged).
+        onParagraph: (uuid) => collabRef.current.updateCursorParagraph(uuid),
+      },
+      {
+        active: !!editorInstance || codeView,
+        scrollEl: paraNavScrollEl,
+        resetKey: currentDocId,
+      },
+    );
 
   // The bib entry → in-text citation ring and the toolbar-override reset
   // live in EditorPane with the per-pane state they act on (task 870):
@@ -1771,79 +1717,22 @@ export default function EditorLayout() {
     setFsaSupported(hasFsaSupport());
   }, []);
 
-  // Whenever the active doc changes, look up its handle in idb and
-  // query (don't request) readwrite permission. The result drives the
-  // gate vs editor render decision below.
-  // In dev-storage mode we skip the FSA permission dance entirely.
-  const activeTexFilename = currentDoc?.texFilename ?? null;
-  const [docAccessCheck, setDocAccessCheck] = useState(0);
-  useEffect(() => {
-    if (!currentDocId) {
-      setDocPermState("no-handle");
-      setActiveDocHandle(null);
-      return;
-    }
-    if (isDevStorage) {
-      // No folder to probe: a check (incl. "Try again") clears any standing
-      // load failure and lets the pane remount and load afresh.
-      publishDocLoadFailure(currentDocId, null);
-      setDocPermState("granted");
-      return;
-    }
-    let cancelled = false;
-    setDocPermState("loading");
-    (async () => {
-      try {
-        const handle = await getDocHandle(currentDocId);
-        if (cancelled) return;
-        if (!handle) {
-          setActiveDocHandle(null);
-          setDocPermState("no-handle");
-          return;
-        }
-        setActiveDocHandle(handle);
-        const state = await queryRW(handle);
-        if (cancelled) return;
-        if (state === "granted" && activeTexFilename) {
-          // Task 1102: a stale handle can still answer `granted` for a folder
-          // that is gone. Ask whether the paper is still THERE before the
-          // pane mounts; an answer either way overwrites any standing
-          // failure, so "Try again" after a Finder fix clears the gate.
-          const unreachable = await probeDocFolder(handle, activeTexFilename);
-          if (cancelled) return;
-          publishDocLoadFailure(
-            currentDocId,
-            unreachable ? { kind: unreachable, detail: "" } : null,
-          );
-        }
-        setDocPermState(state === "granted" ? "granted" : "needs-grant");
-      } catch (err) {
-        console.error("Failed to query doc permission:", err);
-        if (!cancelled) setDocPermState("needs-grant");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentDocId, activeTexFilename, docAccessCheck]);
-
   // The unreachable-paper gate's three doors (task 1102).
-  const retryDocAccess = useCallback(() => {
-    setDocAccessCheck((n) => n + 1);
-  }, []);
   const locateActiveDoc = useCallback(async () => {
     if (!currentDocId) return;
     const id = currentDocId;
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     await relocateDoc(id, handle);
     publishDocLoadFailure(id, null);
-    setDocAccessCheck((n) => n + 1);
-  }, [currentDocId]);
+    retryDocAccess();
+  }, [currentDocId, retryDocAccess]);
   const removeActiveDoc = useCallback(async () => {
     if (!currentDocId) return;
     const id = currentDocId;
-    await deleteFile(id);
-    publishDocLoadFailure(id, null);
+    // Task 1459: only a removal that HAPPENED takes the gate down. A refused
+    // one (a peer window has the paper open) leaves the paper current and its
+    // folder still unreachable — the refusal dialog explains; the gate stays.
+    if (await deleteFile(id)) publishDocLoadFailure(id, null);
   }, [currentDocId, deleteFile]);
 
   const {
@@ -1940,11 +1829,13 @@ export default function EditorLayout() {
   // every case (left omni, right omni, both, neither) without the
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
-    (key: string, targetY?: number): boolean => {
+    (key: string, targetY?: number, scope?: PaneScope): boolean => {
       // Prefix-or-exact (the shared omni matcher): a fully-qualified `@<pid>`
       // key lands on its own row; a bare key still finds a multi-anchor card's
       // first row (e.g. "float:card:note:id" → "float:card:note:id@<pid>").
-      const entry = findOmniEntry(key, "data-omni-entry");
+      // `scope` is the click's origin pane (task 1458); without one, the
+      // pane-dom ladder.
+      const entry = findOmniEntry(key, "data-omni-entry", scope);
       if (!entry) return false;
       requestAnimationFrame(() => {
         if (typeof targetY === "number") {
@@ -2469,13 +2360,10 @@ export default function EditorLayout() {
   }, []);
 
   // NEW_WINDOW_SHORTCUT (⌘⇧N) → new window. The chord is stated once and
-  // the "+" menu's hint renders the same string (task 998).
+  // the "+" menu's hint renders the same string (task 998); a held chord opens
+  // one window (task 1450).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!matchesPortableChord(e, NEW_WINDOW_SHORTCUT)) return;
-      e.preventDefault();
-      openNewVirgilWindow();
-    };
+    const onKey = newWindowChordHandler(openNewVirgilWindow);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openNewVirgilWindow]);
@@ -2968,10 +2856,10 @@ export default function EditorLayout() {
           tab strip with the gate so the user clicks once and the editor
           mounts. The tabs themselves stay visible so the user can still
           switch papers. */}
-      {currentDoc && docPermState === "needs-grant" && activeDocHandle && (
+      {currentDoc && docAccessView.kind === "permission" && (
         <DocPermissionGate
           docName={currentDoc.name}
-          handle={activeDocHandle}
+          handle={docAccessView.handle}
           onGranted={handleDocPermissionGranted}
         />
       )}
@@ -2980,13 +2868,13 @@ export default function EditorLayout() {
           sibling, same slot. The paper's folder or `.tex` is gone, or its load
           failed: say so, and offer Locate / Try again / Remove instead of the
           blank pane a contentless editor used to leave. */}
-      {currentDoc && docPermState === "granted" && activeLoadFailure && (
+      {currentDoc && docAccessView.kind === "unreachable" && (
         <DocUnreachableGate
           docName={currentDoc.name}
           folderName={currentDoc.folderName}
           texFilename={currentDoc.texFilename}
-          kind={activeLoadFailure.kind}
-          detail={activeLoadFailure.detail || undefined}
+          kind={docAccessView.failure.kind}
+          detail={docAccessView.failure.detail || undefined}
           onLocate={devStorage ? undefined : locateActiveDoc}
           onRetry={retryDocAccess}
           onRemove={removeActiveDoc}
@@ -3006,15 +2894,15 @@ export default function EditorLayout() {
           KeepAliveSlot publishes the visibility context the §2 measurement
           followers read to go INERT while hidden (keystroke sanctity).
 
-          MEMBERSHIP = the LRU order ∩ openTabs. `grantedActiveDocId` keeps an
+          MEMBERSHIP = the LRU order, pruned by `isKeepAliveSlotLive` (open tab
+          ∧ not failed-to-load). `grantedActiveDocId` keeps an
           ungranted active doc OUT of the set, so the editor never mounts before
           its folder is granted (its hooks read disk on mount → NotAllowedError);
           the standalone DocPermissionGate above shows alone until the user grants,
           then the doc joins the set and mounts fresh. Filtering on `openTabs`
           unmounts a closed tab promptly (→ DocPipeline cleanup flush +
-          pruneDocMaps). A just-closed id can briefly linger in the LRU order
-          (render-filtered out, harmless); we intentionally don't extend the shared
-          primitive to prune it in v1. */}
+          pruneDocMaps). The LRU prunes dead ids from its ORDER (task 1456), so a
+          closed or failed paper never spends a slot a live warm paper needs. */}
       {renderedKeepAliveEntries.map((entry) => {
           const slotDocId = entry.id;
           const isActive = slotDocId === currentDocId;
@@ -3166,7 +3054,7 @@ export default function EditorLayout() {
                                 role="compiled"
                                 id={slotDocId}
                                 url={paneState.pdfBlobUrl}
-                                filename={pdfFilenameFromTex(activeTexFilename ?? "main.tex")}
+                                filename={pdfFilenameFromTex(currentDoc?.texFilename ?? "main.tex")}
                               />
                             ) : (
                               /* Task 454: never a bare surface —
@@ -3240,7 +3128,7 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
           />
         </div>
-      ) : currentDoc && (docPermState !== "granted" || activeLoadFailure) ? null : currentDocId ? null : (
+      ) : docAccessView.kind !== "none" ? null : (
         <div className="flex flex-1 items-center justify-center canvas-paint">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-xl">
             {docs.length > 0 ? (

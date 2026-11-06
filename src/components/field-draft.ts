@@ -75,6 +75,12 @@
  * which is what lets one door serve `HexColorField`, `TodoRow`'s notes
  * textarea and all four uncontrolled title inputs.
  *
+ * A third medium states the same rule by hand: `RichTextField` (task 1446),
+ * whose draft is a TipTap editor. Its dirty bit is the write coalescer's
+ * PENDING edit, not a value comparison — an editor's doc can legitimately
+ * differ from the seed it was given (schema normalization), which would read
+ * as permanently dirty here — and focus HOLDS its reconcile, owing it to blur.
+ *
  * `readDraft` returning `undefined` means there is no draft to read — the
  * element is unmounted. Reconciliation then adopts the source into `lastSynced`
  * WITHOUT writing anything: with no element there is no user edit in flight to

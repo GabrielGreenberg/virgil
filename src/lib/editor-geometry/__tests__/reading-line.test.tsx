@@ -37,7 +37,7 @@ import {
 } from "../active-block";
 import { readingLineY, scrollBlockToReadingLine } from "../reading-line";
 import { chromeTopInset } from "@/lib/tiptap/chrome-scroll-margin";
-import { useParaNavHistory } from "@/components/editor-layout/reader-view-prefs";
+import { useReaderParaNav } from "@/components/editor-layout/reader-view-prefs";
 import type { EditorHandle } from "@/components/Editor";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -190,7 +190,7 @@ describe("Back then Forward survives a pause (Reader recorder, real read/land pa
       scrollToHeading: () => {},
     } as unknown as EditorHandle;
     const ref: RefObject<EditorHandle | null> = { current: handle };
-    const { result } = renderHook(() => useParaNavHistory(ref, rig.scrollEl));
+    const { result } = renderHook(() => useReaderParaNav(ref, rig.scrollEl, null));
 
     for (const uuid of ["X", "T", "Y"]) {
       land(rig, uuid);

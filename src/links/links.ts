@@ -40,7 +40,7 @@ import { normalizeParagraphText } from "./_shared/normalize-text";
 import { isDormantLink } from "./dormant";
 import { generateEntityId } from "@/lib/uuid";
 import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
-import { resolvePaneMarker } from "@/components/editor-layout/pane-dom";
+import { paneRootOf, resolvePaneMarker } from "@/components/editor-layout/pane-dom";
 import {
   linkCardKeyFromToken,
   linkCardSelector,
@@ -477,7 +477,9 @@ export function jumpToLink(
         if (moved && omniKey && pinTop !== null) {
           window.dispatchEvent(
             new CustomEvent("virgil-card-jumped", {
-              detail: { omniKey, pinTop },
+              // The wrapper's own pane rides along (task 1458): the key is
+              // per-document, and another visible Reader may mount it too.
+              detail: { omniKey, pinTop, paneRoot: paneRootOf(omniWrapper) },
             }),
           );
         }
@@ -490,11 +492,13 @@ export function jumpToLink(
     }
   }
   if (dir === "to-card" || dir === "both") {
-    // Visible pane first (task 873): card ids are unique only per document,
-    // so a hidden keep-alive pane can hold the same address.
+    // In THIS editor's pane (task 1458; visible-first inside it, task 873):
+    // card ids are unique only per document, so a hidden keep-alive pane — or
+    // a second visible Reader — can hold the same address.
     const entryEl = resolvePaneMarker(
       linkCardSelector(link.target.ref.kind, link.target.ref.id),
       "fail-open",
+      paneRootOf(editor.view.dom),
     );
     if (entryEl) {
       if (sourceY != null) {

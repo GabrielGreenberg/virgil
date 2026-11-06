@@ -17,6 +17,7 @@ Four rules it earned:
 - **The ladder is the three rungs it names, and NOTHING else — a caller's own short-circuits stay at the CALL SITE.** Each registry brackets `pickActiveByEditor` with two decisions that are its own: a *sole-entry* short-circuit ABOVE it (return the one entry whatever its editor looks like — this is what keeps a `mainEditor: null` pane, Reader mode, and every hand-built test fixture resolving), and a *last-resort* tail BELOW it (the drop registry's legacy default slot; the bridge's `DEFAULT_KEY`). Folding either into the shared function looks like tidying and is a wide silent regression — it would null out the view-less publish path the cross-surface action suites all run through. `findRowScroll` ([layout-scroll.ts](../../../src/components/editor-layout/layout-scroll.ts)) is the same shape in the DOM: a `≤1 match` short-circuit around the same visible-wins rule. The ladder's contract is stated where it lives: an entry whose accessor answers `null` does not participate, and **the caller decides what to do when nothing wins** — so it takes no `fallback` parameter (a defaulted argument is a decision nobody made).
 - **Deep ≠ broadest blast radius.** The other module singletons in this neighbourhood — `card-lift`, `dock-drag`, `stack-drop-target`, `inline-atom-source`, `drag-ghost` — are **gesture**-scoped, and one gesture at a time app-wide is *correct* for them. Do not convert them; keying a genuinely app-global value by pane is the same error mirrored.
 - **A window listener registered per pane is this bug with no ctx in it.** `EditorPane`'s `virgil-stack-drop` handler is one: the event is dispatched on `window`, so every warm pane answered it, each snapshotting against its own doc and calling its own `closeCardPopout`. It gates on `isVisibleRef.current` — the ref, never the render value, because a warm pane is not remounted on a switch and a captured value would freeze at its mount-time answer. A pane outside any keep-alive provider (the Reader) reads `true` and behaves as before.
+- **Visibility is not ownership (task 1453).** The visibility gate held only while one pane could be shown at a time; the Library shows two Reader panes at once (task 1393), both visible, and a per-doc key can resolve in both — so both captured and both closed a popout. Where the PRODUCER of a window event is mounted inside one pane, the event names that pane (`PaneRootContext`, the same id `Editor.tsx`'s drop-target registration uses) and the listener answers only a detail naming itself: `FloatingPanel` carries `detail.ownerPane`, `EditorPane` bails on `detail.ownerPane !== paneRootId`. The pane-scoped-listener census declares such a listener under the `owner` scope. A sweep of the other per-pane `virgil-*` window events found none gated on visibility alone (math/figure clicks carry their owning editor; the footnote events carry `docId`).
 
 CI: [dropctx-multipane-registry.test.tsx](../../../src/components/drop-mode/__tests__/dropctx-multipane-registry.test.tsx) mounts TWO real providers with settable DOM visibility (jsdom reports `offsetHeight === 0` for everything, so each fake editor defines its own) and pins the ladder, the scoped dispose, the session binding and the exact hint; five of its legs fail on the pre-fix semantics, and two are explicit non-regression pins — a warm switch still moves ownership, and unmounting the pane that OWNS a live session still cancels it (the atoms-draggable protection: an `externalCommit` gesture has no controller mouseup of its own, so the crosshair cursor and the global `user-select:none` would stick with nothing left to clear them). The leg with teeth is the **census** — the registry was never the part that could misbehave, a second publisher going through the legacy single slot is, and that would reinstate the clobber with every behavioural leg green. No production file in either silo may call `setDropCtx`; a hit is MIGRATE-it, never an allowlist entry.
 
@@ -176,6 +177,23 @@ Five rules it earned:
   the FOCUSED pane (the same rung `pickActiveByEditor` takes), then visible.
   CI: `pane-dom-ownership.test.tsx` (two VISIBLE panes) + the census's
   ownership block (a scope-less door call must be on its reasoned allowlist).
+- **Per-CARD lookups are scoped too, and a pane's territory includes its
+  floats (task 1458).** Card ids are unique only per document, so two visible
+  Readers can mount the same `note:n1`, and the read-only Reader need not take
+  focus on a click — so the marker click's open/scroll/pin, `placeSelectedCard`,
+  `tryScrollOmniEntry`, the `virgil-card-jumped` pin, `jumpToLink`'s card end and
+  `usePlacement`'s card Y all acted on the OTHER Reader's card. Each now names
+  its owner: the bridge's env reads `PaneClickHost.getPaneRoot` (the shell's own
+  doc resolves through its registered host, `paneRootForDoc`), and an
+  editor-holding caller takes `paneRootOf(editor.view.dom)`. Because a
+  `FloatingPanel` is portalled OUTSIDE the root, it stamps `[data-pane-owner]`
+  with its pane id: `paneRootOf` reads it from inside a float, and a scoped
+  lookup searches root + owned portals, preferring a visible match inside them.
+  The census's `SCOPED_DOORS` now covers `resolvePaneMarker`,
+  `resolvePaneMarkers`, `findOmniEntry` and `requestOmniCardPlacement`. Still a
+  declared residual: the visibility-gated listeners in
+  `usePanelCardHoverBridge` / `usePristineCardManager` (the paragraph above).
+  CI: `card-key-ownership.test.tsx`.
 
 CI: [pane-dom-multipane.test.tsx](../../../src/components/editor-layout/__tests__/pane-dom-multipane.test.tsx)
 builds TWO panes — the hidden one FIRST, as production renders them — and drives
@@ -434,6 +452,26 @@ window B open the same paper and click "Move it here"; it must move on the FIRST
 click and A's last keystrokes must be on disk. Multi-window + FSA is the masked
 class.
 
+**Half 3 — the transitions have ONE owner (task 1454).** A release that drains
+is a release IN FLIGHT, and an open door that consults `ownsDoc` mid-flight
+reads "held" and skips the claim — so reopening a paper while its close was
+still draining left it open with the drain about to drop the lock under it, and
+a peer could claim it and write beside us. `doc-ownership.ts` now runs a
+per-doc state machine (free → CLAIMING → HELD → DRAINING → RELEASING): a
+`claimDoc` during DRAINING cancels the release (the hold is kept, nothing is
+published); during RELEASING it waits out our own hand-back rather than read our
+lock as a peer's; concurrent claims in one window share one promise; a
+`releaseDoc` lands an in-flight claim first and joins an in-flight drain (last
+gesture wins). The rule for doors: **"open" means "claimed"** — every door that
+shows a paper calls `claimDoc` (free when held), never `ownsDoc` as a stand-in.
+`ownsDoc` stays for the peer handoff-request listener, which only releases.
+Legs 1–3 + a close-races-open leg in
+[doc-ownership-release-ordering.test.ts](../../../src/lib/multi-window/__tests__/doc-ownership-release-ordering.test.ts)
+(the concurrent-claim leg makes the fake grant asynchronously, as a browser
+does; the bare fake grants inside `request` and hides the race). **Owed:** a
+two-window real-PWA eyeball — close then immediately reopen in window 1, then
+open in window 2: window 2 must be offered the handoff, not silently granted.
+
 ### The ORIGIN half: a fallback may supply the app-global APIs, never the POSITION (task 642)
 
 The rule above closed the registry: `editor-actions-bridge` is a real
@@ -554,11 +592,14 @@ type is recognised inline, by a `…Listener` name, or through a local alias.
 Re-adding a module bus to `run-event.ts` fails 2 of its 6 legs. The first neuter
 slipped past a `type L = …` alias, which is why aliases are now resolved.
 
-**Residual (declared, not blessed):** `links/pending-preview-store.ts`, the
-applied-suggestion Original/Suggested toggle, is keyed by card id alone. Two open
-papers that share an id share its display state. It sits in the census as
-`residual-per-paper-key` until a doc or pane key is threaded through
-`pending-change-actions.ts`.
+**The residual, retired (task 1455).** `links/pending-preview-store.ts`, the
+applied-suggestion Original/Suggested toggle, was keyed by card id alone. It was
+worse than shared display state: A's "original" made B's Check re-apply over
+suggested text and CLEAR the id, so A's Check then finalized A's ORIGINAL text.
+The store is now `Map<docId, Map<cardId, dir>>`; the verbs pass the `docId` they
+already had, and the card reads `PendingChangeController.docId`. The census's
+`residual-per-paper-key` scope is DELETED, not just emptied: a collection keyed
+by a per-paper id alone is the defect, so there is no scope to declare it under.
 
 ### The popup half (task 750)
 
@@ -709,3 +750,22 @@ takes the session ctx's owner too and refuses an editor registered under
 another pane (`dropTargetOwner(editor) !== ctxOwner`), so a payload of paper A
 never lands in paper B's prose even with both on screen. Suite:
 `locate-atom-pane-owner.test.ts`.
+
+### The FORGET half: a per-doc registry forgets its doc's IDENTITY (task 1465)
+
+A registry keyed by docId outlives a pane close by design (the compile record
+SHOULD still describe the paper when it is reopened). It must not outlive the
+doc's IDENTITY: `purgeDoc` (delete, or "Reset example" re-seeding under the
+same fixed id) is the one door, and the pristine example used to reopen
+showing the discarded version's PDF as current because task 1277's compile
+record was added outside `purgeDoc`'s hand-written list. The in-memory half is
+now DERIVED: each module registers its own forget beside the map
+(`registerDocForget`, `src/lib/doc-forget.ts`) and `purgeDoc` runs
+`forgetDocInMemory`. A store that outlives a reset on purpose (a monotonic
+salt, a subscriber's listeners, a lock shadow, a fingerprint-keyed cache) is
+EXCLUDED with its reason. A run in flight across the forget is fenced by the
+compile record's identity epoch (`compileEpoch` → `recordCompileResult` /
+`markCompileEnded`), so its result is dropped rather than published into the new
+identity. Guard: `doc-forget-census.test.ts` classifies every empty,
+string-keyed module-level `Map`/`Set` in `src/`, so the next new per-doc store
+cannot skip the question.

@@ -104,6 +104,7 @@ function makeCard(
  *  PRODUCE follows the flag — exactly what `EditorPane` assembles. */
 function makeController(canProduce: boolean) {
   return {
+    docId: "doc-test",
     canProduce,
     canResolve: true,
     apply: vi.fn(),

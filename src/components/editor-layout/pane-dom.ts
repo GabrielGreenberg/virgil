@@ -77,14 +77,26 @@
  * slot and the paper page). `[data-virgil-row-scroll]` is the pane's ANCESTOR,
  * so a scoped row lookup is `scope.closest(…)`, not `querySelector`.
  *
- * ## Scope: PANE markers, not CARD markers
+ * ## A pane's TERRITORY: its root plus the portals it owns (task 1458)
  *
- * The per-CARD lookups (`findOmniEntry`, `usePlacement`, the anchor-highlight
- * reconciler) are the same hazard one level down and are deliberately NOT folded
- * in here: `omni-card-placement.ts` already states its own answer (a caller that
- * knows its element passes it; only the two event-driven publishers take a
- * lookup), and widening this door to every `data-*` in the app would be the
- * "broadest blast radius" mistake the central principle warns against.
+ * A pane renders some of its own DOM OUTSIDE its root: a `FloatingPanel` (a
+ * popped card, a floated panel) is portalled to `document.body`. Such a portal
+ * stamps `[data-pane-owner]` with its pane's id, and ownership reads it in both
+ * directions — `paneRootOf(el)` from inside a float answers the owning pane, and
+ * a scoped lookup searches the root AND every portal that pane owns. Without
+ * that, scoping a card lookup would silently stop finding a popped card.
+ * Inside the territory the visible rung still applies (a popped float and a
+ * native list can mount the same card); a miss inside it is still a miss.
+ *
+ * ## Per-CARD lookups take the same scope (task 1458)
+ *
+ * The per-card lookups (`findOmniEntry`, `openForCard`, `placeSelectedCard`,
+ * `jumpToLink`'s card end, `usePlacement`) ask the GENERIC `resolvePaneMarker`
+ * with their own selector — no named door per card attribute. Card ids are
+ * unique only per DOCUMENT, so two visible Readers can mount the same one, and
+ * every one of these callers has its owner in hand: the clicked pane's
+ * `PaneClickHost.getPaneRoot`, or `paneRootOf(editor.view.dom)`. The census's
+ * ownership block makes them pass it.
  *
  * What they DO share is the visibility rung. Since task 873 the per-document id
  * lookups that used to take the first match off `document` — `findOmniEntry`,
@@ -115,6 +127,11 @@ export type PaneScope = HTMLElement | null | undefined;
  *  outside any pane (an app-level float host) — such callers take the ladder. */
 export const PaneRootContext = createContext<string | null>(null);
 
+/** The attribute a pane-owned PORTAL (rendered outside the root, e.g. a
+ *  `FloatingPanel`) stamps, valued with its pane's id — see the header's
+ *  "territory" section. */
+export const PANE_OWNER_ATTR = "data-pane-owner";
+
 /** The root element of the pane with `id`, looked up by id at call time. */
 export function paneRootById(id: string | null | undefined): HTMLElement | null {
   if (!id || typeof document === "undefined") return null;
@@ -123,9 +140,29 @@ export function paneRootById(id: string | null | undefined): HTMLElement | null 
   );
 }
 
-/** The pane that OWNS `el` (its nearest `[data-pane-root]` ancestor). */
+/** The pane that OWNS `el`: its nearest `[data-pane-root]` ancestor, or — for
+ *  an element inside a pane-owned portal — the root that portal names. */
 export function paneRootOf(el: Element | null | undefined): HTMLElement | null {
-  return (el?.closest(`[${PANE_ROOT_ATTR}]`) as HTMLElement | null) ?? null;
+  if (!el) return null;
+  const root = el.closest(`[${PANE_ROOT_ATTR}]`) as HTMLElement | null;
+  if (root) return root;
+  return paneRootById(el.closest(`[${PANE_OWNER_ATTR}]`)?.getAttribute(PANE_OWNER_ATTR));
+}
+
+/** Every match for `selector` in the pane's TERRITORY — its root first, then
+ *  the portals it owns (header, "territory"). */
+function territoryMatches(scope: HTMLElement, selector: string): HTMLElement[] {
+  const out = Array.from(scope.querySelectorAll<HTMLElement>(selector));
+  const id = scope.getAttribute(PANE_ROOT_ATTR);
+  if (!id) return out;
+  const portals = document.querySelectorAll<HTMLElement>(
+    `[${PANE_OWNER_ATTR}="${id.replace(/["\\]/g, "\\$&")}"]`,
+  );
+  for (const portal of portals) {
+    if (portal.matches(selector)) out.push(portal);
+    out.push(...portal.querySelectorAll<HTMLElement>(selector));
+  }
+  return out;
 }
 
 /** For a React caller under an `EditorPane`: a stable getter for its own pane
@@ -154,9 +191,17 @@ export function resolvePaneMarker(
   scope?: PaneScope,
 ): HTMLElement | null {
   if (typeof document === "undefined") return null;
-  if (scope) return scope.querySelector<HTMLElement>(selector);
-  const focused = focusedPaneRoot()?.querySelector<HTMLElement>(selector);
-  if (focused && isPaneElementVisible(focused)) return focused;
+  if (scope) {
+    // Authoritative: the visible match in the caller's own territory, else its
+    // first match at all — never a neighbour's.
+    const own = territoryMatches(scope, selector);
+    return own.find(isPaneElementVisible) ?? own[0] ?? null;
+  }
+  const focusedRoot = focusedPaneRoot();
+  const focused = focusedRoot
+    ? territoryMatches(focusedRoot, selector).find(isPaneElementVisible)
+    : undefined;
+  if (focused) return focused;
   const all = document.querySelectorAll<HTMLElement>(selector);
   for (const el of all) if (isPaneElementVisible(el)) return el;
   return onNoneVisible === "fail-open" ? (all[0] ?? null) : null;
@@ -172,7 +217,7 @@ export function resolvePaneMarkers(
   scope?: PaneScope,
 ): HTMLElement[] {
   if (typeof document === "undefined") return [];
-  if (scope) return Array.from(scope.querySelectorAll<HTMLElement>(selector));
+  if (scope) return territoryMatches(scope, selector);
   const all = Array.from(document.querySelectorAll<HTMLElement>(selector));
   const visible = all.filter(isPaneElementVisible);
   return visible.length > 0 ? visible : all;

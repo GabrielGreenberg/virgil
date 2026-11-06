@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { publicAssetUrl } from "@/lib/public-asset-url";
 import { subscribeChromePalette } from "@/lib/chrome-palette-signal";
+import { registerDocForget } from "@/lib/doc-forget";
 import type { PdfPageState } from "@library/lib/pdf-pgmark-adapter";
 
 /**
@@ -275,6 +276,11 @@ export interface ViewerPlace {
  * push every Library paper's reading position out of the same 20 rows.
  */
 const compiledPlaces = new Map<string, ViewerPlace>();
+
+/** A paper removed or reset under its id starts again from the top. */
+registerDocForget("compiled-places", (docId) => {
+  compiledPlaces.delete(docId);
+});
 
 /** A place as the `page=…&zoom=…` hash pdf.js opens at. The page is clamped: a
  *  revision can be shorter than the one the reader was in. */

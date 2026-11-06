@@ -5,7 +5,7 @@ import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import { FONT_MONO } from "@/lib/font-stacks";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { Input } from "@/components/field-primitives";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 /** `[label] / count` printed-page selector — seeds the input with the current
  *  page label, jumps to the typed LABEL on Enter / go. Renders nothing for
@@ -82,7 +82,7 @@ export default function PagePicker({
             // One Enter, one jump: pre-529 the explicit `commit()` and the
             // blur's own `onBlur` each ran it from this stale closure.
             session.commitAndBlur(e.currentTarget, commit);
-          } else if (e.key === "Escape") {
+          } else if (isCancelEscape(e)) {
             e.preventDefault();
             session.cancel(e.currentTarget, () => {
               setEditing(false);

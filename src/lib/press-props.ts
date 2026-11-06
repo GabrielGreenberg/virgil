@@ -15,7 +15,8 @@
  *
  * `pressProps(action)` returns both legs:
  * - `onMouseDown` — primary button only (the `isPrimaryDragStart` SSOT, so a
- *   right/middle press keeps its native behaviour); `preventDefault` so focus
+ *   right/middle press — and a macOS Ctrl+click, the same context click with
+ *   `button 0` (task 1449) — keeps its native behaviour); `preventDefault` so focus
  *   and the selection stay where they are; then runs the action. A ONE-SHOT
  *   press, not a gesture: nothing is held, so there is no release edge to
  *   miss (`start-gate-end-edge-census` records exactly that).
@@ -35,7 +36,10 @@ export interface PressOptions {
   stopPropagation?: boolean;
 }
 
-type PressEvent = Pick<MouseEvent, "button" | "detail" | "preventDefault" | "stopPropagation">;
+type PressEvent = Pick<
+  MouseEvent,
+  "button" | "ctrlKey" | "detail" | "preventDefault" | "stopPropagation"
+>;
 
 /** True for the click that a keyboard or assistive technology synthesized —
  *  the one press no mousedown preceded. */

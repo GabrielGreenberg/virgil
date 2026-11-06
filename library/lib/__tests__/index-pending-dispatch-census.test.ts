@@ -58,9 +58,12 @@ describe("index-pending dispatch census", () => {
     expect(step2()).toContain(heading);
   });
 
-  it("polls the native pending count, never a *.json file count", () => {
+  it("polls the native OUTSTANDING count, never pending or a *.json file count", () => {
     expect(indexPending).not.toMatch(/ls[^\n`]*queue\/\*\.json/);
     expect(indexPending).toContain("queue_slot.py");
-    expect(indexPending).toMatch(/pending --native --count/);
+    // Task 1468: `pending` drops the request being worked (the claim) and
+    // never counted failed retries, so a poll on it ends while the drain works.
+    expect(indexPending).toMatch(/outstanding --native --count/);
+    expect(indexPending).not.toMatch(/pending --native --count/);
   });
 });

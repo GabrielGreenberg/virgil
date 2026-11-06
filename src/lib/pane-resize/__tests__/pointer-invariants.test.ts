@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { isMissedRelease, isPrimaryDragStart } from "../pointer-invariants";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { isContextClick, isMissedRelease, isPrimaryDragStart } from "../pointer-invariants";
+
+const platform = vi.hoisted(() => ({ mac: false }));
+vi.mock("@/lib/platform", () => ({ isMac: () => platform.mac }));
+afterEach(() => {
+  platform.mac = false;
+});
 
 /**
  * The two invariants every drag gesture shares — the engine's and the bespoke
@@ -22,6 +28,28 @@ describe("isPrimaryDragStart", () => {
 
   it("refuses a non-primary pointer", () => {
     expect(isPrimaryDragStart({ button: 0, isPrimary: false })).toBe(false);
+  });
+});
+
+describe("isContextClick / the gate refuses a macOS Ctrl+click (task 1449)", () => {
+  it("on a Mac, Ctrl+button-0 is a context click and starts nothing", () => {
+    platform.mac = true;
+    expect(isContextClick({ button: 0, ctrlKey: true })).toBe(true);
+    expect(isPrimaryDragStart({ button: 0, ctrlKey: true, isPrimary: true })).toBe(false);
+    // A plain click is still primary.
+    expect(isPrimaryDragStart({ button: 0, ctrlKey: false })).toBe(true);
+  });
+
+  it("off a Mac, Ctrl+click is an ordinary modified primary press", () => {
+    platform.mac = false;
+    expect(isContextClick({ button: 0, ctrlKey: true })).toBe(false);
+    expect(isPrimaryDragStart({ button: 0, ctrlKey: true })).toBe(true);
+  });
+
+  it("a right press is a context click on every platform", () => {
+    expect(isContextClick({ button: 2 })).toBe(true);
+    platform.mac = true;
+    expect(isContextClick({ button: 2 })).toBe(true);
   });
 });
 

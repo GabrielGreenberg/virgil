@@ -1,5 +1,7 @@
+import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePaneScopedListener } from "@/lib/keep-alive/visibility-context";
+import { useUnmountEnding } from "@/lib/pane-resize/use-unmount-ending";
 import type React from "react";
 
 import type { ViewPrefs } from "./useViewPrefs";
@@ -328,11 +330,20 @@ export function useMarginEdit({
     setMarginEditMode(true);
   }, [viewPrefs]);
 
+  // The live guide drag's CANCEL ending (task 1444): the hook's owner
+  // unmounting mid-drag, or margin-edit ending under it (Cancel / Escape).
+  // Before, the drag ended only on its own mouseup/blur/missed release, so it
+  // outlived both — wedging the resize cursor on <body>, and on a later
+  // release re-committing a live value into a session that had been
+  // cancelled.
+  const dragEndingRef = useUnmountEnding();
+
   const cancel = useCallback(() => {
+    dragEndingRef.current?.();
     snapshotRef.current = null;
     setLiveMargins(null);
     setMarginEditMode(false);
-  }, []);
+  }, [dragEndingRef]);
 
   const save = useCallback(() => {
     // Read the committed React state. By the time the user clicks
@@ -358,10 +369,14 @@ export function useMarginEdit({
     "window",
     "keydown",
     (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        cancel();
-      }
+      if (!isCancelEscape(e)) return;
+      e.preventDefault();
+      // A cancel answers the first press; a held Escape's repeats end nothing
+      // and are eaten until keyup, so they cannot also close what margin-edit
+      // mode was sitting over (task 1448).
+      if (e.repeat) return;
+      swallowRepeatsUntilKeyup(e);
+      cancel();
     },
     { enabled: marginEditMode },
   );
@@ -413,6 +428,8 @@ export function useMarginEdit({
       const rect = frame.getBoundingClientRect();
       const axis = MARGIN_AXIS[side];
       const cursor = axis === "x" ? "ew-resize" : "ns-resize";
+      // One live drag at a time: a new press cancels a stale one first.
+      dragEndingRef.current?.();
       const prevCursor = document.body.style.cursor;
       document.body.style.cursor = cursor;
 
@@ -498,11 +515,33 @@ export function useMarginEdit({
         if (rafId == null) rafId = requestAnimationFrame(flush);
       };
 
-      const onUp = () => {
+      // The ONE teardown — every ending (release, blur, missed release,
+      // cancel) runs it.
+      const detach = () => {
         document.body.style.cursor = prevCursor;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         window.removeEventListener("blur", onUp);
+        if (dragEndingRef.current === onCancel) dragEndingRef.current = null;
+      };
+
+      // CANCEL: commit nothing, and put the guide back where the drag found
+      // it — the per-frame writes went straight to the column's CSS vars,
+      // which React will not rewrite when its own prop value never changed.
+      const onCancel = () => {
+        detach();
+        if (rafId != null) cancelAnimationFrame(rafId);
+        rafId = null;
+        pendingNext = null;
+        col?.style.setProperty(cssVar, `${startMargins[side]}px`);
+        col?.style.setProperty(
+          symCssVar,
+          startMargins[side] === startMargins[oppositeSide] ? "1" : "0",
+        );
+      };
+
+      const onUp = () => {
+        detach();
         if (rafId != null) {
           cancelAnimationFrame(rafId);
           flush();
@@ -515,13 +554,14 @@ export function useMarginEdit({
         setLiveMargins({ ...working });
       };
 
+      dragEndingRef.current = onCancel;
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
       // Focus loss (cmd-tab, window switch) eats the mouseup the same way an
       // iframe does — commit the live value instead of wedging the cursor.
       window.addEventListener("blur", onUp);
     },
-    [],
+    [dragEndingRef],
   );
 
   return {

@@ -122,6 +122,8 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
       panelId: "notes",
       cardKind: "note",
       skipScroll: true,
+      // The origin pane's root, read at call time (task 1458).
+      scope: expect.any(Function),
     });
     expect(env.prefs).toBe(deps.prefsRef.current);
     // No clickY in the event → no pin alignment.
@@ -144,6 +146,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
       panelId: "cutter",
       cardKind: "cutter-suggestion",
       skipScroll: true,
+      scope: expect.any(Function),
     });
   });
 
@@ -310,6 +313,7 @@ describe("origin routing (task 1093)", () => {
       setActiveRight: vi.fn(),
       getOmniEnabled: vi.fn(() => new Set<OmniCategory>()),
       setSelectedErrorId: vi.fn(),
+      getPaneRoot: () => null,
     };
     return { host, readerPrefs, readerStore };
   }

@@ -24,8 +24,10 @@ import { readStoredValue, type StoredVerdict } from "@/lib/stored-state";
 
 import { clearMirror, clearMirrorOffers } from "@/lib/emergency-mirror";
 import { deleteLocalSidecar } from "@/lib/local-sidecar";
-import { clearRecoveryOffer } from "@/lib/mirror-recovery";
+import { forgetDocInMemory } from "@/lib/doc-forget";
 import { LOCAL_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
+import { publish } from "@/lib/multi-window/bus";
+import { getWindowId } from "@/lib/multi-window/window-id";
 import { isDevStorage } from "@/lib/storage-mode";
 
 const store = createStore("virgil", "kv");
@@ -161,20 +163,32 @@ export async function readIndex(): Promise<FsaDocIndex> {
  *
  * `writeIndex` no longer exists; `doc-index-mutation-door.test.ts` holds
  * the census.
+ *
+ * THE CHANGE CHANNEL (task 1460). Every window renders the index from a
+ * snapshot it read itself (`useFiles`), and IndexedDB raises no `storage`
+ * event — so a row a peer removed, added or renamed stayed stale here until
+ * reload. Because this is the one door, it is also the one publisher: when
+ * `fn` actually changed the index, the committed transaction is announced as
+ * `doc-index-changed` (an INVALIDATION — peers re-read storage, the task-868
+ * shape). A no-op mutation (touching a row that is gone) announces nothing.
  */
 export async function mutateIndex<R>(
   fn: (idx: FsaDocIndex) => R,
 ): Promise<R> {
   let result: R | undefined;
+  let changed = false;
   await update<FsaDocIndex>(
     INDEX_KEY,
     (old) => {
       const idx = normalizeIndex(old);
+      const before = JSON.stringify(idx);
       result = fn(idx);
+      changed = JSON.stringify(idx) !== before;
       return idx;
     },
     store,
   );
+  if (changed) publish({ type: "doc-index-changed", windowId: getWindowId() });
   return result as R;
 }
 
@@ -417,11 +431,10 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  * read back as if it belonged to the new document (task 604 — a surviving
  * emergency mirror offered to "restore" the edits the reset discarded).
  *
- * Every docId-keyed store this browser holds, and what happens to it:
+ * Every DURABLE docId-keyed store this browser holds, and what happens to it:
  *   - `doc-handle/<id>`, `general-bib-handle/<id>` (here) — deleted.
  *   - `emergency-mirror/<id>` and every `emergency-mirror-offer/<id>/…`
- *     (emergency-mirror.ts) — deleted, together with its in-memory recovery
- *     offer (mirror-recovery.ts).
+ *     (emergency-mirror.ts) — deleted.
  *   - `local-sidecar/<id>/<file>` (local-sidecar.ts), one per
  *     `LOCAL_SIDECAR_FILENAMES` entry — deleted.
  *   - `my-papers` (the curated "My Papers" list, here) — the id is dropped
@@ -432,6 +445,15 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  *     list pick the change up on their next read; until then `MyPapersPod`
  *     drops ids with no index row at render.
  *
+ * The IN-MEMORY half is not listed here — it is DERIVED (task 1465): every
+ * module holding per-doc state registers its own forget with
+ * `registerDocForget` (doc-forget.ts), and `forgetDocInMemory` runs them all —
+ * the compile record and progress, the recovery offer, the notices, the
+ * caches. `doc-forget-census.test.ts` names every module-level per-doc map and
+ * fails on one that neither registers nor is excluded with a reason, so a new
+ * store cannot silently survive a reset (task 1277's compile record did, and
+ * the pristine example reopened showing the discarded version's PDF).
+ *
  * Deliberately NOT touched:
  *   - `doc-owner/<id>` (multi-window/doc-ownership.ts) — it shadows a live
  *     Web Lock and is cleared by that lock's own release; deleting it here
@@ -439,14 +461,15 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  *   - `tabs/<window>` records — they name ids, and a missing doc is dropped
  *     by the restore (task 603's sweep owns their lifetime).
  *   - `tex-asset/*` — keyed by package cache key, shared by every paper.
- *   - The in-memory unsaved-work channel — the caller closes/drains the
- *     doc's tab first, and that channel is the "you have unsaved work" alarm.
+ *   - In-memory stores with their own lifetime (the unsaved-work channel, the
+ *     pane-registered doors and flushers) — the census's exclusion list says
+ *     why for each.
  */
 export async function purgeDoc(
   id: string,
   mode: "remove" | "reset" = "remove",
 ): Promise<void> {
-  clearRecoveryOffer(id);
+  forgetDocInMemory(id, mode);
   await Promise.all([
     mode === "remove"
       ? mutateMyPapers((ids) => ids.filter((x) => x !== id))

@@ -25,7 +25,7 @@ import {
   setDataIfChanged,
   setTextIfChanged,
 } from "@/lib/tiptap/idempotent-dom";
-import { isCommitEnter } from "@/lib/key-intent";
+import { answerFieldKeys } from "@/lib/tiptap/field-keys";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -220,16 +220,14 @@ function createExampleLabelPod(params: {
     input.addEventListener("blur", () => {
       if (armed) void commit("blur");
     });
-    input.addEventListener("keydown", (e) => {
-      if (isCommitEnter(e)) {
-        e.preventDefault();
-        void commit("enter");
-      } else if (e.key === "Escape") {
-        e.preventDefault();
+    // Claims the keys it answers (task 1441, `answerFieldKeys`).
+    answerFieldKeys(input, {
+      commit: () => void commit("enter"),
+      cancel: () => {
         committed = true;
         warning.dispose();
         render();
-      }
+      },
     });
     lifetime.requestAnimationFrame(() => {
       input.focus();

@@ -1,4 +1,4 @@
-<!-- last-verified: 2121bae7 2026-11-03 -->
+<!-- last-verified: 25db9fea 2026-11-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -36,6 +36,10 @@ Library-subsystem concern, not the paper-folder write path below.)
 `virgil/` and `.virgil/` are **different folders** with different jobs — the
 leading dot matters. Disk state outside the folder: IndexedDB holds preferences,
 tab state, folder handles, the doc index — **never paper content**.
+Creating a paper is all-or-nothing (task 1462): both create doors share
+`populateAndRegister`, and a throw removes exactly what THAT call made (folder,
+template files, a `virgil/` it created, the handle slot), so no half-made folder
+is left behind for a skill to find.
 
 ## The .tex and .bib
 
