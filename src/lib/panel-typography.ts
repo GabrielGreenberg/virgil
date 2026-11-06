@@ -332,31 +332,39 @@ function persist() {
   catch { /* ignore */ }
 }
 
-/** Parse + validate the persisted blob into a fresh overrides object. The ONE
- *  validation path, shared by the initial hydrate and the cross-window
- *  re-hydrate below (same shape as `panel-theme.ts`). Returns `{}` for a
- *  missing, unparseable, or non-object blob. */
-function readOverridesFromStorage(): Partial<Record<PanelBodyKey, TypoOverride>> {
+/** Validate an overrides blob — the persisted one, a peer's, or one carried
+ *  by a preset / undo snapshot (task 1489) — into a fresh overrides object.
+ *  The ONE validation path (same shape as `panel-theme.ts`). Anything that is
+ *  not an object resolves to `{}` — every panel at its default. */
+export function normalizePanelTypographyOverrides(
+  parsed: unknown,
+): Partial<Record<PanelBodyKey, TypoOverride>> {
   const next: Partial<Record<PanelBodyKey, TypoOverride>> = {};
-  if (typeof window === "undefined") return next;
+  if (!parsed || typeof parsed !== "object") return next;
+  const blob = parsed as Record<string, unknown>;
+  for (const k of Object.keys(blob) as PanelBodyKey[]) {
+    const v = blob[k] as Partial<Record<keyof PanelTypography, unknown>> | null;
+    if (!v || typeof v !== "object") continue;
+    const o: TypoOverride = {};
+    if (typeof v.fontFamily === "string") o.fontFamily = v.fontFamily;
+    if (typeof v.fontSize === "number") o.fontSize = v.fontSize;
+    if (typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color)) {
+      o.color = v.color.toLowerCase();
+    }
+    if (Object.keys(o).length > 0) next[k] = o;
+  }
+  return next;
+}
+
+/** Parse the persisted blob through `normalizePanelTypographyOverrides` —
+ *  shared by the initial hydrate and the cross-window re-hydrate below. */
+function readOverridesFromStorage(): Partial<Record<PanelBodyKey, TypoOverride>> {
+  if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return next;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return next;
-    for (const k of Object.keys(parsed) as PanelBodyKey[]) {
-      const v = parsed[k];
-      if (!v || typeof v !== "object") continue;
-      const o: TypoOverride = {};
-      if (typeof v.fontFamily === "string") o.fontFamily = v.fontFamily;
-      if (typeof v.fontSize === "number") o.fontSize = v.fontSize;
-      if (typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color)) {
-        o.color = v.color.toLowerCase();
-      }
-      if (Object.keys(o).length > 0) next[k] = o;
-    }
-  } catch { /* ignore */ }
-  return next;
+    if (!raw) return {};
+    return normalizePanelTypographyOverrides(JSON.parse(raw));
+  } catch { return {}; }
 }
 
 export function loadPanelTypography(): void {
@@ -481,6 +489,25 @@ export function clearPanelTypographyField<F extends keyof PanelTypography>(
   if (!o) return;
   delete o[field];
   if (Object.keys(o).length === 0) delete overrides[key];
+  persist();
+  notify();
+}
+
+/** Every override, as a fresh deep copy — what a whole-settings snapshot
+ *  captures (task 1489; `src/lib/settings-stores.ts`). */
+export function getAllPanelTypographyOverrides(): Partial<Record<PanelBodyKey, Partial<PanelTypography>>> {
+  return normalizePanelTypographyOverrides(overrides);
+}
+
+/** Replace EVERY override in one write — the whole-settings door's half for
+ *  this store (reset, preset load, and an undo of either). Normalized like a
+ *  stored blob and, like a hydrate, NOT snapped to the live default (see
+ *  `setPanelTypographyField`): a snapshot is restored verbatim. `undefined`
+ *  clears every override. Latches `loaded` so a late first hydrate cannot
+ *  clobber what was just applied. */
+export function replacePanelTypographyOverrides(next: unknown): void {
+  loaded = true;
+  overrides = normalizePanelTypographyOverrides(next);
   persist();
   notify();
 }

@@ -279,3 +279,98 @@ describe("Reset to defaults is undoable (task 903)", () => {
     expect(reset.className).not.toContain("ml-auto");
   });
 });
+
+/**
+ * Task 1489 — the dialog renders FIVE stores (prefs, transforms, and the Smart
+ * section's panel colours, panel typography and link deltas), but reset, its
+ * Undo and presets spanned only the first two. Every whole-settings operation
+ * now iterates the one declared table (`SIDE_SETTINGS_STORES`), and loading a
+ * preset is undoable like reset.
+ */
+/** The preset picker — the one select whose placeholder is "Load preset...". */
+function presetPicker(): HTMLSelectElement {
+  return screen.getByRole("option", { name: "Load preset..." }).closest("select")!;
+}
+
+describe("whole-settings operations span every store the dialog renders (task 1489)", () => {
+  async function sideStores() {
+    const theme = await import("@/lib/panel-theme");
+    const typo = await import("@/lib/panel-typography");
+    const links = await import("@/lib/pref-links");
+    const colorKey = (Object.keys(theme.DEFAULT_PANEL_COLORS) as Array<keyof typeof theme.DEFAULT_PANEL_COLORS>)
+      .find((k) => !theme.SYSTEM_THEME_KEYS.has(k))!;
+    const typoKey = Object.keys(typo.DEFAULT_PANEL_TYPOGRAPHY)[0] as keyof typeof typo.DEFAULT_PANEL_TYPOGRAPHY;
+    const linkKey = Object.keys(links.DEFAULT_LINK_STATES)[0];
+    const set = () => act(() => {
+      theme.setPanelColor(colorKey, "#123456");
+      typo.setPanelTypographyField(typoKey, "fontSize", 23);
+      links.setLinkField(linkKey, "deltaL", 0.31);
+    });
+    const expectSet = () => {
+      expect(theme.getPanelColor(colorKey)).toBe("#123456");
+      expect(typo.getPanelTypography(typoKey).fontSize).toBe(23);
+      expect(links.getLinkState(linkKey)!.deltaL).toBe(0.31);
+    };
+    const expectDefault = () => {
+      expect(theme.getPanelColorOverrides()).toEqual({});
+      expect(typo.getAllPanelTypographyOverrides()).toEqual({});
+      expect(links.getAllLinkStates()).toEqual(links.DEFAULT_LINK_STATES);
+    };
+    return { set, expectSet, expectDefault, theme, colorKey };
+  }
+
+  it("Reset clears panel colour, panel typography and link delta; Undo restores all three", async () => {
+    await mountDialog();
+    const s = await sideStores();
+    s.set();
+    s.expectSet();
+
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    s.expectDefault();
+
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Undo" })); });
+    s.expectSet();
+  });
+
+  it("a side-store edit after reset retires the Undo offer", async () => {
+    await mountDialog();
+    const s = await sideStores();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" })); });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    act(() => s.theme.setPanelColor(s.colorKey, "#654321"));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("loading a preset offers Undo, which restores the tweaks it replaced", async () => {
+    const { read, prefsMod } = await mountDialog();
+    const s = await sideStores();
+    typeHex(hexBoxFor("Virgil bar background"), PARENT_HEX);
+    s.set();
+
+    act(() => { fireEvent.change(presetPicker(), { target: { value: "Default" } }); });
+    expect(read().topbarBackground).toBe(prefsMod.DEFAULT_PREFS.topbarBackground);
+    s.expectDefault();
+    expect(screen.getByRole("status").textContent).toContain("Preset “Default” loaded");
+
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Undo" })); });
+    expect(read().topbarBackground).toBe(PARENT_HEX);
+    s.expectSet();
+  });
+
+  it("loading a preset that changes nothing offers no Undo", async () => {
+    await mountDialog();
+    act(() => { fireEvent.change(presetPicker(), { target: { value: "Default" } }); });
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("a preset captures the side stores, and loading it puts them back", async () => {
+    const { store } = await mountDialog();
+    const s = await sideStores();
+    s.set();
+    act(() => { store().savePreset("Mine"); });
+    act(() => { store().resetAll(); });
+    s.expectDefault();
+    act(() => { store().loadPreset("Mine"); });
+    s.expectSet();
+  });
+});
