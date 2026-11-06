@@ -18,6 +18,7 @@ import {
   type CardAtomNodeName,
 } from "@/lib/tiptap/atom-registry";
 import { isInlineAtomCardKind, isSuggestionKind } from "@/cards/predicates";
+import { isAppliedPendingSuggestion } from "@/cards/suggestion-status";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { AnchoredCardRef } from "./anchored-card-store";
 import { findEntity } from "./entity-hover";
@@ -67,13 +68,7 @@ export function appliedChangeLink(
 ): Link | null {
   if (!isSuggestionKind(ref.kind)) return null;
   const sugg = entity as AppliedSuggestionEntity;
-  if (
-    sugg.kind !== "suggestion" ||
-    sugg.status !== "applied" ||
-    !sugg.appliedChange
-  ) {
-    return null;
-  }
+  if (!isAppliedPendingSuggestion(sugg)) return null;
   const ac = sugg.appliedChange;
   return {
     id: ac.anchorId,

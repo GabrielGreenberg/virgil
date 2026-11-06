@@ -34,3 +34,51 @@ export function isResolvedSuggestion(record: object): boolean {
   const r = record as { kind?: unknown; status?: unknown };
   return r.kind === "suggestion" && typeof r.status === "string" && isResolvedSuggestionStatus(r.status);
 }
+
+/**
+ * The suggestion status vocabulary — the ONE spelling of the union both stored
+ * suggestion families (`RevisionSuggestionCard`, `CutterSuggestionCard`) carry
+ * (task 1499). `pending` is the drafted, unapplied stage the auto-apply driver
+ * looks for; `applied` is spliced into the paper as a blue, revertable range
+ * awaiting Keep; `stale` means the paragraph drifted so the splice could not
+ * land; `accepted` / `rejected` are terminal (see above).
+ */
+export const SUGGESTION_STATUSES = [
+  "pending",
+  "applied",
+  "stale",
+  ...RESOLVED_SUGGESTION_STATUSES,
+] as const;
+export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
+
+/** The members of `T` that declare an `appliedChange`, with it present. */
+export type AppliedPending<T> = T extends unknown
+  ? "appliedChange" extends keyof T
+    ? T & { appliedChange: NonNullable<T["appliedChange" & keyof T]> }
+    : never
+  : never;
+
+/**
+ * "Is this an APPLIED PENDING change?" — the ONE spelling (task 1499).
+ *
+ * A stored suggestion (either family) whose status is `applied` AND which
+ * carries the `appliedChange` descriptor of its live splice. That is the exact
+ * set that owns a blue `pending-ai-change` range: the pill and Keep-all /
+ * Revert-all target it, the auto-apply driver serializes one per paragraph
+ * against it, the reload pass re-stamps its marks, and the reapers keep its
+ * anchors alive. Those readers once each re-spelled the conjunction; a census
+ * (`applied-pending-predicate-census.test.ts`) now fails a new inline copy.
+ *
+ * Generic over the record so a caller keeps its own card type: a card union
+ * narrows to its members that CAN carry the descriptor (a comment drops out),
+ * with the descriptor narrowed to present.
+ */
+export function isAppliedPendingSuggestion<
+  T extends { kind?: unknown; status?: unknown; appliedChange?: unknown },
+>(record: T): record is AppliedPending<T> {
+  return (
+    record.kind === "suggestion" &&
+    record.status === "applied" &&
+    !!record.appliedChange
+  );
+}

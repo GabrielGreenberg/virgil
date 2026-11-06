@@ -111,7 +111,7 @@ const deleteAc: AppliedChangeDescriptor = {
 function makeDeps(
   hasApplied: boolean,
   applied: AppliedChangeDescriptor = ac,
-): PendingChangeCardDeps<"accepted" | "applied" | "rejected"> {
+): PendingChangeCardDeps {
   return {
     getAppliedChange: (id: string) =>
       hasApplied && id === "c1" ? applied : undefined,
@@ -119,8 +119,6 @@ function makeDeps(
     setArchived: vi.fn(),
     setAppliedChange: vi.fn(),
     family: "revision-suggestion",
-    acceptedStatus: "accepted",
-    rejectedStatus: "rejected",
   };
 }
 
@@ -464,8 +462,6 @@ function makeApplyDeps() {
     setSuggestionStatus: vi.fn(),
     setAppliedChange: vi.fn(),
     generateAnchorId: () => "anc-new",
-    appliedStatus: "applied" as const,
-    staleStatus: "stale" as const,
   };
 }
 
@@ -682,7 +678,7 @@ function makeInsertDeps(
         appliedChange: AppliedChangeDescriptor | undefined;
       }
     | undefined,
-): InsertBelowCardDeps<"accepted" | "applied" | "rejected"> {
+): InsertBelowCardDeps {
   const record = suggestion
     ? {
         card: makeSuggestion({
@@ -712,7 +708,6 @@ function makeInsertDeps(
     setSuggestionStatus: vi.fn(),
     setArchived: vi.fn(),
     setAppliedChange: vi.fn(),
-    acceptedStatus: "accepted",
   };
 }
 

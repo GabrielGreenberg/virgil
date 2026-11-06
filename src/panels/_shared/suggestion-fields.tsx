@@ -54,16 +54,11 @@ import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 import { cardPrimaryFieldProps } from "@/lib/card-primary-field";
+import type { SuggestionStatus } from "@/cards/suggestion-status";
 
-/** The two cards share a
- *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
- *  `applied`/`stale` are flag-ON-only (pending-changes-flag). */
-export type SuggestionStatus =
-  | "pending"
-  | "applied"
-  | "stale"
-  | "accepted"
-  | "rejected";
+/** The two cards share one status union, owned by the dependency-free leaf
+ *  (task 1499). `applied`/`stale` are flag-ON-only (pending-changes-flag). */
+export type { SuggestionStatus };
 export type SuggestionAuthor = "human" | "ai";
 
 /** `accepted` is the one member with a semantic token behind it — it is the
