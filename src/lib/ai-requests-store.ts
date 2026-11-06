@@ -51,6 +51,7 @@ import {
 import { publishAiRequests } from "@/lib/ai-request-events";
 import { UNKNOWN_AI_REQUEST_KIND } from "@/lib/ai-request-kind";
 import { AI_REQUEST_STATUSES, isAiRequestStatus } from "@/lib/ai-request-open";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 
 /**
  * The one spelling of the sidecar filename — deliberately module-PRIVATE.
@@ -243,6 +244,56 @@ export function isAiRequestsWriteRefused(
   r: AiRequestsWriteResult,
 ): r is { kind: "no-handle" } | { kind: "read-only" } | { kind: "failed"; error: unknown } {
   return r.kind === "no-handle" || r.kind === "read-only" || r.kind === "failed";
+}
+
+/**
+ * What the refusal notice calls this file — the inbox's ONE user-facing noun
+ * (task 1500), the Virgil bar's own label for it ("AI requests"). It reads in
+ * every sentence `document-interruption.ts` composes around it ("couldn't save
+ * your AI requests", "couldn't read this paper's AI requests").
+ *
+ * Before this, the same file was named three ways ("AI request", "AI request
+ * list", "request for Virgil") by whichever door failed — and since the FIRST
+ * refusal for a doc is the one the notice describes, the user met a different
+ * name for the same thing depending on which door that was. The noun is owned
+ * here, as `project-bib.ts` owns `BIB_REFUSAL_NOUN`; publishers go through the
+ * two reporters below and never pass free text.
+ */
+export const AI_REQUESTS_REFUSAL_NOUN = "AI requests";
+
+/**
+ * Publish a refused inbox WRITE to the one sidecar-refusal channel. A no-op for
+ * any result that is not a refusal, so every write door — the hook's optimistic
+ * mutation and each bridge door — calls it unconditionally with what
+ * {@link mutateAiRequests} resolved.
+ */
+export function reportAiRequestsWriteRefusal(
+  docId: string | null | undefined,
+  result: AiRequestsWriteResult,
+): void {
+  if (!isAiRequestsWriteRefused(result)) return;
+  recordSidecarRefusal({
+    docId,
+    what: AI_REQUESTS_REFUSAL_NOUN,
+    reason: result.kind === "failed" ? "failed" : result.kind,
+    detail:
+      result.kind === "failed" && result.error instanceof Error
+        ? result.error.message
+        : undefined,
+  });
+}
+
+/** Publish a FAILED inbox read (transient IO, or a corrupt/truncated file). */
+export function reportAiRequestsReadFailure(
+  docId: string | null | undefined,
+  err: unknown,
+): void {
+  recordSidecarRefusal({
+    docId,
+    what: AI_REQUESTS_REFUSAL_NOUN,
+    reason: "unreadable",
+    detail: err instanceof Error ? err.message : undefined,
+  });
 }
 
 /**

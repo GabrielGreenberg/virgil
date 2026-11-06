@@ -503,6 +503,22 @@ describe("census: nothing outside the authority names ai-requests.json", () => {
     }
   });
 
+  it("the inbox's refusal speaks in ONE noun, through the store's reporters (task 1500)", () => {
+    // Three doors once named the same file three ways ("AI request", "AI
+    // request list", "request for Virgil") from a COPIED reporter body. Any
+    // file that talks to the inbox store publishes refusals only through
+    // `reportAiRequestsWriteRefusal` / `reportAiRequestsReadFailure`.
+    const offenders: string[] = [];
+    for (const file of PROD_FILES) {
+      const r = rel(file);
+      if (r === "src/lib/ai-requests-store.ts") continue;
+      const c = commentsStripped(fs.readFileSync(file, "utf8"));
+      if (!/from\s+["']@\/lib\/ai-requests-store["']/.test(c)) continue;
+      if (/\brecordSidecarRefusal\s*\(/.test(c)) offenders.push(r);
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("collab.json's writer reaches storage only through its authority (task 872)", () => {
     // The hook used to read OUTSIDE the queue then `writeSidecar`, and its
     // unload release wrote the last-polled snapshot with no read at all.

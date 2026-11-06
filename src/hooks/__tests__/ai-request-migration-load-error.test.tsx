@@ -75,6 +75,7 @@ import {
 } from "@/lib/sidecar-refusal";
 import { describeSidecarRefusal } from "@/lib/document-interruption";
 import { publishAiRequests } from "@/lib/ai-request-events";
+import { AI_REQUESTS_REFUSAL_NOUN } from "@/lib/ai-requests-store";
 import { SIDECAR_CHANGED_EVENT } from "@/lib/sidecar-watcher";
 
 const DOC = "doc-679";
@@ -197,7 +198,7 @@ describe("useAiRequests on a failed initial read", () => {
     const refusal = getSidecarRefusal(DOC);
     expect(refusal?.reason).toBe("unreadable");
     expect(refusal?.refusals).toBe(1);
-    expect(refusal?.what).toBe("AI request list");
+    expect(refusal?.what).toBe(AI_REQUESTS_REFUSAL_NOUN);
 
     // …and the band says "couldn't read", not "couldn't save": nothing was
     // lost, the user is simply being shown less than the file holds.
