@@ -714,17 +714,49 @@ function markStepSpan(step: Step, doc: PMNode): { from: number; to: number } {
   return { from: pos, to: pos + (doc.nodeAt(pos)?.nodeSize ?? 1) };
 }
 
+/**
+ * Record a content edit over `[from, to)` (in `c.newDoc`) the way a text
+ * replace records one: every block the span touches goes into
+ * `contentChangedUuids`, and every enclosing example into
+ * `exampleContentChangedUuids`. A mark step changes a block's CONTENT (its
+ * formatting) without moving any boundary, so without this the per-block /
+ * per-example content channels never heard about a bold or an italic — an open
+ * Example card kept the un-formatted text and its next whole-block write-back
+ * reverted the formatting (task 1494). O(span): `nodesBetween` stops at each
+ * textblock, so it never descends into inline content.
+ */
+function noteContentSpan(c: StepCoords, from: number, to: number, sink: DiffSink): void {
+  const attribute = (pos: number) => {
+    const uuid = nearestAnchorableUuid(c.newDoc, pos);
+    if (uuid) sink.contentChangedUuids.add(uuid);
+    const exUuid = nearestExampleBlockUuid(c.newDoc, pos);
+    if (exUuid) sink.exampleContentChangedUuids.add(exUuid);
+  };
+  attribute(from);
+  if (to <= from) return;
+  c.newDoc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    attribute(pos + 1);
+    return false;
+  });
+}
+
 function inspectMarkStep(
   step: AddMarkStep | AddNodeMarkStep | RemoveMarkStep | RemoveNodeMarkStep,
   c: StepCoords,
   sink: DiffSink,
   adding: boolean,
 ): void {
+  const { from, to } = markStepSpan(step, c.stepDoc);
+  // Every mark — formatting and linkedAnchor alike — is content of the blocks
+  // it spans. Recorded in `newDoc` space (inner-biased, so the span never
+  // widens onto a neighbour inserted by a later step).
+  const fromInNew = c.forward.map(from, 1);
+  noteContentSpan(c, fromInNew, Math.max(fromInNew, c.forward.map(to, -1)), sink);
   if (step.mark.type.name !== "linkedAnchor") return;
   const attrs = step.mark.attrs as { anchorId?: string; kind?: string };
   const id = attrs.anchorId ?? "";
   if (!id) return;
-  const { from, to } = markStepSpan(step, c.stepDoc);
   // The span is in `c.stepDoc`; record it in the side's contract space. Stored
   // raw, an added anchor whose transaction went on to edit EARLIER in the
   // document landed in the canonical anchor index off by the later steps'
