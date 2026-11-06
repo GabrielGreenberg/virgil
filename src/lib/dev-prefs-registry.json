@@ -58,5 +58,9 @@
       "strategy": "whitelist",
       "whitelist": ["colOrder"]
     }
-  ]
+  ],
+  "contractSuites": {
+    "_comment": "The promotion contract gate (task 1488; tools/sync-defaults.sh runs it). tools/check-prefs-coverage.mjs runs on EVERY promotion; a promoted defaults file listed here ALSO runs its vitest suites. List a suite only when a promoted VALUE can fail it — the promoter already closes each target's vocabulary and value types.",
+    "src/hooks/useViewPrefs.defaults.json": ["src/components/__tests__/view-menu-registry-source.test.ts"]
+  }
 }
