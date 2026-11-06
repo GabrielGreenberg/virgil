@@ -12,6 +12,7 @@ import {
   type WindowStartup,
 } from "@/lib/multi-window/window-liveness";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
+import { registerDocForget } from "@/lib/doc-forget";
 import {
   subscribeToStorageKey,
   writeStorageIfChanged,
@@ -57,6 +58,7 @@ import {
   adoptLegacyCardFloats as adoptLegacyCardFloatsIn,
   closeAllCardFloats,
   closeCardFloat,
+  forgetCardFloatOwner,
   legacyFlatToCardFloats,
   migrateCardFloats,
   setCardFloatRect,
@@ -738,6 +740,60 @@ function notifySameWindow() {
     }
   }
 }
+
+// ── A forgotten document's popped floats (task 1491) ─────────────────────
+// `cardFloats` is a registry keyed by owning doc (task 1400), and a slice is
+// removed when it EMPTIES — but nothing removed it when the DOCUMENT went
+// away. A deleted paper's keys and rects stayed in the window blob forever,
+// and "Reset example" (same fixed id) reopened the discarded copy's floats.
+// So `purgeDoc`'s in-memory census (doc-forget.ts) carries this store too:
+//  - every live `useViewPrefs` in THIS window drops the slice through its own
+//    `update`, so memory and the next persist agree;
+//  - every stored per-window blob is scrubbed directly — closed windows' blobs
+//    are where the leak lived, and they have no live hook to do it;
+//  - live PEER windows hear `card-floats-forgotten` on the bus and drop their
+//    in-memory copy, so their next persist cannot write it back. (Where the
+//    bus is absent — older Safari/Firefox — a peer's in-memory copy may be
+//    re-persisted to that peer's own blob; it is dropped by the peer's next
+//    forget of the same id. Accepted: the doc is gone, so no pane renders it.)
+const cardFloatForgetters = new Set<(docId: string) => void>();
+
+/** Remove `docId`'s slice from every stored per-window blob. Exported for
+ *  tests. */
+export function scrubCardFloatsFromWindowBlobs(docId: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(WINDOW_STORAGE_PREFIX) && !k.endsWith(QUARANTINE_SUFFIX)) keys.push(k);
+    }
+    for (const key of keys) {
+      const raw = localStorage.getItem(key);
+      if (raw == null || !raw.includes("cardFloats")) continue;
+      let blob: unknown;
+      try {
+        blob = JSON.parse(raw);
+      } catch {
+        continue; // a corrupt blob is the load door's to quarantine
+      }
+      if (blob === null || typeof blob !== "object" || Array.isArray(blob)) continue;
+      const floats = (blob as Record<string, unknown>).cardFloats;
+      if (floats === null || typeof floats !== "object" || Array.isArray(floats)) continue;
+      if (!(docId in floats)) continue;
+      const next = forgetCardFloatOwner(floats as CardFloats, docId);
+      localStorage.setItem(key, JSON.stringify({ ...(blob as object), cardFloats: next }));
+    }
+  } catch {
+    // Best-effort: a blocked store leaves residue no pane renders.
+  }
+}
+
+registerDocForget("view-prefs-card-floats", (docId) => {
+  for (const drop of cardFloatForgetters) drop(docId);
+  scrubCardFloatsFromWindowBlobs(docId);
+  publish({ type: "card-floats-forgotten", docId });
+});
 
 function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
   const out = {} as Pick<ViewPrefs, GlobalPrefKey>;
@@ -1997,6 +2053,25 @@ export function useViewPrefs(opts?: {
     },
     [update],
   );
+
+  // A forgotten document's slice is dropped from THIS instance's state — by
+  // the doc-forget hook in this window, or by a peer's bus event (task 1491;
+  // see `cardFloatForgetters`). The listener lives for the hook's mount.
+  useEffect(() => {
+    const drop = (docId: string) =>
+      update((p) => {
+        const cardFloats = forgetCardFloatOwner(p.cardFloats, docId);
+        return cardFloats === p.cardFloats ? p : { ...p, cardFloats };
+      });
+    cardFloatForgetters.add(drop);
+    const unsub = subscribe((e) => {
+      if (e.type === "card-floats-forgotten") drop(e.docId);
+    });
+    return () => {
+      cardFloatForgetters.delete(drop);
+      unsub();
+    };
+  }, [update]);
 
   /** Hand the pre-1400 unowned popout list (if any) to `owner` — the layout
    *  calls this with the doc active at boot. No-op when there is none. */

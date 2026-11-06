@@ -59,6 +59,7 @@ const LEDGER: Record<string, Row> = {
   "lib/tab-hidden.ts#hiddenSubscribers": { scope: "app-wide", why: "browser-tab visibility edge" },
   "lib/tab-hidden.ts#returnSubscribers": { scope: "app-wide", why: "browser-tab return edge" },
   "hooks/useViewPrefs.ts#sameWindowListeners": { scope: "app-wide", why: "view prefs are one app-wide localStorage value" },
+  "hooks/useViewPrefs.ts#cardFloatForgetters": { scope: "app-wide", why: "each view-prefs instance holds the WINDOW's owner-keyed cardFloats registry; the forget names its docId and drops only that slice (task 1491)" },
   "hooks/useWordCountConfig.ts#listeners": { scope: "app-wide", why: "the word-count include-set is one app-wide localStorage pref (task 1224)" },
   "components/confirm-suppression.ts#listeners": { scope: "app-wide", why: "\"don't show again\" is a global pref" },
   "lib/print-intent.ts#subscribers": { scope: "app-wide", why: "one window print at a time" },
