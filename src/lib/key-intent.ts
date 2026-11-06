@@ -22,7 +22,8 @@
  * role=button row — asks it, never a bare `key === "Enter"`, so the Enter that
  * picks an IME candidate can never also commit the field it is typed in.
  * Modifiers and repeat stay the CALLER's question (`isCommitEnter(e) &&
- * e.metaKey`; `isPlainEnter` for dialogs). Pinned by
+ * e.metaKey`); the unmodified answer has its own spelling,
+ * `isPlainCommitEnter` (task 1496), which every CONVERTING door asks. Pinned by
  * `enter-key-census.test.ts`: this file is the only one that compares a key to
  * "Enter".
  *
@@ -69,6 +70,21 @@ export function isImeComposing(e: ImeProbe): boolean {
  */
 export function isCommitEnter(e: ImeProbe & { key: string }): boolean {
   return e.key === "Enter" && !isImeComposing(e);
+}
+
+/**
+ * A commit Enter with NO modifier held (task 1496) — the second spelling, for a
+ * door whose Enter CONVERTS something (a typed `\command`, a popup row) rather
+ * than submitting a field. Shift/Ctrl/Cmd/Alt+Enter are distinct keys with
+ * their own meanings (a hard break, an app command); a converting door that
+ * answered them would swallow those meanings. Repeat stays the caller's
+ * question. Readers: the slash surface's two Enter doors, `isPlainEnter`
+ * (dialogs), the menu keyboard controller.
+ */
+export function isPlainCommitEnter(
+  e: ImeProbe & { key: string } & Pick<KeyboardEvent, "shiftKey" | "metaKey" | "ctrlKey" | "altKey">,
+): boolean {
+  return isCommitEnter(e) && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
 }
 
 /**

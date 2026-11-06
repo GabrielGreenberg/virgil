@@ -13,7 +13,7 @@ import {
   slashDisabledNames,
   stepEnabledIndex,
 } from "./slash-applicability";
-import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
+import { isCancelEscape, isPlainCommitEnter } from "@/lib/key-intent";
 import { claimGestureKey } from "@/lib/pane-resize/pointer-invariants";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
@@ -318,7 +318,9 @@ export const SlashPopupExtension = Extension.create({
               return true;
             }
 
-            if (isCommitEnter(event) || event.key === "Tab") {
+            // PLAIN Enter only (task 1496) — a modified Enter is a hard break or
+            // an app command, not "run the highlighted row".
+            if (isPlainCommitEnter(event) || event.key === "Tab") {
               if (cur.filtered.length === 0) return false;
               event.preventDefault();
               // The key is CONSUMED either way, and that is a decision rather
