@@ -43,7 +43,7 @@
  * — into the general statement instead of leaving it beside it.
  */
 
-import { isCommitEnter, isDeliberateKeyPress } from "@/lib/key-intent";
+import { isDeliberateKeyPress, isPlainCommitEnter } from "@/lib/key-intent";
 
 export type DialogEnterVerdict =
   /** The shell activates the dialog's registered cued default. */
@@ -149,11 +149,10 @@ export function resolveDialogEnter(q: DialogEnterQuery): DialogEnterVerdict {
 
 /** Modifier / repeat / IME shapes that are never a dialog's `Enter`. */
 export function isPlainEnter(e: KeyboardEvent): boolean {
-  if (!isCommitEnter(e)) return false;
   // Shift+Enter is a DISTINCT key with its own muscle memory (a hard break in
   // ProseMirror, "send without a newline" in a composer). A cue promises what a
   // plain Return does, so it must not answer a chord.
-  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+  if (!isPlainCommitEnter(e)) return false;
   // A HELD Enter must not repeat-fire a confirm. Pre-389 that could only happen
   // with the button already focused, where the browser owns the repeat; now the
   // shell answers from anywhere, so it owns the rule.
