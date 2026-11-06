@@ -20,13 +20,20 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import { CARD_KINDS, cardKindFromRecord, isArchivable } from "@/cards/predicates";
+import {
+  CARD_KINDS,
+  SUGGESTION_KINDS,
+  cardKindFromRecord,
+  isArchivable,
+  panelForCardKind,
+} from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
 import type { PanelKind } from "@/panels/_shared/types";
 import { ARCHIVE_ORIGIN_PANELS } from "@/lib/archive-origin";
 import { SIDECAR_COLLECTIONS } from "@/lib/sidecar-merge";
 import { CARD_KIND_SIDECAR } from "@/lib/host-writability";
 import { LEGACY_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
+import { CARD_ATOMS } from "@/lib/tiptap/atom-registry";
 import {
   FAMILY_MEANS_DELETION,
   SUGGESTION_BLOCK_TEXT,
@@ -46,6 +53,7 @@ const tables = JSON.parse(
 ) as {
   cardSidecars: Record<string, SidecarRow>;
   archiveOriginPanels: string[];
+  atomBearingPanels: string[];
   archivableKinds: string[];
   bodyFields: { plain: string[]; richOnly: string[]; richMirror: string[] };
   sidecarCollections: Record<string, { key: string; idFields: string[] }[]>;
@@ -209,9 +217,30 @@ describe("card_tables.json suggestionLanding ↔ FAMILY_MEANS_DELETION", () => {
     expect(landing.familyMeansDeletion).toEqual({ ...FAMILY_MEANS_DELETION });
   });
 
+  // task 1486: apply_response.SUGGESTION_KINDS is this table's KEY SET, so the
+  // keys must be exactly the app's suggestion family (Python kind tokens).
+  it("its key set is the app's SUGGESTION_KINDS (apply_response derives its family from it)", () => {
+    expect(Object.keys(landing.familyMeansDeletion).sort()).toEqual(
+      [...SUGGESTION_KINDS].map(pyKind).sort(),
+    );
+  });
+
   it("the refusal sentence is the app's no-replacement text", () => {
     expect(landing.noReplacementText).toBe(
       SUGGESTION_BLOCK_TEXT["no-replacement"],
     );
+  });
+});
+
+// Task 1486 — apply_response.ATOM_BEARING_PANELS (archive/move refuse, create
+// revises) reads `atomBearingPanels`; the app's own statement of "which cards
+// are card-bearing atoms" is the atom registry's CARD_ATOMS.
+describe("card_tables.json atomBearingPanels ↔ CARD_ATOMS", () => {
+  it("is exactly the card-bearing atoms' panels, in Python panel tokens", () => {
+    const pyPanelOf = (ts: PanelKind | null): string | undefined =>
+      rows.find(([, r]) => r.tsPanel === ts)?.[0];
+    const want = CARD_ATOMS.map((m) => pyPanelOf(panelForCardKind(m.kind)));
+    for (const [i, p] of want.entries()) expect(p, CARD_ATOMS[i]!.kind).toBeDefined();
+    expect([...tables.atomBearingPanels].sort()).toEqual([...want].sort());
   });
 });

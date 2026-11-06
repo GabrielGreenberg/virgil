@@ -20,6 +20,11 @@
     "  suggestionLanding   may a suggestion's replacement land? (task 957) familyMeansDeletion = FAMILY_MEANS_DELETION and",
     "                      noReplacementText = SUGGESTION_BLOCK_TEXT['no-replacement'] (src/links/pending-change-actions.ts):",
     "                      apply_response's accept refuses an empty replacement for a family where it does not mean a cut.",
+    "                      Its KEY SET is also apply_response.SUGGESTION_KINDS (task 1486) — pinned to the app's SUGGESTION_KINDS.",
+    "  atomBearingPanels   the panels whose cards are card-bearing ATOMS (id = a .tex \\v*id marker; task 1486) —",
+    "                      CARD_ATOMS.map(m => panelForCardKind(m.kind)) (src/lib/tiptap/atom-registry.ts), in Python panel",
+    "                      tokens via cardSidecars' tsPanel. apply_response.ATOM_BEARING_PANELS: archive/move refuse them,",
+    "                      create_card revises rather than creates.",
     "Python kind tokens are card_by_id.card_kind's (a revisions comment is the legacy `comment`; spine `revision-comment`)."
   ],
   "cardSidecars": {
@@ -33,6 +38,7 @@
     "archive": { "file": "archive.json", "listKey": "snippets", "writeback": false, "tsPanel": "archive" },
     "examples": { "file": "examples.json", "listKey": "examples", "writeback": false, "tsPanel": "examples" }
   },
+  "atomBearingPanels": ["footnotes", "citations"],
   "archiveOriginPanels": ["notes", "todos", "cutter", "revisions", "reports"],
   "archivableKinds": ["archive", "citation", "comment", "cutter-comment", "cutter-suggestion", "footnote", "note", "report", "report-request", "revision-suggestion", "todo"],
   "bodyFields": {
