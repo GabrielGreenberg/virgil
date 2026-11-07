@@ -2032,8 +2032,8 @@ Under the default cards-right / tools-left layout, the LEFT gutter is not a
 panel and wears none of the panel vocabulary below: **no pod, no card frame,
 no shadow, no border** — its tools and lists are written straight onto the
 manila (`--background`). Its one raised layer is each half's icon row, a lozenge
-(`--gutter-lozenge-bg`, halfway from the canvas to the Virgil bar, with
-`--card-shadow-ambient`), so the controls read as chrome and each half starts
+(`--gutter-lozenge-bg` with `--gutter-lozenge-shadow`, a firmer 1px ring over the
+resting depth's soft drop), so the controls read as chrome and each half starts
 where a lozenge does. Headings are one voice in both halves: 12px/600 sentence case,
 `--foreground`; rows are the UI sans at
 `text-sm` (the Outline's voice), two-line clamped, `--muted` when settled (a

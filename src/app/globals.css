@@ -184,9 +184,11 @@
      gutter's content (the left gutter's lists, the right gutter's cards). The
      gutter heads' controls sit on the card's top edge, this far down. */
   --gutter-inset: 8px;
-  /* The gutter's toolbar lozenges: a raised step halfway between the canvas
-     and the Virgil bar, so they lift off the sand without matching the bar. */
-  --gutter-lozenge-bg: color-mix(in srgb, var(--background) 50%, var(--topbar-bg));
+  /* The gutter's toolbar lozenges: a step between the panel paper and the
+     canvas/Virgil-bar midpoint, ringed a little harder than the resting depth
+     so they stay legible on the sand at this pale a fill. */
+  --gutter-lozenge-bg: color-mix(in srgb, var(--pod-panel) 50%, color-mix(in srgb, var(--background) 50%, var(--topbar-bg)));
+  --gutter-lozenge-shadow: 0 0 0 1px rgba(70,50,30,0.12), 0 1px 3px rgba(70,50,30,0.07);
   /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
      `--pod-gap` was answering two different questions, and only one of them
      is a gutter. (a) How wide is the resize gutter / how far is a pod inset
@@ -6916,6 +6918,9 @@ body.perf-contain .static-borrowed-text {
    is. Ink only — the one hover FILL is `.hover-on-light`, worn in JSX. */
 .tool-gutter {
   position: sticky;
+  /* Above the column's top fade (z-20) and the text card's corner mask (z-30),
+     which would otherwise wash and bite the tools lozenge. */
+  z-index: 31;
   /* The tools lozenge sits on the text card's top edge — in flow (the margin)
      and pinned (the sticky offset) alike. */
   top: var(--gutter-inset);
@@ -6925,7 +6930,9 @@ body.perf-contain .static-borrowed-text {
   height: calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--gutter-inset));
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Clips like `hidden`, with room for the lozenges' shadow at the edges. */
+  overflow: clip;
+  overflow-clip-margin: 4px;
   /* The top half's share of the split; the store's value is written over it
      inline (and per frame by the divider drag). */
   --tool-gutter-split: 0.5;
@@ -6982,9 +6989,11 @@ body.perf-contain .static-borrowed-text {
   align-items: center;
   gap: 2px;
   padding: 3px;
+  /* Keeps the ring clear of the drag gap, which paints over the gutter's edge. */
+  margin-right: 2px;
   background: var(--gutter-lozenge-bg);
   border-radius: var(--pod-radius);
-  box-shadow: var(--card-shadow-ambient);
+  box-shadow: var(--gutter-lozenge-shadow);
 }
 /* A lit gutter toggle reads at a glance: the azure wash PLUS a thin azure
    ring (Gabriel, round 3: "not just the highlight color"). */

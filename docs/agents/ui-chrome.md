@@ -112,7 +112,7 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`
      on the gutter, `commit` stores `split` (clamped 0.15–0.85) once. It paints
      nothing at rest: each half's icon row is a raised lozenge
-     (`--gutter-lozenge-bg`, `--card-shadow-ambient`), so the list lozenge is
+     (`--gutter-lozenge-bg`, `--gutter-lozenge-shadow`), so the list lozenge is
      the seam, and it stays when a half is closed.
   The icon set honours the host's `visiblePanels` (the Reader's whitelist).
 - **One inset frames the text card** (round 3, Gabriel's notes): `--gutter-inset`
