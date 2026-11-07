@@ -21,6 +21,7 @@ import { sidecarWriteDebounceMs, sidecarWriteMaxWaitMs } from "@/lib/sidecar-val
 import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
 import { onTabHidden } from "@/lib/tab-hidden";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { createSidecarWorkPublisher } from "@/lib/unsaved-work";
 import { useSidecarReread } from "./useSidecarReread";
 import {
   getActiveHandle,
@@ -334,6 +335,26 @@ export function usePersistentState<S>(
     return writeCoalescer.pending || inFlightRef.current > 0;
   }, [writeCoalescer]);
 
+  // ── PUBLISHED TO THE DOCUMENT (task 1503) ──────────────────────────────────
+  // "This document holds work not yet on disk" is ONE fact on the unsaved-work
+  // channel, read by the leave prompt, the save badge and the reload door —
+  // and until 1503 only the bundle writer published it, so a card body in this
+  // debounce (or in flight) got no leave prompt. The channel's member is this
+  // instance's dirty predicate PLUS a write that FAILED and has not since
+  // landed: a refused card edit is in memory only, exactly the state a leave
+  // prompt exists for. (The re-read guard above deliberately keeps the
+  // narrower `hasPendingWrite` — a failed write is not one disk is about to
+  // receive.) Restated after every transition; O(1) and edge-only.
+  const lastWriteFailedRef = useRef(false);
+  const workPublisherRef = useRef<ReturnType<typeof createSidecarWorkPublisher> | null>(null);
+  const publishWork = useCallback(
+    (forDoc: string | null | undefined): void => {
+      workPublisherRef.current ??= createSidecarWorkPublisher();
+      workPublisherRef.current.sync(forDoc, hasPendingWrite() || lastWriteFailedRef.current);
+    },
+    [hasPendingWrite],
+  );
+
   // ── THE MERGE BASE (task 719) ──────────────────────────────────────────────
   // What this instance last knew the FILE to hold: its load, its last adopted
   // external re-read, or its own last submitted payload. It is the third input
@@ -409,6 +430,9 @@ export function usePersistentState<S>(
     hasMutatedRef.current = false;
     loadedRef.current = false;
     loadErrorRef.current = false;
+    // A failure belongs to the document it was written for (task 1503).
+    lastWriteFailedRef.current = false;
+    publishWork(docId);
     heldReconcileRef.current = null;
     // A base belongs to ONE document. Cleared on every switch, and re-earned
     // only by a read that actually resolved (task 719).
@@ -535,6 +559,7 @@ export function usePersistentState<S>(
 
   const persist = useCallback(
     async (s: S) => {
+      let forDoc: string | null | undefined = docId;
       try {
         // ── TWO DOORS, ONE QUEUE ────────────────────────────────────────────
         // `update()` and `persist()` are both write doors, and only `update()`
@@ -604,6 +629,8 @@ export function usePersistentState<S>(
         // point between the two; decremented in `finally`, so a refusal or a
         // throw releases it exactly as a landing does.
         inFlightRef.current += 1;
+        forDoc = h.docId;
+        publishWork(forDoc);
         // ── A WRITE IS A SPLICE, NEVER A REBUILD (task 719) ────────────────
         // The ONE merged write door (`sidecar-merge.ts`), shared with the three
         // hooks that keep their own bespoke persist. All this hook supplies is
@@ -623,8 +650,14 @@ export function usePersistentState<S>(
           if (baselineRef.current === base && pendingRef.current === null) {
             convergeOnWrite<S>(filename, base, written.ticket, s, written.wrote, setState);
           }
+          lastWriteFailedRef.current = false;
         } catch (err) {
-          if (isStalePipelineError(err)) return;
+          // A superseded pipeline: the document is gone, nothing is owed.
+          if (isStalePipelineError(err)) {
+            lastWriteFailedRef.current = false;
+            return;
+          }
+          lastWriteFailedRef.current = true;
           console.error(`Failed to save ${errorLabel ?? filename}:`, err);
           // … and SAY so (task 637, over task 630's channel). A `console.error`
           // is not a report: this primitive owns fifteen sidecars, thirteen of
@@ -654,9 +687,14 @@ export function usePersistentState<S>(
         // is quiet — otherwise the deferral is the discard all over again, one
         // branch over (task 719).
         maybeReplayDeferredRead();
+        // Every exit restates the document's dirt (task 1503): landed, refused,
+        // suppressed, or superseded by a newer armed payload.
+        publishWork(forDoc);
       }
     },
     [
+      docId,
+      publishWork,
       resolveHandle,
       filename,
       errorLabel,
@@ -713,9 +751,12 @@ export function usePersistentState<S>(
       } else {
         pendingRef.current = next;
         writeCoalescer.arm();
+        // Clean→dirty edge on the channel (task 1503); O(1), and a repeat
+        // keystroke in the burst returns on one lookup.
+        publishWork(docId);
       }
     },
-    [persist, debounceMs, writeCoalescer, setState],
+    [persist, debounceMs, writeCoalescer, setState, publishWork, docId],
   );
   // The coalescer's fire: hand the parked payload to the current `persist`.
   useEffect(() => {

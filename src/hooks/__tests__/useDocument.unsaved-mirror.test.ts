@@ -75,6 +75,7 @@ import {
   clearUnsavedWork,
   getUnsavedWork,
   hasUnlandedWork,
+  noteSidecarWork,
 } from "@/lib/unsaved-work";
 import { isWriteProtected, clearPreservationNotice, recordPreservationRefusal } from "@/lib/preservation-notice";
 import { __resetTickersForTests } from "@/lib/emergency-mirror";
@@ -282,6 +283,35 @@ describe("the unload prompt asks the CHANNEL, not the debounce handle", () => {
         window.dispatchEvent(ev);
       });
       expect(ev.defaultPrevented).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("prompts for a CARD edit not yet on disk — and starts no bundle write for it (task 1503)", async () => {
+    vi.useFakeTimers();
+    try {
+      renderHook(() => useDocument(), { wrapper: withPipeline("doc-1") });
+      await vi.runOnlyPendingTimersAsync();
+      mockWrite.mockClear();
+      // A card sidecar writer holds an edit (armed debounce / in flight); the
+      // model itself is clean. Pre-1503 the prompt asked only the bundle.
+      const card = {};
+      noteSidecarWork("doc-1", card, true);
+      const ev = new Event("beforeunload", { cancelable: true });
+      act(() => {
+        window.dispatchEvent(ev);
+      });
+      expect(ev.defaultPrevented).toBe(true);
+      expect(mockWrite).not.toHaveBeenCalled();
+
+      // Once the card write lands, the leave is silent again.
+      noteSidecarWork("doc-1", card, false);
+      const ev2 = new Event("beforeunload", { cancelable: true });
+      act(() => {
+        window.dispatchEvent(ev2);
+      });
+      expect(ev2.defaultPrevented).toBe(false);
     } finally {
       vi.useRealTimers();
     }

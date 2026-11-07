@@ -28,6 +28,7 @@ import { autosavePauseReason } from "@/lib/autosave-pause";
 import {
   clearUnsavedWork,
   getUnsavedWork,
+  hasUnlandedModelWork,
   hasUnlandedWork,
   noteSaveBlocked,
   noteSaveLanded,
@@ -280,7 +281,7 @@ export function useDocument() {
   const hasWorkToWrite = useCallback(
     () =>
       saveCoalescer.pending ||
-      hasUnlandedWork(docId) ||
+      hasUnlandedModelWork(docId) ||
       pendingDelimitersRef.current !== null,
     [docId, saveCoalescer],
   );
@@ -575,7 +576,7 @@ export function useDocument() {
   useEffect(() => {
     return () => {
       const ticker = mirrorTickerRef.current;
-      if (ticker && hasUnlandedWork(docId)) void ticker.tick({ force: true });
+      if (ticker && hasUnlandedModelWork(docId)) void ticker.tick({ force: true });
       clearUnsavedWork(docId);
     };
   }, [docId]);
@@ -618,9 +619,17 @@ export function useDocument() {
       // whose re-arm has just fired) in which a reload is most expensive and
       // this prompt went silent. `hasUnlandedWork` is cleared by nothing but a
       // write that actually landed.
+      //
+      // TASK 1503 — the PROMPT asks about the whole document, the WRITE about
+      // the bundle. A card edit still in its sidecar debounce (or in flight,
+      // or refused) is work not on disk exactly as a model edit is, and the
+      // channel now carries it (`hasUnlandedWork` = model OR any sidecar
+      // writer); but only model work gives THIS hook a write to start — the
+      // sidecar's own `onTabHidden` flush carries its payload.
+      const modelWork = hasWorkToWrite();
       // save-silent-ok: nothing pending — the ONE predicate, shared with
       // every other flush path since task 392.
-      if (!hasWorkToWrite()) return;
+      if (!modelWork && !hasUnlandedWork(docId)) return;
       // Do NOT disarm the debounce. This handler runs on a leave the user can
       // still CANCEL, and the pre-391 code cleared the timer unconditionally —
       // so choosing "Stay" left the document dirty with no retry armed until
@@ -631,7 +640,7 @@ export function useDocument() {
       const pending = editor && !editor.isDestroyed
         ? editor.getJSON()
         : latestContentRef.current;
-      if (pending) void save(pending);
+      if (modelWork && pending) void save(pending);
       // The mirror makes the loss small; this prompt makes it CHOSEN. Both
       // matter: a native leave-confirmation is the only thing that can stop a
       // reload the user did not understand they were asking for.
@@ -1136,7 +1145,7 @@ export function useDocument() {
         // only witness. A document with nothing to write and nothing
         // outstanding IS saved; one with unlanded work and no model to write
         // it from is the `error` tier the debounce's own arm reports.
-        if (!hasUnlandedWork(docId)) return { landed: true };
+        if (!hasUnlandedModelWork(docId)) return { landed: true };
         return { landed: false, reason: getUnsavedWork(docId)?.reason ?? "error" };
       }
       // KEEP the snapshot (task 557), matching `keepMineOverDisk` above. This

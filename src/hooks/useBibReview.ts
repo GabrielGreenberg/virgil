@@ -11,6 +11,7 @@ import {
 import { useSidecarReread } from "./useSidecarReread";
 import { libraryPaperSidecarWritable } from "@/lib/host-writability";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { createSidecarWorkPublisher } from "@/lib/unsaved-work";
 import type { BibReviewState, BibReviewRequest, BibEntry } from "@/lib/types";
 import {
   getActiveHandle,
@@ -202,6 +203,10 @@ export function useBibReview(
   // SidecarWatcher that already polls this file every 3 s.
   const inFlightRef = useRef(0);
   const hasPendingWrite = useCallback(() => inFlightRef.current > 0, []);
+  // Published to the document's unsaved-work channel while in flight (task
+  // 1503). A refusal is answered to the composer that asked, so only the
+  // in-flight half is this hook's to publish.
+  const [workPublisher] = useState(createSidecarWorkPublisher);
   const { replayDeferred: replayDeferredRead, rereadNow } = useSidecarReread<BibReviewState>({
     docId,
     filename: "bib-review-requests.json",
@@ -262,6 +267,7 @@ export function useBibReview(
       // reaches memory through the one convergence door (task 1078).
       const base = baselineRef.current;
       inFlightRef.current += 1;
+      workPublisher.sync(handle.docId, true);
       try {
         const { wrote, ticket } = await writeSidecarMerged(
           handle,
@@ -284,10 +290,11 @@ export function useBibReview(
         return refuse("failed", err instanceof Error ? err.message : undefined);
       } finally {
         inFlightRef.current -= 1;
+        workPublisher.sync(handle.docId, inFlightRef.current > 0);
         replayDeferredRead();
       }
     },
-    [handle, fetchState, normalize, replayDeferredRead],
+    [handle, fetchState, normalize, replayDeferredRead, workPublisher],
   );
 
   /** Does a row target the same entry as `bibKey`? Under the flag, prefer the
