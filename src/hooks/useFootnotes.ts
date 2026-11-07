@@ -240,6 +240,15 @@ export function useFootnotes(
         }
         lastWriteFailedRef.current = true;
         console.error("Failed to save footnotes:", err);
+        // … and SAY so (task 1516), on the channel `usePersistentState`'s
+        // failed writes already speak from (task 637): a footnote body that
+        // did not land is in memory only, and the panel still shows it.
+        recordSidecarRefusal({
+          docId: handle.docId,
+          what: "footnotes",
+          reason: "failed",
+          detail: err instanceof Error ? err.message : undefined,
+        });
       } finally {
         inFlightRef.current -= 1;
         workPublisher.sync(

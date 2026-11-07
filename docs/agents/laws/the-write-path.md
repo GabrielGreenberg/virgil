@@ -525,6 +525,14 @@ Four rules it earned:
   one whose card write FAILED — reported unlanded and NOT mirrored, honestly.
   STATED RESIDUAL: `RichTextField`'s 250 ms upstream coalescer has no docId in
   hand and is still covered only by its blur/unmount flush.
+  **The channel is the publisher's only memory (task 1516).** A publisher's
+  private "already published for A" cache desynced the moment
+  `clearUnsavedWork(A)` (the external-change Reload — doc and writer stay
+  mounted) forgot A, and the next failed write never re-entered the channel.
+  `sync(A, true)` now always reaches `noteSidecarWork`, whose `set.has` bail
+  keeps the repeat O(1) and silent; `publishedFor` only names the doc to
+  RELEASE on a move. And every sidecar writer's failed write records a
+  `recordSidecarRefusal` (footnotes included), never only a `console.error`.
 - **The phase exists because of ORDER, found by asking what else coalesces.**
   The code pane holds the last 600 ms of typing in CodeMirror and only then
   re-parses it into TipTap; the bundle writer snapshots the live model. Its
