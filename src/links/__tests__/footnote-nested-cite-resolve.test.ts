@@ -3,15 +3,15 @@
 // BIB-F3-01 / CI-F3-01 — jump-to-citation for a `\cite` that lives ONLY inside
 // a footnote body.
 //
-// `resolveLink` used to route through a descendants-only `findInlineAtomPos`,
+// `resolveInlineAtomLink` used to route through a descendants-only `findInlineAtomPos`,
 // which (by ProseMirror design) cannot enter a footnote atom's `attrs.content`
 // JSONContent literal. So a citation cited only inside a `\footnote{...\cite}`
-// resolved to null → the jump arrow no-op'd. The T3/C10 fix makes `resolveLink`
+// resolved to null → the jump arrow no-op'd. The T3/C10 fix makes `resolveInlineAtomLink`
 // delegate to `findInlineAtomPosDeep`: a top-level atom resolves IDENTICALLY to
 // before, but a footnote-nested atom now resolves to the HOST footnote marker
 // (the only scrollable target — the nested atom has no own DOM).
 //
-// These pins drive the REAL `resolveLink` against an Editor mounting
+// These pins drive the REAL `resolveInlineAtomLink` against an Editor mounting
 // StarterKit + Citation + Footnote. The storage stub guards the barrel/storage
 // gotcha (`@/links/links` pulls a few `@/` modules).
 import { describe, it, expect, vi } from "vitest";
@@ -25,7 +25,7 @@ import type { JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Citation } from "@/lib/tiptap/citation";
 import { Footnote } from "@/lib/tiptap/footnote";
-import { resolveLink, type Link as VirgilLink } from "@/links/links";
+import { resolveInlineAtomLink, type Link as VirgilLink } from "@/links/links";
 
 const TOP_ID = "cit-top";
 const NESTED_ID = "cit-nested";
@@ -96,10 +96,10 @@ function mountDoc(): Editor {
   });
 }
 
-describe("resolveLink — footnote-nested citation (BIB-F3-01 / CI-F3-01)", () => {
+describe("resolveInlineAtomLink — footnote-nested citation (BIB-F3-01 / CI-F3-01)", () => {
   it("a TOP-LEVEL cite resolves to its own atom (unchanged behavior)", () => {
     const editor = mountDoc();
-    const res = resolveLink(editor, citationLink(TOP_ID));
+    const res = resolveInlineAtomLink(editor, citationLink(TOP_ID));
     if (!res || res.kind !== "inline-atom") throw new Error("expected an inline-atom resolution");
     const node = editor.state.doc.nodeAt(res.pos);
     expect(node?.type.name).toBe("citation");
@@ -109,7 +109,7 @@ describe("resolveLink — footnote-nested citation (BIB-F3-01 / CI-F3-01)", () =
 
   it("a FOOTNOTE-NESTED cite resolves to the HOST footnote marker (was a no-op)", () => {
     const editor = mountDoc();
-    const res = resolveLink(editor, citationLink(NESTED_ID));
+    const res = resolveInlineAtomLink(editor, citationLink(NESTED_ID));
     // Pre-fix: null (jump dead). Post-fix: the host footnote.
     if (!res || res.kind !== "inline-atom") throw new Error("expected an inline-atom resolution");
     const node = editor.state.doc.nodeAt(res.pos);
@@ -117,7 +117,7 @@ describe("resolveLink — footnote-nested citation (BIB-F3-01 / CI-F3-01)", () =
     expect(node?.attrs.footnoteId).toBe(HOST_FN_ID);
     // The DOM target is the host footnote's superscript marker. The footnote
     // uses a custom nodeView whose span carries `data-footnote-id` (NOT
-    // data-link-id — that's only on the renderHTML fallback), so resolveLink
+    // data-link-id — that's only on the renderHTML fallback), so resolveInlineAtomLink
     // falls back to view.nodeDOM(pos) and hands back the marker span.
     expect(res.domEl).not.toBeNull();
     expect(res.domEl?.classList.contains("footnote-marker")).toBe(true);
@@ -127,7 +127,7 @@ describe("resolveLink — footnote-nested citation (BIB-F3-01 / CI-F3-01)", () =
 
   it("a cite that is nowhere resolves to null", () => {
     const editor = mountDoc();
-    expect(resolveLink(editor, citationLink("ghost"))).toBeNull();
+    expect(resolveInlineAtomLink(editor, citationLink("ghost"))).toBeNull();
     editor.destroy();
   });
 });

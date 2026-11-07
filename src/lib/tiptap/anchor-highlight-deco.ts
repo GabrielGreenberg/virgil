@@ -66,7 +66,8 @@ const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
 
 /** One in-editor NODE/ATOM highlight target — already resolved to live PM
- *  coordinates by the reconciler (via `resolveLink`). The reconciler owns the
+ *  coordinates by the reconciler (the anchor authority's `paintRows`, and
+ *  `resolveInlineAtomLink` for atoms). The reconciler owns the
  *  selection-vs-hover precedence and the attr VALUES; this plugin only paints
  *  what it is handed. Mode-B text ranges are intentionally NOT representable
  *  here (see the module docstring) — they are painted by the reconciler's raw

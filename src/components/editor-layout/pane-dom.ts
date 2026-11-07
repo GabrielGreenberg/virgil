@@ -91,7 +91,7 @@
  * ## Per-CARD lookups take the same scope (task 1458)
  *
  * The per-card lookups (`findOmniEntry`, `openForCard`, `placeSelectedCard`,
- * `jumpToLink`'s card end, `usePlacement`) ask the GENERIC `resolvePaneMarker`
+ * `usePlacement`) ask the GENERIC `resolvePaneMarker`
  * with their own selector — no named door per card attribute. Card ids are
  * unique only per DOCUMENT, so two visible Readers can mount the same one, and
  * every one of these callers has its owner in hand: the clicked pane's
@@ -100,7 +100,7 @@
  *
  * What they DO share is the visibility rung. Since task 873 the per-document id
  * lookups that used to take the first match off `document` — `findOmniEntry`,
- * `openForCard`'s presence check and scroll targets, `jumpToLink`'s card end —
+ * `openForCard`'s presence check and scroll targets —
  * ask the GENERIC `resolvePaneMarker` with their own selector and policy. That
  * reuses the rung without minting a named door per card attribute: the ids are
  * 4-hex and unique only per document, so two open docs can mount the same one.

@@ -154,6 +154,28 @@ export interface CardAnchorPass {
    * paragraph, never its stored birth record.
    */
   anchorPidsOf: (link: Link) => string[];
+  /**
+   * What hovering / selecting `card` PAINTS, row by row (task 1505) — the
+   * paint's reading of the same rows the markers are drawn from, so the wash
+   * and the rail can never light a paragraph that carries no marker. Empty when
+   * the card is not anchored, or in the mount gap.
+   */
+  paintRows: (card: CardWithLinks) => CardPaintRow[];
+}
+
+/** One drawn row as the hover / selection painter reads it (see `paintRows`). */
+export interface CardPaintRow {
+  /** The live block the row sits on. */
+  pid: string;
+  /** `pid`'s position, read off the pass's index. */
+  pos: number | null;
+  /** True when the row is (also) bound to its WHOLE block — a source that
+   *  stores the pid, a dead mark, a mark in another block, or no source at
+   *  all (a recovered seed): the block gets the Mode-A rail. */
+  rail: boolean;
+  /** The live `linkedAnchor` marks IN `pid` that draw the row — each gets the
+   *  Mode-B wash. */
+  marks: string[];
 }
 
 /** A Jump's landing place, read off one pass's index (see `jumpTarget`). */
@@ -202,7 +224,35 @@ export function buildCardAnchorPass(editor: Editor | null): CardAnchorPass {
     jumpTarget: (card, rowPid) =>
       bound ? jumpTargetOfRows(resolve(card), bound, rowPid ?? null) : null,
     anchorPidsOf: (link) => anchorPidsOfLink(link, bound),
+    paintRows: (card) => (bound ? paintRowsOf(resolve(card), bound) : []),
   };
+}
+
+/**
+ * `CardAnchorPass.paintRows`'s rule (task 1505): paint exactly the rows — a
+ * source drawn by its live mark in the row's own block washes that mark; any
+ * other binding rails the block. Nothing outside the rows is painted, so a
+ * dormant link, a stored birth pid, or a snapshot that merely repeats a card's
+ * text elsewhere lights nothing the margin does not mark.
+ */
+function paintRowsOf(resolved: CardAnchorRows, index: ResolveIndex): CardPaintRow[] {
+  if (!resolved.anchored) return [];
+  const out: CardPaintRow[] = [];
+  for (const row of resolved.rows) {
+    if (!index.uuidToParagraph.has(row.pid)) continue;
+    const marks: string[] = [];
+    let rail = row.sources.length === 0;
+    for (const s of row.sources) {
+      const washes =
+        s.pid == null &&
+        s.anchorId != null &&
+        index.anchorIdToParagraph.get(s.anchorId) === row.pid;
+      if (!washes) rail = true;
+      else if (!marks.includes(s.anchorId!)) marks.push(s.anchorId!);
+    }
+    out.push({ pid: row.pid, pos: index.uuidToPos.get(row.pid) ?? null, rail, marks });
+  }
+  return out;
 }
 
 /**
@@ -604,8 +654,8 @@ const GATE_SHUT: CardJumpGate = { anchored: false, withJump: NO_JUMP };
  * differ only in the mount gap (index not ready ⇒ `pos: null` on every row).
  * An omni row has nothing to point at without a position, so it fails shut
  * there; a float's `jumpToCard` re-resolves against the LIVE editor at click
- * time, well after the gap, so it fails open — and since task 665 gave
- * `resolveLink` its snapshot rung, `anchored` strictly implies `jumpToCard`
+ * time, well after the gap, so it fails open — and since `jumpToCard` lands
+ * on this pass's own rows (tasks 935, 1505), `anchored` strictly implies it
  * can reach the card. "Anchored" and "reachable" cannot disagree.
  */
 export function cardJumpGate(

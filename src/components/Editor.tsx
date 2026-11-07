@@ -17,10 +17,9 @@ import { scrollBlockToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { Node as PMNode } from "@tiptap/pm/model";
 import {
   collectLinksFromEditor,
-  jumpToLink,
   deleteLink,
 } from "@/links/links";
-import { jumpToCard } from "@/links/jump-to-card";
+import { jumpToCard, jumpToTarget } from "@/links/jump-to-card";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
 import type { ModeBReapplyRecord } from "@/links/_shared/reapply-mode-b-anchors";
@@ -349,9 +348,6 @@ export interface EditorHandle {
     sourceEl?: HTMLElement | null,
     rowPid?: string | null,
   ) => boolean;
-  /** Jump to a specific link. Exposed so callers (omni, popped-out cards)
-   *  can target a particular anchor when a card has several. */
-  jumpToLink: (link: VirgilLink) => void;
   /**
    * Returns the UUID of the paragraph (or list/heading with paragraph-like uuid)
    * containing the given doc position. If the node has no UUID yet, one is
@@ -1088,7 +1084,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         target: { type: "card", ref: { kind: "footnote", id: footnoteId } },
         createdAt: "",
       };
-      jumpToLink(editor, link, "to-marker", sourceEl);
+      jumpToTarget(editor, { kind: "atom", link }, sourceEl);
     },
     updateFootnoteContent(footnoteId: string, newContent: TipJSON): void {
       if (!editor) return;
@@ -1342,7 +1338,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         target: { type: "card", ref: { kind: "citation", id: citationId } },
         createdAt: "",
       };
-      jumpToLink(editor, link, "to-marker", sourceEl);
+      jumpToTarget(editor, { kind: "atom", link }, sourceEl);
     },
 
     updateCitationDisplay(citationId: string, displayText: string, command?: string): void {
@@ -1451,10 +1447,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     ): boolean {
       if (!editor) return false;
       return jumpToCard(editor, card, sourceEl, rowPid);
-    },
-    jumpToLink(link: VirgilLink): void {
-      if (!editor) return;
-      jumpToLink(editor, link, "to-marker");
     },
     ensureParagraphUuid(pos: number): string | null {
       if (!editor) return null;
