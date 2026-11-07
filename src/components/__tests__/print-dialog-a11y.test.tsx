@@ -71,8 +71,8 @@ describe("PrintDialog exposes its state to assistive tech", () => {
     ]);
     for (const g of groups) {
       const legend = g.querySelector(":scope > legend")!;
-      expect(legend.className).toContain("uppercase");
-      expect(legend.className).toContain("text-[11px]");
+      // The Sand section register (field-primitives FIELD_LABEL_REGISTER.section).
+      expect(legend.className).toContain("text-2xs font-medium text-ink-subtle");
       expect(legend.className).not.toContain("text-xs");
     }
   });
