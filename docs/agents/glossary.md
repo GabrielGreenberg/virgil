@@ -115,7 +115,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 
 Each panel lives in `src/panels/<PanelFolder>/`.
 
-**"N outside focus" bin** (user term) — when Focus View is active, cards anchored OUTSIDE the focused band have a hidden in-text anchor and can't cascade inline; rather than drop them, the Omni view collects them in a collapsed count pill (`N outside focus`, expandable to a bounded list). Code: `OmniOutsideFocusBin` in [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx); items are stamped `outsideFocus?: boolean` on `OmniItem` ([src/panels/_shared/types.ts](../../src/panels/_shared/types.ts)) by the focus filter in [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx).
+**"N outside focus" bin** (retired 2026-11-06) — the count pill that collected cards anchored outside a locked focus band. Gabriel removed it (he called it the "out of view" card); those cards now simply leave the cascade until focus ends.
 
 ## Main text elements
 
@@ -326,7 +326,7 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 ## Pending terminology
 
 - **"sidebar dialog"** / **"the shell"** (design review, 2026-11-04) — `SystemDialogSidebarLayout` in [src/components/system-dialog.tsx](../../src/components/system-dialog.tsx): the sidebar + page shape shared by Preferences and the AI window.
-- **"card notices"** / **"unanchored / outside focus strip"** (2026-11-04) — `OmniBinStack`'s `.omni-notices`: pending changes, unanchored, outside focus. In the gutter layout it sits ON the right gutter's head row, left of the collapse toggle (`--omni-sticky-top`, `--omni-frame-z`, `--omni-head-clear`).
+- **"card notices"** / **"unanchored strip"** (2026-11-04) — `OmniBinStack`'s `.omni-notices`: pending changes, unanchored. In the gutter layout it sits ON the right gutter's lozenge, left of the collapse toggle (`--omni-sticky-top`, `--omni-frame-z`, `--omni-head-clear`).
 - **"⋯ menu"** / **"more menu"** (design review, 2026-11-04) — `BarMoreMenu.tsx`: the Virgil bar's one trailing control. Holds Document style, Print, Zen, Timer, Collaborator mode, the old Help menu's rows (Commands, Refresh skills, Helper mode, version) and Preferences, plus the view switch, Compile and AI requests while the tools are folded. The glossary rows above for the Style, Print and Help buttons describe where those were.
 - **"functional items"** (user, 2026-11-04, "outline, word count") — the tool gutter's tools: `activeTool` in `ToolGutter.tsx`, opened from `.tool-gutter-tools`.
 - **"question mark strip"** (user, 2026-11-04) — the Example card's Help footer (a "?" toggle and its dialect help), removed at the user's request along with `EXAMPLE_DIALECT_HELP`.

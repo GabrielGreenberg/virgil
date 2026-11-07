@@ -43,7 +43,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { OmniUnanchoredBin, OmniOutsideFocusBin } from "@/panels/Omni/OmniViewPanel";
+import { OmniUnanchoredBin } from "@/panels/Omni/OmniViewPanel";
 import FigureAnnotation from "@/components/FigureAnnotation";
 import type { OmniItem } from "@/panels/_shared/types";
 
@@ -97,16 +97,15 @@ describe("member 1 — an omni bin pill announces its own text, count included",
           free: [item("free", 1), item("free", 2)],
           orphaned: [item("orphaned", 1), item("orphaned", 2), item("orphaned", 3)],
         }),
-        createElement(OmniOutsideFocusBin, { items: [item("free", 9)] }),
       ),
     );
     const found = pills(container);
     // RENEGOTIATED (task 544): the no-anchor bin is ONE pill counting both
     // states ("N unanchored"); the free/orphaned distinction moved to the
-    // rows. Two pills, and each still names itself by its visible text.
-    expect(found).toHaveLength(2);
+    // rows. It still names itself by its visible text.
+    expect(found).toHaveLength(1);
     const names = found.map(accessibleName);
-    expect(names).toEqual(["5 unanchored", "1 outside focus"]);
+    expect(names).toEqual(["5 unanchored"]);
     // …and each name CONTAINS the pill's own visible label, so a voice-control
     // user reading the pill aloud reaches it (WCAG 2.5.3). Tautological only
     // while no `aria-label` is present — which is the whole contract: with the
@@ -121,16 +120,16 @@ describe("member 1 — an omni bin pill announces its own text, count included",
 
   it("carries the collapse state on aria-expanded, not in the name", () => {
     const { container } = render(
-      createElement(OmniOutsideFocusBin, { items: [item("free", 1), item("free", 2)] }),
+      createElement(OmniUnanchoredBin, { free: [item("free", 1), item("free", 2)], orphaned: [] }),
     );
     const btn = pills(container)[0]!;
     expect(btn.getAttribute("aria-expanded")).toBe("false");
-    expect(accessibleName(btn)).toBe("2 outside focus");
+    expect(accessibleName(btn)).toBe("2 unanchored");
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     // The name does NOT change with the state: expanding a disclosure does not
     // rename it, and the count is still the thing announced.
-    expect(accessibleName(btn)).toBe("2 outside focus");
+    expect(accessibleName(btn)).toBe("2 unanchored");
   });
 
   it("explains itself through data-hint, which is not a name", () => {

@@ -8800,11 +8800,11 @@ function PaneRail({
       : viewPrefs.prefs.collapsedRight;
 
     // The gutter layout runs edge to edge (task 1440): the collapse toggle
-    // lives IN the column — first in the tool gutter's tools row on the left
-    // (passed as its `leading`), on a sticky head row above the cards on the
+    // lives IN the column — first in the tool gutter's tools lozenge on the
+    // left (passed as its `leading`), in a sticky lozenge over the cards on the
     // right — so no strip column stands between the column and the window
-    // edge. The omni's own sticky chrome (navigator, bins) shares that head
-    // row, through the variables set on the rail below.
+    // edge. The omni's own sticky chrome (navigator, bin) shares that lozenge,
+    // through the variables set on the rail below.
     const omniNode: React.ReactNode =
       gutterLayout && !isLeft ? (
         <div data-gutter-side-host={side}>
@@ -8870,14 +8870,14 @@ function PaneRail({
           // establishing a scroll context, so descendants' sticky
           // positioning still latches to the row.
           overflow: 'clip',
-          // The right gutter's sticky head row (above): the omni's navigator
-          // and bins sit ON it, to the left of the toggle, and the cards start
-          // below it.
+          // The right gutter's sticky lozenge (above): the omni's navigator
+          // and bin sit ON it, to the left of the toggle, and the cards start
+          // below it and then run under it.
           ...(gutterLayout && !isLeft
             ? {
                 ["--omni-sticky-top" as string]: "calc(var(--gutter-inset) + 28px)",
-                ["--omni-frame-z" as string]: 30,
-                ["--omni-head-clear" as string]: "28px",
+                ["--omni-frame-z" as string]: 32,
+                ["--omni-head-clear" as string]: "32px",
               }
             : null),
         }}

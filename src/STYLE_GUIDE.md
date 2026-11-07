@@ -1462,23 +1462,25 @@ used now and then is a row in ⋯ (`BarMoreMenu`), not another icon, and an off-
 switch for a state the user is in (the Zen button, a mode chip) is the only
 reason to add to the bar.
 
-**Omni bin pill.** The count-pill controls in the Omni cascade that
-collect cards which can't render inline — the outside-focus band and
-the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's text
+**Omni bin pill.** The count-pill control in the Omni cascade that
+collects cards which can't render inline, the unanchored bin, is
+`.omni-bin-pill` (`globals.css`). In the gutter layout it is compact, an
+anchor icon and the count on the right lozenge (`data-compact`). Otherwise it's text
 on the gutter's ground, `--ink-muted`, with a wash and `--ink-body` on
 hover. It rides the **notice strip** (`.omni-notices`) with the
 pending-change navigator, because all of them say the same thing, *this
 needs a look*: one strip across the column, painted in the gutter's own
 ground so a card passes under it, wrapping when the column is narrow. An
-open bin takes the strip's full line. The leading
-glyph stays per-bin (`◎` outside-focus; the no-anchor bin wears a
-`BadgeOrphaned` badge iff any member is orphaned, else the parked `◌`),
+open bin takes the strip's full line. On the right lozenge the strip paints no
+ground of its own: the lozenge is the ground, and cards run under it. Off it, the
+no-anchor bin wears a
+`BadgeOrphaned` badge iff any member is orphaned, else the parked `◌`,
 and every pill declares its TONE (`neutral` / `error`, published as
 `data-omni-bin-tone`) — the no-anchor bin's tone is the strongest state
 it holds (task 544). The class is spelled ONCE,
 inside the `OmniBinPill` component
-(`src/panels/Omni/OmniViewPanel.tsx`) — both bins are call sites of it, and
-a future "N collected X" chip in the cascade should be a third call site
+(`src/panels/Omni/OmniViewPanel.tsx`), and
+a future "N collected X" chip in the cascade should be a second call site
 rather than a re-authored pill (the census in `omni-bin-posture.test`
 pins the single spelling).
 
@@ -2046,11 +2048,11 @@ column and the text edge is the tab stop after it. The only hover FILL is
 tool body (Outline / Search / Word count) keeps its own layout but its boxed
 rows lie flat (`.tool-gutter-tool` overrides). **There is no strip:** both
 gutters run to the window edge, the collapse toggle leads the left gutter's
-tools lozenge and sits on a sticky head row above the right gutter's cards
-(`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
-one piece of chrome. The cards' notices (pending changes, unanchored, outside
-focus) share that head row, left of the toggle, so the first card starts
-directly under it. Generalisable rule: **a list of what is IN the paper reads
+tools lozenge and closes the right gutter's own lozenge, which sticks over the
+cards (`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
+one piece of chrome. The cards' notices (the pending-change navigator and the
+anchor button) share that lozenge, left of the toggle; the first card starts
+directly under it, and cards then run under it with no fade. Generalisable rule: **a list of what is IN the paper reads
 as text; a thing you can open and edit reads as a card** — and the cards are on
 the right.
 

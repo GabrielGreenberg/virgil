@@ -524,7 +524,8 @@ export function PanelColumn({
         paddingRight: collapsed || (gutterInboard && side === "left") ? 0 : 4,
       }}
     >
-      <ColumnEdgeFade side={side} edge="top" ramp={STACKED_FADE_RAMP} />
+      {/* The gutter layout has no top fade: cards run under the lozenge. */}
+      {!gutterInboard && <ColumnEdgeFade side={side} edge="top" ramp={STACKED_FADE_RAMP} />}
       <div
         className="flex flex-1 min-h-0 w-full"
         // Layer A (the omni desktop, normal flow) gets a top gap only when a

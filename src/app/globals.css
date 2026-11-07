@@ -1150,11 +1150,9 @@ body[data-zen-mode="on"] {
 }
 
 /* ── Omni "collected cards" bin pill ──────────────────────────────
-   Shared recipe for the faint count-pill controls that collect cards
-   which can't cascade inline: the outside-focus band and the unanchored
-   bin (OmniOutsideFocusBin / OmniUnanchoredBin). Text on the gutter's own
-   ground, like the rest of the gutter, with a wash on hover; the leading
-   glyph stays per-bin (◎ vs a BadgeOrphaned badge). */
+   The faint count-pill control that collects cards which can't cascade
+   inline: the unanchored bin (OmniUnanchoredBin). Text on the gutter's own
+   ground, like the rest of the gutter, with a wash on hover. */
 .omni-bin-pill {
   color: var(--ink-muted);
   transition:
@@ -1193,6 +1191,31 @@ body[data-zen-mode="on"] {
   height: 10px;
   background: linear-gradient(to bottom, var(--background), transparent);
   pointer-events: none;
+}
+/* On the right gutter's lozenge the strip paints nothing: the lozenge is its
+   ground, and the cards pass under it. */
+.omni-notices[data-gutter-strip] {
+  align-content: flex-start;
+  margin-inline: -8px 0;
+  padding-inline: 3px 0; /* aligns: the lozenge's 3px padding */
+  padding-bottom: 0;
+}
+.omni-notices[data-gutter-strip]:not(:empty) {
+  background: none;
+}
+.omni-notices[data-gutter-strip]:not(:empty)::after {
+  content: none;
+}
+.omni-bin-pill[data-compact] {
+  height: 24px;
+}
+.omni-bin-pill[data-compact][data-omni-bin-tone="error"] {
+  color: var(--danger-strong);
+}
+.omni-bin-pill[data-compact][aria-expanded="true"] {
+  color: var(--control-selected-ink);
+  background-color: var(--control-selected-tint);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--control-selected-ink) 55%, transparent);
 }
 
 /* Timing/property list shared with .hover-on-light above. */
@@ -6988,7 +7011,7 @@ body.perf-contain .static-borrowed-text {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 3px;
+  padding: 3px; /* aligns: a 24px icon button in the 30px lozenge */
   /* Keeps the ring clear of the drag gap, which paints over the gutter's edge. */
   margin-right: 2px;
   background: var(--gutter-lozenge-bg);
@@ -7006,36 +7029,26 @@ body.perf-contain .static-borrowed-text {
 [data-gutter-side-host="right"] .omni-entry-slide {
   left: 0;
 }
-/* The right gutter's head (task 1440, edge to edge): the collapse toggle on
-   a sticky row above the cards, where the left gutter's tools row sits —
-   the strip column is gone. The omni's own sticky chrome (the pending
-   navigator, the bins) shares this row: the sticky frame that holds it sits one
-   rung above (`--omni-frame-z`), and `--omni-sticky-top` holds the row's height,
-   so the first card starts under the row whether or not a notice is showing. */
+/* The right gutter's lozenge (task 1440, edge to edge): the left gutter's
+   toolbar on a sticky row over the cards, holding the collapse toggle at its
+   right. The omni's own sticky chrome (the pending navigator, the unanchored
+   button) shares it: the sticky frame that holds it sits one rung above
+   (`--omni-frame-z`), and `--omni-sticky-top` holds the lozenge's height, so
+   the first card starts under the lozenge, and cards then run under it. Above
+   the text card's corner mask (z-30), like the tool gutter. */
 .gutter-side-head {
   position: sticky;
-  top: 0;
-  z-index: 29;
+  top: var(--gutter-inset);
+  z-index: 31;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  /* The toggle sits on the text card's top edge, level with the left
-     gutter's tools row; the row is only as tall as that (inset + 24px button
-     + 4px), so the first card starts close under it. */
-  height: calc(var(--gutter-inset) + 28px);
-  padding: var(--gutter-inset) 4px 4px;
-  align-items: flex-start;
-  background: var(--background);
-}
-.gutter-side-head::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  height: 10px;
-  background: linear-gradient(to bottom, var(--background), transparent);
-  pointer-events: none;
+  height: 30px;
+  margin: var(--gutter-inset) 4px 0 0;
+  padding: 3px; /* aligns: a 24px icon button in the 30px lozenge */
+  background: var(--gutter-lozenge-bg);
+  border-radius: var(--pod-radius);
+  box-shadow: var(--gutter-lozenge-shadow);
 }
 /* A tool's header runs the gutter's width: the title at the left
    edge, under the tool buttons, and its controls at the right. */

@@ -27,7 +27,7 @@
 //      rows come FIRST and carry BadgeOrphaned, the free rows carry `◌`;
 //   4. the row glyph is the ONLY place the states differ — a free card's row
 //      never carries the error badge;
-//   5. task-127 ordering: the merged pill still sits above the outside-focus
+//   5. (the outside-focus bin is gone) the merged pill sat above the outside-focus
 //      pill in one flex column, and expanding it pushes that pill down;
 //   6. census: the word "unplaced" is gone from the omni surface, the bin
 //      spells exactly one pill, and every pill call site states its tone.
@@ -42,7 +42,7 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { OmniBinStack, OmniUnanchoredBin, OmniOutsideFocusBin } from "@/panels/Omni/OmniViewPanel";
+import { OmniBinStack, OmniUnanchoredBin } from "@/panels/Omni/OmniViewPanel";
 import type { OmniItem } from "@/panels/_shared/types";
 
 afterEach(() => {
@@ -131,23 +131,17 @@ describe("OmniUnanchoredBin — ONE pill, the state on the rows (task 544)", () 
     expect(container.querySelectorAll("[data-omni-bin-free-marker]").length).toBe(1);
   });
 
-  it("leg 5: task-127 ordering holds — the merged pill above outside-focus in one flex column", () => {
+  it("leg 5: expanding the merged pill lists both states and mounts no cascade wrapper", () => {
     const { container } = render(
       <OmniBinStack host="frame">
         <OmniUnanchoredBin free={[free(1)]} orphaned={[orphan(1)]} />
-        <OmniOutsideFocusBin items={[{ ...free(9), anchorState: "anchored", pos: 5, outsideFocus: true }]} />
       </OmniBinStack>,
     );
     const bin = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
-    const out = container.querySelector("[data-omni-outside-focus-bin]") as HTMLElement;
-    const follows = (a: Element, b: Element) =>
-      !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(follows(bin, out)).toBe(true);
-    for (const el of [bin, out]) expect(el.style.position).not.toBe("absolute");
+    expect(bin.style.position).not.toBe("absolute");
     fireEvent.click(bin.querySelector("button")!);
     expect(bin.contains(container.querySelector('[data-test-card="orphan-1"]')!)).toBe(true);
     expect(bin.contains(container.querySelector('[data-test-card="free-1"]')!)).toBe(true);
-    expect(follows(bin, out)).toBe(true);
     expect(container.querySelectorAll("[data-omni-entry-wrapper]").length).toBe(0);
   });
 });
@@ -166,7 +160,7 @@ describe("census — vocabulary and primitive", () => {
     // ONE pill in the bin.
     expect(code.match(/data-omni-unanchored-pill/g)?.length).toBe(1);
     const binStart = code.indexOf("export function OmniUnanchoredBin");
-    const binEnd = code.indexOf("export function OmniOutsideFocusBin");
+    const binEnd = code.indexOf("function NavArrow");
     const bin = code.slice(binStart, binEnd);
     expect((bin.match(/<OmniBinPill\b/g) ?? []).length).toBe(1);
     // The pill class is spelled once (inside the primitive)…
@@ -178,7 +172,7 @@ describe("census — vocabulary and primitive", () => {
     // A whitespace-led `tone=` is a JSX prop; `data-omni-bin-tone={tone}`
     // inside the primitive is the attribute it PUBLISHES, not a call site.
     const tones = (code.match(/\stone=(?:"(?:neutral|error)"|\{[^}]+\})/g) ?? []).length;
-    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(calls).toBeGreaterThanOrEqual(1);
     expect(tones).toBe(calls);
     expect(src).toMatch(/tone: "neutral" \| "error";/);
   });

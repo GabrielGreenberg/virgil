@@ -196,7 +196,7 @@ export interface OmniHostProps {
    *  `omniDimResting` view-pref). Forwarded to OmniViewPanel as `dimResting`. */
   omniDimResting?: boolean;
   /** Only when focus is LOCKED, anchored cards outside the focused block range
-   *  are routed to the "outside focus" bin — mirroring the editor's own
+   *  are left out of the cascade — mirroring the editor's own
    *  lock-gated hide. A mere focus selection (active && !locked) confines
    *  nothing, so no card is binned. Unanchored cards are always unaffected. */
   focusState?: FocusState | null;
