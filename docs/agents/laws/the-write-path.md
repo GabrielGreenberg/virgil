@@ -2676,3 +2676,22 @@ CI: `write-coalescer.test.ts`, `useWriteCoalescer.test.tsx`,
 declared non-write site), `usePersistentState.test.tsx` ("continuous update()
 bursts"); the population regexes of `reload-door.test.ts` and
 `cross-window-storage-guardrail.test.ts` count a coalescer as a held debounce.
+
+## The out-of-band half: a rewrite the user ASKED for transforms the file as it stands (task 1501)
+
+> **A `.tex` rewrite outside the editor's own save — style switch, doc-type
+> swap, compile's class prompt — goes through ONE door,
+> [`rewriteTexOutOfBand`](../../../src/lib/tex-rewrite.ts), and is a TRANSFORM,
+> never a whole text.** The door drains the doc (which also runs the code pane's
+> `settle` flusher — so there is no pre-write "will-change" event), resolves the
+> handle at write time, applies the caller's pure transform to a FRESH read
+> inside the doc's serialized write queue (`rewriteTex`, both backends — the
+> `.tex`'s compare-and-swap, task 849's base-timing rule), and tells an open code
+> pane only when bytes changed. A caller that must ASK the user asks FIRST and
+> calls the door AFTER the answer: the pre-prompt read is what it DETECTED on,
+> never what it writes (the compile prompt used to write a stale read across an
+> unbounded dialog, overwriting a cowork skill's concurrent commit). A file that
+> is not valid UTF-8 answers `undecodable` and is left untouched.
+
+CI: `tex-rewrite-door.test.ts` (behaviour + census: no production caller of
+`rewriteTex` but the door; `writeTex` and the will-change event stay retired).

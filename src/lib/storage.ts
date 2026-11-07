@@ -45,7 +45,11 @@ export const listSidecarNames = backend.listSidecarNames;
 // names are a filter and no call site can name a CONTENT fork into the set.
 export const deleteSidecarSiblings = backend.deleteSidecarSiblings;
 export const readTex = backend.readTex;
-export const writeTex = backend.writeTex;
+// The raw out-of-band `.tex` rewrite (task 1501): a transform applied to a
+// fresh read INSIDE the doc's write queue. Production code reaches it only
+// through `rewriteTexOutOfBand` (`@/lib/tex-rewrite`), which drains first and
+// tells the code pane after — the census in tex-rewrite-door.test.ts.
+export const rewriteTex = backend.rewriteTex;
 export const readDocBundle = backend.readDocBundle;
 // The CONFLICT NET (task 364): archive BOTH sides of an external-change
 // conflict into one `virgil/.history/` slot before either is applied. Returns
@@ -135,7 +139,7 @@ export const importFigureFile = backend.importFigureFile;
 export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile, PickedFigureFile, FileStat } from "@/lib/storage-fsa";
 // Best-effort compiled-PDF persistence result (P6). Shared leaf type so both
 // backends and the compile hook import one definition.
-export type { ConflictArchive, WritePdfResult } from "@/lib/storage-types";
+export type { ConflictArchive, TexRewriteResult, TexTransform, WritePdfResult } from "@/lib/storage-types";
 
 // Re-export the pipeline handle type so storage callers don't need to
 // import from the multi-window subdirectory.

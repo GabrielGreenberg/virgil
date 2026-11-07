@@ -278,6 +278,7 @@ export const UNSYNTHESIZABLE_RETURNS: Readonly<Record<string, string>> = Object.
   readDocBundle: "Promise<DocBundle>",
   registerDocInFolder: "Promise<FsaDocMeta>",
   relocateDoc: "Promise<FsaDocMeta>",
+  rewriteTex: "Promise<TexRewriteResult>",
   writeDocBundle: "Promise<DocWriteReceipt>",
   writePdf: "Promise<WritePdfResult>",
 });

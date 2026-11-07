@@ -57,7 +57,7 @@ import {
   readSidecar,
   readTex,
   writeSidecar,
-  writeTex,
+  rewriteTex,
   writeDocBundle,
 } from "@/lib/storage-fsa";
 import {
@@ -263,9 +263,9 @@ describe("storage-fsa — library-paper read-handle on-demand resolution", () =>
       expect(paperFileSpy).not.toHaveBeenCalled();
     });
 
-    it("writeTex → no-op, never opens a file on the resolved paper dir", async () => {
+    it("rewriteTex → no-op, never opens a file on the resolved paper dir", async () => {
       const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
-      await expect(writeTex(h, "\\documentclass{article}")).resolves.toBeUndefined();
+      await expect(rewriteTex(h, () => "\\documentclass{article}")).resolves.toBe("unchanged");
       expect(paperFileSpy).not.toHaveBeenCalled();
     });
 

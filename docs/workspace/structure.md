@@ -205,7 +205,7 @@ either destroys content with **zero user edits**, so both are gated (tasks 350-D
   `PreservationNoticeBadge` in the status cluster.
 
 **Stated scope** — the gate covers those two paths only. The code-pane re-parse,
-the schema-mount probe, `writeTex`'s snapshot and **`apply_response.py`'s
+the schema-mount probe, `rewriteTex`'s snapshot and **`apply_response.py`'s
 region-replace are NOT covered.** A skill's own `.tex` splice has no such net, so
 splice narrowly and never rewrite the whole file.
 
