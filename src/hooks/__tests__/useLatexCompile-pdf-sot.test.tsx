@@ -32,7 +32,7 @@ vi.mock("@/lib/storage", () => ({
   readPaperFolder: vi.fn(async () => [
     { path: "main.tex", bytes: new Uint8Array([1]) },
   ]),
-  writeTex: vi.fn(async () => {}),
+  rewriteTex: vi.fn(async () => {}),
   writePdf: (...args: unknown[]) => writePdfSpy(...args),
 }));
 

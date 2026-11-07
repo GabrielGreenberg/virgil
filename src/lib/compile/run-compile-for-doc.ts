@@ -25,7 +25,7 @@
  * the starting pane is gone still reaches the user.
  */
 
-import { drainDoc, flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf } from "@/lib/storage";
+import { drainDoc, getTexFilename, readPaperFolder, writePdf } from "@/lib/storage";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -35,7 +35,7 @@ import {
   rewriteDocumentClass,
   type DocumentClassMismatch,
 } from "@/lib/document-class";
-import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
+import { rewriteTexOutOfBand, type TexRewriteOutcome } from "@/lib/tex-rewrite";
 import { makeErrorId, type LatexError } from "@/lib/latex-errors";
 import { LATEX_RULE } from "@/lib/latex-rules";
 import { compileService } from "@/lib/compile/compile-service";
@@ -129,15 +129,19 @@ export async function runCompileForDoc(docId: string, deps: RunCompileDeps): Pro
               return;
             }
             if (resolution.kind === "switch") {
-              const rewritten = rewriteDocumentClass(mainTexText, resolution.newClass);
-              // Resolved NOW, not at mount (task 1277).
-              const handle = getActiveHandle(docId);
-              if (!handle) {
-                finishCompile(docId, "error", "No document handle — compile stopped.");
-                return;
-              }
+              // The prompt above stayed open as long as the user liked, so
+              // `mainTexText` (read BEFORE it) is only what we DETECTED on —
+              // never what we write. A cowork skill, another window or a sync
+              // client may have landed in the .tex meanwhile. The ONE
+              // out-of-band door (task 1501) drains, resolves the handle NOW
+              // (task 1277), applies the swap to a FRESH read inside the write
+              // queue, and tells an open code pane to re-read its preamble.
+              const newClass = resolution.newClass;
+              let outcome: TexRewriteOutcome;
               try {
-                await writeTex(handle, rewritten);
+                outcome = await rewriteTexOutOfBand(docId, (text) =>
+                  rewriteDocumentClass(text, newClass),
+                );
               } catch (err) {
                 if (isStalePipelineError(err)) {
                   finishCompile(docId, "error", "The document was closed — compile stopped.");
@@ -145,15 +149,18 @@ export async function runCompileForDoc(docId: string, deps: RunCompileDeps): Pro
                 }
                 throw err;
               }
-              await flushDoc(docId);
-              // The rewrite replaced the \documentclass line — i.e. the
-              // on-disk PREAMBLE — out of band from the code pane's bridge
-              // closure. Tell an open CodeEditor to re-read + resync (same
-              // contract as useDocumentStyle.setStyle and the external
-              // Reload), or a later code-pane preamble edit would persist
-              // the OLD documentclass back over the switch the user just
-              // confirmed. No code pane open → free no-op.
-              dispatchTexDelimitersChanged(docId);
+              if (outcome === "no-handle") {
+                finishCompile(docId, "error", "No document handle — compile stopped.");
+                return;
+              }
+              if (outcome === "undecodable") {
+                finishCompile(
+                  docId,
+                  "error",
+                  "The document's .tex is no longer valid UTF-8, so its \\documentclass couldn't be changed — compile stopped.",
+                );
+                return;
+              }
               files = await readPaperFolder(docId);
             }
             // "compile-anyway" falls through with the original files.

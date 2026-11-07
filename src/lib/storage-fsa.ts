@@ -99,6 +99,8 @@ import type {
   ConflictArchive,
   DocWriteOptions,
   DocWriteReceipt,
+  TexRewriteResult,
+  TexTransform,
   WritePdfResult,
 } from "@/lib/storage-types";
 import { DOC_WRITE_LANDED } from "@/lib/storage-types";
@@ -889,16 +891,44 @@ export async function readTex(docId: string): Promise<string> {
   }
 }
 
-export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
-  // "bundle" (not a separate "tex") subkey: writeTex rewrites the SAME .tex
-  // file the bundle writes own (style switch, compile documentclass-switch),
-  // so it must be totally ordered against writeDocBundle / the load-writeback.
-  // On separate subkeys the two serial queues interleave at every await —
-  // withDocLock is a passthrough in the lock-owning window — and a queued
-  // bundle write carrying a delimiters override could land AFTER a style
-  // rewrite and silently undo it.
-  return enqueueDocWrite(h, "bundle", async () => {
+/**
+ * The ONE out-of-band `.tex` rewrite (task 1501): style switch, documentclass
+ * swap, compile's class prompt — all through `rewriteTexOutOfBand`
+ * (`@/lib/tex-rewrite`), the only caller. `transform` runs on the file AS IT
+ * STANDS inside the doc's serialized write queue, so the read and the write
+ * are one critical section (`mutateSidecar`'s compare-and-swap guarantee, for
+ * the `.tex`): a cowork skill's commit, a sync client's landing, or a queued
+ * bundle autosave that reached disk while the user sat in a dialog is the
+ * base the transform rewrites — never bytes it silently overwrites.
+ */
+export async function rewriteTex(
+  h: DocWriteHandle,
+  transform: TexTransform,
+): Promise<TexRewriteResult> {
+  // "bundle" (not a separate "tex") subkey: this rewrites the SAME .tex file
+  // the bundle writes own, so it must be totally ordered against
+  // writeDocBundle / the load-writeback. On separate subkeys the two serial
+  // queues interleave at every await — withDocLock is a passthrough in the
+  // lock-owning window — and a queued bundle write carrying a delimiters
+  // override could land AFTER a style rewrite and silently undo it.
+  const result = await enqueueDocWrite(h, "bundle", async (): Promise<TexRewriteResult> => {
     const meta = await getDocMetaOrThrow(h.docId);
+    const docHandle = await requireDocHandle(h.docId);
+    // The fresh base, read FATALLY: a lossy decode written back would persist
+    // U+FFFD over every byte that wasn't UTF-8.
+    let current: string;
+    try {
+      const existing = await docHandle.getFileHandle(meta.texFilename);
+      const file = await existing.getFile();
+      const decoded = decodeTexBytes(new Uint8Array(await file.arrayBuffer()));
+      if (!("text" in decoded)) return "undecodable";
+      current = decoded.text;
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+      current = DEFAULT_LATEX;
+    }
+    const next = transform(current);
+    if (next === null || next === current) return "unchanged";
     // FORENSIC SNAPSHOT (task 357). This write is USER-INTENT — a style switch
     // or a documentclass swap deliberately replaces the preamble — so it takes
     // no preservation GATE: refusing it would refuse what the user asked for.
@@ -909,7 +939,6 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
     // minute" would be a limit with nothing to limit. Stamping the shared
     // rate-limit clock means the gesture costs ONE snapshot, not two nearly
     // identical ones when the autosave follows it.
-    const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
     const fh = await getTexFileHandle(h.docId, { create: true });
     // Through the gated funnel (task 415). The snapshot rides `beforeWrite`
@@ -921,11 +950,16 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
       await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
       lastSnapshotAtByDoc.set(h.docId, Date.now());
     });
-    const wrote = await writeTrackedText(h.docId, meta.texFilename, fh, latex, {
+    const wrote = await writeTrackedText(h.docId, meta.texFilename, fh, next, {
       beforeWrite: takeSnapshot,
     });
-    if (wrote) await touchDocTimestamp(h.docId);
+    if (!wrote) return "unchanged";
+    await touchDocTimestamp(h.docId);
+    return "written";
   });
+  // `enqueueDocWrite` short-circuits a library-paper write to `undefined`
+  // without running the task — nothing was written.
+  return result ?? "unchanged";
 }
 
 // ---------------------------------------------------------------------------

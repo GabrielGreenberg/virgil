@@ -550,7 +550,7 @@ describe("census — every coalescing writer registers with the ONE registry", (
   // optional `<…>` is load-bearing for the same reason: these doors are spelled
   // with an explicit type argument where it cannot be inferred.
   const WRITE_DOOR =
-    /\b(?:writeSidecar|writeSidecarMerged|writeDocBundle|mutateSidecar|mutateBib|writeTex)\s*(?:<[^>()]*>)?\s*\(/;
+    /\b(?:writeSidecar|writeSidecarMerged|writeDocBundle|mutateSidecar|mutateBib|rewriteTex)\s*(?:<[^>()]*>)?\s*\(/;
   // Since task 1327 a writer's debounce is the shared write coalescer, so
   // constructing one counts as holding a debounce.
   const DEBOUNCE = /\bsetTimeout\s*\(|\b(?:create|use)WriteCoalescer\s*\(/;

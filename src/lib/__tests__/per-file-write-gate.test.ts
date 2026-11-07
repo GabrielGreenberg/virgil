@@ -170,7 +170,7 @@ import {
   mutateSidecar,
   readSidecar,
   mutateBib,
-  writeTex,
+  rewriteTex,
   invalidateSidecarBundle,
 } from "@/lib/storage-fsa";
 import {
@@ -364,17 +364,17 @@ describe("every ledgered writer inherits the gate", () => {
     expect([...(slots?.dirs.keys() ?? [])]).toHaveLength(1);
   });
 
-  it("writeTex: a REPEATED style swap writes nothing and mints no second slot", async () => {
+  it("rewriteTex: a REPEATED style swap writes nothing and mints no second slot", async () => {
     // The first swap establishes the ledger entry (and takes its unconditional
     // forensic snapshot); the second is a no-op the user cannot distinguish
     // from the first, and must cost nothing on disk.
     const h = beginDocPipeline(DOC_ID);
     const swapped = BASE_TEX.replace("article", "amsart");
-    await writeTex(h, swapped);
+    await rewriteTex(h, () => swapped);
     expect(wrotePath(TEX)).toBe(1);
 
     writes = [];
-    await writeTex(h, swapped);
+    await rewriteTex(h, () => swapped);
     expect(writes, "a redundant style swap rewrote the .tex").toEqual([]);
     expect([
       ...(docHandle.dirs.get("virgil")?.dirs.get(".history")?.dirs.keys() ?? []),

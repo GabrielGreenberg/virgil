@@ -46,6 +46,8 @@ import type {
   ConflictArchive,
   DocWriteOptions,
   DocWriteReceipt,
+  TexRewriteResult,
+  TexTransform,
   WritePdfResult,
 } from "@/lib/storage-types";
 import { DOC_WRITE_LANDED } from "@/lib/storage-types";
@@ -623,31 +625,47 @@ export async function readTex(docId: string): Promise<string> {
   return (await fetchText(`${API}/doc/${docId}/${filename}`)) ?? DEFAULT_LATEX;
 }
 
-export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
+/** Dev twin of storage-fsa's `rewriteTex` (task 1501) — same contract. */
+export async function rewriteTex(
+  h: DocWriteHandle,
+  transform: TexTransform,
+): Promise<TexRewriteResult> {
   // A library-paper doc never persists its `.tex` (parity with storage-fsa's
   // enqueueDocWrite funnel — only the Reader's derived note sidecar lands,
   // task 556). The load-writeback / minted-UUID writeback would otherwise PUT
   // to the library's own source.
-  if (isLibraryPaper(h.docId)) return;
+  if (isLibraryPaper(h.docId)) return "unchanged";
   assertActive(h);
   // Same per-doc "bundle" serial queue as writeDocBundle (parity with
-  // storage-fsa, where writeTex shares the bundle subkey): raw .tex rewrites
+  // storage-fsa, where rewriteTex shares the bundle subkey): raw .tex rewrites
   // (style switch, compile documentclass-switch) and bundle autosaves target
-  // the same file and must land in enqueue order.
+  // the same file and must land in enqueue order — and the fresh read below
+  // sits in the same critical section as the write.
   //
   // tex-write-exempt: user-intent write (style switch / documentclass swap), so
   // no preservation GATE by design — the FSA twin takes the same view. Its
   // forensic `snapshotPriorBundle` has no counterpart here at all: this backend
   // keeps no `virgil/.history/` folder, which is the same absence the refusal
   // path's armed-edge snapshot states at its own two sites (task 357).
-  return enqueueWrite(`${h.docId}/bundle`, async () => {
+  return enqueueWrite(`${h.docId}/bundle`, async (): Promise<TexRewriteResult> => {
     assertNotSuperseded(h);
     const docs = await getDevIndex();
     const entry = findEntry(docs, h.docId);
     const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
+    // NOT `fetchText`: it folds every failure into `null`, and a transform run
+    // over DEFAULT_LATEX because a fetch failed would overwrite the paper.
+    // Only a real 404 is "no file yet".
+    const res = await fetch(`${API}/doc/${h.docId}/${filename}`);
+    let current: string;
+    if (res.status === 404) current = DEFAULT_LATEX;
+    else if (!res.ok) throw new Error(`rewriteTex: read failed (${res.status})`);
+    else current = await res.text();
+    const next = transform(current);
+    if (next === null || next === current) return "unchanged";
     // Through the gated funnel (task 415), which also stamps the ledger with
     // the authoritative post-write fingerprint.
-    await putTrackedText(h.docId, filename, latex);
+    await putTrackedText(h.docId, filename, next);
+    return "written";
   });
 }
 
@@ -1575,7 +1593,7 @@ export async function getTexFilename(docId: string): Promise<string> {
 
 // ---------------------------------------------------------------------------
 // Drain helpers — the dev backend now serializes .tex/bundle writes through
-// the shared write-queue (see writeTex / writeDocBundle / the load-writeback
+// the shared write-queue (see rewriteTex / writeDocBundle / the load-writeback
 // above), so flushDoc drains every `${docId}/…` queue key, mirroring the
 // FSA backend's semantics for drainDoc/compile/style-switch callers.
 // ---------------------------------------------------------------------------

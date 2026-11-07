@@ -348,7 +348,7 @@ describe("storage-fsa — a Reader note LANDS, everything else is still refused"
     await expect(
       fsa.mutateSidecar(h, "todos.json", { todos: [] }, () => ({ todos: [1] })),
     ).resolves.toBeNull();
-    await expect(fsa.writeTex(h, "\\documentclass{article}")).resolves.toBeUndefined();
+    await expect(fsa.rewriteTex(h, () => "\\documentclass{article}")).resolves.toBe("unchanged");
     await expect(fsa.writeDocBundle(h, EMPTY_DOC)).resolves.toEqual({
       landed: false,
       reason: "read-only",
@@ -365,12 +365,12 @@ describe("storage-fsa — a Reader note LANDS, everything else is still refused"
     const h = beginDocPipeline(NORMAL_DOC);
     await fsa.writeSidecar(h, "notes.json", NOTE);
     await fsa.writeSidecar(h, "todos.json", { todos: [] });
-    await fsa.writeTex(h, "\\documentclass{article}\n\\begin{document}\nx\n\\end{document}\n");
+    await fsa.rewriteTex(h, () => "\\documentclass{article}\n\\begin{document}\nx\n\\end{document}\n");
     await flushWrites(`${NORMAL_DOC}/virgil/notes.json`);
     await flushWrites(`${NORMAL_DOC}/virgil/todos.json`);
     await flushWrites(`${NORMAL_DOC}/bundle`);
     endDocPipeline(h);
-    // `writeTex` also takes an unconditional forensic snapshot of the prior
+    // `rewriteTex` also takes an unconditional forensic snapshot of the prior
     // bundle into `virgil/.history/<ts>/` (task 357's accountability rule for
     // the style-swap writer) — correct behaviour, not a write this leg is
     // about, so it is filtered out of the compared set.
@@ -427,7 +427,7 @@ describe("storage-dev — a Reader note LANDS, everything else is still refused"
     await expect(
       dev.mutateSidecar(h, "todos.json", { todos: [] }, () => ({ todos: [1] })),
     ).resolves.toBeNull();
-    await expect(dev.writeTex(h, "\\documentclass{article}")).resolves.toBeUndefined();
+    await expect(dev.rewriteTex(h, () => "\\documentclass{article}")).resolves.toBe("unchanged");
     await expect(dev.writeDocBundle(h, EMPTY_DOC)).resolves.toEqual({
       landed: false,
       reason: "read-only",
