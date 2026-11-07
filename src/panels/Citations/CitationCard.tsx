@@ -1522,16 +1522,28 @@ function CitationKeyRow({
   // copy flash, which `useCopyFlash` arms through the row's own scope.
   const { copied, copy } = useCopyFlash();
 
+  // Focus belongs to the user's OPEN gesture (`+range`), never to a data echo
+  // (task 1513). Pre-1513 the autofocus effect was keyed on
+  // `[pgOpen, row.postnote]`, and the echo below never closed the box when the
+  // postnote emptied — so ANY clear (an emptied range committed by Enter or
+  // click-away, a Code-field edit dropping `[12]`, an editor undo, a natbib
+  // flip) re-ran it and yanked the caret out of wherever the user was into
+  // this card. The click arms a one-shot; the open transition consumes it.
+  const focusOnOpenRef = useRef(false);
+
   useEffect(() => {
     setPgDraft(row.postnote || "");
     if (row.postnote) setPgOpen(true);
+    // An emptied range returns the row to its empty state (`+range`) — unless
+    // the user is in the box right now, where closing would eat their field.
+    else if (document.activeElement !== pgInputRef.current) setPgOpen(false);
   }, [row.postnote]);
 
   useEffect(() => {
-    if (pgOpen && !row.postnote) {
-      pgInputRef.current?.focus();
-    }
-  }, [pgOpen, row.postnote]);
+    if (!pgOpen || !focusOnOpenRef.current) return;
+    focusOnOpenRef.current = false;
+    pgInputRef.current?.focus();
+  }, [pgOpen]);
 
   // Commits on blur, cancels on Escape — and `.blur()` inside a keydown fires
   // `focusout` SYNCHRONOUSLY, so the revert `setPgDraft` in that branch is
@@ -1619,6 +1631,7 @@ function CitationKeyRow({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            focusOnOpenRef.current = true;
             setPgOpen(true);
           }}
           data-button-exempt="10px hover-revealed row chip, below Button's sm scale"
