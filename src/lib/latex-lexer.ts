@@ -3023,16 +3023,68 @@ export function matchCommandToken(
   return { name: m[0], end: pos + 1 + m[0].length };
 }
 
-/** The gap TeX skips while scanning for a command's first argument: horizontal
- *  whitespace and at most ONE newline (two would be a `\par`, which cannot
- *  appear inside an argument scan). Sticky for the allocation reason above,
- *  with the same measured caveat. */
-const ARGUMENT_GAP_STICKY = /[ \t]*\n?[ \t]*/y;
+/**
+ * THE argument-space rule — where does TeX resume scanning for a command's next
+ * argument? (task 1510). `pos` is where a `[`/`{` probe would otherwise look;
+ * the return is the index of the first byte TeX would actually probe.
+ *
+ * TeX skips spaces before an undelimited argument, and LaTeX's `\@ifnextchar`
+ * skips them before an optional one, so horizontal whitespace and at most ONE
+ * line break are skipped. A BLANK line is a `\par`, which cannot appear inside
+ * an argument scan, so the scan stops in front of the second newline and a
+ * bare command at the end of a paragraph never reaches into the next block.
+ *
+ * With `comments`, a `%` comment is skipped too, through the lexer's READING
+ * pair (`matchCommentTailAt` + `skipCommentContinuationAt`), so the
+ * hand-written multi-line multicite `\cites[p. 1]{a}%\n  [p. 2]{b}` reads as
+ * TeX reads it. Comments are opt-in because skipping them is only safe for a
+ * caller that keeps the consumed SOURCE SLICE (a cite atom's `command` attr);
+ * a modeled construct that re-emits from its parts (a heading) would drop the
+ * comment's bytes on save, so it asks the comment-free form.
+ *
+ * Read by `argumentGapAt` (the first-argument gap of {@link matchStarOptBraceAt})
+ * and by `readCiteUnitsAt` in `cite-commands.ts`, before EVERY group probe —
+ * for cite commands TeX/biblatex skip the gap between groups as well. The
+ * carrier's {@link matchCommandArgumentRun} deliberately does NOT read it
+ * between groups: it does not know a command's arity, and a maximal run that
+ * skipped spaces would swallow a following PROSE group (`\foo{a} {b}`) into
+ * an uneditable carrier.
+ */
+export function skipArgumentSpaceAt(
+  text: string,
+  pos: number,
+  { comments = false }: { comments?: boolean } = {},
+): number {
+  let p = pos;
+  // True once the scan sits at the start of a line: a newline here would end
+  // a BLANK line, i.e. a `\par`.
+  let lineStart = false;
+  for (;;) {
+    while (p < text.length && (text[p] === " " || text[p] === "\t")) p++;
+    if (text[p] === "\n") {
+      if (lineStart) return p;
+      lineStart = true;
+      p++;
+      continue;
+    }
+    if (comments) {
+      const tail = matchCommentTailAt(text, p);
+      if (tail) {
+        // The comment line is not blank, so the newline it swallows is not
+        // a `\par`; the NEXT one, if it immediately follows, would be.
+        p = skipCommentContinuationAt(text, tail.end);
+        lineStart = true;
+        continue;
+      }
+    }
+    return p;
+  }
+}
 
+/** The gap TeX skips while scanning for a command's first argument — the
+ *  comment-free form of {@link skipArgumentSpaceAt}, as a length. */
 function argumentGapAt(src: string, pos: number): number {
-  ARGUMENT_GAP_STICKY.lastIndex = pos;
-  const m = ARGUMENT_GAP_STICKY.exec(src);
-  return m ? m[0].length : 0;
+  return skipArgumentSpaceAt(src, pos) - pos;
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   extractBraced,
   extractBracketed,
   matchCommentTailAt,
+  skipArgumentSpaceAt,
   skipCommentContinuationAt,
 } from "@/lib/latex-lexer";
 
@@ -266,17 +267,26 @@ export function readCiteUnitsAt(
   repeat: boolean,
 ): { units: CiteArgUnit[]; end: number } {
   const units: CiteArgUnit[] = [];
+  // TeX skips the gap before EVERY group probe — `\citep [p.~3]{k}`,
+  // `\cites[p. 1]{a}\n  [p. 2]{b}` — by the lexer's one argument-space rule
+  // (task 1510). The gap is consumed only as part of a unit that completes, so
+  // a trailing space, a `[sic]` with no `{…}` after it, or anything past a
+  // blank line is given back with the rest; and a SINGULAR command stops after
+  // its one unit, so `\citep{k} [sic]` keeps `[sic]` as prose.
+  const gap = (p: number) => skipArgumentSpaceAt(text, p, { comments: true });
   for (;;) {
     const unitStart = pos;
     const opts: string[] = [];
-    for (let n = 0; n < 2 && text[pos] === "["; n++) {
+    let probe = gap(pos);
+    for (let n = 0; n < 2 && text[probe] === "["; n++) {
       // `[see {a]b}]` closes at the LAST bracket, and a `]` in a `%` comment
       // is not a delimiter.
-      const opt = extractBracketed(text, pos);
+      const opt = extractBracketed(text, probe);
       if (!opt) break;
       opts.push(opt.content);
-      pos = opt.end;
+      probe = gap(opt.end);
     }
+    pos = probe;
     const inner = text[pos] === "{" ? extractBraced(text, pos) : null;
     if (!inner) {
       pos = unitStart;
