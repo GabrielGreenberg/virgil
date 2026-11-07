@@ -509,12 +509,22 @@ Four rules it earned:
 - **`drainDoc` inherits the fix for free.** It already called
   `flushPendingForDoc` before draining the queue, so a doc switch, a compile and
   a delete now settle every sidecar debounce too — no second mechanism.
-- **The channel and the mirror stay MODEL-scoped, deliberately.** A sidecar
-  write is landed by step 1 or logged by its own `persist`; putting it on the
-  unsaved-work channel would make every 300 ms card edit read as blocked work,
-  and the mirror cannot represent it. So `unlanded` keeps its meaning; what the
-  door buys is that the sidecar half has been fired and awaited by the time it
-  is computed.
+- **The MIRROR stays MODEL-scoped; the CHANNEL no longer does (task 1503,
+  superseding 559's "channel stays model-scoped").** 559 kept card writes off
+  the channel — and with them off the leave prompt and the save badge, so a
+  card body in its 300 ms debounce (or in flight) got no `beforeunload` at all.
+  The worry ("every card edit would read as blocked work") was about `reason`,
+  not dirt: young unblocked dirt is the badge's quiet `pending` tier. Now every
+  sidecar writer (`usePersistentState`, `useFootnotes`, `useBibReview`)
+  publishes through `createSidecarWorkPublisher` as a member of a per-document
+  SET (`sidecarDirtySince`), distinct from the model's `dirtySince`/`reason`:
+  a bundle landing cannot clear a card's dirt, nor one card another's. Doors
+  ask `hasUnlandedWork` (either kind); the bundle writer's own flush/receipt
+  paths and the mirror's arming ask the model (`hasUnlandedModelWork`,
+  `shouldMirror`). After the reload door's step 1 a sidecar-dirty document is
+  one whose card write FAILED — reported unlanded and NOT mirrored, honestly.
+  STATED RESIDUAL: `RichTextField`'s 250 ms upstream coalescer has no docId in
+  hand and is still covered only by its blur/unmount flush.
 - **The phase exists because of ORDER, found by asking what else coalesces.**
   The code pane holds the last 600 ms of typing in CodeMirror and only then
   re-parses it into TipTap; the bundle writer snapshots the live model. Its

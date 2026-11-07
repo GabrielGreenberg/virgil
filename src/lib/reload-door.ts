@@ -69,6 +69,7 @@
 
 import {
   docsWithUnlandedWork,
+  unlandedSince,
   type UnsavedBlockReason,
 } from "@/lib/unsaved-work";
 import { flushAllPendingDocs } from "@/lib/multi-window/pending-saves";
@@ -125,13 +126,14 @@ export interface ReloadReadiness {
  *    `unchanged` — already written at this content). A failed write, an
  *    oversized model, a missing model or a missing ticker is NOT covered.
  *
- * The channel and the mirror deliberately stay MODEL-scoped. A sidecar write
- * is either landed by step 1 or logged by its own `persist` — it is not on
- * the unsaved-work channel (which would make every 300 ms card edit look like
- * blocked work) and cannot be in the mirror (which stores the TipTap model,
- * where a card body does not live). So `unlanded` still means model work; what
- * step 1 buys is that the sidecar half has actually been fired and awaited by
- * the time it is computed.
+ * Since task 1503 the CHANNEL carries both kinds of writer — the model's dirt
+ * and each card sidecar's (`sidecarDirtySince`, a per-document writer set) —
+ * while the MIRROR stays model-scoped (it stores the TipTap model, where a card
+ * body does not live). Step 1 fires and awaits every sidecar debounce, and a
+ * write that lands clears its writer; so a document still `unlanded` for a
+ * sidecar after step 1 is one whose card write FAILED. Its mirror receipt is
+ * `not-armed` (no model dirt), `mirrorCovers` is false, and the report says so
+ * — honestly: a card edit the disk refused is in no net but memory.
  */
 export async function prepareForReload(): Promise<ReloadReadiness> {
   try {
@@ -140,11 +142,14 @@ export async function prepareForReload(): Promise<ReloadReadiness> {
     /* one doc's failed flush must not strand the others' mirroring */
   }
   const now = Date.now();
-  const unlanded = docsWithUnlandedWork().map((s) => ({
-    docId: s.docId,
-    reason: s.reason,
-    ageMs: s.dirtySince === null ? 0 : Math.max(0, now - s.dirtySince),
-  }));
+  const unlanded = docsWithUnlandedWork().map((s) => {
+    const since = unlandedSince(s);
+    return {
+      docId: s.docId,
+      reason: s.reason,
+      ageMs: since === null ? 0 : Math.max(0, now - since),
+    };
+  });
   if (unlanded.length === 0) return { unlanded, mirrored: true };
   let mirrored: boolean;
   try {

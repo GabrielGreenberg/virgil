@@ -162,7 +162,9 @@ describe("census · the preamble stash has one writer, one consumer, and two dis
     expect(at).toBeGreaterThan(-1);
     const slice = code.slice(at, code.indexOf("[docId, saveCoalescer],", at));
     expect(slice).toContain("saveCoalescer.pending");
-    expect(slice).toContain("hasUnlandedWork(docId)");
+    // Task 1503: the MODEL-scoped read — a card sidecar's dirt is not a
+    // bundle write for this hook to make.
+    expect(slice).toContain("hasUnlandedModelWork(docId)");
     expect(slice).toContain("pendingDelimitersRef.current !== null");
   });
 

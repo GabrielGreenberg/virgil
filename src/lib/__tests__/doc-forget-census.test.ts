@@ -78,6 +78,7 @@ const EXCLUDED: Readonly<Record<string, string>> = {
   "src/lib/multi-window/doc-ownership.ts::heldReleasers": "shadows a live Web Lock — released by the lock's own lifetime",
   "src/lib/multi-window/doc-ownership.ts::releasing": "shadows a live Web Lock — released by the lock's own lifetime",
   "src/lib/unsaved-work.ts::byDoc": "the 'you have unsaved work' alarm — the caller closes/drains the tab first",
+  "src/lib/unsaved-work.ts::sidecarWriters": "the card-sidecar half of the same alarm (task 1503) — cleared with byDoc by clearUnsavedWork, and each member by its writer's own settle",
   // Self-validating caches: the key carries a content fingerprint.
   "src/hooks/useResolvedFigureUrl.ts::rasterCache": "entries carry the source fingerprint and are confirmed before use",
   "src/hooks/useResolvedFigureUrl.ts::urlCache": "keyed by the content cacheKey; refcounted by consumers",
