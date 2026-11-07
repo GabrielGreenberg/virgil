@@ -24,6 +24,7 @@ vi.mock("@/lib/tiptap-extensions", () => ({
 }));
 
 import { BarMoreMenu } from "../BarMoreMenu";
+import { __resetPomodoroForTest, getPomodoroState } from "@/lib/pomodoro-timer";
 
 class ResizeObserverStub {
   observe() {}
@@ -34,6 +35,7 @@ class ResizeObserverStub {
 
 afterEach(() => {
   cleanup();
+  __resetPomodoroForTest();
   document.body.innerHTML = "";
 });
 
@@ -202,6 +204,34 @@ describe("the ⋯ menu — on the menu primitive (task 1361)", () => {
     ) as HTMLElement;
     act(() => code.click());
     expect(onViewChange).toHaveBeenCalledWith("code");
+    expect(menus()).toHaveLength(0);
+  });
+});
+
+/** Task 1514: the Timer row is a prop-less-state leaf that used to flip the
+ *  store and leave the menu open over the widget it just opened — the only ⋯
+ *  row that did. Both activation doors reach `onToggle`, so both are pinned. */
+describe("the ⋯ menu's Timer row closes the menu like its siblings (task 1514)", () => {
+  const timerRow = () =>
+    [...document.querySelectorAll('[role="menuitemcheckbox"]')].find((el) =>
+      el.textContent?.includes("Timer"),
+    ) as HTMLElement;
+
+  it("a click flips the timer open and closes the menu", () => {
+    setup();
+    expect(getPomodoroState().open).toBe(false);
+    act(() => timerRow().click());
+    expect(getPomodoroState().open).toBe(true);
+    expect(menus()).toHaveLength(0);
+  });
+
+  it("Enter on the row does the same", () => {
+    setup();
+    // Style, Print, Zen, then Timer.
+    for (let i = 0; i < 4; i++) key("ArrowDown");
+    expect(timerRow().hasAttribute("data-active")).toBe(true);
+    key("Enter");
+    expect(getPomodoroState().open).toBe(true);
     expect(menus()).toHaveLength(0);
   });
 });
