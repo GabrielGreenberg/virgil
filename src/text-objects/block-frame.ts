@@ -1,7 +1,7 @@
 /**
  * block-frame.ts — the ONE canonical per-block geometry source for every
- * margin affordance (grab handle, drop indicator, figure chrome, and the
- * pending-change pill).
+ * margin affordance and every `--margin-*` reader (the population is this
+ * module's importers; no member list is kept here, so none can go stale).
  * Resolve a block's frame once and every affordance
  * reads the SAME numbers, so they align BY CONSTRUCTION rather than by
  * coincidence (the bug this replaces: each handle measured its own block,

@@ -22,15 +22,15 @@
  * FOUT, including a runtime main-text font switch to a lazily-loaded
  * family, doesn't leave handles stuck at the fallback font's cap-top.
  *
- * Used by `src/text-objects/TextObjectGrabHandle.tsx` for both the
- * TextObjectRef placement path and the SelectionRef path, and — through the
- * shared {@link opticalCenterY} / {@link capBandCenterOffset} primitives — by
- * the canonical block frame (`src/text-objects/block-frame.ts`) and the
- * editor-geometry service (`src/lib/editor-geometry/service.ts`, which the
- * marginalia registry adapts). It is the single source of
- * truth: every consumer composes the SAME primitives (including the exported
- * {@link resolveLineHeightPx}) rather than re-deriving the math, so all the
- * margin affordances align BY CONSTRUCTION.
+ * This module is the single source of truth for that math. The CONTRACT for
+ * a consumer (the population is simply this module's importers — no list is
+ * kept here, because a hand-kept list is what drifted twice, tasks 1322/1515):
+ * compose these primitives — {@link opticalCenterY}, {@link capBandCenterOffset},
+ * {@link resolveLineHeightPx}, … — rather than re-derive the math, and ask
+ * "which element shows this block's first line" through
+ * {@link resolveFirstLineTarget}, never the wrapper step
+ * (`first-line-target-census.test.ts` holds that door). Every margin
+ * affordance then aligns BY CONSTRUCTION.
  */
 
 import {
@@ -84,11 +84,12 @@ function canvasFontSpec(cs: CSSStyleDeclaration, fontSizePx: number): string {
  * (SSR / a jsdom stub), which every caller must read as "no opinion" and fall
  * back to a geometric bound rather than to a px guess.
  *
- * Its consumer is the marker-ink boundary in `block-frame.ts`: a list's
- * `::marker` is not rect-able, so the only way to know how far LEFT of the item
- * an `10.` reaches is to measure the string the counter renders. Cached per
- * `(font signature, text)`, so a hover placement pass pays one measurement per
- * distinct marker per font — never per frame.
+ * For text the DOM cannot rect — a list's `::marker` (how far LEFT of the
+ * item an `10.` reaches), or a label with no laid-out box — measuring the
+ * string is the only honest width. Cached per `(font signature, text)`, so a
+ * caller pays one measurement per distinct string per font — never per frame;
+ * a caller must therefore measure a BOUNDED key space (markers, labels), not
+ * arbitrary per-keystroke text.
  */
 export function measureTextWidth(
   text: string,
@@ -515,8 +516,10 @@ function fireFontReady(): void {
  * callback so a fresh closure per effect run doesn't accumulate. Every closure
  * transitively pins its editor graph, so an un-disposed registration across
  * paper switches / panel toggles / multi-window opens leaks torn-down editors.
- * Leak-safety rests ENTIRELY on these disposers (both current callers invoke
- * theirs unconditionally in cleanup) — the listener is armed once and never
+ * Leak-safety rests ENTIRELY on these disposers — every production
+ * registration must either be RETURNED as a `useEffect` cleanup or be bound to
+ * a `const` that its cleanup calls; `font-ready-disposal-census.test.ts` holds
+ * that rule over every caller — because the listener is armed once and never
  * disarmed, and the callback Set is never cleared, so a persistent registrant
  * keeps re-firing across waves as intended.
  *
