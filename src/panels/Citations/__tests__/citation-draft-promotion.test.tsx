@@ -176,4 +176,18 @@ describe("draft citation promotes on an ENDING only (task 1512)", () => {
     act(() => void vi.advanceTimersByTime(1000));
     expect(promoted(props)).toBe(0);
   });
+
+  it("picking a key from the draft's picker still promotes (a keyed command through `persist`)", () => {
+    const props = draftPanel();
+    const search = screen.getByPlaceholderText("Add from library…");
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "kripke1980" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(props.onCreateCitation).toHaveBeenCalledTimes(1);
+    expect((props.onCreateCitation as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatch(
+      /\\cite[a-z]*\{kripke1980\}/,
+    );
+    expect(props.onInsertCitation).toHaveBeenCalledTimes(1);
+  });
 });
