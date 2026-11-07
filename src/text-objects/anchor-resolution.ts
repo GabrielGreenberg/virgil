@@ -57,49 +57,110 @@ export interface AnchorableBlock {
   kind: TextObjectKind;
 }
 
+const NO_SKIP: ReadonlySet<string> = new Set();
+
 /**
- * Walk backward from `pos - 1` looking for the nearest TextObject block
- * carrying a uuid attr. For top-level container kinds (lists / example
- * blocks), descend into the last child so the result is the user's
- * intuitive "block immediately above" (the last listItem, not the
- * bulletList wrapper).
+ * Walk backward from `pos` to the nearest TextObject block carrying a uuid.
+ * For container kinds (lists / example blocks), descend into the last child
+ * so the result is the user's intuitive "block immediately above" (the last
+ * listItem, not the bulletList wrapper).
  *
- * Returns `null` when no surviving anchor exists (the source was the
- * doc's first block, or every block above is a non-TextObject).
+ * "Nearest" is honoured, not approximated (task 1507): a sibling that does
+ * not qualify — a `\maketitle` marker, an empty or unminted container, a
+ * uuid-less paragraph, a block in `skip` — is WALKED PAST to the next sibling
+ * up, and when a level runs out the walk climbs. Until 1507 it probed only the
+ * first adjacent sibling and gave up there, so a displaced card lost its home
+ * although a valid paragraph stood two blocks away.
  *
- * Pure; no view-level deps. Safe to call from action-time inside the
- * dispatcher; cost is O(depth) at the resolved position.
+ * Returns `null` only when no qualifying block exists anywhere above (the
+ * source was the doc's first block, or every block above is a non-TextObject,
+ * uuid-less, or skipped).
+ *
+ * `skip` — uuids that must not be answered (the blocks a removal is about to
+ * take out); they are walked past like any other non-qualifying block.
+ *
+ * Pure; no view-level deps. Action-time only; cost is O(distance to the
+ * answer) in doc order, never O(doc) per keystroke.
  */
 export function findPreviousAnchorableBlock(
   doc: PMNode,
   pos: number,
+  skip: ReadonlySet<string> = NO_SKIP,
 ): AnchorableBlock | null {
   if (pos <= 0) return null;
-  let probe: PMNode | null = null;
+  return walkSiblings(doc, pos, "last", skip);
+}
+
+/**
+ * The mirror of {@link findPreviousAnchorableBlock}: walk FORWARD from `pos`
+ * to the nearest TextObject block carrying a uuid, descending into a
+ * container's FIRST child, walking past non-qualifying siblings and climbing
+ * exactly as its backward twin does.
+ *
+ * It exists because "the block above" is not always available: a capture that
+ * starts at the document's very first block has nothing before it, and the
+ * honest neighbour is then the block that will sit immediately BELOW the hole.
+ * Without it, archiving the first paragraph left the fresh snippet — and, since
+ * task 491, every card the capture displaced — with no anchor at all.
+ *
+ * Pure; same cost class as its backward twin.
+ */
+export function findNextAnchorableBlock(
+  doc: PMNode,
+  pos: number,
+  skip: ReadonlySet<string> = NO_SKIP,
+): AnchorableBlock | null {
+  if (pos >= doc.content.size) return null;
+  return walkSiblings(doc, pos, "first", skip);
+}
+
+/** The one sibling walk behind both directions. `edge` names the direction
+ *  by the container end that touches the gap: `"last"` walks BACKWARD (a
+ *  candidate above presents its last item to us), `"first"` walks FORWARD.
+ *
+ *  At each depth, from the deepest outward, the siblings on the walk's side
+ *  of `pos` are tried nearest-first; the first that yields an answer wins.
+ *  At the resolved depth, `index(depth)` is the child starting at `pos`; at
+ *  every shallower depth it is the ANCESTOR containing `pos` — already searched
+ *  from the inside — so the forward walk starts one past it there. Inline
+ *  levels are skipped: a text run is never a block neighbour. */
+function walkSiblings(
+  doc: PMNode,
+  pos: number,
+  edge: "first" | "last",
+  skip: ReadonlySet<string>,
+): AnchorableBlock | null {
+  let $pos;
   try {
-    const $pos = doc.resolve(Math.min(pos, doc.content.size));
-    // Walk up depths; at each level, try to step to the previous sibling
-    // at that depth. The first valid prior sibling we hit is the
-    // candidate; deeper levels exist when the source was nested
-    // (a listItem inside a bulletList inside the doc).
-    for (let depth = $pos.depth; depth >= 0; depth--) {
-      const parent = $pos.node(depth);
-      const indexAtDepth = $pos.index(depth);
-      if (indexAtDepth <= 0) continue; // no prior sibling at this depth
-      const sibling = parent.child(indexAtDepth - 1);
-      probe = sibling;
-      break;
-    }
+    $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
   } catch {
     return null;
   }
-  if (!probe) return null;
-  return resolveAnchorableFromNode(probe, "last");
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const parent = $pos.node(depth);
+    if (parent.inlineContent) continue;
+    const at = $pos.index(depth);
+    if (edge === "last") {
+      for (let i = at - 1; i >= 0; i--) {
+        const hit = resolveAnchorableFromNode(parent.child(i), edge, skip);
+        if (hit) return hit;
+      }
+    } else {
+      const startAt = depth === $pos.depth ? at : at + 1;
+      for (let i = startAt; i < parent.childCount; i++) {
+        const hit = resolveAnchorableFromNode(parent.child(i), edge, skip);
+        if (hit) return hit;
+      }
+    }
+  }
+  return null;
 }
 
-/** From a candidate node (which may be a container), drill down into its
- *  edge child while the container kind asks us to. Returns the first
- *  TextObject-kind node with a uuid; null if no descendant qualifies.
+/** From a candidate node (which may be a container), find the qualifying
+ *  block nearest the gap we came from: a container is searched from its
+ *  `edge` child inward (recursively — containers nest), and only when none of
+ *  its children qualifies does the container's OWN identity answer. A plain
+ *  node answers itself if it is an anchorable, un-skipped TextObject.
  *
  *  `edge` is which end of the container reads as "the block adjacent to the
  *  gap we came from": `"last"` for a candidate found ABOVE (its final item is
@@ -110,67 +171,27 @@ export function findPreviousAnchorableBlock(
 function resolveAnchorableFromNode(
   node: PMNode,
   edge: "first" | "last",
+  skip: ReadonlySet<string>,
+  nesting = 0,
 ): AnchorableBlock | null {
-  let cur: PMNode = node;
-  // Safety bound — schema doesn't nest containers more than a few deep,
-  // but bound the walk anyway.
-  for (let safety = 0; safety < 8; safety++) {
-    const typeName = cur.type.name;
-    const uuidAttr = cur.attrs?.uuid;
-    // A container kind whose edge child is the "block adjacent" semantically.
-    if (CONTAINER_DESCEND_KINDS.has(typeName) && cur.childCount > 0) {
-      // Prefer descending if the edge child is itself anchorable or a
-      // deeper container. If the container is empty (no children), fall
-      // through to the uuid check below.
-      cur = edge === "last" ? cur.child(cur.childCount - 1) : cur.child(0);
-      continue;
+  const typeName = node.type.name;
+  // Safety bound — the schema doesn't nest containers more than a few deep.
+  if (CONTAINER_DESCEND_KINDS.has(typeName) && nesting < 8) {
+    const n = node.childCount;
+    for (let k = 0; k < n; k++) {
+      const child = node.child(edge === "last" ? n - 1 - k : k);
+      const hit = resolveAnchorableFromNode(child, edge, skip, nesting + 1);
+      if (hit) return hit;
     }
-    if (isAnchorableBlock(typeName, uuidAttr)) {
-      return { uuid: uuidAttr as string, kind: typeName };
-    }
-    // Not a TextObject kind and not a container — give up. (e.g. a
-    // doctype block, a not-yet-registered kind.)
-    return null;
+    // Empty, or no child qualifies — fall through to the container itself.
   }
+  const uuidAttr = node.attrs?.uuid;
+  if (isAnchorableBlock(typeName, uuidAttr) && !skip.has(uuidAttr)) {
+    return { uuid: uuidAttr, kind: typeName };
+  }
+  // Not a qualifying TextObject (a doctype block, a `\maketitle` marker, an
+  // unminted block, a skipped one) — the caller walks on past it.
   return null;
-}
-
-/**
- * The mirror of {@link findPreviousAnchorableBlock}: walk FORWARD from `pos`
- * to the nearest TextObject block carrying a uuid, descending into a
- * container's FIRST child.
- *
- * It exists because "the block above" is not always available: a capture that
- * starts at the document's very first block has nothing before it, and the
- * honest neighbour is then the block that will sit immediately BELOW the hole.
- * Without it, archiving the first paragraph left the fresh snippet — and, since
- * task 491, every card the capture displaced — with no anchor at all.
- *
- * Pure; O(depth). Same cost class as its backward twin.
- */
-export function findNextAnchorableBlock(
-  doc: PMNode,
-  pos: number,
-): AnchorableBlock | null {
-  if (pos >= doc.content.size) return null;
-  let probe: PMNode | null = null;
-  try {
-    const $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
-    // Mirror of the backward walk: at each depth, the child AT `index(depth)`
-    // is the sibling that starts at (or spans) this position — the first one
-    // still ahead of us. Deeper levels exist when the position was nested.
-    for (let depth = $pos.depth; depth >= 0; depth--) {
-      const parent = $pos.node(depth);
-      const indexAtDepth = $pos.index(depth);
-      if (indexAtDepth >= parent.childCount) continue; // nothing after us here
-      probe = parent.child(indexAtDepth);
-      break;
-    }
-  } catch {
-    return null;
-  }
-  if (!probe) return null;
-  return resolveAnchorableFromNode(probe, "first");
 }
 
 /**
@@ -277,20 +298,21 @@ export function resolveDisplacedAnchorPlacement(
   return neighbourAnchor(doc, from, to, removed);
 }
 
-/** Rungs 2 and 3: above, else below. A candidate that is itself inside the
- *  removal is refused — `nodesBetween` containment and the sibling walk are
+/** Rungs 2 and 3: above, else below. A block inside the removal is WALKED
+ *  PAST, not refused — `nodesBetween` containment and the sibling walk are
  *  different questions, and a cascade-extended range can swallow a sibling the
- *  backward walk would otherwise hand back. */
+ *  walk would otherwise hand back; refusing it after the fact (pre-1507) gave
+ *  up on the whole direction although a surviving block stood just beyond. */
 function neighbourAnchor(
   doc: PMNode,
   from: number,
   to: number,
   removed: ReadonlySet<string>,
 ): { target: AnchorableBlock; below: boolean } | null {
-  const prev = findPreviousAnchorableBlock(doc, from);
-  if (prev && !removed.has(prev.uuid)) return { target: prev, below: false };
-  const next = findNextAnchorableBlock(doc, to);
-  if (next && !removed.has(next.uuid)) return { target: next, below: true };
+  const prev = findPreviousAnchorableBlock(doc, from, removed);
+  if (prev) return { target: prev, below: false };
+  const next = findNextAnchorableBlock(doc, to, removed);
+  if (next) return { target: next, below: true };
   return null;
 }
 

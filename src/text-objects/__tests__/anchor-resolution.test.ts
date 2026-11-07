@@ -11,7 +11,12 @@
 
 import { describe, expect, it } from "vitest";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
-import { findPreviousAnchorableBlock } from "../anchor-resolution";
+import {
+  collectRemovedAnchorUuids,
+  findNextAnchorableBlock,
+  findPreviousAnchorableBlock,
+  resolveDisplacedAnchorPlacement,
+} from "../anchor-resolution";
 
 const schema = new Schema({
   nodes: {
@@ -61,6 +66,13 @@ const schema = new Schema({
       attrs: { uuid: { default: null } },
       toDOM: () => ["div", { class: "math" }],
     },
+    // Stand-in for the real `maketitleMarker`: a top-level block that is not
+    // a TextObject kind (task 1507).
+    maketitleMarker: {
+      group: "block",
+      atom: true,
+      toDOM: () => ["div", { class: "maketitle" }],
+    },
     text: { group: "inline" },
   },
 });
@@ -88,6 +100,15 @@ function xb(uuid: string, items: PMNode[]): PMNode {
 }
 function dm(uuid: string): PMNode {
   return schema.nodes.displayMath.create({ uuid });
+}
+function mt(): PMNode {
+  return schema.nodes.maketitleMarker.create();
+}
+/** An unminted (uuid-less) list — a container with nothing to answer. */
+function blNoUuid(): PMNode {
+  return schema.nodes.bulletList.create({ uuid: null }, [
+    schema.nodes.listItem.create({ uuid: null }, p(null, "i")),
+  ]);
 }
 function doc(...blocks: PMNode[]): PMNode {
   return schema.nodes.doc.create({}, blocks);
@@ -179,5 +200,73 @@ describe("findPreviousAnchorableBlock", () => {
     const d = doc(p(null, "no-uuid"), p("fa1"));
     const result = findPreviousAnchorableBlock(d, posBeforeTopBlock(d, 1));
     expect(result).toBeNull();
+  });
+});
+
+/** Task 1507 — "nearest" is honoured: a non-qualifying sibling is walked
+ *  past, not the end of the walk. Each case runs in both directions. */
+describe("neighbour walk passes non-qualifying siblings (task 1507)", () => {
+  const afterTop = (d: PMNode, i: number) =>
+    posBeforeTopBlock(d, i) + d.child(i).nodeSize;
+
+  it("walks past a \\maketitle marker", () => {
+    const d = doc(p("P1"), mt(), p("P2"), mt(), p("P3"));
+    expect(findPreviousAnchorableBlock(d, posBeforeTopBlock(d, 2))?.uuid).toBe("P1");
+    expect(findNextAnchorableBlock(d, afterTop(d, 2))?.uuid).toBe("P3");
+  });
+
+  it("walks past an unminted container", () => {
+    const d = doc(p("P1"), blNoUuid(), p("P2"), blNoUuid(), p("P3"));
+    expect(findPreviousAnchorableBlock(d, posBeforeTopBlock(d, 2))?.uuid).toBe("P1");
+    expect(findNextAnchorableBlock(d, afterTop(d, 2))?.uuid).toBe("P3");
+  });
+
+  it("walks past a uuid-less paragraph", () => {
+    const d = doc(p("P1"), p(null), p("P2"), p(null), p("P3"));
+    expect(findPreviousAnchorableBlock(d, posBeforeTopBlock(d, 2))?.uuid).toBe("P1");
+    expect(findNextAnchorableBlock(d, afterTop(d, 2))?.uuid).toBe("P3");
+  });
+
+  it("walks past a skipped (removed) sibling", () => {
+    const d = doc(p("P1"), p("gone1"), p("P2"), p("gone2"), p("P3"));
+    const skip = new Set(["gone1", "gone2"]);
+    expect(findPreviousAnchorableBlock(d, posBeforeTopBlock(d, 2), skip)?.uuid).toBe("P1");
+    expect(findNextAnchorableBlock(d, afterTop(d, 2), skip)?.uuid).toBe("P3");
+  });
+
+  it("passes over a container's unqualifying edge items to an inner one", () => {
+    const list = bl("ul1", [li("li1"), schema.nodes.listItem.create({ uuid: null }, p(null))]);
+    const d = doc(list, p("P2"));
+    expect(findPreviousAnchorableBlock(d, posBeforeTopBlock(d, 1))?.uuid).toBe("li1");
+  });
+
+  it("forward from the end of a list's last item climbs past the list", () => {
+    const d = doc(bl("ul1", [li("li1"), li("li2")]), p("P2"));
+    // Position just inside the list, after its last item.
+    const endOfList = d.child(0).nodeSize - 1;
+    expect(findNextAnchorableBlock(d, endOfList)?.uuid).toBe("P2");
+  });
+
+  it("the reported case: archive P2 after \\maketitle with the block below also gone", () => {
+    const d = doc(p("P1"), mt(), p("P2"), p("P3"));
+    // Remove P2 and P3 — nothing survives below; P1 is the honest home.
+    const from = posBeforeTopBlock(d, 2);
+    const to = d.content.size;
+    const removed = collectRemovedAnchorUuids(d, from, to);
+    expect(resolveDisplacedAnchorPlacement(d, from, to, removed)).toEqual({
+      target: { uuid: "P1", kind: "paragraph" },
+      below: false,
+    });
+  });
+
+  it("forward rung walks past a removed block to the survivor beyond", () => {
+    const d = doc(mt(), p("P1"), p("P2"), p("P3"));
+    const from = posBeforeTopBlock(d, 1);
+    const to = afterTop(d, 1);
+    const removed = new Set([...collectRemovedAnchorUuids(d, from, to), "P2"]);
+    expect(resolveDisplacedAnchorPlacement(d, from, to, removed)).toEqual({
+      target: { uuid: "P3", kind: "paragraph" },
+      below: true,
+    });
   });
 });
