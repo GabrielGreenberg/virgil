@@ -72,6 +72,14 @@ export interface RenameCitekeyChange {
    *  writer applies the `.bib` `key`+`type` mutation in one place. Optional —
    *  a pure rename omits it. */
   newType?: string;
+  /** Every citekey the `.bib` held at the moment of the rename, OLD key
+   *  included (task 1511). A `\cite{}` names the renamed entry by the readers'
+   *  case-folded identity (task 1325), so a `\cite{smith2020}` of `Smith2020`
+   *  must follow the rename — UNLESS the bib also held an exact `smith2020`
+   *  twin, which that cite names instead. The cite-rewriting migrators need
+   *  the key list to tell the two apart (`citesRenamedEntry`). Omitted ⇒ no
+   *  twin is known, and every case-variant of `oldKey` follows. */
+  bibKeys?: readonly string[];
 }
 
 /**

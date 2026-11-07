@@ -79,7 +79,7 @@ describe("citekey_keyed_sidecars.json ↔ SIDECAR_VALUE", () => {
  */
 const APP_REKEYERS: Record<string, { door: RegExp; wiredIn: string }> = {
   // The citation refs are rewritten inline by the rename door itself.
-  "citations.json": { door: /rewriteCitationRefs\(oldKey, newKey\)/, wiredIn: "src/hooks/useCitations.ts" },
+  "citations.json": { door: /rewriteCitationRefs\(oldKey, newKey\b/, wiredIn: "src/hooks/useCitations.ts" },
   "annotations.json": { door: /renameAnnotationKey\(oldKey, newKey\)/, wiredIn: "src/components/EditorPane.tsx" },
   "bib-review-requests.json": { door: /renameBibReviewKey\(oldKey, newKey\)/, wiredIn: "src/components/EditorPane.tsx" },
 };

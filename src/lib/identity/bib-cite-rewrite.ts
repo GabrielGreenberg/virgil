@@ -10,7 +10,7 @@
  *
  * The rewrite is key-list-only and footnote-deep:
  *  - **Key lists, not the command** (task 910): only the mandatory `{…}` key
- *    groups are rewritten, token by exact token — rename `foo` does not touch
+ *    groups are rewritten, token by whole token — rename `foo` does not touch
  *    `foobar`, a punctuation citekey (`+foo`, `foo:bar`) matches as itself, and
  *    the command word and `[pre][post]` notes are never edited. The citations
  *    SIDECAR (`useCitations.rewriteCitationRefs`) calls the same function, so
@@ -39,6 +39,36 @@
 import type { Editor } from "@tiptap/react";
 import { rewriteInlineAtomsDeep } from "@/lib/inline-content";
 import { findGroupClose } from "@/lib/latex-lexer";
+import { bibKeyIndex } from "@/lib/bib-address";
+
+/**
+ * THE key-equality door of the rename fan-out (task 1511): does the cited
+ * spelling `token` name the entry being renamed from `oldKey`?
+ *
+ * It answers with the READERS' identity — {@link bibKeyIndex}, the door every
+ * citation reader resolves through since task 1325 — asked of the bib AS IT
+ * STOOD before the rename. So a cite follows the rename exactly when it was
+ * resolving to the renamed entry: `\cite{smith2020}` follows a rename of
+ * `Smith2020` (the readers showed it as resolved, with the case-twin cue), and
+ * the rewrite writes `newKey` verbatim, curing the case mismatch too.
+ *
+ * The twin edge, stated here: when the bib ALSO held an exact `smith2020`
+ * beside `Smith2020` (a "Repeated entry" task 1159 now prevents adding, but a
+ * hand-edited file can hold), exact spelling wins — `\cite{smith2020}` names
+ * ITS entry and is left alone. A third spelling (`SMITH2020`) goes wherever
+ * the readers send it (the first case-variant in source order).
+ *
+ * `bibKeys` omitted ⇒ no twin is known, and every case-variant of `oldKey`
+ * matches.
+ */
+export function citesRenamedEntry(
+  oldKey: string,
+  bibKeys?: readonly string[],
+): (token: string) => boolean {
+  const keys = bibKeys && bibKeys.includes(oldKey) ? bibKeys : [oldKey, ...(bibKeys ?? [])];
+  const index = bibKeyIndex(keys.map((key) => ({ key })));
+  return (token) => index.get(token)?.key === oldKey;
+}
 
 /**
  * Rewrite every occurrence of the citekey `oldKey` → `newKey` inside a single
@@ -53,9 +83,11 @@ import { findGroupClose } from "@/lib/latex-lexer";
  * spelled like the command (`\citet{citet}`) cannot rename the command (task
  * 910 — the old whole-string regex did both).
  *
- * Inside a key list the match is EXACT per comma-separated token (whitespace
+ * Inside a key list the match is per WHOLE comma-separated token (whitespace
  * around a token is preserved), so `\cite{foo,foobar}` renames only `foo`, and
- * a punctuation citekey (`+foo`, `a:b`) matches as itself. This is the splice
+ * a punctuation citekey (`+foo`, `a:b`) matches as itself. Token equality is
+ * the readers' case-folded identity, through {@link citesRenamedEntry} (task
+ * 1511) — `bibKeys` lets an exact-case twin keep its own cites. This is the splice
  * form of the write-path law: what is not a key is not rewritten.
  *
  * A string that does not open with a `\command` is returned unchanged — there
@@ -65,8 +97,10 @@ export function rewriteCiteCommandString(
   command: string,
   oldKey: string,
   newKey: string,
+  bibKeys?: readonly string[],
 ): string {
   if (!command || !oldKey || oldKey === newKey) return command;
+  const names = citesRenamedEntry(oldKey, bibKeys);
   const head = command.match(/^\\[A-Za-z]+\*?/);
   if (!head) return command;
   let out = head[0];
@@ -82,7 +116,7 @@ export function rewriteCiteCommandString(
         out += command.slice(i, close + 1);
       } else {
         const body = command.slice(i + 1, close);
-        const rewritten = rewriteKeyList(body, oldKey, newKey);
+        const rewritten = rewriteKeyList(body, names, newKey);
         if (rewritten !== body) changed = true;
         out += "{" + rewritten + "}";
       }
@@ -96,16 +130,22 @@ export function rewriteCiteCommandString(
   return changed ? out : command;
 }
 
-/** Replace exact-equal tokens of a comma-separated key list, keeping every
- *  other byte (separators, surrounding whitespace) untouched. */
-function rewriteKeyList(body: string, oldKey: string, newKey: string): string {
+/** Replace the tokens of a comma-separated key list that name the renamed
+ *  entry, keeping every other byte (separators, surrounding whitespace)
+ *  untouched. */
+function rewriteKeyList(
+  body: string,
+  names: (token: string) => boolean,
+  newKey: string,
+): string {
   const parts = body.split(",");
   let changed = false;
   const next = parts.map((part) => {
-    if (part.trim() !== oldKey) return part;
+    const token = part.trim();
+    if (!token || !names(token)) return part;
     changed = true;
     const lead = part.length - part.trimStart().length;
-    return part.slice(0, lead) + newKey + part.slice(lead + oldKey.length);
+    return part.slice(0, lead) + newKey + part.slice(lead + token.length);
   });
   return changed ? next.join(",") : body;
 }
@@ -123,6 +163,7 @@ export function rewriteCiteKeyInDoc(
   editor: Editor,
   oldKey: string,
   newKey: string,
+  bibKeys?: readonly string[],
 ): number {
   if (!oldKey || oldKey === newKey) return 0;
   const tr = editor.state.tr;
@@ -130,7 +171,7 @@ export function rewriteCiteKeyInDoc(
   // key renames reach exactly the same hiding places.
   const touched = rewriteInlineAtomsDeep({ doc: tr.doc, tr }, "citation", (attrs) => {
     const cmd = (attrs.command as string) || "";
-    const rewritten = rewriteCiteCommandString(cmd, oldKey, newKey);
+    const rewritten = rewriteCiteCommandString(cmd, oldKey, newKey, bibKeys);
     return rewritten !== cmd ? { ...attrs, command: rewritten } : null;
   });
   if (touched > 0) editor.view.dispatch(tr);
