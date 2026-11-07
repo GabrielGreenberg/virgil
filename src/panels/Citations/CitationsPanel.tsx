@@ -14,6 +14,7 @@ import {
 import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { citeNotesDroppedByPackage } from "@/lib/cite-command-model";
+import { citationCommandOrNull } from "@/lib/bib-parser";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -235,11 +236,19 @@ function CitationsPanel({
 
   /** When the draft serialises to its first valid command, promote it to
    *  a real citation. Subsequent updates fall through harmlessly because
-   *  pendingCreate is cleared by then. */
+   *  pendingCreate is cleared by then.
+   *
+   *  "Valid" is measured, not assumed (task 1512): a command that does not
+   *  parse as a cite (a half-typed `\ci`) or parses with no keys (`\cite{}`)
+   *  stays a draft — promoting it would plant an unparseable atom in the
+   *  prose. The card's live preview never writes for a draft either, so the
+   *  promotion is an ENDING-only event (Code commit, or a picked key). The
+   *  test is the ONE anchorable-command predicate the drop button and
+   *  `citationDropSpec` already share. */
   const handleDraftUpdate = useCallback(
     (id: string, command: string) => {
       if (id !== DRAFT_ID) return;
-      if (!command) return;
+      if (citationCommandOrNull(command) === null) return;
       const newId = onCreateCitation(command);
       if (pendingCreateMode === "anchored") {
         const display = getDisplayText(command);

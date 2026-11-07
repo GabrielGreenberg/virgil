@@ -865,6 +865,12 @@ export function CitationCard({
     fire: () => {
       const v = codeDraftRef.current;
       if (v === null) return;
+      // A DRAFT HAS NOTHING TO PREVIEW INTO (task 1512). Its write is not a
+      // preview but a PROMOTION — the panel turns the draft's first command
+      // into a real citation and plants its atom in the prose, unmounting this
+      // card mid-session. So a draft becomes a citation only at the session's
+      // ENDING (`commitCodeDraft`), never on a timer behind a half-typed `\ci`.
+      if (isDraft) return;
       // THIS DOOR CANNOT EMPTY THE PROSE, by construction (task 683). A
       // mid-session keystroke that clears the field would otherwise blank the
       // in-text `\cite{}` 250 ms later — no gesture, no dialog, the session
