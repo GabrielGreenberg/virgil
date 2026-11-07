@@ -305,6 +305,15 @@ export const CARD_ATOM_ID_ATTRS: ReadonlyArray<CardAtomIdAttr> = CARD_ATOMS.map(
   (m) => m.idAttr as CardAtomIdAttr,
 );
 
+/** The unified identity MIRROR every Card-bearing atom carries beside its
+ *  per-kind id attr (`linkId`, kept in lock-step with `footnoteId` /
+ *  `citationId`). Not a per-kind row fact — every Card-bearing atom has it —
+ *  so it is stated once here rather than smuggled into a row. Readers that
+ *  answer "what is this atom's id" fall back to it when the per-kind attr is
+ *  empty (task 1508: {@link cardAtomIdOf} and the `src/links` walkers used to
+ *  disagree on exactly that), and re-identification rewrites it alongside. */
+export const CARD_ATOM_MIRROR_ID_ATTR = "linkId";
+
 /** The DOM attrs those ids are written to (`data-footnote-id`, …). */
 export const CARD_ATOM_DOM_ID_ATTRS: ReadonlyArray<string> = CARD_ATOMS.map(
   (m) => m.domIdAttr,

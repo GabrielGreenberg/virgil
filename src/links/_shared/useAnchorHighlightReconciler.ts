@@ -92,6 +92,7 @@ import { resolveInlineAtomLink } from "../links";
 import { buildCardAnchorPass, type CardAnchorPass } from "../card-anchor-rows";
 import { linkIdSelector } from "../link-dom-contract";
 import { anchorCardOfRef } from "./card-anchor-links";
+import { liveCardAtomIds } from "./live-card-atoms";
 import {
   selectedAttrs,
   hoveredAttrs,
@@ -201,20 +202,7 @@ export interface UseAnchorHighlightReconcilerArgs {
  *  the inline structural counter), never per keystroke. */
 function liveAtomIdSet(editor: Editor | null): ReadonlySet<string> | null {
   if (!editor || editor.isDestroyed || !editor.isInitialized) return null;
-  const ids = new Set<string>();
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "footnote") {
-      const id = (node.attrs.footnoteId as string) || (node.attrs.linkId as string) || "";
-      if (id) ids.add(id);
-      return false;
-    }
-    if (node.type.name === "citation") {
-      const id = (node.attrs.citationId as string) || "";
-      if (id) ids.add(id);
-    }
-    return true;
-  });
-  return ids;
+  return liveCardAtomIds(editor.state.doc);
 }
 
 export function useAnchorHighlightReconciler({

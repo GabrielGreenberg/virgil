@@ -32,7 +32,11 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import { findInlineAtomPosDeep } from "@/lib/inline-content";
-import { cardAtomMetaForNodeName, type CardAtomNodeName } from "@/lib/tiptap/atom-registry";
+import {
+  CARD_ATOM_MIRROR_ID_ATTR,
+  cardAtomMetaForNodeName,
+  type CardAtomNodeName,
+} from "@/lib/tiptap/atom-registry";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { docStructureKey, resolveTouchedBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
 import type { Link, LinkResolution } from "./_shared/types";
@@ -63,7 +67,6 @@ export type {
   ModeBAnchorLink,
   RangedModeBLink,
 } from "./_shared/types";
-export { isModeB, isRangedModeB } from "./_shared/types";
 // The DOM contract (`DATA_LINK_*`, `linkCardKey`, `parseLinkCardKey`) is NOT
 // re-exported here. It was, and that is how a dead surface hid for three
 // months: a re-export makes a symbol look referenced to every grep while no
@@ -192,7 +195,7 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
     if (atom) {
       const attrs = node.attrs as Record<string, unknown>;
       const entityId = (attrs[atom.idAttr] as string) || "";
-      const linkId = (attrs.linkId as string) || entityId;
+      const linkId = (attrs[CARD_ATOM_MIRROR_ID_ATTR] as string) || entityId;
       if (linkId) {
         links.push({
           id: linkId,

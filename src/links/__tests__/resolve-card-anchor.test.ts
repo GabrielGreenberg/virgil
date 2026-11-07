@@ -37,9 +37,9 @@ import {
   buildResolveIndex,
   resolveCardAnchor,
   reconcileCardToResolved,
-  normalizeParagraphText,
   type ResolveIndex,
 } from "@/links/resolve-card-anchor";
+import { normalizeParagraphText } from "@/links/_shared/normalize-text";
 
 // ---------------------------------------------------------------------------
 // Real-editor harness (mirrors mode-a-reconcile.test.ts)
