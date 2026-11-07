@@ -161,6 +161,24 @@ export interface CardAnchorPass {
    * the card is not anchored, or in the mount gap.
    */
   paintRows: (card: CardWithLinks) => CardPaintRow[];
+  /**
+   * The live blocks `card` is anchored on NOW, in row order — `rows[0]` (the
+   * authority's seed, the block a Jump lands on) first (task 1506). The ACT
+   * side's reading of the same rows the markers are drawn from: a suggestion's
+   * Apply / Insert-below / auto-apply target its FIRST entry, the AI-request
+   * wash paints every entry, the anchor summary counts words over them. A
+   * snapshot- or mark-recovered block is here even though the card does not
+   * store it; a stored pid that is dead, dormant, or only a Mode-B birth
+   * record is not.
+   *
+   * Never read `getLinkedTextObjectIds(card)[0]` as "where the card is" — that
+   * is the stored record, and after a mid-session re-mint or a Mode-B move it
+   * names a block no marker is drawn on (census:
+   * `live-anchor-door.test.tsx`). Empty when the card is not anchored.
+   * In the mount gap (no index) it fails open to the stored pids, the same
+   * no-verdict rule `resolve` follows.
+   */
+  anchorBlocksOf: (card: CardWithLinks) => string[];
 }
 
 /** One drawn row as the hover / selection painter reads it (see `paintRows`). */
@@ -225,7 +243,37 @@ export function buildCardAnchorPass(editor: Editor | null): CardAnchorPass {
       bound ? jumpTargetOfRows(resolve(card), bound, rowPid ?? null) : null,
     anchorPidsOf: (link) => anchorPidsOfLink(link, bound),
     paintRows: (card) => (bound ? paintRowsOf(resolve(card), bound) : []),
+    anchorBlocksOf: (card) => anchorBlocksOfRows(resolve(card), bound),
   };
+}
+
+/** `CardAnchorPass.anchorBlocksOf`'s rule (task 1506): the live rows' pids,
+ *  in row order; nothing for an unanchored card. With no index (mount gap)
+ *  the rows ARE the stored pids, unverified — the pass's fail-open. */
+function anchorBlocksOfRows(
+  resolved: CardAnchorRows,
+  index: ResolveIndex | null,
+): string[] {
+  if (!resolved.anchored) return [];
+  const out: string[] = [];
+  for (const row of resolved.rows) {
+    if (index && !index.uuidToParagraph.has(row.pid)) continue;
+    out.push(row.pid);
+  }
+  return out;
+}
+
+let indexlessPass: CardAnchorPass | null = null;
+/**
+ * The pass a surface reads when it has none in hand — a card body rendered
+ * outside a pane (an isolated test, a detached preview). It is the mount-gap
+ * pass (`buildCardAnchorPass(null)`: no index, stored pids unverified), so
+ * such a surface still asks the authority rather than spelling the stored
+ * read itself. Stateless apart from its per-card WeakMap memo, so one module
+ * instance serves every caller.
+ */
+export function cardAnchorPassOrIndexless(pass: CardAnchorPass | null | undefined): CardAnchorPass {
+  return pass ?? (indexlessPass ??= buildCardAnchorPass(null));
 }
 
 /**

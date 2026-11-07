@@ -90,7 +90,7 @@ type NoteCard = CardWithLinks & {
  * A `ParagraphAnchorApi` backed by a single live card object, composing the
  * REAL `links.ts` pure functions — the production wiring (`useNotes`) in
  * miniature. The card is mutated in place across the applyDrop sequence so a
- * follow-up `getAnchorTextObjectIds` reads the post-mutation state, matching
+ * follow-up `getCard` reads the post-mutation state, matching
  * the React functional-update composition the live hook relies on.
  */
 function noteApi(
@@ -99,8 +99,8 @@ function noteApi(
 ): ParagraphAnchorApi {
   return {
     exists: (id) => cardRef.card.id === id,
-    getAnchorTextObjectIds: (id) =>
-      cardRef.card.id === id ? getLinkedTextObjectIds(cardRef.card) : [],
+    getCard: (id) =>
+      cardRef.card.id === id ? cardRef.card : undefined,
     addTextObjectLink: (id, pid, targetKind, snapshot) => {
       if (cardRef.card.id !== id) return;
       cardRef.card = addTextObjectLink(
@@ -298,8 +298,8 @@ describe("task 698 — a dragged cutter card releases its old Mode-B anchor; a h
   ): ParagraphAnchorApi {
     return {
       exists: (id) => cardRef.card.id === id,
-      getAnchorTextObjectIds: (id) =>
-        cardRef.card.id === id ? getLinkedTextObjectIds(cardRef.card) : [],
+      getCard: (id) =>
+        cardRef.card.id === id ? cardRef.card : undefined,
       addTextObjectLink: (id, pid, targetKind, snapshot) => {
         if (cardRef.card.id !== id) return;
         cardRef.card = addTextObjectLink(cardRef.card, kind, pid, targetKind, snapshot);

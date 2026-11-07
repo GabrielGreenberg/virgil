@@ -12,6 +12,8 @@ import {
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { getAnchorSummary } from "@/links/links";
+import { cardAnchorPassOrIndexless } from "@/links/card-anchor-rows";
+import { useOptionalCardAnchorPass } from "@/components/editor-layout/contexts/card-anchor";
 import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -43,7 +45,13 @@ export function RevisionRequestCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardKindTheme("revision-comment");
-  const anchorSummary = getAnchorSummary(card, editor ?? null);
+  // Words over the blocks the card is anchored on NOW (task 1506).
+  const anchorPass = cardAnchorPassOrIndexless(useOptionalCardAnchorPass());
+  const anchorSummary = getAnchorSummary(
+    card,
+    editor ?? null,
+    anchorPass.anchorBlocksOf(card),
+  );
   const { ac, compressed, compressedLines, shell } = useAnchoredCardShell({
     kind: "revision-comment",
     id: card.id,

@@ -16,6 +16,7 @@ import type { JSONContent } from "@tiptap/core";
 import type { FootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
 import type { ReactNode } from "react";
 import type { TextObjectKind } from "@/text-objects/types";
+import type { CardWithLinks } from "@/links/links";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -148,8 +149,13 @@ export type DropDecision =
 export interface ParagraphAnchorApi {
   /** Returns true if the entity still exists in this doc. */
   exists: (id: string) => boolean;
-  /** Linked paragraph UUIDs for this entity. */
-  getAnchorTextObjectIds: (id: string) => string[];
+  /** The entity itself, or undefined when it is gone (task 1506). The spec
+   *  asks the card-anchor authority where it is anchored NOW (its live
+   *  blocks — a Mode-B link's mark block, a snapshot-recovered block) and
+   *  reads its STORED pids only for what `removeTextObjectLink` can remove.
+   *  An adapter never hands out a pid list of its own: the stored list read
+   *  as "where the card is" is the task-1506 bug. */
+  getCard: (id: string) => CardWithLinks | undefined;
   /** Anchor the card to `paragraphId`. `targetKind` (optional, defaults to
    *  "paragraph") records the anchored TextObject kind. `paragraphSnapshot`
    *  (optional) is the anchored paragraph's plain text, captured at the

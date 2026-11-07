@@ -1125,17 +1125,24 @@ export type AnchorSummary =
  *  the word count of the anchored region. Used by card UIs to render a
  *  "selection · 14 words" / "paragraph · 47 words" badge. Mode B
  *  (text-range) wins over Mode A (paragraph). Returns null for cards
- *  with no anchor at all. */
+ *  with no anchor at all.
+ *
+ *  The paragraph words are counted over `anchorBlocks` — the blocks the card
+ *  is anchored on NOW, `CardAnchorPass.anchorBlocksOf(card)` (task 1506) —
+ *  never over its stored pids, which for a snapshot-bound card are dead and
+ *  read "paragraph · 0 words" beside a card that is visibly anchored. The
+ *  stored pids still decide WHETHER the card declares a paragraph anchor. */
 export function getAnchorSummary(
   card: CardWithLinks & { selectedText?: string },
   editor: Editor | null,
+  anchorBlocks: readonly string[],
 ): AnchorSummary {
   const ta = getTextAnchor(card);
   if (ta) {
     return { kind: "selection", words: countWords(ta.anchorText) };
   }
-  const pids = getLinkedTextObjectIds(card);
-  if (pids.length === 0) return null;
+  if (getLinkedTextObjectIds(card).length === 0) return null;
+  const pids = anchorBlocks;
   if (editor) {
     const { state } = editor;
     // O(linked ids) through the DocStructure snapshot (task 926) — this runs

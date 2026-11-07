@@ -87,7 +87,10 @@ import {
 } from "@/links/pending-preview-store";
 import type { Editor } from "@tiptap/react";
 
-const editor = {} as Editor;
+// An empty doc: the anchor authority (task 1506) indexes nothing and fails
+// open to the card's stored pids (its mount-gap answer), so these fixtures'
+// stored anchors are what the verbs target.
+const editor = { state: { doc: { descendants() {} } } } as unknown as Editor;
 
 const ac: AppliedChangeDescriptor = {
   anchorId: "anc-1",
@@ -616,11 +619,11 @@ describe("applySuggestion — the replacement precedence (task 713)", () => {
 describe("suggestionApplicability / suggestionInsertability (task 713)", () => {
   it("the family discriminates an empty replacement: refused in Revisions, allowed in Cutter", () => {
     const empty = makeSuggestion({ suggested_text: "", user_text: "" });
-    expect(suggestionApplicability(empty, "revision-suggestion")).toEqual({
+    expect(suggestionApplicability(empty, "revision-suggestion", "P1")).toEqual({
       canApply: false,
       reason: "no-replacement",
     });
-    expect(suggestionApplicability(empty, "cutter-suggestion")).toEqual({
+    expect(suggestionApplicability(empty, "cutter-suggestion", "P1")).toEqual({
       canApply: true,
     });
     // ...and the refusal is SAID, per the row's own doctrine.
@@ -632,6 +635,7 @@ describe("suggestionApplicability / suggestionInsertability (task 713)", () => {
       suggestionApplicability(
         makeSuggestion({ suggested_text: "   ", user_text: "" }),
         "revision-suggestion",
+        "P1",
       ),
     ).toEqual({ canApply: false, reason: "no-replacement" });
   });
@@ -641,13 +645,13 @@ describe("suggestionApplicability / suggestionInsertability (task 713)", () => {
     // is irrelevant to it — gating it on `no-capture` would refuse a card the
     // action would have served.
     const noCapture = makeSuggestion({ original_text: "" });
-    expect(suggestionApplicability(noCapture, "revision-suggestion")).toEqual({
+    expect(suggestionApplicability(noCapture, "revision-suggestion", "P1")).toEqual({
       canApply: false,
       reason: "no-capture",
     });
-    expect(suggestionInsertability(noCapture)).toEqual({ canApply: true });
+    expect(suggestionInsertability(noCapture, "P1")).toEqual({ canApply: true });
     // But it does need an anchor — the fact `insertSuggestionBelow` bails on.
-    expect(suggestionInsertability(makeSuggestion({ links: [] }))).toEqual({
+    expect(suggestionInsertability(makeSuggestion({ links: [] }), null)).toEqual({
       canApply: false,
       reason: "unanchored",
     });

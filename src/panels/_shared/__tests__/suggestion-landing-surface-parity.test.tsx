@@ -578,6 +578,10 @@ describe("task 684 census — no suggestion landing verb is wired per MOUNT SITE
     expect(row).not.toMatch(/const canInsert\s*=/);
     // Apply's predicate takes the FAMILY — an empty replacement means a cut in
     // Cutter and an unfinished draft in Revisions.
-    expect(row).toMatch(/suggestionApplicability\(card, family\)/);
+    expect(row).toMatch(/suggestionApplicability\(card, family, anchorBlock\)/);
+    // TASK 1506 — and "has an anchor" is the authority's live block, asked
+    // once for both verbs, never the card's first stored pid.
+    expect(row).toMatch(/const anchorBlock = suggestionAnchorBlock\(card, anchorPass\)/);
+    expect(row).toMatch(/suggestionInsertability\(card, anchorBlock\)/);
   });
 });

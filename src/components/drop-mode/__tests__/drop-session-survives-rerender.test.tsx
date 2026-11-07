@@ -66,7 +66,7 @@ const noop = () => {};
 
 const makeAnchorApi = (): ParagraphAnchorApi => ({
   exists: () => true,
-  getAnchorTextObjectIds: () => [],
+  getCard: () => undefined,
   addTextObjectLink: noop,
   removeTextObjectLink: noop,
   modeB: { policy: "release", release: () => null },
