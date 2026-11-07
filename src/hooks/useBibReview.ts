@@ -240,8 +240,13 @@ export function useBibReview(
    * under the write and the new owner is authoritative.
    *
    * The roll-back is the same reconcile the inbox does — re-read the file, so
-   * the panel shows what is actually on disk. `fetchState` is safe to call with
-   * a doc that has since changed (it bails on `docIdRef`).
+   * the panel shows what is actually on disk — through the shared re-read in
+   * its ADOPT mode (task 1504), never the mount loader: `persist` calls overlap
+   * (`inFlightRef` is a counter), and a raw `read → setState` taken while
+   * another write was in flight dropped that write's row from memory AND moved
+   * the merge base under it. The shared door defers while any write is in
+   * flight (this one included, on the `failed` path) and pays on the drain, and
+   * discards a read a write overtook.
    */
   const persist = useCallback(
     async (s: BibReviewState): Promise<BibReviewWriteResult> => {
@@ -251,7 +256,8 @@ export function useBibReview(
         detail?: string,
       ): BibReviewWriteResult => {
         recordSidecarRefusal({ docId, what: "bibliography review", reason, detail });
-        if (docId) fetchState(docId);
+        // Only this doc's own re-read: a switched pane's new owner is authoritative.
+        if (docId && docIdRef.current === docId) rereadNow({ adopt: true });
         return { ok: false, reason: BIB_REVIEW_REFUSAL_REASON[reason] };
       };
       if (!handle) return refuse("no-handle");
@@ -294,7 +300,7 @@ export function useBibReview(
         replayDeferredRead();
       }
     },
-    [handle, fetchState, normalize, replayDeferredRead, workPublisher],
+    [handle, rereadNow, normalize, replayDeferredRead, workPublisher],
   );
 
   /** Does a row target the same entry as `bibKey`? Under the flag, prefer the

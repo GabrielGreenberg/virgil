@@ -22,13 +22,23 @@ const disk = new Map<string, unknown>();
 /** When set, the next merged write holds IN FLIGHT until the test releases it. */
 let writeGate: Promise<void> | null = null;
 let writesStarted = 0;
+/** When set, the next sidecar READ snapshots disk, then holds until released. */
+let readGate: Promise<void> | null = null;
+/** When set, the next merged write throws (a real write failure). */
+let failNextWrite = false;
+
+async function gatedRead(f: string, absent: unknown): Promise<unknown> {
+  const snap = disk.has(f) ? structuredClone(disk.get(f)) : absent;
+  const g = readGate;
+  readGate = null;
+  if (g) await g;
+  return snap;
+}
 
 vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule({
-    readSidecar: async (_d: string, f: string, dflt: unknown) =>
-      disk.has(f) ? structuredClone(disk.get(f)) : dflt,
-    readSidecarIfExists: async (_d: string, f: string) =>
-      disk.has(f) ? structuredClone(disk.get(f)) : null,
+    readSidecar: (_d: string, f: string, dflt: unknown) => gatedRead(f, dflt),
+    readSidecarIfExists: (_d: string, f: string) => gatedRead(f, null),
     writeSidecar: async (_h: unknown, f: string, v: unknown) => {
       disk.set(f, structuredClone(v));
     },
@@ -39,6 +49,10 @@ vi.mock("@/lib/storage", async () =>
       mutate: (cur: unknown) => unknown,
     ) => {
       writesStarted += 1;
+      if (failNextWrite) {
+        failNextWrite = false;
+        throw new Error("The requested file could not be written");
+      }
       const gate = writeGate;
       writeGate = null;
       if (gate) await gate;
@@ -53,6 +67,9 @@ vi.mock("@/lib/storage", async () =>
 
 import { useBibSettings } from "../useBibSettings";
 import { useBibReview } from "../useBibReview";
+import { useAiRequests } from "../useAiRequests";
+import { SIDECAR_CHANGED_EVENT } from "@/lib/sidecar-watcher";
+import { resetSidecarRefusals } from "@/lib/sidecar-refusal";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
 
 const DOC = "doc-1332";
@@ -60,6 +77,14 @@ const DOC = "doc-1332";
 function gate() {
   let release!: () => void;
   writeGate = new Promise<void>((r) => {
+    release = r;
+  });
+  return release;
+}
+
+function gateRead() {
+  let release!: () => void;
+  readGate = new Promise<void>((r) => {
     release = r;
   });
   return release;
@@ -74,6 +99,9 @@ beforeEach(() => {
   disk.clear();
   writeGate = null;
   writesStarted = 0;
+  readGate = null;
+  failNextWrite = false;
+  resetSidecarRefusals();
   __resetForTests();
   beginDocPipeline(DOC);
 });
@@ -176,6 +204,99 @@ describe("useBibReview · a Refresh during an in-flight request write keeps the 
   });
 });
 
+// Task 1504 — the two re-reads that stayed private after 1332 now ask the ONE
+// stale-read guard (`markReadStart`), so a write that starts AND lands inside a
+// read can no longer be dropped from memory by that read.
+describe("useAiRequests · a re-read a mutation overtook is discarded, not adopted", () => {
+  it("DEFECT: a request filed while a watcher re-read is in flight stays in the inbox", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderHook(() => useAiRequests(DOC));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+
+    // An external change: the re-read snapshots PRE-request disk and holds.
+    const releaseRead = gateRead();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SIDECAR_CHANGED_EVENT, {
+          detail: { docId: DOC, filename: "ai-requests.json" },
+        }),
+      );
+    });
+    // The user files a request; it lands and publishes while the read is held.
+    let id = "";
+    act(() => {
+      id = result.current.addRequest("note", "explain this").id;
+    });
+    await waitFor(() =>
+      expect(
+        (disk.get("ai-requests.json") as { requests: { id: string }[] } | undefined)
+          ?.requests.map((r) => r.id),
+      ).toContain(id),
+    );
+    await settle();
+
+    // The stale read resolves with the list from before the request.
+    await act(async () => {
+      releaseRead();
+    });
+    await settle();
+    expect(result.current.requests.map((r) => r.id)).toContain(id);
+  });
+});
+
+describe("useBibReview · a refused write reconciles without dropping an overlapping write", () => {
+  const FILE = "bib-review-requests.json";
+
+  it("DEFECT: the in-flight row survives; the refused row goes; the base is not moved under the write", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    disk.set(FILE, {
+      requests: [{ bibKey: "k1", type: "fields", requestedAt: "t", status: "pending" }],
+    });
+    const { result } = renderHook(() => useBibReview(DOC));
+    await waitFor(() => expect(result.current.requests).toHaveLength(1));
+
+    // k2's write is held in flight.
+    const release = gate();
+    let first!: Promise<unknown>;
+    act(() => {
+      first = result.current.requestReview("k2", "notes");
+    });
+    await waitFor(() => expect(writesStarted).toBe(1));
+
+    // k3's write FAILS while k2's is still in flight → the refusal reconcile.
+    failNextWrite = true;
+    let second!: Promise<{ ok: boolean }>;
+    act(() => {
+      second = result.current.requestReview("k3", "fields") as Promise<{ ok: boolean }>;
+    });
+    await act(async () => {
+      expect((await second).ok).toBe(false);
+    });
+    await settle();
+    // The overlapping write's row is still shown while it is in flight.
+    expect(result.current.getRequestStatus("k2", "notes")).toBe("pending");
+
+    await act(async () => {
+      release();
+      await first;
+    });
+    await settle();
+    // Reconciled to disk: k2 (landed) stays, k3 (refused) is taken back.
+    expect(result.current.getRequestStatus("k2", "notes")).toBe("pending");
+    expect(result.current.getRequestStatus("k3", "fields")).toBe("none");
+
+    // A base moved under k2's write would read k2 as a user deletion here.
+    await act(async () => {
+      await result.current.requestReview("k4", "fields");
+    });
+    const keys = (disk.get(FILE) as { requests: { bibKey: string }[] }).requests.map(
+      (r) => r.bibKey,
+    );
+    expect(keys).toEqual(expect.arrayContaining(["k1", "k2", "k4"]));
+    expect(keys).not.toContain("k3");
+  });
+});
+
 describe("census · a sidecar is read into hook memory only through a sanctioned door", () => {
   // Every production call of `readSidecar` / `readSidecarIfExists` outside the
   // storage layer, with why it is not a raw refresh. A new one fails here: a
@@ -185,10 +306,7 @@ describe("census · a sidecar is read into hook memory only through a sanctioned
     "src/hooks/useSidecarReread.ts": { count: 1, why: "THE re-read door (watcher + manual)" },
     "src/hooks/usePersistentState.ts": { count: 1, why: "mount loader" },
     "src/hooks/useFootnotes.ts": { count: 1, why: "mount loader" },
-    "src/hooks/useBibReview.ts": {
-      count: 1,
-      why: "mount loader (also the refusal reconcile — no write in flight)",
-    },
+    "src/hooks/useBibReview.ts": { count: 1, why: "mount loader only (task 1504)" },
     "src/hooks/useEditorUIState.ts": { count: 1, why: "per-view UI state, not a record sidecar" },
     "src/hooks/useCollab.ts": { count: 1, why: "cowork pen/presence poll; writes via mutate" },
     "src/lib/ai-requests-store.ts": { count: 1, why: "the inbox store's own guarded read" },
@@ -231,5 +349,22 @@ describe("census · a sidecar is read into hook memory only through a sanctioned
       fs.readFileSync(path.join(REPO_ROOT, "src/hooks/useBibReview.ts"), "utf8"),
     );
     expect(review).toMatch(/const refresh = rereadNow;/);
+  });
+
+  it("the mount loaders are called ONCE — a reconcile is never a private re-read (task 1504)", () => {
+    const review = codeOnly(
+      fs.readFileSync(path.join(REPO_ROOT, "src/hooks/useBibReview.ts"), "utf8"),
+    );
+    // The mount effect's one call (the definition is a useCallback).
+    expect(review.match(/\bfetchState\s*\(/g)).toHaveLength(1);
+    expect(review).toMatch(/rereadNow\(\{ adopt: true \}\)/);
+  });
+
+  it("every disk re-read into memory asks the ONE stale-read guard", () => {
+    for (const rel of ["src/hooks/useSidecarReread.ts", "src/hooks/useAiRequests.ts"]) {
+      const src = codeOnly(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+      expect(src, rel).toMatch(/\bmarkReadStart\s*\(/);
+      expect(src, rel).toMatch(/\bovertaken\s*\(\s*\)/);
+    }
   });
 });
