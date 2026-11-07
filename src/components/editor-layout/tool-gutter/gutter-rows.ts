@@ -27,6 +27,7 @@ import type {
 import type { LatexError } from "@/lib/latex-errors";
 import type { CardWithLinks } from "@/links/links";
 import { richJsonToPlainText } from "@/lib/footnote-content";
+import { footnoteLabel } from "@/lib/footnote-numbering";
 import { bibFieldDisplay } from "@/lib/bib-parser";
 import { suggestionReplacement } from "@/panels/_shared/suggestion-field-vocabulary";
 
@@ -118,11 +119,16 @@ export function footnoteRows(
   footnotes: readonly FootnoteInfo[],
   bibEntries: readonly BibEntry[] = [],
 ): GutterRow[] {
+  // Document order, not number order: a `\thanks` and a `\footnote[n]` carry
+  // number 0 (they do not step the counter — `footnote-numbering.ts`), so a
+  // number sort would float them to the top. The marker is THE label door —
+  // the gutter used to print `*` for a thanks while the atom and card printed
+  // `A` (task 1517 unified it on `A`).
   return [...footnotes]
-    .sort((a, b) => a.number - b.number)
+    .sort((a, b) => a.pos - b.pos)
     .map((f) => ({
       key: `fn:${f.footnoteId}`,
-      marker: f.numberOverride ? String(f.numberOverride) : f.thanks ? "*" : String(f.number),
+      marker: footnoteLabel(f),
       text: oneLine(readableInline(f.title || plain(f.content), bibEntries)),
       jump: { kind: "footnote", id: f.footnoteId },
     }));

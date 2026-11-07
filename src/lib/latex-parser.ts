@@ -814,11 +814,10 @@ function parseInlineInScope(
             number: 0,
             footnoteId: pendingFootnoteId.take(i) || mintParseId(),
           };
-          // Raw and opaque, the `exnoOverride` shape. Deliberately NOT fed to
-          // `numberFootnotes`: in LaTeX `\footnote[3]` also does not STEP the
-          // counter, so honouring it in Virgil's own chrome means renegotiating
-          // how every following footnote is numbered — a bigger change than
-          // carrying the byte, and one the bytes do not depend on.
+          // Raw, the `exnoOverride` shape — carried byte-for-byte for the
+          // serializer. `numberFootnotes` reads it too (task 1517): in LaTeX
+          // `\footnote[3]` prints its mark and does not STEP the counter, and
+          // `footnoteNumbersFor` is the one place that rule lives.
           if (args.optional !== null) attrs.numberOverride = args.optional;
           nodes.push({ type: "footnote", attrs });
           i = args.end;
@@ -1252,7 +1251,9 @@ function numberFootnotes(node: JSONContent): void {
     }
   }
   walk(node);
-  const numbers = footnoteNumbersFor(found.map((n) => ({ thanks: n.attrs?.thanks })));
+  const numbers = footnoteNumbersFor(
+    found.map((n) => ({ thanks: n.attrs?.thanks, numberOverride: n.attrs?.numberOverride })),
+  );
   found.forEach((n, i) => {
     n.attrs = { ...n.attrs, number: numbers[i] };
   });

@@ -147,6 +147,7 @@ const CARD_ATOM_CONTRIBUTIONS: Record<CardAtomKind, (v: CardAtomVisit) => void> 
         pos: at,
         thanks: !!attrs.thanks,
         number: (attrs.number as number | undefined) ?? 0,
+        numberOverride: (attrs.numberOverride as string | null | undefined) ?? null,
         title: str(attrs.title),
       });
     }

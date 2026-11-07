@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
-import { writeFootnoteNumbers } from "@/lib/footnote-numbering";
+import { footnoteLabel, writeFootnoteNumbers } from "@/lib/footnote-numbering";
 import { readDocStructure, readDiffFor } from "@/lib/tiptap/doc-structure";
 import {
   setAttrIfChanged,
@@ -127,11 +127,12 @@ export const Footnote = Node.create<FootnoteOptions>({
       // card to overline as ACKNOWLEDGEMENT instead of FOOTNOTE.
       thanks: { default: false },
       // Raw `\footnote[3]{…}` mark override (task 376 M5) — LaTeX's "print
-      // this mark instead of the counter". Carried OPAQUELY and deliberately
-      // NOT fed to `numberFootnotes`: in LaTeX the optional form also does not
-      // STEP the counter, so honouring it in Virgil's own chrome means
-      // renegotiating every following footnote's number. Null on a plain
-      // `\footnote`; never set on a `\thanks`, which has no optional argument.
+      // this mark instead of the counter". Carried byte-for-byte for the
+      // serializer, and honoured in Virgil's chrome (task 1517): the numberer
+      // gives it no number and does not step the counter for it, and every
+      // surface prints `footnoteLabel` (`footnote-numbering.ts`). Null on a
+      // plain `\footnote`; never set on a `\thanks`, which has no optional
+      // argument.
       numberOverride: { default: null },
     });
   },
@@ -158,7 +159,7 @@ export const Footnote = Node.create<FootnoteOptions>({
         [DATA_LINK_CARD]: linkCard,
         ...(node.attrs.thanks ? { "data-thanks": "true" } : {}),
       }),
-      node.attrs.thanks ? "A" : String(node.attrs.number || "1"),
+      footnoteLabel(node.attrs),
     ];
   },
 
@@ -384,7 +385,7 @@ export const Footnote = Node.create<FootnoteOptions>({
           // the hover bridge reads, and both of those now read it from there too.
           setAttrIfChanged(dom, FOOTNOTE_ATOM.domIdAttr, next.attrs.footnoteId || "");
           setDataIfChanged(dom, "thanks", next.attrs.thanks ? "true" : null);
-          setTextIfChanged(dom, next.attrs.thanks ? "A" : String(next.attrs.number || "1"));
+          setTextIfChanged(dom, footnoteLabel(next.attrs));
           setTitleIfChanged(dom, richJsonToPlainText(next.attrs.content));
         },
         // Click on the marker just routes the user to the side panel — the
