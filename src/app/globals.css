@@ -184,6 +184,9 @@
      gutter's content (the left gutter's lists, the right gutter's cards). The
      gutter heads' controls sit on the card's top edge, this far down. */
   --gutter-inset: 8px;
+  /* The gutter's toolbar lozenges: a raised step halfway between the canvas
+     and the Virgil bar, so they lift off the sand without matching the bar. */
+  --gutter-lozenge-bg: color-mix(in srgb, var(--background) 50%, var(--topbar-bg));
   /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
      `--pod-gap` was answering two different questions, and only one of them
      is a gutter. (a) How wide is the resize gutter / how far is a pod inset
@@ -6905,20 +6908,21 @@ body.perf-contain .static-borrowed-text {
 /* ── Tool gutter (task 1440) ──────────────────────────────────────
    The left gutter of the cards-right / tools-left layout
    (`virgil:gutter-layout`). Everything is TEXT ON THE MANILA: no pod,
-   no card surface, no border. Its one layer is each half's icon row, a
-   band in the Virgil bar's own paler sand and fine line, so the gutter's
-   controls read as chrome and each half starts where a band does (Gabriel,
-   round 4). It sticks to the scrollport and scrolls
+   no card surface, no border. Its one raised layer is each half's icon
+   row, a lozenge, so the gutter's controls read as chrome and each half
+   starts where a lozenge does (Gabriel, round 5). It sticks to the scrollport
+   and scrolls
    internally, so the lists stay in reach however far down the paper
    is. Ink only — the one hover FILL is `.hover-on-light`, worn in JSX. */
 .tool-gutter {
   position: sticky;
-  /* The top band meets the Virgil bar, so the gutter starts at the pane's
-     top; the band's own padding holds the tools on the text card's top edge. */
-  top: 0;
+  /* The tools lozenge sits on the text card's top edge — in flow (the margin)
+     and pinned (the sticky offset) alike. */
+  top: var(--gutter-inset);
+  margin-top: var(--gutter-inset);
   /* Two halves split ONE fixed height (the visible pane), each scrolling on
      its own, so the list icons stay in reach however long the tool runs. */
-  height: calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - var(--gutter-inset));
+  height: calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--gutter-inset));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -6926,13 +6930,9 @@ body.perf-contain .static-borrowed-text {
      inline (and per frame by the divider drag). */
   --tool-gutter-split: 0.5;
   /* The column runs to the window edge (no strip column), so the gutter
-     reaches past the column's 4px inset and carries its own edge inset, which
-     the bands undo to run edge to edge. The bottom keeps the lists clear of
-     the pane's Stack button, which sits over the gutter's foot. */
-  --tool-gutter-edge: 10px;
-  margin-left: -4px;
-  width: calc(100% + 4px);
-  padding: 0 0 40px var(--tool-gutter-edge);
+     carries its own edge inset. The bottom keeps the lists clear of the
+     pane's Stack button, which sits over the gutter's foot. */
+  padding: 0 0 40px 6px;
   /* The Outline's voice: the UI sans at text-sm — stated here because the
      pane around the gutter speaks the paper's serif. */
   font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
@@ -6966,39 +6966,30 @@ body.perf-contain .static-borrowed-text {
   scrollbar-width: thin;
   padding-right: 4px;
 }
+/* With the top half closed, the two lozenges stack with the card's gap. */
+.tool-gutter:not([data-top-open]) > [data-gutter-half="bottom"] {
+  margin-top: var(--gutter-inset);
+}
 /* The divider between the halves: the shared gutter look (`band-grip`'s
-   pill on hover/drag). It paints nothing at rest; the list band under it is
+   pill on hover/drag). It paints nothing at rest; the lozenge under it is
    the seam. */
 .tool-gutter-divider {
-  height: 6px;
+  height: 12px;
   flex: 0 0 auto;
 }
 .tool-gutter-tools {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: calc(-1 * var(--tool-gutter-edge));
-  padding: 6px 8px 6px var(--tool-gutter-edge);
-  background: var(--topbar-bg);
-  box-shadow: inset 0 -1px 0 var(--border-light);
-}
-/* The tools band carries the gutter's top inset, so its buttons sit on the
-   text card's top edge, and is the right head row's height across the window. */
-[data-gutter-half="top"] > .tool-gutter-tools {
-  padding-top: var(--gutter-inset);
-  padding-bottom: 4px;
-}
-/* The list band has a line above it too: it starts the lower half mid-gutter. */
-.tool-gutter-lists-row {
-  box-shadow: inset 0 1px 0 var(--border-light), inset 0 -1px 0 var(--border-light);
+  gap: 2px;
+  padding: 3px;
+  background: var(--gutter-lozenge-bg);
+  border-radius: var(--pod-radius);
+  box-shadow: var(--card-shadow-ambient);
 }
 /* A lit gutter toggle reads at a glance: the azure wash PLUS a thin azure
    ring (Gabriel, round 3: "not just the highlight color"). */
 .tool-gutter-tools .iconbtn-toggle[aria-pressed="true"] {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--control-selected-ink) 55%, transparent);
-}
-.tool-gutter-add {
-  border: 1px dashed var(--border-light);
 }
 /* The right gutter's cards come right up to the gutter's inboard edge, so
    the text card's gap to them is the one `--gutter-inset` (the cascade's
@@ -7044,7 +7035,7 @@ body.perf-contain .static-borrowed-text {
   /* Tight under the tools row: the header's own band is shorter here than a
      docked panel's, so OUTLINE sits just beneath the buttons. */
   height: 22px;
-  margin-top: 2px;
+  margin-top: 8px;
 }
 .tool-gutter-tool .panel-header > .flex-1 {
   display: none;
@@ -7099,7 +7090,7 @@ body.perf-contain .static-borrowed-text {
   border-radius: 0 !important;
 }
 .tool-gutter-section {
-  margin: 4px 0 12px;
+  margin: 8px 0 12px;
 }
 .tool-gutter-section-head {
   display: flex;

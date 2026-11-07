@@ -111,9 +111,9 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      open half takes the room). A `drag-gap-h band-grip` on the pane-resize
      engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`
      on the gutter, `commit` stores `split` (clamped 0.15–0.85) once. It paints
-     nothing at rest: each half's icon row is a full-width band (`--topbar-bg`,
-     `--border-light` line, the Virgil bar's own step), so the list band is the
-     seam, and it stays when a half is closed.
+     nothing at rest: each half's icon row is a raised lozenge
+     (`--gutter-lozenge-bg`, `--card-shadow-ambient`), so the list lozenge is
+     the seam, and it stays when a half is closed.
   The icon set honours the host's `visiblePanels` (the Reader's whitelist).
 - **One inset frames the text card** (round 3, Gabriel's notes): `--gutter-inset`
   (8px) is the gap above the card and between it and each gutter's content —

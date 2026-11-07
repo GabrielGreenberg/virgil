@@ -2031,10 +2031,10 @@ attr); a citation cannot while it is keyless or still a draft record.
 Under the default cards-right / tools-left layout, the LEFT gutter is not a
 panel and wears none of the panel vocabulary below: **no pod, no card frame,
 no shadow, no border** — its tools and lists are written straight onto the
-manila (`--background`). Its one layer is each half's icon row, a band in the
-Virgil bar's own step (`--topbar-bg`, `--border-light` line) running the gutter's
-full width, so the controls read as chrome and each half starts where a band
-does. Headings are one voice in both halves: 12px/600 sentence case,
+manila (`--background`). Its one raised layer is each half's icon row, a lozenge
+(`--gutter-lozenge-bg`, halfway from the canvas to the Virgil bar, with
+`--card-shadow-ambient`), so the controls read as chrome and each half starts
+where a lozenge does. Headings are one voice in both halves: 12px/600 sentence case,
 `--foreground`; rows are the UI sans at
 `text-sm` (the Outline's voice), two-line clamped, `--muted` when settled (a
 done to-do, an applied change), accent ink + 600 when their card is the selected
@@ -2046,7 +2046,7 @@ column and the text edge is the tab stop after it. The only hover FILL is
 tool body (Outline / Search / Word count) keeps its own layout but its boxed
 rows lie flat (`.tool-gutter-tool` overrides). **There is no strip:** both
 gutters run to the window edge, the collapse toggle leads the left gutter's
-tools band and sits on a sticky head row above the right gutter's cards
+tools lozenge and sits on a sticky head row above the right gutter's cards
 (`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
 one piece of chrome. The cards' notices (pending changes, unanchored, outside
 focus) share that head row, left of the toggle, so the first card starts

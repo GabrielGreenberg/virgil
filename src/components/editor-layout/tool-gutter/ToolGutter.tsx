@@ -270,7 +270,7 @@ export function ToolGutter(p: ToolGutterProps) {
               ariaLabel="Add a list"
               triggerAriaLabel="Add a list"
               triggerHint="Add a list"
-              triggerClassName="iconbtn-md tool-gutter-add"
+              triggerClassName="iconbtn-md"
               wrapperClassName="relative"
               align="end"
               // A column, sized to its longest label (rows are buttons, so a
