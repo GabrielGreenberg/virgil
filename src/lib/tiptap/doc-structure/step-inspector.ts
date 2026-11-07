@@ -322,8 +322,8 @@ const ENTRY_FIELDS = {
     uuid: "key", pos: "pos", level: "compared", label: "compared", numbered: "compared",
   } satisfies FieldRules<HeadingEntry>,
   footnotes: {
-    id: "key", pos: "pos", thanks: "compared", number: "compared", title: "compared",
-    removedCarried: "removal",
+    id: "key", pos: "pos", thanks: "compared", number: "compared",
+    numberOverride: "compared", title: "compared", removedCarried: "removal",
   } satisfies FieldRules<FootnoteEntry>,
   citations: {
     id: "key", pos: "pos", command: "compared", displayText: "compared",

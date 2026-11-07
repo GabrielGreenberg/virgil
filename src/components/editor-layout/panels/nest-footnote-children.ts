@@ -45,6 +45,7 @@
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import type { DocStructure } from "@/lib/tiptap/doc-structure/types";
+import { footnoteLabel } from "@/lib/footnote-numbering";
 
 /**
  * Pure: derive the `nestedChildId → footnoteId` map from a structure snapshot.
@@ -222,7 +223,7 @@ export interface NestedContainerInfo {
    *  `ExampleEntry.id` (example), the same id its card is keyed by. */
   id: string;
   /** Host container's current display number, for the "in {kind} N" label —
-   *  the footnote's numeric `number`, or the example's `number` (which can be a
+   *  the footnote's `footnoteLabel` (`A` / its `[n]` mark / its number), or the example's `number` (which can be a
    *  string label, e.g. "(3a)"). `null` when the container isn't in the
    *  snapshot (degrades to a numberless label rather than dropping the
    *  nesting). */
@@ -263,8 +264,10 @@ export interface NestedFootnoteInfo {
 export function buildNestedContainerInfoMap(
   structure: DocStructure,
 ): Map<string, NestedContainerInfo> {
-  const numberByFootnoteId = new Map<string, number>();
-  for (const fn of structure.footnotes) numberByFootnoteId.set(fn.id, fn.number);
+  // The footnote's LABEL (task 1517): a thanks reads `A` and an override its
+  // mark — the bare `number` is 0 for both ("in footnote 0").
+  const numberByFootnoteId = new Map<string, string>();
+  for (const fn of structure.footnotes) numberByFootnoteId.set(fn.id, footnoteLabel(fn));
   const numberByExampleId = new Map<string, string | number | null>();
   for (const ex of structure.examples) numberByExampleId.set(ex.id, ex.number);
 

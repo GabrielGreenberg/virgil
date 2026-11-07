@@ -495,9 +495,27 @@ describe("buildNestedContainerInfoMap", () => {
     };
     const map = buildNestedContainerInfoMap(structure);
     expect(map.size).toBe(2);
-    expect(map.get("cFn")).toEqual({ kind: "footnote", id: "fn1", number: 3 });
+    // The footnote's LABEL (task 1517) — a string, from `footnoteLabel`.
+    expect(map.get("cFn")).toEqual({ kind: "footnote", id: "fn1", number: "3" });
     expect(map.get("cEx")).toEqual({ kind: "example", id: "ex1", number: 7 });
     expect(map.has("cTop")).toBe(false);
+  });
+
+  it("labels a thanks host `A` and an override host by its mark, never 0 (task 1517)", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      footnotes: [
+        { id: "fnT", pos: 2, thanks: true, number: 0 },
+        { id: "fnO", pos: 8, thanks: false, number: 0, numberOverride: "7" },
+      ],
+      citations: [
+        { id: "cT", pos: 2, command: "\\cite{a}", displayText: "A", nestedInContainerId: { kind: "footnote", id: "fnT" } },
+        { id: "cO", pos: 8, command: "\\cite{b}", displayText: "B", nestedInContainerId: { kind: "footnote", id: "fnO" } },
+      ],
+    };
+    const map = buildNestedContainerInfoMap(structure);
+    expect(map.get("cT")?.number).toBe("A");
+    expect(map.get("cO")?.number).toBe("7");
   });
 
   it("resolves a string-valued example number (e.g. '(3a)')", () => {

@@ -110,8 +110,13 @@ export interface FootnoteEntry {
   pos: number;
   /** `thanks` footnotes are numbered as "A" rather than counted. */
   thanks: boolean;
-  /** Current `number` attribute (renumber pass updates this). */
+  /** Current `number` attribute (renumber pass updates this). `0` for a
+   *  thanks or a `[n]` override — neither steps the counter. */
   number: number;
+  /** `\footnote[n]{…}`'s raw mark, null on a plain footnote (task 1517).
+   *  Carried so a reader prints `footnoteLabel(entry)`, never the bare
+   *  `number` (which is 0 for an override). */
+  numberOverride?: string | null;
   /** The card title (`title` attr, "" when untitled — task 705). Carried so a
    *  rename is a structural footnote change: the card rows re-read it. */
   title?: string;

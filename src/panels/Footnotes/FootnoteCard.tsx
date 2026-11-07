@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { FootnoteInfo } from "@/components/Editor";
+import { footnoteLabel } from "@/lib/footnote-numbering";
 import type { OrphanedFootnote, FootnoteRef } from "@/lib/types";
 import {
   EditableCard,
@@ -116,7 +117,7 @@ export function FootnoteCard({
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      footnoteBadge={<BadgeLabel label={fn.thanks ? "A" : fn.number} />}
+      footnoteBadge={<BadgeLabel label={footnoteLabel(fn)} />}
       bodyTitle={fn.title}
       onBodyTitleChange={onEditTitle ?? undefined}
       onDelete={onDelete}

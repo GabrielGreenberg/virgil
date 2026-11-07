@@ -29,6 +29,13 @@
 //   R4 — a module that computes a footnote number at all must IMPORT the owner.
 //        This is what keeps the parser honest: it may write numbers, but only
 //        ones the owner handed it.
+//   R5 — (task 1517) the LABEL a footnote prints has one door too:
+//        `footnoteLabel`. A `\footnote[n]` override is the rule's second
+//        subtlety (0, no step — R1), and before 1517 four surfaces restated
+//        the label by hand and disagreed (atom/card `thanks ? "A" : number`,
+//        gutter `numberOverride ? … : thanks ? "*" : number`). No production
+//        module outside the owner may branch on `thanks` to a one-character
+//        label, or on `numberOverride` to a display value.
 //
 // R2–R4 read the REAL tree (task 724's lesson: a rule stated against a
 // stand-in polices nothing), and each is planted below in both directions.
@@ -37,7 +44,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { footnoteNumbersFor } from "../footnote-numbering";
+import { footnoteLabel, footnoteNumbersFor } from "../footnote-numbering";
 import { walkFiles } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -114,6 +121,17 @@ function flagged(detect: (s: string) => boolean): string[] {
     .sort();
 }
 
+/** R5 — a hand-restated footnote label: a `thanks ? "A"`-shaped ternary (a
+ *  ONE-character label — `thanks ? "Acknowledgement"` is a kind name, not a
+ *  number label), or a ternary on `numberOverride` (the gutter's old shape). A
+ *  `??` fallback, an optional chain or an optional property is not a ternary. */
+export function detectRestatedFootnoteLabel(raw: string): boolean {
+  const source = stripComments(raw);
+  if (/thanks\s*\?\s*["'`][^"'`\n]?["'`]/.test(source)) return true;
+  if (/numberOverride\)?\s*\?(?![?.:])/.test(source)) return true;
+  return false;
+}
+
 const IMPORTS_OWNER = /from\s+["']@\/lib\/footnote-numbering["']/;
 
 describe("R1 — the rule itself", () => {
@@ -122,6 +140,32 @@ describe("R1 — the rule itself", () => {
     expect(footnoteNumbersFor([{}, { thanks: true }, {}])).toEqual([1, 0, 2]);
     expect(footnoteNumbersFor([{ thanks: true }, { thanks: true }])).toEqual([0, 0]);
     expect(footnoteNumbersFor([])).toEqual([]);
+  });
+
+  it("a `\\footnote[n]` override takes 0 and does not step the counter (task 1517)", () => {
+    // LaTeX prints `\footnote{a}\footnote[7]{b}\footnote{c}` as 1, 7, 2.
+    expect(footnoteNumbersFor([{}, { numberOverride: "7" }, {}])).toEqual([1, 0, 2]);
+    expect(footnoteLabel({ numberOverride: "7", number: 0 })).toBe("7");
+    expect(footnoteLabel({ thanks: true, number: 0 })).toBe("A");
+    expect(footnoteLabel({ number: 2 })).toBe("2");
+  });
+});
+
+describe("R5 — one label door, read off the real tree (task 1517)", () => {
+  it("no other module hand-restates a footnote's label", () => {
+    expect(flagged(detectRestatedFootnoteLabel)).toEqual([]);
+  });
+
+  it("the deleted restatements would be caught; kind names and fallbacks are spared", () => {
+    expect(detectRestatedFootnoteLabel(`<BadgeLabel label={fn.thanks ? "A" : fn.number} />`)).toBe(true);
+    expect(detectRestatedFootnoteLabel(`setTextIfChanged(dom, next.attrs.thanks ? "A" : String(n));`)).toBe(true);
+    expect(
+      detectRestatedFootnoteLabel(`marker: f.numberOverride ? String(f.numberOverride) : f.thanks ? "*" : String(f.number),`),
+    ).toBe(true);
+    expect(detectRestatedFootnoteLabel(`return attrs.thanks ? "Acknowledgement" : undefined;`)).toBe(false);
+    expect(detectRestatedFootnoteLabel(`numberOverride: (node.attrs.numberOverride as string | null) ?? null,`)).toBe(false);
+    expect(detectRestatedFootnoteLabel(`// thanks ? "A" : number — prose`)).toBe(false);
+    expect(detectRestatedFootnoteLabel(`interface X { numberOverride?: string | null; }`)).toBe(false);
   });
 });
 
