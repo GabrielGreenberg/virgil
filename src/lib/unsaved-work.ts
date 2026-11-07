@@ -259,6 +259,16 @@ export function noteSidecarWork(
  * write still in flight for document A when the instance moves to B settles
  * A's entry rather than leaving it dirty forever. `sync` is the writer's
  * dirty predicate restated after every transition; it is O(1).
+ *
+ * **The channel is the publisher's only memory of "am I registered?"** (task
+ * 1516). `publishedFor` answers one question only — which document to RELEASE
+ * when the target moves — and never short-circuits a registration: a
+ * `pending` sync always reaches {@link noteSidecarWork}, whose own
+ * `set.has(writer)` bail keeps the repeat O(1) and silent. A private "already
+ * published" cache would desync the moment {@link clearUnsavedWork} forgets
+ * the document (an external-change Reload keeps the doc open and the writer
+ * mounted), and the next failed write would then be invisible to every door
+ * that asks {@link hasUnlandedWork}.
  */
 export interface SidecarWorkPublisher {
   sync(docId: string | null | undefined, pending: boolean): void;
@@ -270,9 +280,11 @@ export function createSidecarWorkPublisher(): SidecarWorkPublisher {
   return {
     sync(docId, pending) {
       const target = pending && docId ? docId : null;
-      if (target === publishedFor) return;
-      if (publishedFor !== null) noteSidecarWork(publishedFor, token, false);
+      if (publishedFor !== null && publishedFor !== target) {
+        noteSidecarWork(publishedFor, token, false);
+      }
       publishedFor = target;
+      // Unconditional: the channel decides whether this is news.
       if (target !== null) noteSidecarWork(target, token, true);
     },
   };

@@ -110,4 +110,33 @@ describe("sidecar writers on the unsaved-work channel (task 1503)", () => {
     p.sync(null, true); // no document: nothing to publish under
     expect(docsWithUnlandedWork()).toEqual([]);
   });
+
+  it("DEFECT (task 1516): after clearUnsavedWork the publisher re-registers — the channel is its only memory", () => {
+    // A failed write leaves the writer published for A …
+    const p = createSidecarWorkPublisher();
+    p.sync("A", true);
+    // … an external-change Reload forgets A while the doc (and writer) stay mounted …
+    clearUnsavedWork("A");
+    expect(hasUnlandedWork("A")).toBe(false);
+    // … and the next write's dirt must reach the channel again.
+    p.sync("A", true);
+    expect(hasUnlandedWork("A")).toBe(true);
+    // A repeat is still silent (edge-only — keystroke sanctity).
+    let emits = 0;
+    const off = subscribeUnsavedWork(() => emits++);
+    p.sync("A", true);
+    off();
+    expect(emits).toBe(0);
+    // And it settles normally.
+    p.sync("A", false);
+    expect(hasUnlandedWork("A")).toBe(false);
+  });
+
+  it("task 1516: an app-wide clear is recovered from the same way", () => {
+    const p = createSidecarWorkPublisher();
+    p.sync("A", true);
+    clearUnsavedWork();
+    p.sync("A", true);
+    expect(hasUnlandedWork("A")).toBe(true);
+  });
 });
