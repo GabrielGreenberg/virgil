@@ -4691,7 +4691,8 @@ for the pill) and spell that class at each button, since the a11y census reads
 the literal `className`. Its progress track/fill is a 3px `--edge-subtle` /
 `--accent` pair, flipping to `--positive` on completion, with **no motion** — a
 pulse on the app's top bar outstays its welcome. Completion is SAID, not only
-shown: "Done" is the pill's `label`, so the live region reads it out.
+shown: the pill passes `announce="Writing timer done"` (task 1390), which the
+bar's one announcer speaks once on the completion edge.
 
 Two rules generalize past the timer. **A resident is PROP-LESS**: `TopBar` /
 `TabStrip` / `StatusCluster` are memoized precisely so background ticks don't
@@ -4699,11 +4700,14 @@ repaint the bar, so a widget with its own clock or feed reads a module store
 through `useSyncExternalStore` (`src/lib/pomodoro-timer.ts` is the reference) and
 keeps its per-second state in its own leaf. A value threaded through
 `StatusClusterProps` type-checks perfectly and repaints the whole bar on every
-tick. **And a widget's placement is an affordance, not a slot**: the timer's ICON
-lives inside the `topbarRightCollapsed` group and inside the zen gate like every
-other tool, while the WIDGET renders before both — a thing is STARTED from a
-normal bar and stays VISIBLE in a stripped one. State the asymmetry at the site;
-don't let a new resident mint a gating exception for itself.
+tick. **And a widget's placement is an affordance, not a slot**: the timer is
+STARTED from a menu and stays VISIBLE on a stripped bar. Its Timer row lives in
+the ⋯ menu (protected tier, not zen-gated — reachable from a collapsed strip and
+in zen), its status dot rides the ⋯ trigger, and the WIDGET renders before the
+`topbarRightCollapsed` group. A menu row closes its menu like every sibling —
+the one prop a resident's menu row may take is the menu's `close`, never its own
+state. State the placement at the site; don't let a new resident mint a gating
+exception for itself.
 
 **Window insets / WCO title bar.** The bar's geometry is inset-aware. One
 variable family — `--window-inset-{top,right,bottom,left}` (globals.css,
