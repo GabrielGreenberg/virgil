@@ -496,7 +496,7 @@ export function OmniBinPill({
           className="panel-scroll mt-1 space-y-2 rounded-lg bg-card shadow-[var(--card-shadow-ambient)] p-2"
           // Back out to the cards' right edge, under the head row's toggle.
           style={{
-            ...(compact ? { flexBasis: "100%", minWidth: 0 } : null),
+            ...(compact ? { flex: "0 0 calc(100% + var(--omni-head-clear, 0px))", minWidth: 0 } : null),
             maxHeight: "var(--dock-slot-frame-h, 80vh)",
             marginRight: "calc(-1 * var(--omni-head-clear, 0px))",
           }}
