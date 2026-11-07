@@ -57,7 +57,6 @@ const NEEDLE = /<Chevron\s+expanded\s*=/g;
  */
 const RAW_DISCLOSURES: Record<string, { count: number; reason: string }> = {
   "src/panels/_shared/suggestion-fields.tsx": { count: 1, reason: "SpecHeader icon-only fold toggle beside its label" },
-  "src/panels/Examples/ExampleCard.tsx": { count: 1, reason: "icon-only `?` help toggle (aria-controls the help panel)" },
   "src/panels/Omni/OmniViewPanel.tsx": {
     count: 1,
     reason: "OmniBinPill: a panel-bin header — full-width bordered pill with a glyph, a label and a TRAILING chevron, not a card sub-pod",

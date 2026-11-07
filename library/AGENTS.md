@@ -20,7 +20,7 @@ library/
 │   ├── TabbedLibraryPanel.tsx
 │   ├── PanelTabStrip.tsx, PanelFolderTab.tsx (tab chrome + geometry live at src/components/chrome/ — see sanctioned imports below)
 │   ├── LeftList.tsx, LeftListRow.tsx, RowActionMenu.tsx
-│   ├── RightDetail.tsx, PaperRender.tsx, PdfView.tsx
+│   ├── RightDetail.tsx, PaperRender.tsx, PdfView.tsx (reads the file; the viewer is src/components/PdfViewer.tsx)
 │   ├── BibCard.tsx, BibEditModal.tsx, StatusPill.tsx
 │   ├── TopBar.tsx, Toaster.tsx, DropZone.tsx
 │   └── LibraryFolderPicker.tsx, LibraryPermissionGate.tsx

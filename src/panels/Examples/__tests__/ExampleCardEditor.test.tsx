@@ -188,7 +188,6 @@ const exampleInfo: ExampleInfo = {
   label: "",
   preview: "Top body.",
   subLabelRange: "a–b",
-  dialect: "expex",
   bodyText: "Top body.",
   bodyContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Top body." }] }] },
   items: [],
@@ -234,7 +233,7 @@ describe("ExampleCard directly-editable expex body (#32/#33)", () => {
     editor.destroy();
   });
 
-  it("has no (disabled) EDIT button — the body is directly editable", () => {
+  it("has no (disabled) EDIT button and no footer — the body is directly editable", () => {
     const editor = buildMain();
     let container!: HTMLElement;
     act(() => {
@@ -242,8 +241,7 @@ describe("ExampleCard directly-editable expex body (#32/#33)", () => {
     });
     const buttons = Array.from(container.querySelectorAll("button"));
     expect(buttons.some((b) => /edit/i.test(b.textContent ?? ""))).toBe(false);
-    // The only footer affordance is the "?" help toggle.
-    expect(buttons.some((b) => b.textContent?.trim() === "?")).toBe(true);
+    expect(buttons.some((b) => b.textContent?.trim() === "?")).toBe(false);
     editor.destroy();
   });
 
@@ -375,7 +373,6 @@ function infoFor(uuid: string, bodyText: string): ExampleInfo {
     label: "",
     preview: bodyText,
     subLabelRange: "",
-    dialect: "expex",
     bodyText,
     bodyContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: bodyText }] }] },
     items: [],

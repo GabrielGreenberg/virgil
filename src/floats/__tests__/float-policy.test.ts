@@ -36,6 +36,7 @@ import {
   POPOUT_MAX_VH,
   RESTING_MARGIN_TRIGGER_Z,
   IN_SCROLL_MARGIN_TRIGGER_Z,
+  MODAL_MENU_Z,
   STACK_CHROME_Z,
   TOAST_Z,
   capPopoutHeight,
@@ -248,13 +249,16 @@ describe("BUG #50 consumer wiring", () => {
     expect(src).not.toContain("zIndex: 2000");
   });
 
-  it("the <Menu> primitive's CHROME_Z reads the shared OPEN_CHROME_MENU_Z tier", () => {
-    const src = readFileSync(
-      path.join(SRC, "components/menu/MenuProvider.tsx"),
-      "utf8",
-    );
-    expect(src).toContain("OPEN_CHROME_MENU_Z");
-    expect(src).toContain("const CHROME_Z = OPEN_CHROME_MENU_Z");
+  it("the <Menu> primitive's tier defaults to the shared OPEN_CHROME_MENU_Z", () => {
+    const src = readFileSync(path.join(SRC, "components/menu/context.ts"), "utf8");
+    expect(src).toContain("createContext<number>(OPEN_CHROME_MENU_Z)");
+  });
+
+  it("a modal raises it, so a menu opened inside a dialog is never behind it", () => {
+    const src = readFileSync(path.join(SRC, "components/system-dialog.tsx"), "utf8");
+    expect(src).toContain("<MenuLayerContext.Provider value={MODAL_MENU_Z}>");
+    expect(MODAL_MENU_Z).toBeGreaterThan(MODAL_SCRIM_Z);
+    expect(MODAL_MENU_Z).toBeLessThan(HINT_Z);
   });
 });
 

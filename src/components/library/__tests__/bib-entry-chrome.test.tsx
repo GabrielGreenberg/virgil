@@ -44,9 +44,9 @@ describe("BibEntryChrome", () => {
 
   it("renders a membership chip", () => {
     render(<BibEntryChrome {...baseProps} />);
-    // membershipChipsFor → "central" chip text is "central"; custom is its label.
+    // membershipChipsFor → the "central" chip reads "Central"; custom is its label.
     expect(screen.getByText("Reading list")).toBeTruthy();
-    expect(screen.getByText("central")).toBeTruthy();
+    expect(screen.getByText("Central")).toBeTruthy();
   });
 
   it("renders the authentication + index-tier status chips", () => {
@@ -109,7 +109,7 @@ describe("BibEntryChrome", () => {
   it("hides the membership chips when showMembershipChips=false", () => {
     render(<BibEntryChrome {...baseProps} showMembershipChips={false} />);
     expect(screen.queryByText("Reading list")).toBeNull();
-    expect(screen.queryByText("central")).toBeNull();
+    expect(screen.queryByText("Central")).toBeNull();
     // Headline is unaffected.
     expect(screen.getByText("On the theory of widgets")).toBeTruthy();
   });

@@ -81,7 +81,7 @@ export default function CompileLogDisclosure({
         )}
       </button>
       {open && hasContent && (
-        <pre className="flex-1 overflow-auto px-4 py-2 text-[11px] font-mono text-ink-body whitespace-pre-wrap m-0">
+        <pre className="flex-1 overflow-auto px-4 py-2 text-2xs font-mono text-ink-body whitespace-pre-wrap m-0">
           {log}
         </pre>
       )}

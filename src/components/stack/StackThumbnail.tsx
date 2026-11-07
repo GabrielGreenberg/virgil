@@ -75,11 +75,9 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
     >
       <div
         style={{
-          fontSize: 9,
+          fontSize: 11,
           lineHeight: 1,
-          letterSpacing: 0.4,
-          color: "var(--muted, #8a8580)",
-          textTransform: "uppercase",
+          color: "var(--muted)",
           marginBottom: 4,
           fontWeight: 600,
         }}
@@ -141,7 +139,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
           left: 8,
           right: 22,
           bottom: 4,
-          fontSize: 9,
+          fontSize: 11,
           color: "var(--muted-light, #b5b0aa)",
           letterSpacing: 0.2,
           pointerEvents: "none",

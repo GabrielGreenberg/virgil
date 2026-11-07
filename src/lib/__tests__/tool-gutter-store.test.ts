@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 /**
  * The tool gutter's view state (task 1440): one parse path, window-wide
- * toggles, a More section that can leave while a standing one only folds, the
- * legacy panel-open routing, and the cross-window re-read.
+ * toggles, foldouts the user adds and removes (none required; Footnotes and
+ * Bibliography by default), the legacy panel-open routing, and the cross-window
+ * re-read.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_GUTTER_SECTIONS,
   DEFAULT_TOOL_GUTTER_STATE,
   TOOL_GUTTER_STORAGE_KEY,
   __resetToolGutterStoreForTests,
@@ -36,13 +38,24 @@ describe("parseToolGutterState", () => {
     const s = parseToolGutterState(
       JSON.stringify({
         tool: "search",
-        // A standing section is never an "extra"; an unknown id is dropped.
-        extra: ["notes", "footnotes", "bogus", "notes"],
+        // An unknown id and a repeat are dropped.
+        sections: ["notes", "footnotes", "bogus", "notes"],
         folded: ["todo", "nope"],
       }),
     );
-    expect(s).toEqual({ tool: "search", extra: ["notes"], folded: ["todo"] });
+    expect(s).toEqual({ tool: "search", sections: ["notes", "footnotes"], folded: ["todo"] });
     expect(parseToolGutterState(JSON.stringify({ tool: "omni" })).tool).toBeNull();
+  });
+
+  it("starts with Footnotes and Bibliography, and keeps an emptied list empty", () => {
+    expect(DEFAULT_GUTTER_SECTIONS).toEqual(["footnotes", "bibliography"]);
+    expect(parseToolGutterState(null).sections).toEqual(["footnotes", "bibliography"]);
+    expect(parseToolGutterState(JSON.stringify({ sections: [] })).sections).toEqual([]);
+  });
+
+  it("carries a saved `extra` list over, on top of the defaults", () => {
+    const s = parseToolGutterState(JSON.stringify({ extra: ["notes", "footnotes"] }));
+    expect(s.sections).toEqual(["footnotes", "bibliography", "notes"]);
   });
 });
 
@@ -58,19 +71,29 @@ describe("tool gutter actions", () => {
     expect(JSON.parse(localStorage.getItem(TOOL_GUTTER_STORAGE_KEY)!).tool).toBe("search");
   });
 
-  it("reveals a More section unfolded; a standing section folds but never leaves", () => {
+  it("reveals a section unfolded, adding it if it is absent", () => {
     toggleGutterSectionFold("notes");
     revealGutterSection("notes");
-    expect(getToolGutterState()).toMatchObject({ extra: ["notes"], folded: [] });
-    removeGutterSection("notes");
-    expect(getToolGutterState().extra).toEqual([]);
-
+    expect(getToolGutterState()).toMatchObject({
+      sections: ["footnotes", "bibliography", "notes"],
+      folded: [],
+    });
     toggleGutterSectionFold("footnotes");
     expect(getToolGutterState().folded).toEqual(["footnotes"]);
-    removeGutterSection("footnotes");
-    expect(getToolGutterState().folded).toEqual(["footnotes"]);
     revealGutterSection("footnotes");
-    expect(getToolGutterState()).toMatchObject({ extra: [], folded: [] });
+    expect(getToolGutterState()).toMatchObject({
+      sections: ["footnotes", "bibliography", "notes"],
+      folded: [],
+    });
+  });
+
+  it("removes any section, the defaults included, and the list may end empty", () => {
+    removeGutterSection("footnotes");
+    expect(getToolGutterState().sections).toEqual(["bibliography"]);
+    removeGutterSection("bibliography");
+    expect(getToolGutterState().sections).toEqual([]);
+    __resetToolGutterStoreForTests();
+    expect(getToolGutterState().sections).toEqual([]);
   });
 });
 
@@ -104,10 +127,10 @@ describe("cross-window", () => {
     act(() => {
       localStorage.setItem(
         TOOL_GUTTER_STORAGE_KEY,
-        JSON.stringify({ tool: "outline", extra: ["errors"], folded: [] }),
+        JSON.stringify({ tool: "outline", sections: ["errors"], folded: [] }),
       );
       window.dispatchEvent(new StorageEvent("storage", { key: TOOL_GUTTER_STORAGE_KEY }));
     });
-    expect(result.current).toEqual({ tool: "outline", extra: ["errors"], folded: [] });
+    expect(result.current).toEqual({ tool: "outline", sections: ["errors"], folded: [] });
   });
 });

@@ -76,7 +76,7 @@ interface Props {
   dotTone: RowDotTone;
 }
 
-/** Width of the always-visible action-menu column on the right edge. */
+/** Width of the action-menu column on the right edge. */
 export const ACTION_COL_WIDTH = 32;
 
 /** Width of the F#9 open-in-tab column (just left of the action menu). */
@@ -215,7 +215,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
             {ck && (
               <button
                 type="button"
-                className="iconbtn-xs"
+                className="iconbtn-xs lib-row-reveal"
                 {...iconHint({
                   label: "Copy citekey",
                   hint: copyOutcome
@@ -315,13 +315,13 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
             ghost.style.background = "var(--surface, #ffffff)";
             ghost.style.border = "1px solid var(--border-light)";
             ghost.style.opacity = "0.92";
-            ghost.style.borderRadius = "var(--radius-xs)";
+            ghost.style.borderRadius = "var(--radius-sm)";
             if (keys.length > 1) {
               ghost.style.position = "relative";
               const badge = document.createElement("div");
               badge.textContent = String(keys.length);
               badge.style.cssText =
-                "position:absolute;top:-8px;right:-8px;min-width:18px;height:18px;padding:0 6px;background:var(--accent);color:var(--surface);border-radius:var(--radius-pill);font-size:10px;font-weight:600;line-height:18px;text-align:center;";
+                "position:absolute;top:-8px;right:-8px;min-width:18px;height:18px;padding:0 6px;background:var(--accent);color:var(--surface);border-radius:var(--radius-pill);font-size:11px;font-weight:600;line-height:18px;text-align:center;";
               ghost.appendChild(badge);
             }
             return ghost;
@@ -331,13 +331,15 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
         });
       }}
       data-hint={`${title}${firstAuthor ? ` — ${firstAuthor}` : ""}${year ? ` (${year})` : ""}`}
+      className="lib-row"
+      data-selected={selected ? "" : undefined}
       style={{
         display: "flex",
         alignItems: "stretch",
         width: "100%",
         textAlign: "left",
         background: selected ? "var(--accent-light)" : "transparent",
-        borderBottom: "1px solid var(--border-light)",
+        borderBottom: "1px solid var(--library-rule)",
         boxShadow: selected ? "inset 2px 0 0 var(--accent)" : "none",
         cursor: "pointer",
         fontSize: 12,
@@ -407,7 +409,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
       >
         <button
           type="button"
-          className="iconbtn-sm"
+          className="iconbtn-sm lib-row-reveal"
           {...iconHint({ label: ck ? OPEN_IN_TAB_HINT : "Triage this entry first" })}
           disabled={!ck}
           draggable={false}
@@ -422,7 +424,6 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
               }),
             );
           }}
-          style={{ opacity: ck ? 1 : 0.4 }}
         >
           <svg
             width="14"
@@ -441,11 +442,12 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           </svg>
         </button>
       </div>
-      {/* Always-visible action-menu column. Stays pinned on the right
-          regardless of how compressed the grid is — it's a flex sibling
-          with `flex-shrink: 0`, not a grid track, so it isn't clipped
-          when the fixed columns overflow. */}
+      {/* Action-menu column. Stays pinned on the right regardless of how
+          compressed the grid is — it's a flex sibling with `flex-shrink: 0`,
+          not a grid track, so it isn't clipped when the fixed columns
+          overflow. */}
       <div
+        className="lib-row-reveal"
         style={{
           flexShrink: 0,
           width: ACTION_COL_WIDTH,

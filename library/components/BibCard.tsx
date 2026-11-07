@@ -165,7 +165,7 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
         </button>
       </div>
 
-      <div style={{ fontSize: 18, lineHeight: 1.35, marginBottom: 8 }}>
+      <div style={{ fontSize: 20, lineHeight: 1.35, marginBottom: 8 }}>
         {f("title") ?? "(no title)"}
       </div>
       <div style={{ color: "var(--muted)", marginBottom: 4 }}>
@@ -251,8 +251,6 @@ export function AiNotePanel({
         style={{
           fontFamily: FONT_MONO,
           fontSize: 11,
-          letterSpacing: "0.05em",
-          textTransform: "uppercase",
           color: "var(--accent)",
         }}
       >
@@ -296,7 +294,7 @@ export function AiNotePanel({
           style={{
             marginLeft: "auto",
             fontFamily: FONT_MONO,
-            fontSize: 10,
+            fontSize: 11,
             color: "var(--muted)",
           }}
         >
@@ -377,9 +375,7 @@ function FieldGroup({
       <div
         style={{
           fontFamily: FONT_MONO,
-          fontSize: 10,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
+          fontSize: 11,
           color: "var(--muted)",
           marginBottom: 4,
         }}

@@ -163,7 +163,7 @@ describe("BibEditModal — a dismissal cannot silently discard typed fields", ()
 
   it("a raw block that no longer parses counts as work (it asks)", async () => {
     const { onClose } = renderBib();
-    fireEvent.click(screen.getByRole("tab", { name: "Raw BibTeX" }));
+    fireEvent.click(screen.getByRole("button", { name: "Raw BibTeX" }));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "@article{broken" } });
     pressEscape();
     await settle();

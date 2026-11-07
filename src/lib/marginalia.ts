@@ -547,7 +547,7 @@ import {
 import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
 import { markerLabelForMarkerType, panelThemeKeyForMarkerType } from "@/cards/marker-meta";
 
-const MARGIN_ICON_SIZE = 16;
+const MARGIN_ICON_SIZE = 14;
 
 const NoteIcon = React.createElement(IconNotes, { size: MARGIN_ICON_SIZE });
 const ArchiveIcon = React.createElement(IconArchive, { size: MARGIN_ICON_SIZE });
@@ -1048,6 +1048,24 @@ export const LANE_MEASUREMENT_EPSILON_PX = 0.5;
  */
 export function laneSlotClearsProse(inset: number, available: number): boolean {
   return available - inset >= MARGINALIA_INNER_PAD - LANE_MEASUREMENT_EPSILON_PX;
+}
+
+/** Where a block label's right edge sits, left of the text edge: past the
+ *  fold-chevron column (−44) plus a gap. `--margin-col-label` in globals.css
+ *  is the same number; the two are pinned together by
+ *  margin-label-mode.test.ts. */
+export const MARGIN_LABEL_INSET = 52;
+/** The narrowest column worth setting a label in. */
+export const MARGIN_LABEL_MIN_WIDTH = 60;
+
+/**
+ * Can the left margin hold the block-label column at this measured margin?
+ * Unmeasured fails OPEN, like the lanes: a hidden keep-alive pane reads 0, and
+ * answering "no" would flip every label for a frame on each warm tab switch.
+ */
+export function marginLabelsFit(available: number | null): boolean {
+  if (laneUnmeasured(available)) return true;
+  return (available as number) >= MARGIN_LABEL_INSET + MARGIN_LABEL_MIN_WIDTH;
 }
 
 /**

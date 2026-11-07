@@ -119,11 +119,6 @@ const PERMITTED_NON_STATUS_DOTS: ReadonlyArray<[file: string, fragment: string, 
     "the same scope swatch on the ScopeChip — category colour, not a state",
   ],
   [
-    "src/components/ManageStylesModal.tsx",
-    "bg-[var(--accent)]",
-    "'preamble drifted' marker painted in the live accent preference; a token read, no status tone applies",
-  ],
-  [
     "src/components/CollabPresenceDots.tsx",
     "backgroundColor: p.color",
     "each present collaborator's own identity colour (inline-sized, seen since task 1379's inline-style leg) — an identity swatch, not a state",

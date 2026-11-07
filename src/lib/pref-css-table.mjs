@@ -37,8 +37,7 @@ export const PREF_CSS_ROWS = Object.freeze([
 
   // App chrome
   // (the theme-color meta follows --topbar-bg's painted value —
-  //  src/lib/theme-color.ts; --main-tab-bg is aliased to --background in
-  //  globals.css)
+  //  src/lib/theme-color.ts)
   { key: "topbarBackground", cssVar: "--topbar-bg", color: true },
   { key: "topbarBackgroundBottom", cssVar: "--topbar-bg-bottom", color: true },
   { key: "topbarBorder", cssVar: "--topbar-border", color: true },

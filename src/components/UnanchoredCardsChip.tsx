@@ -94,7 +94,7 @@ export function UnanchoredCardsChip({
       <AnchoredMenu
         ariaLabel={label}
         align="end"
-        triggerClassName="omni-bin-pill flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium"
+        triggerClassName="omni-bin-pill flex items-center gap-1.5 px-2 py-0.5 rounded text-2xs font-medium"
         triggerHint={label}
         menuClassName="min-w-[180px] px-1.5"
         trigger={() => (

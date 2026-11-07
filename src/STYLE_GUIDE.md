@@ -12,11 +12,17 @@
 
 ## Visual identity
 
-Virgil is a writing tool that reads like paper. The canvas is a warm
-cream (`--background: #ede3de`); the text is set in a serif
-(`--font-serif`); the chrome around it is sans (`--font-sans`); the
-brand accent is a warm brown (`--accent: #7c5e3c`). Pods sit on the
-canvas as raised paper surfaces with a subtle shadow.
+Virgil is a writing tool that reads like paper. The canvas is one warm
+sand (`--background: #ede3de`), and the Library stands on that same ground.
+The Virgil bar is a paler step of it (`--topbar-bg: #f6f1ed`) with a fine line
+under it, so the bar reads as the one layer that belongs to the whole app and
+everything below it belongs to the page. The text is set in a serif
+(`--font-serif`); the chrome around it is sans (`--font-sans`); the accent is
+azure, the one cool colour against the sand (`--control-selected: #167bb6` for
+fills and on-states, `--accent: #12669a` where it has to read as text), and the
+labels in the page's left margin take a subdued blue of the same hue
+(`--heading-annotation-color: #3c6b86`). Pods sit on the canvas
+as raised paper surfaces with a subtle shadow.
 
 When in doubt, ask: *would this look right printed?* If the answer is
 no, it's not Virgil.
@@ -57,9 +63,8 @@ chromatic CSS keyword in a CSS-value position) is censused in **every production
 `.ts`/`.tsx` under `src/`** (task 1412); its allowlist holds only the declared
 colour TABLES (panel-theme presets, collab presence, the selection menu's text
 colours, the hue wheel), the ruled keeps a non-CSS consumer needs as a concrete
-value (`PENDING_AI_TINT`, the typography pref default, the web manifest, the
-pdf.js backdrop) and the AI window's status chips awaiting a `--status-*`
-family. The Tailwind palette UTILITY is still censused only over `src/panels/**`
+value (`PENDING_AI_TINT`, the typography pref default, the web manifest) and
+the AI window's status chips awaiting a `--status-*` family. The Tailwind palette UTILITY is still censused only over `src/panels/**`
 plus the two shared panel/field primitives — chrome utilities elsewhere under
 `src/components/**` (the Library's deliberate multi-hue chips) are **not**;
 widening that leg is a separate decision with its own draining cost. Both
@@ -97,9 +102,11 @@ Two rules the family carries:
   banner dialogs and cards draw). Every error string reads it — the dialogs,
   the bug-report notice, bib cards and the bib modal, the system dialog's
   `danger` message, an invalid field's ink, the compile-log status, the error
-  card's severity word, the attention toast's label, the skill-sync and library
-  permission alerts. What stays on `--danger` is non-text: an attention toast's
-  EDGE, the error badge ICON, a dismiss icon, a destructive button or menu row.
+  card's severity word, the skill-sync and library permission alerts. What stays
+  on `--danger` is non-text: the error badge ICON, a dismiss icon, a destructive
+  button or menu row. A toast takes neither: it is a sentence and a way forward,
+  in ink, with a heading in words (`notificationTitle`), and severity sets only
+  how long it stays. Four show at once; the rest wait.
   `destructive-red-tokens.test.ts` ("error text reads the error role") pins
   those survivors as exact file sets, so the set only shrinks, and fails any
   `role="alert"` line that paints `--danger`.
@@ -285,8 +292,8 @@ Three rules the family carries:
 change and an open AI request paint ONE light blue (Gabriel, 2026-07-03), and
 the chrome that frames that signal wears the same hue: `--pending-ai-tint`
 (`#bfdbfe`, the band + request wash; ≡ the TS `PENDING_AI_TINT`, which the band
-stamps into `data-tint-color`), `--pending-ai-edge` (the per-change and bulk
-pending-change navigators' border — derived from the tint), `--pending-ai-ink`
+stamps into `data-tint-color`), `--pending-ai-edge` (the per-change navigator's border — derived from the
+tint), `--pending-ai-ink`
 (`#60a5fa`, the delete-mode strike). A new pending-AI surface reads this family,
 never a `sky-*`/`blue-*` utility — the navigators once wore `sky-200` (h≈231)
 beside a blue-200 band (h≈254). Guard: `src/cards/__tests__/pending-ai-tint-family.test.ts`.
@@ -456,9 +463,8 @@ Both ways of ignoring the boundary fail **silently**:
   get a color: the wrong one. `--amber-50` is the repo's warm `#fef9e7`;
   Tailwind v4's `amber-50` is a cooler `#fffbeb`. This spelling satisfies both
   rules above (it *is* a utility, and it is *not* a hex literal) while
-  bypassing the token — which is why it has drifted twice and earned two
-  bespoke guards (`examples-amber-token.test.ts`,
-  `bibliography-amber-strip-convergence.test.ts`).
+  bypassing the token — which is why it has drifted twice and earned a bespoke
+  guard (`bibliography-amber-strip-convergence.test.ts`).
 
 There is a third silent failure on the same axis, and it is the loudest-looking
 of the three while being the quietest in practice: **a `var(--token)` naming a
@@ -621,19 +627,15 @@ The token scales:
   member of a traffic light and means "ok" only against `--status-warn` /
   `--status-danger` in the same glyph, while these are shown with no red or
   yellow sibling in view (globals.css states the test).
-- **Library edge** (`--library-edge`): the SSOT for every Library-surface
-  page edge — tab silhouette strokes, the panel/body frame border, NavPod.
-  DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
-  so it is a darker tint of the library field *by construction* and can never
-  drift into a warm-on-cool clash (the failure mode when these edges rode the
-  top-bar token `--topbar-border` over the promoted cool `--library-bg`; task
-  048). Any new Library-surface edge consumes THIS token, never
-  `--topbar-border`; a guard in `tab-chrome-contracts.test.ts` fails the build if a
-  `library/` source re-grabs `--topbar-border`. The general pattern: an edge
-  token that must harmonize with a surface should be `color-mix`-derived FROM
-  that surface's var, not a hand-picked hex that a future retone can desync.
+- **Library surfaces have no outline.** The navigator is text on the canvas, a
+  list is a sheet on `--card-shadow-ambient`, and the active folder tab is the
+  top of that sheet, drawn by its fill alone (`strokeVar: "transparent"`). A
+  paper's reader stands on the canvas. Rules inside a list are `--library-rule`,
+  a soft tint of `--border-light`.
+- **An edge that must harmonize with a surface** should be `color-mix`-derived
+  FROM that surface's var, not a hand-picked hex that a future retone can desync.
 
-Locked aliases (must track each other): `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
+Locked aliases (must track each other): `--pod-editor`/`--surface`,
 `--h1-color`/`--foreground`, `--h2h3-color`/`--editor-text-color`,
 `--scrollbar-hover`/`--muted-light`, `--zen-canvas-cool`/`--topbar-bg`. Each is DERIVED (`var(--partner)`), never
 a re-spelled literal, and
@@ -782,18 +784,17 @@ mount on `document.body`.
 ### Radius scale
 
 Corner radii are tokens, the single source of truth — the same rule colors
-already follow. Six steps, defined in `src/app/globals.css :root` and mapped
+already follow. Five steps, defined in `src/app/globals.css :root` and mapped
 onto the Tailwind `rounded-*` utilities via an `@theme` block, so
 `rounded-md` etc. are token-backed and `var(--radius-md)` works in inline
 `style`/CSS. Pick by role, not by eyeballed pixels:
 
 | Token | px | `rounded-*` | Use |
 |---|---|---|---|
-| `--radius-xs` | 3 | `rounded-xs` | in-text/chip micro details: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb. |
-| `--radius-sm` | 4 | `rounded-sm` | small controls & inner rows: icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
-| `--radius-md` | 6 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
-| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod (via `--editor-pod-radius`), code / display-math blocks + source-pod code surfaces, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
-| `--panel-radius` | 14 | `rounded-xl` | large PANEL + MODAL tier: sidebar panel pods, docked floating panels, system/font dialogs. |
+| `--radius-sm` | 4 | `rounded-sm` | in-text marks and small controls: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb, icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
+| `--radius-md` | 8 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
+| `--pod-radius` | 10 | `rounded-lg` | CARD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, code / display-math blocks + source-pod code surfaces, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
+| `--panel-radius` | 12 | `rounded-xl` | SHEET tier: the page (via `--editor-pod-radius`), sidebar panel pods, docked floating panels, system/font dialogs. |
 | `--radius-pill` | 9999 | `rounded-pill` / `rounded-full` | fully-round capsules: status pills, page-scroll lozenges, pgmark chips, drag-ghost badges. |
 
 **A tier token has ONE value in every mode.** No `@media`, state or selector
@@ -801,7 +802,7 @@ block redefines `--pod-radius` / `--panel-radius` / `--radius-*` — they are
 declared once, in `:root` (and aliased once, in `@theme`). Where a mode must
 change ONE surface's corner, that surface reads its own name defaulting to the
 tier and the mode overrides the name: the editor pod's chrome reads
-`--editor-pod-radius` (= `var(--pod-radius)`), and print flattens THAT, so code
+`--editor-pod-radius` (= `var(--panel-radius)`), and print flattens THAT, so code
 blocks, display math and figure images — content, not chrome — print with the
 corners they show on screen (task 2026-10-23-1248; pinned by the
 "no tier redefinition" leg of `radius-scale.test.ts`). Source-pod code
@@ -842,6 +843,20 @@ A genuine one-off can carry a `radius-allow` comment on the line to opt out of
 the guard, but reach for that rarely — a new radius almost always belongs to a
 tier above.
 
+### Depth — three levels
+
+Elevation is a tier a surface belongs to, not a value it chooses. Each level is
+a faint warm edge plus a soft warm shadow, so depth reads as paper on sand
+rather than a drawn outline. Pick by what the surface IS:
+
+| Level | Token | Use |
+|---|---|---|
+| Resting | `--card-shadow-ambient` | cards, docked panels |
+| Raised | `--pod-shadow` | the page, menus (through `--menu-shadow`) |
+| Floating | `--shadow-float` | floating panels, dialogs |
+
+A new surface takes one of these; it does not get a fourth value.
+
 ## Typography
 
 | Family | Use |
@@ -862,14 +877,35 @@ Always emit the override-first var stack via `resolveFontStack(name)`
 heuristic generic tail. Don't write local `fontStack` helpers.
 
 Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
-1.05rem/400 with line-height 1.6. Panel scale: header 11px/600 uppercase
-tracking-wider (`PanelHeader`), card title `--par-title-size`
-(0.78rem ≈ 12.5px)/500, badge 10px/600.
+1.05rem/400 with line-height 1.6. Panel scale: header 11px/600
+(`PanelHeader`), card title `--par-title-size` (0.78rem ≈ 12.5px)/500,
+badge 11px/600.
+
+**The UI has five sizes.** Chrome picks from this table and nothing else; the
+paper keeps its own scale above. Each rung is a Tailwind utility owned by the
+`@theme` block in `globals.css`, which clears the vendor ladder first, so
+`text-2xl` emits nothing. **11px is the floor**: nothing readable goes smaller.
+
+| Size | Utility | Use |
+|---|---|---|
+| 20 / 26 | `text-lg` | page titles |
+| 15 / 20 | `text-base` | section headings, dialog titles |
+| 13 / 18 | `text-sm` | body, lists, menus |
+| 12 / 16 | `text-xs` | labels, buttons, controls |
+| 11 / 14 | `text-2xs` | captions, card kind, chips |
+
+**Sentence case, never capitals.** Hierarchy comes from size and weight, so no
+chrome sets `text-transform: uppercase` or tracks its letters out. Both cost
+reading speed at these sizes and make one interface read as two.
+
+Decorative glyphs (▾, ⋮, +) are icons, not text, and may sit outside the table;
+the onboarding gates keep their larger serif display titles. Each exception is
+named in `type-size-census.test.ts`.
 
 **UI sizes are integer px rungs** (task 1414). Every named UI size above is a
 whole pixel; a half-pixel (`text-[10.5px]`, `fontSize: 12.5`, `font-size:
 11.5px`) is a value nobody picked from the ladder — snap it to the nearest
-rung for its register (a muted secondary line → 10px, the META analogue).
+rung for its register (a muted secondary line → 11px, the META analogue).
 The only kept half-pixels are READING text, not chrome — the code pane body
 (13.5px) and the Library Reader prose (15.5px) — each stated at its site.
 rem/em sizes are out of scope (em inside inline atoms is relative on
@@ -893,26 +929,24 @@ fold-chevron offsets already do — never to the viewport.
 ### In-card type scale — meta vs content (UI-consistency sweep)
 
 Inside a card body there are exactly **two tiers** (ratified 2026-06-12);
-anything at 10.5 / 11 / 11.5px is a stray:
+anything at 10.5 / 11.5px is a stray:
 
 | Tier | Spec | Use | Token |
 |---|---|---|---|
-| **META** | 10px / 500 / uppercase / 0.05em (`tracking-wider`) / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text, **the card-header kind label** | `.card-meta-label` / `CardMetaLabel` / `CardTypeLabel` |
+| **META** | 11px / 500 / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text, **the card-header kind label** | `.card-meta-label` / `CardMetaLabel` / `CardTypeLabel` |
 | **CONTENT** | 12px | entry rows, inputs, previews | `.card-content-row` (or the panel body style) |
 
 **The kind label has one class** (task 1029). The docked header's
 `CardTypeLabel`, the `CardKindDropdown` morph trigger, a popped float's
 plain-title span (`FloatChrome`) and the suggestion-field section labels all
-wear `.card-meta-label` — never a hand-typed `text-[10px] … uppercase
-tracking-wider` (that twin is how a popped card's label drifted to
+wear `.card-meta-label` — never a hand-typed `text-2xs font-medium` (that twin is how a popped card's label drifted to
 `--ink-muted`, a different gray from its docked self). The class lives in
 `@layer components`, so a call site composes `truncate` or a `hover:text-*`
 over it with plain utilities. Census: `card-ui-consistency.test.tsx`.
 
 **Outside a card body — the section caption** (task 1333). The small
-uppercase caption has ONE class per register, and the panel/window body's is
-`.section-caption` — 10px / 500 / uppercase / 0.025em (`tracking-wide`) /
-`--ink-muted` ("Request entry", "Pending requests (n)", "Recent", "Browse",
+caption has ONE class per register, and the panel/window body's is
+`.section-caption` — 11px / 500 / `--ink-muted` ("Request entry", "Pending requests (n)", "Recent", "Browse",
 font groups, the preferences dividers, the compile-log header):
 
 | Register | Token |
@@ -922,17 +956,24 @@ font groups, the preferences dividers, the compile-log header):
 | menu | `<MenuSectionLabel>` — composes `.section-caption` (padding via `padding`) |
 | dialog field label | `field-primitives` `register: "section"` (11px by spec) |
 
-Named non-captions: `PanelHeader` (the 11px/600 header scale) and chips (9–10px,
+Named non-captions: `PanelHeader` (the 11px/600 header scale) and chips (11px,
 `rounded`, the membership-chip dialect). A caption in a tinted box takes
 `text-[var(--accent)]` over the class (Word Count's "Selection"). Never
-hand-type `text-[10px] … uppercase tracking-…`. Census:
+hand-type the caption's size and weight. Census:
 `section-caption-census.test.ts`.
 
 Mono inside cards always routes through the override-first stack
 `var(--font-mono-override, var(--font-mono)), monospace` — the `.card-mono`
 class (Tailwind's `font-mono` skips the user's mono override pref; apply
 `.card-mono` directly and set the size alongside it). CODE/key mono sits on
-the META tier (10px).
+the META tier (11px).
+
+**The Library list keeps its columns honest.** A column that does not fit steps
+aside whole (`fitColumns`: citekey, then status, then year) rather than clip to a
+letter. The title has a floor and takes the slack first; `status` flexes between
+a floor its four labels stay readable at and the saved width. A row's controls,
+and a status pill with nothing to say, wear `.lib-row-reveal` and come up with the
+row, so a list at rest reads as papers.
 
 **Status badges (library cards).** Two documented chip dialects coexist on
 the bibliography/citation card's stacked header, distinguished by role, not
@@ -940,12 +981,10 @@ drift:
 
 | Dialect | Spec | Use |
 |---|---|---|
-| **Membership chip** | 9px / uppercase / tracking-wide | "location tags" — which library an entry lives in (Local / Central / a custom library). `provenance-chips.tsx`. |
-| **Status badge** | 10px / sentence-case / tracking-wide / colored | the entry's *state* — `✓ Authenticated` (bib-auth; "Verified" is retired — F#2) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
+| **Membership chip** | 11px / sentence-case | "location tags" — which library an entry lives in (Local / Central / a custom library). `provenance-chips.tsx`. |
+| **Status badge** | 11px / sentence-case / colored | the entry's *state* — `✓ Authenticated` (bib-auth; "Verified" is retired — F#2) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
 
-Sentence-case on the status badge is deliberate: the labels are user-facing
-vocabulary that reads as words, not shouted tags. Membership chips stay the
-denser uppercase tag so the two layers read as distinct registers.
+The two dialects are told apart by colour and position, not by capitals.
 
 **Stacked card header (library cards).** The bibliography card header is a
 **three-layer vertical stack** — (1) text: author · year · title, full width;
@@ -1118,7 +1157,7 @@ silent bug where it does not. The vocabulary:
 | Variant | Ink |
 |---|---|
 | *(none)* | `--ink-muted` at rest, `--ink-body` on hover — the default |
-| `iconbtn-meta` | `var(--muted)` at rest (the ratified 10px META tier), default hover |
+| `iconbtn-meta` | `var(--muted)` at rest (the 11px META tier), default hover |
 | `iconbtn-danger` | `--danger` at rest AND hover, on `--danger-soft` — a control that reads destructive at a glance (a card's trash button) |
 | `iconbtn-danger-hover` | default rest, `--danger` on `--danger-soft` when you reach for it — a per-row remove X |
 | `iconbtn-toggle` | the accent-on-tint "this mode is on" state, at `aria-pressed="true"` |
@@ -1141,22 +1180,22 @@ A roving MENU row is the exception to the second half and not to the
 first: it is `tabIndex={-1}` and shows `data-active` instead, so it
 needs a name and no ring.
 
-Icons are stroke-only, stroke-width 2, round caps and joins, single
-color (`currentColor`). **One sanctioned second rung** (task
-2026-10-24-1276): `ICON_STROKE_SMALL` (2.5) for a BARE MARK — "+", close
-"×", chevron, caret — at ≤14px, where 2 units in a 24 viewBox render
-under 1.2 CSS px and read faint; framed/outlined glyphs stay on
-`ICON_STROKE` (2). Both live in
-[src/components/icons/icon-stroke.ts](src/components/icons/icon-stroke.ts)
-and a site on the small rung imports it — CI
-(`icon-stroke-rung-census.test.ts`) fails a bare `2.5` literal anywhere
-in `src/`. A glyph declares its weight ONCE, on its outer `<svg>`; a child
-never overrides it (the popout button's popped "×" did, so one button
-changed weight with its state). The menu-trigger caret is the
+Icons are outline only, one line weight, round caps and joins, single color
+(`currentColor`). **The weight is not a number in the markup.** A stroke of 2 on
+a 24 grid and 1.5 on a 16 grid are different lines at the same size, so
+globals.css ("One line weight") sets it once with `non-scaling-stroke`: 1.5px
+for an icon of 14px or more, 1.25px below that. It reaches every `<svg>` that
+draws with a stroke, at zero specificity, so a real rule can still win (a folded
+chevron does). A glyph that is not a line of this weight, such as a ring, a tick
+or a checkbox, carries `data-icon-weight="own"`. The `strokeWidth` a glyph
+declares is its fallback (`icon-stroke.ts`); a glyph declares it ONCE, on its
+outer `<svg>`, and a child never overrides it.
+
+Draw a symbol, do not type one: a `<text>` glyph takes the font's weight, which
+is how `#` came to look bold beside its neighbours. The menu-trigger caret is the
 `MenuCaret` leaf (`src/components/icons/`, down/up), never a hand-copied
 polyline; an INLINE caret sizes to the text it trails (the card-kind
-trigger's 9px), a button-only caret takes its `iconbtn-*` rung. Two exceptions are filled by design: the AI
-star (sky `#0ea5e9`) and the trash icon (`text-danger`). The **fold
+trigger's 9px), a button-only caret takes its `iconbtn-*` rung. A mark stays solid only where the solid IS the mark: dots, grips, the bold tile, a pinned pin. The **fold
 chevron** is a STROKED exception to the width: the shared
 `margin-fold-chevron` control (heading fold + source-pod collapse) and the
 Outline twisties draw one glyph, `FOLD_CHEVRON_GLYPH` in
@@ -1226,13 +1265,14 @@ Five states. One implementation each.
   (the pending-change pill, the hint tooltip, the drop-mode Save/Cancel
   chip, the stale-PDF badge and compile-running chip, the label-ref,
   math and figure popovers, every menu, the toast, the floating zap
-  trigger, the portaled stack pill, the Library page-number lozenge, the
-  outline focus-band handles) takes the menu rung,
+  trigger, the Library page-number lozenge, the outline focus-band
+  handles) takes the menu rung,
   `--menu-shadow` — by NAME, even where it equals the pod's today
   (the menu rung aliases `--pod-shadow`); an IN-FLOW chip
-  or sticky header (Omni's pending navigator, `.omni-bin-pill`, outline
-  pod chips) takes the card ambient rung, `--card-shadow-ambient` — ONE
-  token, since they sit among cards (task 1247). No site authors its own:
+  or sticky header (outline pod chips) takes the card ambient rung,
+  `--card-shadow-ambient` — ONE token, since they sit among cards (task
+  1247). Text on the gutter's own ground (the notice strip, the Stack
+  button) takes no rung at all. No site authors its own:
   `shadow-tier-census.test.ts` fails any Tailwind `shadow`/`shadow-sm…2xl`,
   any non-`var()` `shadow-[…]`, and any literal blurred layer outside a
   `:root` token definition — rings (`0 0 0 Npx`) and `inset` seams are
@@ -1248,13 +1288,12 @@ Five states. One implementation each.
   ring's colour is a token read (`--focus-ring-shadow`, or `color-mix`
   over a colour token), never a hand-picked rgba/hex;
   there is not one hover-elevation rule in either silo. Border-color hover
-  *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
-  `edge-strong`) and the omni-bin pill's. The exception is icon buttons
+  *is* sanctioned and prescribed — it is the card rule (transparent →
+  `edge-hover`). The exception is icon buttons
   (`iconbtn-*`, `.topbarbtn`): background and text color only, never a
   border.
 - **Selection.** Always themed. There is no default selection color.
-  Each card kind reads its theme's `borderSelected` and
-  `headerSelected`.
+  Each card kind wears the selection halo in its own theme's tint.
 - **Focus.** `.focus-ring` — or `.iconbtn-*` / `.topbarbtn`, which bake the
   same thing in. **Never a Tailwind `focus-visible:ring-*` utility.** All four
   spellings resolve to ONE declaration block in `globals.css` (`outline: none`
@@ -1416,15 +1455,22 @@ the accent tint. Don't author bespoke padding, hover, or active
 classes for topbar buttons; if you need a new visual state, extend
 `.topbarbtn` so every sibling stays in sync.
 
+**The bar keeps four controls out**: the Text/Code/PDF switch, Compile, AI
+requests and ⋯. Compile is a soft tile (`.topbarbtn-tile`), one step deeper than
+the bar, because it is not something you do often; nothing on the bar is filled. A tool
+used now and then is a row in ⋯ (`BarMoreMenu`), not another icon, and an off-
+switch for a state the user is in (the Zen button, a mode chip) is the only
+reason to add to the bar.
+
 **Omni bin pill.** The count-pill controls in the Omni cascade that
 collect cards which can't render inline — the outside-focus band and
-the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's a
-solid, clearly-bounded chip against the white Omni column: tinted
-resting bg (`--surface-muted`) so it separates from the column, a
-perceptible stone-300 edge (`--edge-hover`), readable `--ink-body`
-text, hover deepening one step (bg → `--surface-muted-strong`, border →
-`--edge-strong`). Beware the hover trap: never rest a hover-able pill at
-the same token its hover lands on, or the feedback vanishes. The leading
+the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's text
+on the gutter's ground, `--ink-muted`, with a wash and `--ink-body` on
+hover. It rides the **notice strip** (`.omni-notices`) with the
+pending-change navigator, because all of them say the same thing, *this
+needs a look*: one strip across the column, painted in the gutter's own
+ground so a card passes under it, wrapping when the column is narrow. An
+open bin takes the strip's full line. The leading
 glyph stays per-bin (`◎` outside-focus; the no-anchor bin wears a
 `BadgeOrphaned` badge iff any member is orphaned, else the parked `◌`),
 and every pill declares its TONE (`neutral` / `error`, published as
@@ -1512,20 +1558,33 @@ census's reach).
 
 ## Cards & themes
 
-A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
-`headerSelected`, `separatorSelected`. All other values
-(`badgeBg`, `titleColor`, etc.) derive from `accent` via
-`themeFromAccent()` in `src/lib/panel-theme.ts`.
+**A card's kind is a dot.** The header has no band: a 6px dot in the kind's
+accent and the kind label, on the card's own ground. Titles stay ink
+(`--ink-strong`) in every kind, and nothing else on a card at rest takes the
+accent. The grip shares the dot's slot and takes over from it on the card's
+hover, so the header doesn't shift; a card that can't lift keeps its dot. The
+header controls wear `.card-reveal` and come up on hover, on selection and on
+keyboard focus. They stay in the DOM and stay reachable, so the opacity is the
+only thing that changes. A card's number or letter is plain text beside the
+label ("Footnote 1"). Floats follow: a card float's strip is the card's own
+white (`CARD_FLOAT_STRIP`), which is what pop-out continuity asks of a header
+with no band.
+
+**A card has no resting edge.** Its identity is shadow and gap. The border is
+kept, transparent, so the box never changes size; hover paints it `edge-hover`
+and the parked cue paints it dashed. In the omni cascade the default
+`omniDimResting` rests a card on `--card-surface`, one step behind the paper,
+and hover brings it up to `--surface`.
+
+A theme derives from one token, `accent`: `separatorSelected`, `badgeBg`,
+`badgeColor` and `badgeBorder` all come from it via `themeFromAccent()` in
+`src/lib/panel-theme.ts`.
 
 **Every value `themeFromAccent()` emits is a solid `#rrggbb`** — never
-`rgba()`, never a `color-mix(…, transparent)`. Header tints are pre-mixed
-over white (`blendOverWhite`) rather than composited at paint time, and this
-is the one place the Tokens section's `color-mix` advice does *not* apply. A
-theme token is a **surface fill read by more than one parent**:
-`theme.headerDefault` paints the docked card header over `bg-surface` (white)
-and is handed straight through as the float `headerTint` over `--pod-panel`,
-so a translucent value would render the same card two different colors
-depending on whether it is popped out. Alpha still belongs at the
+`rgba()`, never a `color-mix(…, transparent)`. This is the one place the
+Tokens section's `color-mix` advice does *not* apply: a theme token can be read
+by more than one parent, and a translucent value would render the same thing
+two different colors. Alpha still belongs at the
 *consumption* site, over the card's own opaque surface — the hover/select
 ring's `color-mix(in oklab, var(--link-anchor-color) 50%, transparent)` is
 correct. `panel-theme-key-freeze.test.ts` pins the hex format, but only for
@@ -1565,18 +1624,11 @@ a lightness coordinate.** HSL lightness is hue-blind — `l = 0.40` says nothing
 about how bright a color *reads*, and the error is largest exactly where the
 palette offers its most saturated hues. So the derivation measures WCAG
 relative luminance against the surface a value actually lands on
-(`src/lib/color-math.ts`: `contrastRatio`, `inkOn`, `atContrastAgainst`), and
+(`src/lib/color-math.ts`: `contrastRatio`, `inkOn`), and
 moves only lightness to reach it, carrying hue and saturation through:
-
-- **Text ink** (`badgeColor` = `titleColor` = the marginalia glyph — one
-  `accentInk` per accent, not three per-surface inks) clears **4.5:1** against
-  the *darkest* surface it can land on. 10px badges and ~12.5px/500 titles are
-  normal-size text; no large-text exemption applies.
-- **Non-text affordances** (`borderSelected`) target **3:1** against
-  `--surface`. A *target*, not a floor: the point is that a selected Note and a
-  selected Report read as equally selected. An absolute coordinate cannot do
-  that — `atLightness(accent, 0.62)` lightened dark accents and darkened light
-  ones, so the same cue ranged from 1.36:1 to 5.62:1 depending only on hue.
+**text ink** (`badgeColor` = the marginalia glyph — one `accentInk` per accent,
+not two per-surface inks) clears **4.5:1** against the *darkest* surface it can
+land on. These are normal-size text; no large-text exemption applies.
 
 The ink is the accent, darkened only as far as legibility requires — a
 genuinely dark accent is its own ink. **No per-kind exceptions**: a hand-tuned
@@ -1691,7 +1743,7 @@ the registry's own structural facets and requires the labels to agree;
 placeholder literal that restates a registry label.
 
 Card chrome colors come from theme tokens (`theme.accent`,
-`theme.titleColor`, …), never raw Tailwind palette literals
+`theme.badgeColor`, …), never raw Tailwind palette literals
 (`text-sky-500`). This holds for the system themes too (`aiRequest`,
 `error` — non-overridable, but they ride the same accent→palette
 derivation). A literal that happens to match the accent today will
@@ -1735,13 +1787,12 @@ genuinely per-instance hue (the light-blue pending-AI bands), where there is no
 theme to follow. The sentinel also costs nothing at runtime: the override
 repaints live, with no re-stamp pass and no doc walk on a color change.
 
-Selection: border flips to `theme.borderSelected`, header tint flips
-from `headerDefault` to `headerSelected`, separator flips to
+Selection: the card wears the selection halo and any inner rule flips to
 `theme.separatorSelected`. Elevation does NOT change on selection —
 the card keeps its `--card-shadow-ambient` (`themedCardStyle`), since
 elevation is a property of the tier, never of a state. The body never
-tints. Every section rule on a card — PanelCard's header/body rule and any
-inner rule a card body draws — renders through ONE `CardSeparator`
+tints. A card's header has no rule under it; every inner rule a card body
+draws renders through ONE `CardSeparator`
 (`panel-primitives.tsx`), keyed on the same halo the card hands PanelCard as
 `selected` (never the host's `isSelected` alone); `card-separator-census.test.ts`
 pins that no card body re-spells it (task 969).
@@ -1939,7 +1990,7 @@ in the text, the place is just in the archive, and it re-attaches when the
 passage is restored. Its card says so in the **archive-relation row**.
 
 **The archive-relation row** (task 1195) is a small muted line under the
-card body — `text-[11px]`, `--muted` — holding **chips** (`rounded-xs`,
+card body — `text-[11px]`, `--muted` — holding **chips** (`rounded-sm`,
 1px `--border`, `hover-on-light`): on an Archive card, "Archived with this
 passage: N <kind nouns>" then one chip per travelled card (registry `label`
 + title); on a travelled card, "Archived with passage" (or the parked
@@ -1980,7 +2031,7 @@ attr); a citation cannot while it is keyless or still a draft record.
 Under the default cards-right / tools-left layout, the LEFT gutter is not a
 panel and wears none of the panel vocabulary below: **no pod, no card frame,
 no shadow, no border** — its tools and lists are written straight onto the
-manila (`--background`). Headings are 11px uppercase `--panel-header-text-color`
+manila (`--background`). Headings are 12px/600 sentence-case `--panel-header-text-color`
 (the panel-header voice, without the header bar); rows are the UI sans at
 `text-sm` (the Outline's voice), two-line clamped, `--muted` when settled (a
 done to-do, an applied change), accent ink + 600 when their card is the selected
@@ -1994,7 +2045,9 @@ rows lie flat (`.tool-gutter-tool` overrides). **There is no strip:** both
 gutters run to the window edge, the collapse toggle leads the left gutter's
 tools row and sits on a sticky head row above the right gutter's cards
 (`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
-one piece of chrome. Generalisable rule: **a list of what is IN the paper reads
+one piece of chrome. The cards' notices (pending changes, unanchored, outside
+focus) share that head row, left of the toggle, so the first card starts
+directly under it. Generalisable rule: **a list of what is IN the paper reads
 as text; a thing you can open and edit reads as a card** — and the cards are on
 the right.
 
@@ -2003,13 +2056,17 @@ the right.
 Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is
 real: [src/__tests__/token-contract.test.ts](__tests__/token-contract.test.ts)
 fails if this prose and `globals.css` disagree). Header
-slots, in order: leading menu/swatch, title + count, after-title tool,
-add button, extras, close X. Order is fixed even when slots are absent.
+slots, in order: title + count, after-title tool, add button, extras, the ⋮
+menu, close X. Order is fixed even when slots are absent. The × exists only in
+a docked pod, whose `PanelChromeProvider` supplies it: a tool in the tool gutter
+is closed by its own button in the tools row, so it has none. There a tool's
+title sits at the left edge in capitals, above the sentence-case section
+headings, and its controls sit at the right.
 (AI requests are per-**card** — the `AiRequestCheckbox` — not a panel-header
 slot.)
 
 Panel pods are **borderless warm sheets**: `--pod-panel` fill, a larger
-`--panel-radius` (14px, vs the editor pod's 8px `--pod-radius`), and the
+`--panel-radius` (12px, the same sheet tier as the editor pod), and the
 **same ambient shadow as cards** (`--card-shadow-ambient`); **no border**
 (`--panel-border: none`). The **header shares the body fill**
 (`--pod-panel`) with **no divider** — header and body read as one
@@ -2048,8 +2105,8 @@ Three properties of the rule are load-bearing, and each is a way the value
 drifted before it had an owner:
 
 - **The width is derived.** `--pod-seam` is the greatest downward reach of the
-  pod's own `--card-shadow-ambient` (offset 2 + blur 6 ⇒ 5px), rounded up to
-  6. Narrower and the shadow smears onto the card below as a smudge; wider and
+  pod's own `--card-shadow-ambient` (offset 1 + blur 3 ⇒ 2.5px), rounded up to
+  4. Narrower and the shadow smears onto the card below as a smudge; wider and
   it is the moat again. If the shadow tier changes, re-derive it — the token's
   comment says so, and that is the only place the arithmetic lives.
 - **One question per token.** `--pod-gap` (10px) is the *gutter*: the resize
@@ -2189,8 +2246,8 @@ flow under the last button (the strip is sticky and content-sized; nothing
 pins it to the bottom). Every toggle — strip buttons and the collapse
 toggle alike — is `iconbtn-md iconbtn-toggle` (24×24) with `aria-pressed`;
 the "on" paint is the shared control-selected path
-(`.iconbtn-toggle[aria-pressed="true"]` in globals.css: tint + ink + inset
-ring), never a hand-rolled fill. The lit strip icon is the **only**
+(`.iconbtn-toggle[aria-pressed="true"]` in globals.css: tint + ink, no drawn
+box), never a hand-rolled fill. The lit strip icon is the **only**
 active-panel cue. A panel looks **identical whether or not it has focus**: no
 per-pod stripe, ring, border, or shadow-change on focus. Pinned by
 `strip-button-a11y-name.test.tsx` (task 1226).
@@ -2355,14 +2412,13 @@ Five variants × three sizes via `<Button variant size>`:
 - **ghost** — transparent. Cancel, skip, de-emphasized.
 
 Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
-14px. All share `rounded-md` (6px).
+13px. All share `rounded-md` (8px).
 
 Modal footers (`<SystemDialogFooter>`, task 1258 — this describes every
 shipped footer, and `dialog-footer-order-census.test.ts` holds it):
 
 - **Cancel is `secondary`** (the default — omit `variant`). Not `ghost`: an
-  unbordered word reads as a label on the footer's muted band. The footer's
-  variants are the `Button` vocabulary itself (`primary | secondary | danger`);
+  unbordered word reads as a label. The footer's variants are the `Button` vocabulary itself (`primary | secondary | danger`);
   there is no alias spelling.
 - **The affirmative/cued answer is rightmost** (`primary`).
 - **A two-button danger confirm** (`Cancel | Delete`) puts the destructive
@@ -2422,12 +2478,13 @@ it in task 827).
 
 **The SHAPE may be hand-rolled; the "on" PALETTE never is.** Every toggle
 "on" state in the app reads the `--control-selected*` family, on one of two
-paths: **solid** (`--control-selected` fill + white label — filled segments:
-Outline Edit/Focus, PrintDialog font size) or **tint**
+paths: **solid** (`--control-selected` fill + white label: Outline Edit/Focus)
+or **tint**
 (`--control-selected-tint` background + `--control-selected-ink` text/icon,
 AA-verified at 5.6:1 — what `.topbarbtn[aria-pressed="true"]` and
 `.iconbtn-toggle[aria-pressed="true"]` paint, and what an outlined mini-chip
-like the Search panel's `Aa`/`W` mode toggles takes). A toggle never wears
+like the Search panel's `Aa`/`W` mode toggles takes). A segmented choice is its
+own primitive, below. A toggle never wears
 `--accent`: that token is the user-overridable link / selection / mark / CTA
 accent, so a retint would move the toggles that borrowed it and no others —
 its own declaration says the toggle aesthetic is decoupled from it on
@@ -2438,11 +2495,19 @@ the two Search toggles were spelled twice, had drifted together onto raw
 Tailwind amber + `--accent`, and were pinned by a directory census —
 `src/panels/Search/__tests__/search-token-convergence.test.ts`).
 
+**A number in a list is a label.** Footnote and example markers, section numbers
+and word counts read `--gutter-number`, set back from the text they label, and
+the text beside them stays strong ink. It sits at 3.5:1 on the sand on purpose:
+under the 4.5:1 text floor, since the number is never the only way to read the
+row.
+
 **A segmented choice is the primitive: `<SegmentedToggle>`**
 ([components/SegmentedToggle.tsx](components/SegmentedToggle.tsx), task 950).
 "Pick exactly one of N" — a search scope, a preview direction, a font size, a
 view switch — is a named `role="group"` of `aria-pressed` segments painted on
-the SOLID `--control-selected` path, `rounded-md` on the outer ends, a
+a recessed `--segment-track`, the selected segment a white tile on it,
+`rounded-md` on the track and `rounded-sm` on a segment, so a choice stays
+quieter than any filled action near it. A
 `.focus-ring` per segment (lifted above its neighbours; no `overflow-hidden`
 clipping it), and a disabled segment whose hint says WHY (`disabledHint`, also
 its `aria-description`). Four sites had hand-rolled it and drifted four ways
@@ -2502,7 +2567,7 @@ dialogs had done exactly that, in four class strings. `<Field label="Name">
 
 | Prop | Values | When |
 |---|---|---|
-| `register` | `section` (default: 11px medium, `text-ink-subtle`, uppercase, tracked) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
+| `register` | `section` (default: 11px medium, `text-ink-subtle`) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
 | `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
 | `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
 
@@ -2512,6 +2577,12 @@ from the same file. It renders `<fieldset>` + `<legend>` in the same
 `register` map (default `section`), so a group's caption cannot drift off the
 field-label register — `section-caption-census` fails any other `<legend>` in
 `src/` (task 1498).
+
+A **dropdown is `Select`**, a real `<select>` whose list is drawn as a Virgil
+menu (`.field-select`, `appearance: base-select`). The browser keeps the keyboard
+and focus, so while the list is open the keys belong to an `<option>` inside the
+page: a door that listens for Escape or Enter leaves those alone. Nothing falls
+back to the system's blue: `accent-color` is set once, on `:root`.
 
 A **single-choice set of cards or swatches** (NewDocumentModal's document
 type, the collaborator identity colours) is a radio group, not a row of
@@ -2537,7 +2608,7 @@ compile error). The **numeric steppers** (`SizeStepper`,
 `tabular-nums`, and they dropped their rings to match this spec.
 
 Card title input is borderless except a `border-bottom: 1px solid
-theme.titleColor` on focus, transparent bg, sans 0.78rem weight 500.
+var(--ink-strong)` on focus, transparent bg, sans 0.78rem weight 500.
 Don't reuse this style. (It is already its own primitive, `CardTitleInput`
 — the pattern that made the missing ordinary one conspicuous.)
 
@@ -2806,12 +2877,25 @@ gets `data-helper-mode="on"` and `HintLayer` drops the hover delay to 0 so every
 `SYSTEM_DIALOG_TOKENS` (`src/components/system-dialog.tsx`) — edit it
 to re-skin every dialog at once.
 
-Anatomy: header (title + optional subtitle) + body + footer button row.
-Surface is `bg-surface`, `rounded-xl`, `border`, and the detached-float
-shadow token `--shadow-float` (not a raw `shadow-xl`). Title is
-`text-sm font-semibold text-ink-body`. Backdrop is `bg-[var(--overlay-scrim)]`
-(a warm-neutral translucent derived from `--ink-strong`, not cool black),
-click-to-dismiss.
+Anatomy: header (title + optional subtitle) + body + footer button row, with
+no hairlines or bands between them: spacing separates them. Surface is
+`bg-surface`, `rounded-xl` and the detached-float shadow token `--shadow-float`
+(which carries the faint edge, so there is no drawn border). Title is
+`text-base font-semibold text-ink-strong`. Backdrop is `.dialog-scrim`: a light
+warm `--overlay-scrim` over a 6px blur, click-to-dismiss. A dialog arrives with
+one soft settle (`.dialog-frame`), and only when motion is allowed.
+
+**A dialog with several pages uses `<SystemDialogSidebarLayout>`** (Preferences,
+the AI window): a tinted sidebar holding the title and the sections, the active
+page beside it, and the page's controls at its top right. A window of that kind
+has one shape, and it does not scroll one long list.
+
+**Red appears at the moment of acting.** A destructive action in a list or a
+window lives in a `⋯` menu (`ItemMenu`, a `tone="danger"` row), never as a red
+button on every row or in a resting footer. The confirm it raises may be red.
+
+**A menu opened inside a modal** rides `MODAL_MENU_Z`: `SystemDialog` raises
+`MenuLayerContext` for everything inside it, so no call site has to know.
 
 Buttons render through the `Button` primitive (`<SystemDialogButton>` maps
 the legacy `primary/secondary/danger/accent` names onto it). The affirmative
@@ -3047,7 +3131,8 @@ that matches the surface, don't reinvent the shell:
   call it". So a variant and its first caller land together, or CI says so.
 - `FloatingPanel`-hosted tool windows (Fonts) are a **sanctioned pod-styled fork**
   (Gabriel, 2026-07-05, task 033): they keep their resizable shell AND their pod
-  chrome (`--pod-toolbar` header, `--pod-panel` body) — do **not** migrate them to
+  chrome (`--pod-toolbar` header, `--pod-panel` body; since Sand the two default to
+  one colour with no line between them, so there is no header band) — do **not** migrate them to
   `SYSTEM_DIALOG_TOKENS`. What they share with `SystemDialog` is the design TOKENS
   (no hex fallbacks on tokens `globals.css` always defines) and the dialog
   BEHAVIOUR contract, which `FloatingPanel` provides as an opt-in
@@ -3106,7 +3191,7 @@ for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
   border, shadow and radius, each from the `--menu-*` tier in `globals.css`
   (see **Menu surface** below).
 
-**Sub-menus** (task 1361; reference: `HelpMenu.tsx`'s Commands). A sub-menu is
+**Sub-menus** (task 1361; reference: `BarMoreMenu.tsx`'s Commands). A sub-menu is
 a NESTED `MenuProvider` mounted by its row inside the parent menu, anchored to
 that row and placed `right-of` → `left-of` (so it escapes sideways at a window
 edge), never an `absolute left-full` child. The R6 provider stack does the rest:
@@ -3210,7 +3295,7 @@ the panel's box*. A docked band clamps to `MIN_BAND_PX` (140), which leaves
 ~110px below the header, so any menu taller than that loses its last rows
 **unreachably**: they render outside the clip with nothing to scroll. This was
 OutlinePanel's hand-rolled `absolute … z-30` kebab (task 180), the last one;
-every panel-header kebab now goes through `ItemMenu align="left"`.
+every panel-header kebab now goes through `ItemMenu panelHeader`.
 
 **Checkbox/toggle rows use `<MenuToggleRow>`** (`src/components/menu/`) — one
 row implementation for MenuBar's ViewMenu and every panel kebab: label left,
@@ -3560,12 +3645,14 @@ ring is an `outline`, a disjoint property, so all three compose.
 
 ## Stack (visual clipboard)
 
-The Stack lives at the bottom-left of the editor pane: a round
-translucent button (3 stacked pages icon) backed by a body-portaled
-strip that opens on click. Items in the strip are compressed cards
-showing kind label, 5-line summary, X-to-remove, and relative date.
-Geometry is exported once and read by every consumer — `STACK_ICON_DIAMETER`
-/ `STACK_INSET_*` from `StackIcon`, `STACK_THUMB_W` / `STACK_THUMB_H` from
+The Stack lives at the bottom-left of the window: a quiet labelled button
+(stacked pages, "Stack") in the gutter's own ground, opaque so it covers what
+scrolls under it, backed by a body-portaled strip that opens on click. The tool
+gutter reserves room for it below its last row and dissolves its lists before
+they reach it, so it never sits on the list. Items in the strip are compressed
+cards showing kind label, 5-line summary, X-to-remove, and relative date.
+Geometry is exported once and read by every consumer — `STACK_ICON_WIDTH`
+/ `STACK_ICON_HEIGHT` / `STACK_INSET_*` from `StackIcon`, `STACK_THUMB_W` / `STACK_THUMB_H` from
 `StackThumbnail` (the strip's width budget reads the same thumb width it lays
 out).
 
@@ -3581,12 +3668,21 @@ warm-black tint over the canvas, no backdrop blur — and `--stack-strip-hint`
 COMPOSITED band (≥ 4.5:1); light-on-dark ink here was chosen for a dark 0.82
 band this section once documented but the code never shipped, and read ~1.4:1.
 
+## LaTeX comments
+
+A `%` comment is always on screen when the View menu says so, and it must read
+as a note to yourself, not as paper. Three things do that: the chrome font, a
+warm wash derived from `latexCommentColor`, and a `%` hanging left of the text
+edge, so the words stay on the paper's column. No coloured bar and no mono
+italic: those made it the loudest thing on the page. The grab area for
+node-selecting the whole comment is the wash's left edge, `.latex-comment-handle`.
+
 ## Editor inlines
 
 Eight kinds, each with its own token group:
 
 - Footnote marker (superscript red), citation (warm-yellow brackets),
-  LaTeX comment (steel-blue %), comment Mode B (sky underline), inline
+  LaTeX comment (warm wash, hanging %), comment Mode B (sky underline), inline
   math (purple KaTeX glyphs — `--math-color`, live since task 326; this
   line described the intended look for a year while the rendered math
   inherited the body ink), AI request marker (sky star), suggestion mark
@@ -3683,6 +3779,10 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
   (`BlockFrame.chevronRight`) so the handle lane can RESERVE it. Reserved per
   ROW and gated on the block's KIND (`FOLD_CHEVRON_NODE_TYPES`), so a prose row
   — which renders no chevron — keeps its full halo.
+- `--margin-col-label` (default `52px`) — the **block-label column**: Title,
+  Author, Date, a heading's type and `\label`, a figure's and an example's
+  label. It sits outboard of the chevron, right-aligned, so labels stay off the
+  paper and out of flow. See "Block labels" below.
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
@@ -4290,6 +4390,25 @@ Five rules:
   move operations. (The empty-state placeholder keeps its own X — a
   half-made block's quick bail before it has any content to grab.)
 
+### Block labels — off the paper
+
+A label names a block for the editor; it is not part of the paper, so it never
+sits in the text column. `useMarginLabelMode` stamps `data-margin-labels` on the
+prose pod from the MEASURED margin (`marginLabelsFit`), and the mode decides
+where every label goes:
+
+| Mode | When | Where |
+|---|---|---|
+| `side` | the margin holds the column | a right-aligned column at `--margin-col-label`, quiet `--heading-annotation-color` text with no box |
+| `hover` | code split, a narrow margin, or left-side markers in use | a raised pill above the block, on hover or keyboard focus |
+
+Both are out of flow, so a label cannot move the text and the mode can flip
+without a reflow. Floats and card editors sit outside the pod, carry no
+attribute, and keep the label in flow. An example's pod stays hidden until it
+has a label or the example is hovered, because the number already says what it
+is. A wrapped figure keeps its label in flow: its float position leaves no
+stable column. Everything here is chrome-only, so none of it prints.
+
 ## Marginalia
 
 Two margins (left wider for the heading-fold chevron, right narrower).
@@ -4299,6 +4418,13 @@ paragraph UUIDs.
 Seven types in `MARKER_META`: `quote`, `note`, `archive`, `revision`,
 `cut`, `todo`, `error`. Each derives its color quartet from the
 matching panel theme accent via `markerPaletteFromAccent()`.
+
+**A note anchor is a soft tile.** The kind's glyph (14px) on a pale 14% tint of
+its colour, no outline, deepening to 25% on hover. It has to stay recognisable
+and draggable without competing with the text, so identity comes from the glyph
+and the grab from the area: the 22px tile keeps the grid cell, and `::after`
+widens the grab to 24px. Markers wrap after two columns, because the grid is
+pod-anchored and its reserved margin is sized for two.
 
 Click → opens panel + selects card + scrolls. Cmd-click → opens
 without scrolling. Hover → highlights linked text range.
@@ -4373,10 +4499,12 @@ reload (or a successful re-anchor) restores it to the grid.
 
 ## Top bar
 
-40px, `--topbar-bg`. One row. Slots: logo, project tabs, title bar, AI
-status, user menu. Hovers use `hover-on-dark`. The active-project tab
-joins the canvas via the locked `--main-tab-bg` = `--background`
-alias.
+40px, `--topbar-bg`, a paler step of the sand canvas, closed by a fine `--topbar-border` line. It is the one band that belongs to the whole app; a pane's own toolbar, the PDF viewer's included, stands on the ground below it. One row. Slots: logo, project tabs, title bar, AI
+status, user menu. Hovers use `hover-on-dark`. The active tab is a
+lozenge: `SEGMENT_ON`, the same white tile as the view switch, so the bar
+has one way of saying what is selected. Inactive tabs are plain text in
+the same 24px box. The bar has no bottom line by default (`topbarBorder`
+matches the bar) and no dividers between tabs: it stands on the canvas.
 
 Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
@@ -4429,14 +4557,16 @@ measurements by `useBarOccupancy`:
 
 1. **PROTECTED STATUS** — every row of `BAR_STATUS_ORDER`
    ([bar-status-policy.ts](lib/bar-status-policy.ts) is the list; it is not
-   restated here, so it cannot drift), and the collapse chip itself. Never
+   restated here, so it cannot drift), and the ⋯ menu itself. Never
    yields. That is not a
    layout preference: a data-integrity notice must not be hideable (see the save
-   badge's tier rule), and the chip is what makes a collapse reversible.
+   badge's tier rule), and ⋯ is what keeps a folded tool reachable and a
+   collapse reversible. Its own width never depends on the verdict.
 2. **TABS** — Gabriel's decision (2026-08-19): *"text tabs should occlude the
    tools in this case."* Tabs outrank the collapsible tools.
-3. **COLLAPSIBLE TOOLS** — the `topbarRightCollapsed` group. Auto-collapses
-   behind the chip when tiers 1+2 need the room, so the tools stay REACHABLE.
+3. **COLLAPSIBLE TOOLS** — the `topbarRightCollapsed` group: the view switch,
+   Compile and AI requests. Auto-collapses into ⋯ when tiers 1+2 need the room,
+   so the tools stay REACHABLE: their rows appear in the menu while they are out.
    Collapse beats bare z-order for exactly that reason: a tool hidden under a tab
    is unclickable with no affordance to reach it. An explicit user toggle
    outranks the rule in both directions — the rule governs the DEFAULT.
@@ -4469,12 +4599,8 @@ strips read:
 
 Under the ladder is still a structural FLOOR: the tab row lives in a scroll
 container, which clips, so even at the bottom of the ladder a tab can never
-paint over tier 1. The seam is the one detail the scroller owes: `overflow-x:
-auto` coerces an unstated vertical axis to `auto`, and the active tab hangs 1px
-BELOW the strip to merge into the canvas — so the axis is stated `hidden` and
-the overhang is kept INSIDE the clip by a 1px bottom padding + −1px margin
-pair (`tabStripSeamPadding`), the mechanism the inner strip has carried since
-task 324. **A new bar occupant declares which tier it is in; it does not
+paint over tier 1. `overflow-x: auto` coerces an unstated vertical axis to
+`auto`, so the scroller states its axis `hidden`. **A new bar occupant declares which tier it is in; it does not
 position itself against the others** — and nothing in a higher tier changes
 width in response to the verdict, which is what keeps the rule from
 oscillating against its own output (the save pill therefore honours the user's
@@ -4612,11 +4738,11 @@ the attribute AND injects synthetic insets.
 
 ## Folder tabs — layout-driven chrome
 
-Both tab strips (outer Virgil bar + inner Library panels) render their
-ACTIVE tab through ONE module: `src/components/chrome/FolderTabChrome.tsx`
-with the geometry SSOT `src/components/chrome/folder-tab-geometry.ts`
-(named variants `library`/`topbar` for the height/edge-token/seam
-differences). The silhouette is a three-piece composition — two constant
+The Library's inner panel tabs render their ACTIVE tab through
+`src/components/chrome/FolderTabChrome.tsx` with the geometry SSOT
+`src/components/chrome/folder-tab-geometry.ts`. A folder tab says "this
+sheet belongs to this tab", so it stands only where it opens a sheet; the
+Virgil bar's outer tabs are lozenges (see "Top bar"). The silhouette is a three-piece composition — two constant
 SVG end caps (swoop foot + shoulder; half-pixel crispness baked in once)
 plus a stretchable middle (fill background + 1px top border) — so the tab
 tracks any width purely by layout. Rules that generalize:

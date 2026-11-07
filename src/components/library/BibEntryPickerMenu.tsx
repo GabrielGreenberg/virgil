@@ -565,7 +565,7 @@ function BibEntryPickerBody({
 
       <div className="panel-scroll flex-1 min-h-0 py-1">
         {filtered.length === 0 ? (
-          <div className="px-3 py-4 text-[11px] text-ink-muted text-center space-y-2">
+          <div className="px-3 py-4 text-2xs text-ink-muted text-center space-y-2">
             <div>
               {rawRefusal
                 ? `No entries match "${trimmedQuery}". ${rawRefusal}`
@@ -683,7 +683,7 @@ function BibEntryPickerRow({
     >
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-1.5 text-[12px] text-ink-body leading-tight">
+          <div className="flex items-baseline gap-1.5 text-xs text-ink-body leading-tight">
             <span className="font-semibold truncate">
               {authors || entry.key}
             </span>
@@ -695,7 +695,7 @@ function BibEntryPickerRow({
             )}
           </div>
           <div
-            className="text-[11px] text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
+            className="text-2xs text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
             data-hint={title}
           >
             {title}
@@ -768,32 +768,32 @@ const PICKER_BIB_COPY: Readonly<
   // this surface cannot, because its pill's whole job is to say something
   // about every library-backed row.
   none: {
-    text: "not authenticated",
+    text: "Not authenticated",
     tooltip: "Library entry has not been authenticated",
   },
   unverified: {
-    text: "unverified",
+    text: "Unverified",
     tooltip: "Library entry partially matched a source — fields are best-effort",
   },
   authenticated: {
-    text: "authenticated",
+    text: "Authenticated",
     tooltip:
       "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)",
   },
   manuscript: {
-    text: "manuscript",
+    text: "Manuscript",
     tooltip: "Manuscript / forthcoming — no external source applies",
   },
   canonical: {
-    text: "canonical",
+    text: "Canonical",
     tooltip: "Pre-digital classic — no DOI/ISBN registry will ever index it",
   },
   failed: {
-    text: "auth failed",
+    text: "Auth failed",
     tooltip: "Library entry couldn't be authenticated against external sources",
   },
   "needs-reauth": {
-    text: "needs re-auth",
+    text: "Needs re-auth",
     tooltip:
       "Metadata rewritten from the file — run /library/authenticate-bib to re-verify",
   },
@@ -804,7 +804,7 @@ function VerifiedPill({ bibState }: { bibState: LibraryBibState | undefined }) {
   const { text, tooltip } = PICKER_BIB_COPY[state] ?? PICKER_BIB_COPY.none;
   return (
     <span
-      className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap border"
+      className="text-2xs px-1 py-0.5 rounded whitespace-nowrap border"
       style={{
         color: `var(--pill-${bibStateTone(state)}-fg)`,
         backgroundColor: `var(--pill-${bibStateTone(state)}-bg)`,
@@ -902,21 +902,21 @@ function ExpandedDetails({
   return (
     <div className="mt-1.5 pl-2 border-l border-edge-subtle space-y-1">
       {author && (
-        <div className="text-[11px] text-ink-body leading-snug">{author}</div>
+        <div className="text-2xs text-ink-body leading-snug">{author}</div>
       )}
       {title && (
-        <div className="text-[11px] text-ink-body italic leading-snug">
+        <div className="text-2xs text-ink-body italic leading-snug">
           {title}
         </div>
       )}
       {(pubBits.length > 0 || year) && (
-        <div className="text-[11px] text-ink-muted leading-snug">
+        <div className="text-2xs text-ink-muted leading-snug">
           {pubBits.join(", ")}
           {pubBits.length > 0 && year ? ` (${year})` : year || ""}
         </div>
       )}
       {doi && (
-        <div className="text-[10px] text-ink-muted font-mono leading-snug">
+        <div className="text-2xs text-ink-muted font-mono leading-snug">
           doi:{doi}
         </div>
       )}
@@ -936,7 +936,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
     void copy(citekey);
   }, [citekey, copy]);
   return (
-    <div className="flex items-center gap-1.5 text-[10px] text-ink-muted font-mono">
+    <div className="flex items-center gap-1.5 text-2xs text-ink-muted font-mono">
       <span>citekey:</span>
       <span className="text-ink-body">{citekey}</span>
       <button

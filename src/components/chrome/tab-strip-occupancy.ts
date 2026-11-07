@@ -14,8 +14,8 @@
  *   1. COMPRESS — inactive tabs share the width (`flex-shrink`, weighted by
  *      their natural width so long names give first) and their LABELS
  *      ellipsize down to {@link INACTIVE_MIN_LABEL_PX}; the ACTIVE tab is
- *      `shrink-0` and RESISTS, holding its name to the variant's own reserved
- *      floor (`FOLDER_TAB_VARIANTS[v].activeMinContent`).
+ *      `shrink-0` and RESISTS, holding its name to the strip's own reserved floor
+ *      (`ACTIVE_TAB_MIN_WIDTH`, `FOLDER_TAB_VARIANTS.library.activeMinContent`).
  *   2. SCROLL — past the floors the strip scrolls horizontally (a native
  *      `overflow-x: auto` scroller with its scrollbar hidden; a vertical wheel
  *      over the strip is mapped onto it, {@link wheelToStripScroll}), and the
@@ -36,9 +36,9 @@
  * The inner strip's floor was a tab-level `minWidth: 60`, which is chrome-
  * BLIND: a tab with a pin, a menu and a close button has 62px of fixed chrome,
  * so at the floor its content overflowed the tab. A floor on the label's
- * `min-width` composes with whatever chrome the tab carries — the tab's
- * automatic flex minimum is then `fixed chrome + INACTIVE_MIN_LABEL_PX` by
- * construction. The value reproduces the plain closable inner tab's old floor
+ * `min-width` composes with whatever chrome the tab carries. The outer strip's
+ * tabs sit in a wrapper, and carry one shape of chrome, so that wrapper states
+ * the sum ({@link OUTER_TAB_FLOOR_MIN_WIDTH}). The value reproduces the plain closable inner tab's old floor
  * byte-for-byte (60 − 40px of chrome = 20), so nothing shipped moves.
  *
  * ── Keystroke sanctity ────────────────────────────────────────────────────
@@ -65,12 +65,24 @@ export const INACTIVE_MIN_LABEL_PX = 20;
 /**
  * The label's `min-width` value: the floor, but never WIDER than the name
  * itself — a two-letter tab is not padded out to the floor, so the roomy
- * layout is byte-identical to the pre-561 one and the inline↔folder
- * pixel-stability contract holds for short names too. `calc-size()` is
+ * layout is byte-identical to the pre-561 one. `calc-size()` is
  * Chromium 129+; Virgil is Chromium-only (FSA), and the folder tab's own
  * width already rides it.
  */
 export const TAB_LABEL_FLOOR_MIN_WIDTH = `calc-size(max-content, min(size, ${INACTIVE_MIN_LABEL_PX}px))`;
+
+/** The fixed part of an outer inactive tab (InlineTabLabel): its padding, the
+ *  gap, and the close button. */
+const OUTER_TAB_CHROME_PX = 46;
+
+/**
+ * An outer inactive tab's wrapper `min-width`. The wrapper is a flex item whose
+ * automatic minimum is its min-content width, and a `truncate` label contributes
+ * its WHOLE name to that, so the label's own floor is never reached and the
+ * strip would go straight to scrolling. This states the same floor at the tab,
+ * and like the label's it is never wider than the tab's natural width.
+ */
+export const OUTER_TAB_FLOOR_MIN_WIDTH = `calc-size(max-content, min(size, ${OUTER_TAB_CHROME_PX + INACTIVE_MIN_LABEL_PX}px))`;
 
 /**
  * The attribute every tab LABEL span carries, so the bar's occupancy
@@ -97,9 +109,8 @@ export const INACTIVE_TAB_LABEL_STYLE: CSSProperties = {
  * EXPLICITLY as `hidden`: per CSS Overflow 3, `auto` on one axis coerces a
  * `visible` other axis to `auto`, and an unstated vertical axis would then
  * grow a (hidden but real) 1px vertical scroll range from the active tab's
- * seam overhang. `hidden` keeps the axis a clip — and the overhang is kept
- * INSIDE that clip by {@link TAB_STRIP_SEAM_PADDING}, never by leaving the
- * axis visible.
+ * seam overhang. `hidden` keeps the axis a clip, and a strip's overhang is
+ * kept INSIDE that clip by its own padding, never by leaving the axis visible.
  */
 export const TAB_STRIP_SCROLLER_STYLE: CSSProperties = {
   overflowX: "auto",
@@ -108,20 +119,6 @@ export const TAB_STRIP_SCROLLER_STYLE: CSSProperties = {
   // scrolling (Gabriel's reference), same treatment the inner strip shipped.
   scrollbarWidth: "none",
 };
-
-/**
- * The seam trick, stated once: the active folder tab hangs
- * `FOLDER_TAB_SEAM_OVERLAP` (1px) BELOW the strip so its open-bottom
- * silhouette merges into the canvas/body. Inside a scroll container that
- * overhang would be scrollable overflow and the clip would eat it. A 1px
- * bottom PADDING keeps the overhang inside the scroller's padding box (which
- * a clip never touches), and the matching −1px margin keeps the strip's outer
- * footprint unchanged. The inner strip has carried this pair since task 324;
- * the outer strip takes the same pair now that it scrolls.
- */
-export function tabStripSeamPadding(seamOverlapPx: number): CSSProperties {
-  return { paddingBottom: seamOverlapPx, marginBottom: -seamOverlapPx };
-}
 
 // ── Scroll primitives ───────────────────────────────────────────────────────
 

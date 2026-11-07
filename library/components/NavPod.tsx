@@ -3,10 +3,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
 /**
- * Shared pod shape for the leftmost library column. A rounded rectangle
- * with a fixed-height header (`title` slot) above a scrollable body.
- * Used by `LibrariesNavigator` and `MyPapersPod` so the two stacked pods
- * stay visually identical.
+ * Shared section shape for the leftmost library column: a quiet heading above
+ * a scrollable body, as text on the manila with no frame, the way the editor's
+ * tool gutter reads. Used by `LibrariesNavigator` and `MyPapersPod` so the two
+ * stacked sections stay visually identical.
  */
 interface Props {
   title: ReactNode;
@@ -25,25 +25,16 @@ export default function NavPod({ title, children, style }: Props) {
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
-        background: "var(--surface)",
-        // Library page-edge chrome → --library-edge (a tint of --library-bg),
-        // not the top-bar token --topbar-border, so this pod's frame + title
-        // divider read as the same harmonious library edge as the tab strip and
-        // body frame instead of a warm-taupe-on-cool clash (task 048).
-        border: "1px solid var(--library-edge)",
-        borderRadius: "var(--library-manila-radius)",
-        overflow: "hidden",
         ...style,
       }}
     >
       <div
         style={{
           flexShrink: 0,
-          padding: "10px 14px 8px",
-          fontSize: 13,
-          fontWeight: 500,
-          color: "var(--foreground)",
-          borderBottom: "1px solid var(--library-edge)",
+          padding: "8px 14px 4px",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "var(--muted)",
         }}
       >
         {title}
@@ -53,7 +44,7 @@ export default function NavPod({ title, children, style }: Props) {
         style={{
           flex: 1,
           minHeight: 0,
-          padding: "8px 0",
+          paddingBottom: 4,
         }}
       >
         {children}

@@ -138,7 +138,7 @@ describe("ItemMenu — <Menu> fold (surface #4)", () => {
 
   it("opens for both align variants", () => {
     const left = render(
-      <ItemMenu align="left">
+      <ItemMenu panelHeader>
         <button>L</button>
       </ItemMenu>,
     );
@@ -147,7 +147,7 @@ describe("ItemMenu — <Menu> fold (surface #4)", () => {
     cleanup();
 
     const right = render(
-      <ItemMenu align="right">
+      <ItemMenu>
         <button>R</button>
       </ItemMenu>,
     );

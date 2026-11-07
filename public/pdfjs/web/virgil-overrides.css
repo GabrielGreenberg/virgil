@@ -11,37 +11,60 @@
  * SEPARATE document that does NOT inherit the parent app's globals.css, nor
  * the user's Colors preferences written onto the parent's :root at runtime.
  * So this file names NO colour of its own: the wrapper
- * (library/components/PdfView.tsx, `applyViewerPalette`) copies each LIVE
+ * (src/components/PdfViewer.tsx, `applyViewerPalette`) copies each LIVE
  * Virgil token onto this document's root as `--virgil-<name>` on every open
  * and on every palette change, and the rules below consume only those. Each
  * var() carries the shipped default as its fallback, for the frame before the
  * first copy lands. The token list is `VIEWER_PALETTE_TOKENS`; a census test
  * fails on a bare hex here or a --virgil-* name missing from that list.
  *
- * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip in the
- * Virgil top-bar colour, in the same register as the Library TopBar, keeping only page navigation +
- * zoom, and hiding the annotate / editor / print / download / open groups.
+ * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip on the page's
+ * sand, keeping only page navigation + zoom, and hiding the annotate / editor /
+ * open groups. The strip belongs to the page, not to the app, so it stands on
+ * the ground rather than in the Virgil bar's colour. Print and download show
+ * only on the compiled paper.
  */
 
 :root {
   /* The live Virgil palette, copied in by PdfView.applyViewerPalette. The
      fallbacks are the shipped defaults (globals.css promote-defaults block). */
-  --v-topbar-bg: var(--virgil-topbar-bg, #c5dbe2);
-  --v-topbar-border: var(--virgil-topbar-border, #cbc3b8);
+  --v-ground: var(--virgil-background, #ede3de);
+  --v-hairline: var(--virgil-border-light, #dcd3cb);
   --v-ink: var(--virgil-foreground, #1a1a1a);
   --v-surface: var(--virgil-surface, #ffffff);
   --v-muted: var(--virgil-muted, #8a8580);
-  --v-accent: var(--virgil-control-selected, #8a7355);
+  --v-accent: var(--virgil-control-selected, #167bb6);
   --v-sheet: var(--virgil-pod-panel, #fffdfa);
   --v-accent-hover: color-mix(in srgb, var(--v-accent) 16%, transparent);
   --v-accent-active: color-mix(in srgb, var(--v-accent) 28%, transparent);
+  /* This document has no next/font faces, so the toolbar takes the system's. */
+  --v-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* Toolbar surface + chrome -> Virgil topbar tokens */
-  --toolbar-bg-color: var(--v-topbar-bg);
-  --toolbar-border-color: var(--v-topbar-border);
+  /* The canvas around the page and the sidebar stand on the same Sand as the
+     toolbar. */
+  --body-bg-color: var(--v-ground);
+  --sidebar-narrow-bg-color: var(--v-ground);
+  --sidebar-toolbar-bg-color: var(--v-ground);
+  --toolbarSidebar-box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 var(--v-hairline), 0 1px 0 var(--v-hairline);
+  --progressBar-color: var(--v-accent);
+
+  /* A selected tool or thumbnail is a tint of the accent, never a grey block. */
+  --toggled-btn-color: var(--v-ink);
+  --toggled-btn-bg-color: var(--v-accent-hover);
+  --toggled-hover-active-btn-color: var(--v-accent-active);
+  --thumbnail-hover-color: var(--v-accent-hover);
+  --thumbnail-selected-color: var(--v-accent-active);
+  --treeitem-bg-color: var(--v-accent-hover);
+  --treeitem-hover-color: var(--v-ink);
+  --treeitem-selected-color: var(--v-ink);
+  --treeitem-selected-bg-color: var(--v-accent-active);
+
+  /* Toolbar surface + chrome -> the ground */
+  --toolbar-bg-color: var(--v-ground);
+  --toolbar-border-color: var(--v-hairline);
   --toolbar-height: 40px;
   --toolbar-box-shadow: none;
-  --toolbar-border-bottom: 1px solid var(--v-topbar-border);
+  --toolbar-border-bottom: 1px solid var(--v-hairline);
 
   --main-color: var(--v-ink);
 
@@ -58,19 +81,23 @@
   /* Page-number + scale fields */
   --field-color: var(--v-ink);
   --field-bg-color: var(--v-surface);
-  --field-border-color: var(--v-topbar-border);
+  --field-border-color: var(--v-hairline);
+  --dropdown-btn-bg-color: var(--v-surface);
+  --dropdown-btn-border: 1px solid var(--v-hairline);
+  --separator-color: var(--v-hairline);
 
   /* Secondary toolbar doorhanger (kept for the few items we keep there) */
   --doorhanger-bg-color: var(--v-sheet);
-  --doorhanger-border-color: var(--v-topbar-border);
+  --doorhanger-border-color: var(--v-hairline);
   --doorhanger-hover-bg-color: var(--v-accent-hover);
+  --doorhanger-separator-color: var(--v-hairline);
 }
 
-/* Quiet the toolbar container: thin top-bar strip, no heavy gradient/shadow. */
+/* Quiet the toolbar container: a thin strip, no heavy gradient/shadow. */
 #toolbarContainer,
 .toolbar {
-  background-color: var(--v-topbar-bg);
-  border-bottom: 1px solid var(--v-topbar-border);
+  background-color: var(--v-ground);
+  border-bottom: 1px solid var(--v-hairline);
   box-shadow: none;
 }
 
@@ -78,23 +105,41 @@
   height: 40px;
 }
 
-/* Micro-label register for the page-count + scale text. */
+/* The print dialog's progress bar is a native control. */
+progress {
+  accent-color: var(--v-accent);
+}
+
+#sidebarContent {
+  box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 var(--v-hairline);
+}
+
+/* The page count and scale text. */
 #numPages,
 .toolbarLabel {
   color: color-mix(in srgb, var(--v-muted) 80%, var(--v-ink)); /* between --muted and ink */
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-family: var(--v-sans);
+  font-size: 12px;
 }
 
-#pageNumber {
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+#toolbarContainer #toolbarViewer #pageNumber {
+  border-radius: 6px;
+  font: 12px/16px var(--v-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.dropdownToolbarButton {
+  border-radius: 6px;
+}
+
+.dropdownToolbarButton > select {
+  font-family: var(--v-sans);
+  border-radius: 6px;
 }
 
 /*
- * Hide the groups we don't want: annotate/editor tools, print, download,
- * open-file, presentation mode, bookmark. We keep:
+ * Hide the groups we don't want: annotate/editor tools, open-file, presentation
+ * mode, bookmark. We keep:
  *   - sidebar toggle (thumbnails / outline)
  *   - previous / next page + page-number field + page count
  *   - zoom out / in + scale dropdown
@@ -105,13 +150,21 @@
 #editorHighlight,
 #editorInk,
 #editorStamp,
-#printButton,
-#downloadButton,
-#secondaryPrint,
-#secondaryDownload,
 #secondaryOpenFile,
 #presentationMode,
 #viewBookmark,
 #viewBookmarkSeparator {
+  display: none !important;
+}
+
+/*
+ * Print and Download are for the writer's own compiled paper, which has no other
+ * door to them. The wrapper puts `.virgil-compiled` on the root for that mount
+ * (PdfViewer.tsx, COMPILED_VIEWER_CLASS); a Library paper never carries it.
+ */
+:root:not(.virgil-compiled) #printButton,
+:root:not(.virgil-compiled) #downloadButton,
+:root:not(.virgil-compiled) #secondaryPrint,
+:root:not(.virgil-compiled) #secondaryDownload {
   display: none !important;
 }

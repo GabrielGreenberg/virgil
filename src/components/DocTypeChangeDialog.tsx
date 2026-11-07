@@ -58,22 +58,22 @@ export default function DocTypeChangeDialog({
       <SystemDialogBody>
         <p className="text-xs text-ink-body leading-relaxed">
           This document uses{" "}
-          <code className="font-mono text-[11px] bg-surface-muted px-1 py-0.5 rounded">
+          <code className="font-mono text-2xs bg-surface-muted px-1 py-0.5 rounded">
             {formatCommands(offenders)}
           </code>
           , which{" "}
-          <code className="font-mono text-[11px] bg-surface-muted px-1 py-0.5 rounded">
+          <code className="font-mono text-2xs bg-surface-muted px-1 py-0.5 rounded">
             {`\\documentclass{${targetClass}}`}
           </code>{" "}
           doesn&apos;t define. Changing the class won&apos;t compile
           (&ldquo;Undefined control sequence&rdquo;) until{" "}
           {offenders.length === 1 ? "that command is" : "those commands are"}{" "}
           converted — e.g.{" "}
-          <code className="font-mono text-[11px] bg-surface-muted px-1 py-0.5 rounded">
+          <code className="font-mono text-2xs bg-surface-muted px-1 py-0.5 rounded">
             \chapter
           </code>{" "}
           →{" "}
-          <code className="font-mono text-[11px] bg-surface-muted px-1 py-0.5 rounded">
+          <code className="font-mono text-2xs bg-surface-muted px-1 py-0.5 rounded">
             \section
           </code>
           .

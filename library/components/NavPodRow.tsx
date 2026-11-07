@@ -12,8 +12,8 @@ import { withFocusIndicator } from "@/components/focus-indicator";
  * at different x, and BOTH were a `div onClick` a keyboard user could not
  * reach).
  *
- * One row: 28 px, label ellipsis, a 3 px accent bar + `--accent-light`
- * fill when active, the neutral `.hover-on-light` hover (a class — no JS
+ * One row: 28 px, label ellipsis, a rounded wash when active, the neutral
+ * `.hover-on-light` hover (a class — no JS
  * hover state), and a `trailing` slot for the ⋮ `RowMenu`. A row that
  * activates is a keyboard-operable control through `activatableProps`
  * (it stays a `<div>` because it holds the kebab button) with the one
@@ -44,19 +44,10 @@ const ROW_STYLE: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 6,
-  padding: "0 8px 0 14px",
+  margin: "0 6px",
+  padding: "0 2px 0 8px",
   height: 28,
-};
-
-const ACCENT_BAR_STYLE: CSSProperties = {
-  position: "absolute",
-  left: 0,
-  top: 4,
-  bottom: 4,
-  width: 3,
-  background: "var(--accent)",
-  borderRadius: "var(--radius-xs)",
-  pointerEvents: "none",
+  borderRadius: "var(--radius-md)",
 };
 
 export function NavPodRow({
@@ -88,15 +79,13 @@ export function NavPodRow({
               background: "var(--accent-light)",
               outline: "2px solid var(--accent)",
               outlineOffset: -2,
-              borderRadius: "var(--radius-sm)",
             }
           : active
-            ? { background: "var(--accent-light)" }
+            ? { background: "var(--segment-track)" }
             : null),
         ...style,
       }}
     >
-      {active && <div style={ACCENT_BAR_STYLE} />}
       {isEditing ? (
         editing
       ) : (

@@ -229,7 +229,9 @@ export function PanelTabStrip({
       }
       const t = el.getBoundingClientRect();
       const p = panel.getBoundingClientRect();
-      const flush = Math.abs(t.right - (p.right - STRIP_SIDE_PAD)) <= 2;
+      // At or past the sheet's right edge: an untucked foot there would curl
+      // out over the field beyond the corner.
+      const flush = t.right >= p.right - STRIP_SIDE_PAD - 2;
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
     // Parked during a pane-resize drag (parkDuringLayoutGesture on the app-wide
@@ -930,7 +932,7 @@ function PinButton({
         justifyContent: "center",
         color: activeColor,
         cursor: "pointer",
-        borderRadius: "var(--radius-xs)",
+        borderRadius: "var(--radius-sm)",
         padding: 0,
       }}
     >
@@ -979,10 +981,10 @@ function CloseButton({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 14,
+        fontSize: 13,
         lineHeight: 1,
         cursor: "pointer",
-        borderRadius: "var(--radius-xs)",
+        borderRadius: "var(--radius-sm)",
         fontFamily: "inherit",
         padding: 0,
       }}
@@ -1077,12 +1079,12 @@ function TabMenuTrigger({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 14,
+          fontSize: 13,
           lineHeight: 1,
           cursor: "pointer",
           fontFamily: "inherit",
           padding: 0,
-          borderRadius: "var(--radius-xs)",
+          borderRadius: "var(--radius-sm)",
         }}
       >
         ⋮

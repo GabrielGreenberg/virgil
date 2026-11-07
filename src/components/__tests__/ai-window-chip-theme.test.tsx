@@ -9,13 +9,13 @@
 // byte-identical to the NOTE accent, while the Note chip wore a blue belonging
 // to no kind at all.
 //
-// This suite renders the REAL window and reads the REAL chips, so it pins the
+// This suite renders the REAL window and reads the REAL rows, so it pins the
 // three things a source-grep cannot:
-//   1. every chip pair is exactly the badge pair its panel paints
-//      (`deriveCardPalette(getPanelColor(themeKey))`), for every display kind;
-//   2. no chip is painted a colour that belongs to a DIFFERENT kind — the
+//   1. every row's dot is exactly the colour its card paints
+//      (`getPanelColor(themeKey)`), for every display kind;
+//   2. no row is painted a colour that belongs to a DIFFERENT kind — the
 //      inversion class itself, which survives any future re-hand-rolling;
-//   3. a `setPanelColor` re-tints the rendered chip — i.e. the chip really is
+//   3. a `setPanelColor` re-tints the rendered row — i.e. the dot really is
 //      version-subscribed, not a fold evaluated once at module load (the
 //      `card-theme-override-guardrail` sibling law).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -31,11 +31,9 @@ vi.mock("@/lib/storage", () => ({
 import AIWindow, { LINKED_CARD_UNKNOWN, type AIWindowProps } from "@/components/AIWindow";
 import {
   DEFAULT_PANEL_COLORS,
-  deriveCardPalette,
   getPanelColor,
   setPanelColor,
   clearPanelColor,
-  accentInk,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
 import type { AiRequest, BibReviewRequest, RevisionCard } from "@/lib/types";
@@ -101,16 +99,17 @@ function props(): AIWindowProps {
   };
 }
 
-/** Every rendered chip, by its label. The chip is the only element carrying
- *  BOTH an inline background and an inline colour, so it is read positionally
- *  from the row rather than by a test-only hook. */
-function chips(): Map<string, { bg: string; fg: string }> {
-  const out = new Map<string, { bg: string; fg: string }>();
+/** A row's kind label, and the colour of the dot beside it. */
+function dotOf(label: Element): string {
+  const dot = label.parentElement!.querySelector<HTMLElement>(".card-kind-dot");
+  return dot!.style.backgroundColor;
+}
+
+/** Every rendered row's dot colour, by its kind label. */
+function dots(): Map<string, string> {
+  const out = new Map<string, string>();
   for (const el of document.querySelectorAll<HTMLElement>("li span[aria-description]")) {
-    const bg = el.style.background;
-    const fg = el.style.color;
-    if (!bg || !fg) continue;
-    out.set(el.textContent?.trim() ?? "", { bg, fg });
+    out.set(el.textContent?.trim() ?? "", dotOf(el));
   }
   return out;
 }
@@ -121,9 +120,8 @@ function rgb(hex: string): string {
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
-function badgePairFor(key: PanelThemeKey) {
-  const p = deriveCardPalette(getPanelColor(key));
-  return { bg: rgb(p.badgeBg), fg: rgb(p.badgeColor) };
+function accentFor(key: PanelThemeKey): string {
+  return rgb(getPanelColor(key));
 }
 
 /** Which theme key each rendered chip label must paint from. `Suggestion`
@@ -149,63 +147,59 @@ afterEach(() => {
   for (const k of Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]) clearPanelColor(k);
 });
 
-describe("AI-request chips derive from the panel-theme SSOT", () => {
-  it("every chip is exactly the badge pair its own panel paints", () => {
+describe("AI-request rows derive from the panel-theme SSOT", () => {
+  it("every row's dot is exactly the colour its own card paints", () => {
     render(<AIWindow {...props()} />);
-    const rendered = chips();
+    const rendered = dots();
 
     // Sanity: the fixtures really did produce a row of every display kind.
     for (const label of Object.keys(EXPECTED)) {
-      expect(rendered.has(label), `no "${label}" chip rendered`).toBe(true);
+      expect(rendered.has(label), `no "${label}" row rendered`).toBe(true);
     }
 
     for (const [label, key] of Object.entries(EXPECTED)) {
-      expect(rendered.get(label), `chip "${label}"`).toEqual(badgePairFor(key));
+      expect(rendered.get(label), `row "${label}"`).toBe(accentFor(key));
     }
   });
 
-  it("no chip wears a colour that belongs to a DIFFERENT kind (the inversion pin)", () => {
+  it("no row wears a colour that belongs to a DIFFERENT kind (the inversion pin)", () => {
     render(<AIWindow {...props()} />);
-    const rendered = chips();
+    const rendered = dots();
 
     for (const [label, key] of Object.entries(EXPECTED)) {
-      const got = rendered.get(label)!;
       for (const other of Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]) {
         if (getPanelColor(other) === getPanelColor(key)) continue; // shares the accent, legitimately
         expect(
-          got.fg,
-          `chip "${label}" is painted the '${other}' accent/ink — that is the todo-wears-note inversion`,
+          rendered.get(label),
+          `row "${label}" is painted the '${other}' accent — that is the todo-wears-note inversion`,
         ).not.toBe(rgb(DEFAULT_PANEL_COLORS[other]));
-        expect(got.fg, `chip "${label}" is painted the '${other}' badge ink`).not.toBe(
-          rgb(accentInk(DEFAULT_PANEL_COLORS[other])),
-        );
       }
     }
   });
 
-  it("a suggestion chip follows the CARD it is linked to, not the coarser display kind", () => {
+  it("a suggestion row follows the CARD it is linked to, not the coarser display kind", () => {
     render(<AIWindow {...props()} />);
     // Two rows share the "Suggestion" label; the cutter-linked one must paint
     // the cut accent and the revision-linked one the revision accent.
-    const pairs = [...document.querySelectorAll<HTMLElement>("li span[aria-description]")]
+    const colors = [...document.querySelectorAll<HTMLElement>("li span[aria-description]")]
       .filter((el) => el.textContent?.trim() === "Suggestion")
-      .map((el) => ({ bg: el.style.background, fg: el.style.color }));
+      .map(dotOf);
 
-    expect(pairs).toHaveLength(2);
-    expect(pairs).toContainEqual(badgePairFor("revision"));
-    expect(pairs).toContainEqual(badgePairFor("cut"));
-    expect(badgePairFor("revision")).not.toEqual(badgePairFor("cut")); // the assertion has teeth
+    expect(colors).toHaveLength(2);
+    expect(colors).toContain(accentFor("revision"));
+    expect(colors).toContain(accentFor("cut"));
+    expect(accentFor("revision")).not.toBe(accentFor("cut")); // the assertion has teeth
   });
 
-  it("a panel-colour override re-tints the chip (the chip is version-subscribed)", () => {
+  it("a panel-colour override re-tints the row (the dot is version-subscribed)", () => {
     render(<AIWindow {...props()} />);
-    const before = chips().get("Todo")!;
+    const before = dots().get("Todo")!;
 
     act(() => setPanelColor("todo", "#9333ea"));
 
-    const after = chips().get("Todo")!;
-    expect(after).not.toEqual(before);
-    expect(after).toEqual(badgePairFor("todo"));
+    const after = dots().get("Todo")!;
+    expect(after).not.toBe(before);
+    expect(after).toBe(accentFor("todo"));
   });
 
   // The SOURCE shape of `KIND_META` (labels + descriptions + a registry-read

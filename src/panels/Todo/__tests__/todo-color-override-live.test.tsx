@@ -80,13 +80,12 @@ function renderRow() {
   );
 }
 
-/** Every inline `style` attribute in the subtree, concatenated. The accent
- *  reaches the DOM as inline style (header tint, selected border, separator),
- *  so this is the render-seam view of "what color is this card". */
-function inlineStyles(container: HTMLElement): string {
-  return [...container.querySelectorAll<HTMLElement>("[style]")]
-    .map((el) => el.getAttribute("style") ?? "")
-    .join(" | ");
+/** The header's kind dot, the render-seam view of "what color is this card":
+ *  the accent reaches the DOM as its inline background. */
+function dotColor(container: HTMLElement): string {
+  const dot = container.querySelector<HTMLElement>(".card-kind-dot");
+  if (!dot) throw new Error("no kind dot rendered");
+  return dot.style.backgroundColor;
 }
 
 /** jsdom serializes inline colors as `rgb(r, g, b)`. */
@@ -101,29 +100,25 @@ describe("Todo color override re-tints the docked card live (task 175)", () => {
   it("paints the SHIPPED todo accent before any override", () => {
     const { container } = renderRow();
     const shipped = themeFromAccent(DEFAULT_PANEL_COLORS.todo);
-    expect(inlineStyles(container)).toContain(rgbOf(shipped.borderSelected));
+    expect(dotColor(container)).toBe(rgbOf(shipped.accent));
   });
 
   it("re-tints to the overridden accent WITHOUT a remount", () => {
     const { container } = renderRow();
     const shipped = themeFromAccent(DEFAULT_PANEL_COLORS.todo);
-    const before = inlineStyles(container);
-    expect(before).toContain(rgbOf(shipped.borderSelected));
+    expect(dotColor(container)).toBe(rgbOf(shipped.accent));
 
     // The same call the "Todo color" picker makes.
     act(() => {
       setPanelColor("todo", PURPLE);
     });
 
-    const after = inlineStyles(container);
     const overridden = themeFromAccent(PURPLE);
 
     expect(getPanelColor("todo")).toBe(PURPLE);
-    expect(after, "docked Todo card ignored the color override").toContain(
-      rgbOf(overridden.borderSelected),
+    expect(dotColor(container), "docked Todo card ignored the color override").toBe(
+      rgbOf(overridden.accent),
     );
-    expect(after).not.toContain(rgbOf(shipped.borderSelected));
-    expect(after).not.toBe(before);
   });
 
   it("agrees with the popped-out float, which already derived live", () => {
@@ -135,7 +130,7 @@ describe("Todo color override re-tints the docked card live (task 175)", () => {
       setPanelColor("todo", PURPLE);
     });
     const floatAccent = themeFromAccent(getPanelColor("todo"));
-    expect(inlineStyles(container)).toContain(rgbOf(floatAccent.borderSelected));
+    expect(dotColor(container)).toBe(rgbOf(floatAccent.accent));
   });
 
   it("returns to the shipped accent when the override is cleared", () => {
@@ -147,6 +142,6 @@ describe("Todo color override re-tints the docked card live (task 175)", () => {
       clearPanelColor("todo");
     });
     const shipped = themeFromAccent(DEFAULT_PANEL_COLORS.todo);
-    expect(inlineStyles(container)).toContain(rgbOf(shipped.borderSelected));
+    expect(dotColor(container)).toBe(rgbOf(shipped.accent));
   });
 });

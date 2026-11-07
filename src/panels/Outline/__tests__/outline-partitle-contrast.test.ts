@@ -231,7 +231,7 @@ describe("census: the Outline reads the rung, nothing else has to", () => {
     // gone and the plain token should come back (resolution (1) in the 284
     // memo). Pin the premise so that is a decision rather than a drift.
     const sites = outline.match(
-      /text-\[11px\][^"`]*text-\[var\(--par-title-color-dense/g,
+      /text-2xs[^"`]*text-\[var\(--par-title-color-dense/g,
     );
     expect(sites?.length ?? 0).toBeGreaterThanOrEqual(3);
   });

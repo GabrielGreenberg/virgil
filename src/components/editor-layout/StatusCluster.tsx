@@ -15,15 +15,16 @@ import CoworkPenBadge from "@/components/CoworkPenBadge";
 import { MirrorRecoveryBadge } from "@/components/MirrorRecoveryBadge";
 import { SaveStateBadge } from "@/components/SaveStateBadge";
 import SkillSyncControls from "../SkillSyncControls";
-import { HelpMenu } from "./HelpMenu";
+import { BarMoreMenu, BAR_VIEW_LABEL, type BarView } from "./BarMoreMenu";
 import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import SyncConflictBadge from "../SyncConflictBadge";
-import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
+import { PomodoroTimer } from "../PomodoroTimer";
 import { BarModeDivider, CompileStatusChip, FocusViewChip, HelperModeChip } from "@/components/BarModeChips";
 import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 import { iconHint } from "@/components/Hint";
+import { SegmentedToggle, type SegmentedOption } from "@/components/SegmentedToggle";
 import { StatusDot } from "@/components/StatusDot";
 import { BAR_STATUS_ORDER, type BarStatusItemId } from "@/lib/bar-status-policy";
 import type { AiDotTone } from "@/components/AIWindow";
@@ -56,10 +57,10 @@ export type StatusClusterProps = {
    */
   setTopbarRightCollapsed: Dispatch<SetStateAction<boolean>>;
   /**
-   * The chip's click handler, supplied by `TopBar`'s occupancy hook so that
-   * expanding out of an AUTO collapse can out-rank the rule instead of writing
-   * a pref the user never set. Falls back to a plain pref toggle for a bare
-   * mount, so the chip is never a control that does nothing.
+   * The ⋯ menu's Hide/Show toolbar row, supplied by `TopBar`'s occupancy hook
+   * so that expanding out of an AUTO collapse can out-rank the rule instead of
+   * writing a pref the user never set. Falls back to a plain pref toggle for a
+   * bare mount, so the row is never a control that does nothing.
    */
   onToggleTools?: () => void;
   /**
@@ -91,16 +92,14 @@ export type StatusClusterProps = {
 
   // Zen toggle.
   onToggleZen: () => void;
-  preferencesOpen: boolean;
   setPreferencesOpen: Dispatch<SetStateAction<boolean>>;
 
   // Bug-report drop window (dev tool; rendered only when the per-machine
   // `virgil:bug-report` flag + FSA gate resolves true — see EditorLayout).
   bugReportEnabled: boolean;
-  bugReportOpen: boolean;
   setBugReportOpen: Dispatch<SetStateAction<boolean>>;
 
-  // Help menu (`HelpMenu` — its open state, anchor and sub-menu are its own).
+  // The ⋯ menu (`BarMoreMenu` — its open state, anchor and sub-menu are its own).
   appVersion: string;
   onInsertVirgilCommand: (name: string) => void;
 
@@ -108,11 +107,9 @@ export type StatusClusterProps = {
   currentDocId: string | null;
   codeView: boolean;
   pdfView: boolean;
-  printOpen: boolean;
   setPrintOpen: Dispatch<SetStateAction<boolean>>;
   aiWindowOpen: boolean;
   setAiWindowOpen: Dispatch<SetStateAction<boolean>>;
-  manageStylesOpen: boolean;
   setManageStylesOpen: Dispatch<SetStateAction<boolean>>;
   onToggleCodeView: () => void;
   onTogglePdfView: () => void;
@@ -140,21 +137,17 @@ function StatusClusterImpl(props: StatusClusterProps) {
     onEditIdentity,
     onDisableCollab,
     onToggleZen,
-    preferencesOpen,
     setPreferencesOpen,
     bugReportEnabled,
-    bugReportOpen,
     setBugReportOpen,
     appVersion,
     onInsertVirgilCommand,
     currentDocId,
     codeView,
     pdfView,
-    printOpen,
     setPrintOpen,
     aiWindowOpen,
     setAiWindowOpen,
-    manageStylesOpen,
     setManageStylesOpen,
     onToggleCodeView,
     onTogglePdfView,
@@ -165,9 +158,9 @@ function StatusClusterImpl(props: StatusClusterProps) {
   // children are remounted, so a collapse that lands while focus is INSIDE it
   // drops the caret to <body> and, for one commit, puts `aria-hidden` over the
   // focused element — which ARIA forbids and which loses the user's place with
-  // nothing on screen to explain it. Focus moves to the chip instead: the chip
-  // is TIER 1 (always rendered) and is the affordance that brings the group
-  // back, so it is the correct landing spot rather than merely a safe one.
+  // nothing on screen to explain it. Focus moves to ⋯ instead: it is TIER 1
+  // (always rendered) and holds the tools while they are folded, so it is the
+  // correct landing spot rather than merely a safe one.
   // A LAYOUT effect, so the move happens in the same commit that hides the
   // group — a passive one would let a frame paint with focus in a hidden
   // subtree.
@@ -176,18 +169,18 @@ function StatusClusterImpl(props: StatusClusterProps) {
   // detached the focused button and the browser has already dropped focus to
   // <body>. What survives the commit is the tracked fact, so the group records
   // focus-within itself — `focusin` sets it, `focusout` clears it (including
-  // the legitimate move to the chip, which is outside the group), and node
+  // the legitimate move to ⋯, which is outside the group), and node
   // REMOVAL fires neither, which is exactly why the flag is still true when
   // the effect runs. Asking `activeElement === body` instead would steal focus
   // whenever the bar auto-collapsed with nothing focused at all.
   const toolsGroupRef = useRef<HTMLDivElement | null>(null);
-  const collapseChipRef = useRef<HTMLButtonElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const groupHadFocusRef = useRef(false);
   useLayoutEffect(() => {
     if (!topbarRightCollapsed) return;
     if (!groupHadFocusRef.current) return;
     groupHadFocusRef.current = false;
-    collapseChipRef.current?.focus();
+    moreMenuRef.current?.querySelector("button")?.focus();
   }, [topbarRightCollapsed]);
 
   // ── TIER 1: the protected status items (task 1131) ─────────────────────
@@ -258,14 +251,46 @@ function StatusClusterImpl(props: StatusClusterProps) {
     ),
   };
 
-  const collabIconBtn = (
-    <CollabStatusPill
-      onEnableRequest={onEnableCollab}
-      onEditIdentity={onEditIdentity}
-      onDisable={onDisableCollab}
-      variant="icon"
-    />
-  );
+  // The bar's switch names what the right-hand pane shows. The pane has one
+  // slot, so `code` and `pdf` can't both be on and the three are a real choice.
+  const view: BarView = codeView ? "code" : pdfView ? "pdf" : "text";
+  const setView = (next: BarView) => {
+    if (next === view) return;
+    if (next === "code") return onToggleCodeView();
+    if (next === "pdf") return onTogglePdfView();
+    if (codeView) onToggleCodeView();
+    if (pdfView) onTogglePdfView();
+  };
+  const noPaper = "Open a paper first";
+  const pdfBlocked = currentDocId ? undefined : noPaper;
+  const compileBlocked = !currentDocId
+    ? noPaper
+    : vbar.isCompiling
+      ? "Already compiling"
+      : undefined;
+  const printBlocked = !currentDocId
+    ? noPaper
+    : codeView || pdfView
+      ? "Switch to Text to print"
+      : undefined;
+  const viewOptions: readonly SegmentedOption<BarView>[] = [
+    { value: "text", label: BAR_VIEW_LABEL.text, hint: "Text only" },
+    { value: "code", label: BAR_VIEW_LABEL.code, hint: "LaTeX source beside the text" },
+    {
+      value: "pdf",
+      label: (
+        <>
+          {BAR_VIEW_LABEL.pdf}
+          {vbar.pdfStale && pdfView && (
+            <StatusDot tone="warn" size="sm" className="ml-1" label="PDF is out of date" />
+          )}
+        </>
+      ),
+      hint: "Compiled PDF beside the text",
+      disabled: !!pdfBlocked,
+      disabledHint: pdfBlocked,
+    },
+  ];
 
   return (
     <div
@@ -359,105 +384,48 @@ function StatusClusterImpl(props: StatusClusterProps) {
           owned by EditorLayout) is unaffected by a remount and is gated
           explicitly below — same behaviour as pre-395 unmounting, where the
           prop likewise re-opened it on expand. */}
-      <div key={topbarRightCollapsed ? "collapsed" : "expanded"} className="flex items-center">
+      <div key={topbarRightCollapsed ? "collapsed" : "expanded"} className="flex items-center gap-1.5">
       {(<>
       {/* Divider between the mode chips and the tools. It lives IN the
           group, so it shows only while the tools are expanded; whether a mode
           chip is on is answered by the chips' own policy verdicts
           (`useAnyBarModeVisible`, task 1391), never re-derived here. */}
       <BarModeDivider focusActive={focusActive} helperOn={helperOn} />
-      {/* Zen mode toggle — render-gates editor chrome so the document area
-          stands alone. Top bar stays visible so this button is always
-          reachable. */}
-      <button
-        onClick={onToggleZen}
-        className="topbarbtn"
-        aria-pressed={zenModeOn}
-        data-hint="Zen mode"
-      >
-        Zen
-      </button>
-      {!zenModeOn && (<>
-      {collabIconBtn}
-      {/* ── Bug-report drop (dev tool) ─────────────────────────────
-          Per-machine opt-in via localStorage `virgil:bug-report`. Opens the
-          always-mounted BugReportWindow (EditorLayout). Deliberately NOT
-          disabled without a doc — reports can be filed from the empty
-          state. */}
-      {bugReportEnabled && (
+      {/* In zen the bar is stripped to its off-switch; the rest of the time
+          Zen lives in ⋯ with the other occasional tools. */}
+      {zenModeOn ? (
         <button
-          onClick={() => setBugReportOpen((v) => !v)}
+          onClick={onToggleZen}
           className="topbarbtn"
-          aria-pressed={bugReportOpen}
-          {...iconHint({ label: "Report a bug" })}
+          aria-pressed={zenModeOn}
+          data-hint="Zen mode"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m8 2 1.88 1.88" />
-            <path d="M14.12 3.88 16 2" />
-            <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
-            <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
-            <path d="M12 20v-9" />
-            <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
-            <path d="M6 13H2" />
-            <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
-            <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
-            <path d="M22 13h-4" />
-            <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
-          </svg>
+          Zen
         </button>
-      )}
-      <button
-        onClick={() => setPreferencesOpen((v) => !v)}
-        className="topbarbtn"
-        aria-pressed={preferencesOpen}
-        {...iconHint({ label: "Preferences" })}
-      >
-        {/* Painter's palette icon — solid silhouette with the classic
-            thumb-hole cutout on the right and four color wells punched
-            through via fill-rule="evenodd". */}
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
-        </svg>
-      </button>
-      {/* `key` (task 395 → 1361): the menu PORTALS to <body>, so it is the
-          one child of the collapsible group that `visibility: hidden` cannot
-          reach — an auto collapse (an OS window narrowing while the menu is
-          open) would leave it floating with no trigger under it. Re-keying on
-          the collapse remounts the trigger, which closes the menu, while the
-          button itself stays in the group's measured box. */}
-      <HelpMenu
-        key={topbarRightCollapsed ? "collapsed" : "shown"}
-        appVersion={appVersion}
-        hasDoc={hasDoc}
-        skillSyncNotice={skillSyncNotice}
-        onResyncSkills={onResyncSkills}
-        onDismissSkillSyncNotice={onDismissSkillSyncNotice}
-        helperOn={helperOn}
-        onHelperToggle={onHelperToggle}
-        onInsertVirgilCommand={onInsertVirgilCommand}
+      ) : (<>
+      {/* The right-hand pane, as one choice. Reads local `codeView` / `pdfView`
+          (not `vbar`) because EditorPane unmounts in code view, leaving
+          paneState's mirror stale; the stale dot is the pane's live bubbled
+          state. */}
+      <SegmentedToggle
+        ariaLabel="View"
+        size="bar"
+        value={view}
+        onChange={setView}
+        options={viewOptions}
       />
-      {/* The bar timer's ICON (task 354) — an ordinary tool, so it takes the
-          ordinary tool rules: it lives inside the collapsible group and inside
-          the zen gate, rather than minting an exception for itself. A timer is
-          STARTED from a normal bar and stays VISIBLE in a stripped one, which
-          is the asymmetry the widget's placement above encodes. Prop-less for
-          the same reason the widget is; its status dot is what keeps a timer
-          running behind a closed widget visible. */}
-      <PomodoroToggleButton />
-      {/* Print — opens a dialog with toggles for which document elements and
-          panel appendices to include. Disabled in code/PDF view. */}
+      {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder. Disabled
+          while a compile is in flight; the in-flight spinner is the protected
+          tier's `compile` status item (task 1353), so it shows once, and shows
+          while the tools are collapsed. A soft tile, not a fill: compiling is not
+          something you do often. */}
       <button
-        onClick={() => setPrintOpen((v) => !v)}
-        disabled={!currentDocId || codeView || pdfView}
-        className="topbarbtn"
-        aria-pressed={printOpen}
-        {...iconHint({ label: "Print" })}
+        onClick={vbar.compilePdf}
+        disabled={!!compileBlocked}
+        className="topbarbtn topbarbtn-tile"
+        data-hint={compileBlocked ?? "Compile"}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 6 2 18 2 18 9" />
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-          <rect x="6" y="14" width="12" height="8" />
-        </svg>
+        Compile
       </button>
       {/* AI request — sun-star. Mode toggle: clicking again closes the
           window. */}
@@ -467,7 +435,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         aria-pressed={aiWindowOpen}
         {...iconHint({ label: "AI requests" })}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
           <g transform="rotate(15 12 12)">
             {/* Cardinals */}
             <line x1="12" y1="2" x2="12" y2="22" />
@@ -484,108 +452,52 @@ function StatusClusterImpl(props: StatusClusterProps) {
           <StatusDot tone={vbar.aiDot} size="sm" className="absolute top-0 right-0" />
         )}
       </button>
-      {/* ── Document style ─────────────────────────────────────────
-          Mode toggle: opens ManageStylesModal. aria-pressed mirrors the
-          modal's open state. */}
-      <button
-        onClick={() => setManageStylesOpen((v) => !v)}
-        disabled={!currentDocId}
-        className="topbarbtn"
-        aria-pressed={manageStylesOpen}
-        data-hint="Document style"
-      >
-        Style
-      </button>
-      {/* Code view toggle — reads local `codeView` (not `vbar.codeView`)
-          because EditorPane unmounts in code view, leaving paneState's mirror
-          stale. `onToggleCodeView` dispatches to the correct switchTo/switchFrom
-          internally. */}
-      <button
-        onClick={onToggleCodeView}
-        className="topbarbtn"
-        aria-pressed={codeView}
-        data-hint="Code"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="16 18 22 12 16 6" />
-          <polyline points="8 6 2 12 8 18" />
-          <line x1="14.5" y1="4" x2="9.5" y2="20" />
-        </svg>
-        Code
-      </button>
-      {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder. Disabled
-          while a compile is in flight; the in-flight spinner is the protected
-          tier's `compile` status item (task 1353), so it shows once, and shows
-          while the tools are collapsed. */}
-      <button
-        onClick={vbar.compilePdf}
-        disabled={!currentDocId || vbar.isCompiling}
-        className="topbarbtn"
-        data-hint="Compile"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <polygon points="6 4 20 12 6 20 6 4" />
-        </svg>
-        Compile
-      </button>
-      {/* PDF view toggle. Read local `pdfView` directly for the toggle's own
-          pressed state (the view flag lives at the shell level). Since task
-          1320 the PDF opens in the right-hand pane of the text split (the
-          slot code view uses), so the editor stays visible beside it; the
-          PDF and the `vbar.pdfStale` dot read the pane's live bubbled state. */}
-      <button
-        onClick={onTogglePdfView}
-        disabled={!currentDocId}
-        className="topbarbtn"
-        aria-pressed={pdfView}
-        data-hint={pdfView ? "Hide PDF" : "View PDF"}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-        PDF
-        {vbar.pdfStale && pdfView && (
-          <StatusDot tone="warn" size="sm" className="ml-1" label="PDF is out of date" />
-        )}
-      </button>
       </>)}
       </>)}
       </div>
       </div>
       </div>
-      {/* Collapse toggle — TIER 1 (protected): always rendered, never hidden,
-          because it is what makes a collapse REVERSIBLE. Hides everything to
-          its left in this cluster so the document area can breathe. The user's
-          own choice is per-window state in useViewPrefs; since task 395 the
-          click routes through the bar's occupancy hook instead of writing the
-          pref directly, so expanding out of an AUTO collapse out-ranks the
-          rule rather than clearing a pref the user never set. */}
-      <button
-        ref={collapseChipRef}
-        onClick={() =>
-          onToggleTools
-            ? onToggleTools()
-            : setTopbarRightCollapsed((v) => !v)
-        }
-        className="topbarbtn"
-        aria-pressed={topbarRightCollapsed}
-        {...iconHint({ label: topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar", hint: "Collapse toolbar" })}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          {topbarRightCollapsed ? (
-            <>
-              <polyline points="11 17 6 12 11 7" />
-              <polyline points="18 17 13 12 18 7" />
-            </>
-          ) : (
-            <>
-              <polyline points="13 17 18 12 13 7" />
-              <polyline points="6 17 11 12 6 7" />
-            </>
-          )}
-        </svg>
-      </button>
+      {/* ⋯ — TIER 1 (protected): always rendered, never hidden, because it
+          is what keeps a folded tool reachable and what makes a collapse
+          REVERSIBLE. Its own width never depends on the verdict, which is what
+          keeps the occupancy predicate state-independent; the folded tools'
+          rows appear inside it. The user's own collapse is per-window state in
+          useViewPrefs; since task 395 the row routes through the bar's
+          occupancy hook instead of writing the pref directly, so expanding out
+          of an AUTO collapse out-ranks the rule rather than clearing a pref the
+          user never set. */}
+      <div ref={moreMenuRef} className="ml-1.5 flex items-center">
+        <BarMoreMenu
+          appVersion={appVersion}
+          hasDoc={hasDoc}
+          skillSyncNotice={skillSyncNotice}
+          onResyncSkills={onResyncSkills}
+          onDismissSkillSyncNotice={onDismissSkillSyncNotice}
+          helperOn={helperOn}
+          onHelperToggle={onHelperToggle}
+          onInsertVirgilCommand={onInsertVirgilCommand}
+          zenOn={zenModeOn}
+          onToggleZen={onToggleZen}
+          onOpenStyle={() => setManageStylesOpen(true)}
+          styleBlocked={currentDocId ? undefined : noPaper}
+          onOpenPrint={() => setPrintOpen(true)}
+          printBlocked={printBlocked}
+          onOpenPreferences={() => setPreferencesOpen(true)}
+          onEnableCollab={onEnableCollab}
+          onDisableCollab={onDisableCollab}
+          onOpenBugReport={bugReportEnabled ? () => setBugReportOpen(true) : undefined}
+          toolsCollapsed={topbarRightCollapsed}
+          onToggleTools={
+            onToggleTools ?? (() => setTopbarRightCollapsed((v) => !v))
+          }
+          view={view}
+          onViewChange={setView}
+          pdfBlocked={pdfBlocked}
+          onCompile={vbar.compilePdf}
+          compileBlocked={compileBlocked}
+          onOpenAiRequests={() => setAiWindowOpen(true)}
+        />
+      </div>
     </div>
   );
 }

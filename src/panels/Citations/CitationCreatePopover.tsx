@@ -169,14 +169,14 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
     >
       <div className="flex-1 min-w-0 flex flex-wrap gap-1">
         {staged.length === 0 ? (
-          <span className="text-[10px] text-[var(--muted)]">
+          <span className="text-2xs text-[var(--muted)]">
             Pick one or more citekeys…
           </span>
         ) : (
           staged.map((key) => (
             <span
               key={key}
-              className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded bg-edge-subtle text-[10px] text-ink-body font-mono"
+              className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded bg-edge-subtle text-2xs text-ink-body font-mono"
             >
               {key}
               <button

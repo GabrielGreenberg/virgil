@@ -25,7 +25,7 @@ export interface PanelProps {
   kind: PanelKind;
   /** Optional count badge in the header. */
   count?: number;
-  /** A short uppercase label rendered BESIDE the count, naming a non-default
+  /** A short label rendered BESIDE the count, naming a non-default
    *  view the panel is currently under ("ARCHIVES" / "ALL"). When present the
    *  count renders even at ZERO — with a filter on, "0" is the fact, and a
    *  suppressed badge makes the header identical to a genuinely empty panel's
@@ -41,8 +41,8 @@ export interface PanelProps {
     onClick: (anchorRect?: DOMRect) => void;
     disabled?: boolean;
   }[];
-  /** Far-left header content (e.g. options menu). */
-  headerLeading?: ReactNode;
+  /** The panel's options menu, at the right end of the header. */
+  headerMenu?: ReactNode;
   /** Inline content right after the title (mode toggles that cluster with
    *  the title, e.g. Outline's Edit/Focus/Lock). */
   headerTitleAfter?: ReactNode;
@@ -73,7 +73,7 @@ export function Panel({
   countLabel,
   onAdd,
   onAddOptions,
-  headerLeading,
+  headerMenu,
   headerTitleAfter,
   headerExtras,
   panelExtras,
@@ -105,7 +105,7 @@ export function Panel({
           countLabel={countLabel}
           onAdd={onAdd}
           onAddOptions={onAddOptions}
-          leading={headerLeading}
+          menu={headerMenu}
           titleAfter={headerTitleAfter}
         >
           {headerExtras}

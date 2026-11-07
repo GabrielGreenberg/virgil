@@ -61,9 +61,9 @@ export interface PanelGoalStripProps {
 }
 
 const WRAPPER = "px-3 py-1.5 border-b border-edge-subtle";
-const INLINE_WRAPPER = `${WRAPPER} flex items-center gap-2 text-[11px]`;
+const INLINE_WRAPPER = `${WRAPPER} flex items-center gap-2 text-2xs`;
 const GHOST_BTN =
-  "text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light focus-ring";
+  "text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light focus-ring";
 
 export function PanelGoalStrip({
   summary,
@@ -129,7 +129,7 @@ export function PanelGoalStrip({
           onBlur={commit}
           placeholder="goal"
           ink="strong"
-          className="ml-auto w-20 px-1.5 py-0.5 text-[11px]"
+          className="ml-auto w-20 px-1.5 py-0.5 text-2xs"
         />
       </div>
     );
@@ -156,7 +156,7 @@ export function PanelGoalStrip({
 
   return (
     <div className={WRAPPER}>
-      <div className="flex items-center gap-2 text-[11px] mb-1">
+      <div className="flex items-center gap-2 text-2xs mb-1">
         <span
           className={reached ? "text-[var(--positive-strong)]" : "text-ink-body"}
         >
@@ -187,7 +187,7 @@ export function PanelGoalStrip({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="mt-1 text-[10px] text-[var(--muted-light)]">{footer}</div>
+      <div className="mt-1 text-2xs text-[var(--muted-light)]">{footer}</div>
     </div>
   );
 }

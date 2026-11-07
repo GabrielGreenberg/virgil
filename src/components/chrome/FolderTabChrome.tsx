@@ -14,9 +14,8 @@ import {
  * The ACTIVE folder-tab silhouette, as a pure chrome layer: drop it inside a
  * `position: relative` wrapper of height `FOLDER_TAB_VARIANTS[variant].svgH`
  * and it paints the manila tab (caps + stretchable middle) behind the
- * wrapper's in-flow content. Both tab strips render THIS — the outer
- * Virgil-bar tabs (DocumentFolderTab) and the inner library tabs
- * (PanelFolderTab) are one implementation.
+ * wrapper's in-flow content. The Library's inner tabs (PanelFolderTab) render
+ * this; the Virgil bar's outer tabs are lozenges (ActiveBarTab).
  *
  * Geometry is owned by LAYOUT, not measurement:
  *   - two fixed-size SVG end caps (constant artwork from the geometry SSOT,
@@ -62,7 +61,6 @@ export function FolderTabChrome({
         fill={fill}
         stroke={spec.strokeVar}
         side="left"
-        overhang={0}
       />
       {/* Stretchable middle: flat top edge (1px border in the edge color, in
           the same ink band as the caps' shoulder stroke) + fill surface. Its
@@ -74,7 +72,7 @@ export function FolderTabChrome({
         style={{
           position: "absolute",
           left: middleInsetLeft(!!tuckLeft),
-          right: middleInsetRight(!!tuckRight, spec.capRightOverhang),
+          right: middleInsetRight(!!tuckRight),
           top: TAB_TOP_GUTTER,
           bottom: 0,
           background: fill,
@@ -88,7 +86,6 @@ export function FolderTabChrome({
         fill={fill}
         stroke={spec.strokeVar}
         side="right"
-        overhang={spec.capRightOverhang}
       />
     </>
   );
@@ -100,17 +97,16 @@ function FolderTabCap({
   fill,
   stroke,
   side,
-  overhang,
 }: {
   art: FolderTabCapArt;
   svgH: number;
   fill: string;
   stroke: string;
   side: "left" | "right";
-  overhang: number;
 }) {
   return (
     <svg
+      data-icon-weight="own"
       aria-hidden
       width={art.width}
       height={svgH}
@@ -119,10 +115,7 @@ function FolderTabCap({
       style={{
         position: "absolute",
         top: 0,
-        // A right overhang pokes the viewport past the wrapper edge so the
-        // foot stroke's outer half-pixel renders instead of clipping (F#8
-        // cushion outside the footprint — topbar variant).
-        ...(side === "left" ? { left: 0 } : { right: -overhang }),
+        ...(side === "left" ? { left: 0 } : { right: 0 }),
         pointerEvents: "none",
       }}
     >

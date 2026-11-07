@@ -67,8 +67,8 @@ Ordered light → dark. Use the *role*, not the hex.
 ## Brand
 
 ```
---accent:       #7c5e3c   warm brown, primary brand
---accent-light: #f5f0ea   tinted accent surface
+--accent:       #12669a   azure, primary brand
+--accent-light: #ecf4f9   tinted accent surface
 ```
 
 ## App chrome

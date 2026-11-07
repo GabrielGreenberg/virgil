@@ -66,6 +66,92 @@ const scanView = (src: string) => strip(src, true, true);
 /** CSS comments blanked (line-aligned) so prose mentioning a size can't fire. */
 const cssView = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "));
 
+/** The five UI sizes (STYLE_GUIDE "Typography"). */
+const UI_RUNGS = new Set([11, 12, 13, 15, 20]);
+
+/** A px size off the ladder, with the reason. Key: `<file>|<matched literal>`. */
+const OFF_LADDER: Record<string, string> = {
+  "src/components/ActionsMenuPanel.tsx|fontSize: 14": "the A colour tile: a glyph drawn as an icon",
+  "library/components/LeftList.tsx|fontSize: 8": "decorative ▾",
+  "library/components/PaperAiRequestsMenu.tsx|fontSize: 9": "decorative ▾",
+  "library/components/LibrariesNavigator.tsx|fontSize: 16": "the + glyph on an icon button",
+  "library/components/RowMenu.tsx|fontSize: 16": "the ⋮ glyph on an icon button",
+  "library/components/panel-tabs/PanelTabStrip.tsx|fontSize: 18": "the + glyph on the new-tab button",
+  "library/components/LibraryFolderGate.tsx|fontSize: 22": "onboarding gate: serif display title",
+  "library/components/LibraryPermissionGate.tsx|fontSize: 22": "onboarding gate: serif display title",
+  "library/components/LibraryFolderPicker.tsx|fontSize: 32": "onboarding gate: serif display title",
+};
+
+const PX_SIZE = [
+  /\btext-\[(\d+(?:\.\d+)?)px\]/g,
+  /\bfontSize:\s*["'`]?(\d+(?:\.\d+)?)(?:px)?["'`]?(?=[,\s}])/g,
+  /\bfont-size:\s*(\d+(?:\.\d+)?)px/g,
+];
+
+function offLadder(rel: string, src: string): string[] {
+  const hits: string[] = [];
+  const at = (i: number) => src.slice(0, i).split("\n").length;
+  for (const re of PX_SIZE) {
+    for (const m of src.matchAll(re)) {
+      if (UI_RUNGS.has(Number(m[1])) && !m[0].startsWith("text-[")) continue;
+      if (ALLOW[`${rel}|${m[0]}`] || OFF_LADDER[`${rel}|${m[0]}`]) continue;
+      hits.push(`${rel}:${at(m.index)} ${m[0]}`);
+    }
+  }
+  return hits;
+}
+
+/** The one chosen use of capitals (Gabriel, 2026-11-04): a tool's title in the
+ *  left gutter, which stands above sentence-case section headings. */
+const CHOSEN_CAPITALS = /\.tool-gutter-tool \.panel-header-title \{[^}]*\}/;
+
+const CAPITALS = [/\buppercase\b/g, /\btext-transform:\s*uppercase\b/g, /\btextTransform:\s*["']uppercase["']/g];
+
+function capitals(rel: string, src: string): string[] {
+  const at = (i: number) => src.slice(0, i).split("\n").length;
+  return CAPITALS.flatMap((re) => [...src.matchAll(re)].map((m) => `${rel}:${at(m.index)} ${m[0]}`));
+}
+
+describe("the five UI sizes (STYLE_GUIDE \"Typography\")", () => {
+  it("no .ts/.tsx ships a size off the ladder", () => {
+    const hits = sourceFiles().flatMap((f) =>
+      offLadder(path.relative(REPO_ROOT, f), scanView(readFileSync(f, "utf8"))),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it.each(STYLESHEETS)("%s: no px size off the ladder", (rel) => {
+    expect(offLadder(rel, cssView(readFileSync(path.join(REPO_ROOT, rel), "utf8")))).toEqual([]);
+  });
+
+  it("no chrome sets its text in capitals", () => {
+    const tsx = sourceFiles().filter((f) => f.endsWith(".tsx"));
+    const hits = tsx.flatMap((f) =>
+      capitals(path.relative(REPO_ROOT, f), scanView(readFileSync(f, "utf8"))),
+    );
+    const css = STYLESHEETS.flatMap((rel) =>
+      capitals(rel, cssView(readFileSync(path.join(REPO_ROOT, rel), "utf8")).replace(CHOSEN_CAPITALS, "")),
+    );
+    expect([...hits, ...css]).toEqual([]);
+  });
+
+  it("every off-ladder key still names a live site", () => {
+    const stale = Object.keys(OFF_LADDER).filter((key) => {
+      const [rel, literal] = key.split("|");
+      return !readFileSync(path.join(REPO_ROOT, rel), "utf8").includes(literal);
+    });
+    expect(stale).toEqual([]);
+  });
+
+  it("the Tailwind ladder is owned, not inherited", () => {
+    const css = readFileSync(path.join(REPO_ROOT, "src/app/globals.css"), "utf8");
+    expect(css).toMatch(/--text-\*:\s*initial;/);
+    for (const [name, px] of [["2xs", 11], ["xs", 12], ["sm", 13], ["base", 15], ["lg", 20]]) {
+      expect(css).toMatch(new RegExp(`--text-${name}:\\s*${px}px;`));
+    }
+  });
+});
+
 describe("UI type-size census (task 1414)", () => {
   it("no .ts/.tsx ships a fractional-px font size", () => {
     const hits = sourceFiles().flatMap((f) =>

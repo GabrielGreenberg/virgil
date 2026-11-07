@@ -46,7 +46,7 @@ export const READER_MIN = 200;
 export const NAV_MIN = 180;
 export const NAV_DEFAULT = 220;
 export const LEFT_MIN = 220;
-export const LEFT_DEFAULT = 360;
+export const LEFT_DEFAULT = 620;
 // Height floor for BOTH navigator-column pods: the My Papers pod keeps at
 // least this, and the Libraries pod above it keeps the same, so the splitter
 // can't smash either into invisibility.

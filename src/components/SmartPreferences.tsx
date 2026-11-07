@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { SMART_PREFERENCES, type SmartSection, type SmartItem } from "@/lib/smart-preferences";
+import type { SmartSection, SmartItem } from "@/lib/smart-preferences";
 import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
 import { Select } from "./field-primitives";
 import { withCurrent } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import { ResetButton } from "./ResetButton";
-import { PodDisclosure } from "./PodDisclosure";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
@@ -172,7 +170,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
           onChange={(e) => setField("fontSize", parseInt(e.target.value, 10))}
           className="w-14 h-1 accent-[var(--accent)]"
         />
-        <span className="text-[10px] text-ink-muted tabular-nums w-6 text-right">{typo.fontSize}px</span>
+        <span className="text-2xs text-ink-muted tabular-nums w-6 text-right">{typo.fontSize}px</span>
       </div>
       {/* The shared swatch+hex control (task 532). This cell used to hand-roll
           a second copy with a fully-controlled `value={typo.color}` and an
@@ -184,7 +182,7 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         onChange={(hex) => setField("color", hex)}
         className="flex items-center gap-1"
         swatchClassName="w-5 h-5 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
-        inputClassName="text-[10px] font-mono w-[60px] px-1 py-0.5"
+        inputClassName="text-2xs font-mono w-[60px] px-1 py-0.5"
       />
       <ResetButton onReset={resetAll} atDefault={isDefault} target={`${panelLabel} typography`} />
     </div>
@@ -245,7 +243,7 @@ function LinkEdgeRow({
   };
 
   return (
-    <div className="flex items-center gap-2 pl-6 py-0.5 text-[10px] text-ink-muted">
+    <div className="flex items-center gap-2 pl-6 py-0.5 text-2xs text-ink-muted">
       <span className="text-ink-faint">↳</span>
       {/* A two-state toggle: `aria-pressed` announces the state and
           `.iconbtn-toggle` paints it (task 1305) — the name stays fixed, the
@@ -284,7 +282,7 @@ function LinkEdgeRow({
         disabled={!locked}
         className={`w-20 h-1 accent-[var(--accent)] ${locked ? "" : "opacity-40"}`}
       />
-      <span className="text-[10px] tabular-nums w-9 text-right">
+      <span className="text-2xs tabular-nums w-9 text-right">
         {pct > 0 ? "+" : ""}{pct}%
       </span>
     </div>
@@ -326,7 +324,8 @@ function ItemRow({
   );
 }
 
-function Section({
+/** One section as a page of the Preferences window. */
+export default function SmartPreferencesSection({
   section,
   prefs,
   onUpdate,
@@ -335,54 +334,16 @@ function Section({
   prefs: EditorPreferences;
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
 }) {
-  const [open, setOpen] = useState(true);
   // No link wrapper here any more (task 625): the locked-link cascade belongs to
-  // `usePreferences.updatePref`, so it reaches the "All preferences" tree — which
-  // renders the very same parent rows — instead of only this section.
+  // `usePreferences.updatePref`, so it reaches the tree pages too.
   return (
-    <div className="rounded-lg border border-edge-subtle bg-surface-muted/40 overflow-hidden">
-      <PodDisclosure
-        expanded={open}
-        onToggle={() => setOpen(!open)}
-        className="w-full text-left px-3 py-2 hover-on-light text-ink-muted"
-      >
-        <span className="block text-[12px] font-semibold text-ink-strong">{section.label}</span>
-        {section.description && (
-          <span className="block text-[10px] text-ink-muted leading-tight">{section.description}</span>
-        )}
-      </PodDisclosure>
-      {open && (
-        <div className="px-3 pt-1 pb-2 bg-surface border-t border-edge-subtle">
-          {section.items.map((item, i) => (
-            <ItemRow key={i} item={item} prefs={prefs} onUpdate={onUpdate} />
-          ))}
-        </div>
+    <>
+      {section.description && (
+        <p className="text-xs text-ink-muted mb-2">{section.description}</p>
       )}
-    </div>
-  );
-}
-
-export default function SmartPreferences({
-  prefs,
-  onUpdate,
-}: {
-  prefs: EditorPreferences;
-  onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
-}) {
-  if (SMART_PREFERENCES.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="section-caption text-[var(--accent)]">
-          Smart preferences
-        </span>
-        <div className="flex-1 h-px bg-edge-subtle" />
-      </div>
-      <div className="space-y-2">
-        {SMART_PREFERENCES.map((section) => (
-          <Section key={section.id} section={section} prefs={prefs} onUpdate={onUpdate} />
-        ))}
-      </div>
-    </div>
+      {section.items.map((item, i) => (
+        <ItemRow key={i} item={item} prefs={prefs} onUpdate={onUpdate} />
+      ))}
+    </>
   );
 }

@@ -22,7 +22,7 @@ Three rules it earned:
   `forceOpen` and `setInitialView(NONE)` early-returns. So a sidebar opened on
   paper A stayed open on B, C, D… for the life of the tab — a fourth path,
   invisible to any reading of the vendored resolution ladder alone. The door
-  therefore does two things ([`applyViewerDefaults`](../../../library/components/PdfView.tsx)): it un-defaults
+  therefore does two things ([`applyViewerDefaults`](../../../src/components/PdfViewer.tsx)): it un-defaults
   the option that would OPEN one, and it CLOSES one carried over. The two halves
   are guarded separately, because they answer different paths and a renamed
   vendored surface under one must not take the other down. (The Library Reader
@@ -85,14 +85,14 @@ globals.css" by prose; that sync had already drifted (manila `#dcdbd7` under the
 shipped blue `#c5dbe2` bar) and could never follow the user's Colors prefs, which
 live on the PARENT's `:root` and do not cross into an iframe. Now:
 
-- **One token list**, `VIEWER_PALETTE_TOKENS` in `PdfView.tsx`. `applyViewerPalette`
+- **One token list**, `VIEWER_PALETTE_TOKENS` in `PdfViewer.tsx`. `applyViewerPalette`
   copies each LIVE parent value (`getComputedStyle(:root)`) onto the iframe root
   as `--virgil-<name>`, equality-bailed; an empty parent value is removed so the
   CSS fallback applies.
 - **Two triggers, both event-driven:** every open (from `applyViewerDefaults`) and
   every palette write — `EditorLayout`'s `PREF_TO_CSS` effect fires
   `notifyChromePaletteChanged()` ([src/lib/chrome-palette-signal.ts](../../../src/lib/chrome-palette-signal.ts)),
-  and each mounted `PdfView` re-copies into its warm viewer.
+  and each mounted `PdfViewer` re-copies into its warm viewer.
 - **The CSS names no colour**: only `var(--virgil-*, <shipped default>)`, with
   alpha tints derived by `color-mix`. The census fails on a bare hex/`rgb()` in a
   declaration value, a `--virgil-*` not in the list, a read without a fallback, or
@@ -102,6 +102,45 @@ live on the PARENT's `:root` and do not cross into an iframe. Now:
   (`is-dark` → `is-light`) is what lands; every dark rule in `viewer.css` is gated
   `:where(html:not(.is-light))`, which the runtime-surface census now pins.
 
-**Owed:** preview eyeball — Library → a paper with a PDF → toolbar matches the
-Virgil bar; change the top-bar colour in Preferences → the PDF toolbar follows
-without reopening.
+**Owed:** preview eyeball — Library → a paper with a PDF → toolbar stands on the
+page's ground; change the document background in Preferences → the PDF toolbar
+follows without reopening.
+
+### The compiled half
+
+The compiled pane used to hand its blob to a bare `<iframe>`, which meant Chrome's
+own dark viewer. It now mounts the same [`PdfViewer`](../../../src/components/PdfViewer.tsx)
+as the Library, with `role="compiled"`. There is one viewer; `role` is the whole
+difference, and `PdfView` is only the Library's read of the file off disk.
+
+A compiled paper is not a paper you are reading. Each compile is a new file of the
+same document, and that one fact is what the role turns on:
+
+- **The place carries, and pdf.js's memory cannot carry it.** `pdfjs.history` is
+  keyed by fingerprint and holds 20 files, and pdfTeX writes a new `/ID` on every
+  compile. Left alone, each compile would land on page 1 AND take a row, so twenty
+  compiles would push every Library paper's reading position out. So on `pagesinit`,
+  the one moment when the page count is known and the first view is not yet set,
+  the wrapper sets `app.store = null` (every writer reads it as `store?.`) and sets
+  `app.initialBookmark` from `compiledPlaces`, a session registry keyed by doc id.
+  The page is clamped, because a revision can be shorter. A location is recorded
+  only once `isInitialViewSet` holds, which is pdf.js's own gate on the same write.
+- **Print and Download appear, on that role only.** Nothing else in the app offers
+  them for the compiled PDF; a Library paper still has neither. `applyViewerDefaults`
+  puts `COMPILED_VIEWER_CLASS` on the root, and `virgil-overrides.css` hides them
+  under `:root:not(.virgil-compiled)`. Print goes through pdf.js, which rasterizes,
+  so the role sets `printResolution` to 300; a download is the file itself.
+
+One default earned by the embedded mount, on both roles: `viewer.mjs` turns an
+embedded viewer's external links to `_top`, so a clicked link replaced Virgil itself.
+The door sets the live `pdfLinkService.externalLinkTarget` to `BLANK` per open.
+
+Around the viewer: the pane sits in a `PaneFreeze` (`anchor="right"`, the edge the
+split's divider does not move), so a drag re-rasterizes once. `FramedViewerSurface`
+lost its `dark` backdrop with Chrome's viewer and now stands on `--background`, the
+colour the viewer paints around its pages. `PdfPaneOverlay` moved under the toolbar
+(`top-12`; the toolbar is 40px), because the toolbar's controls are live under it.
+
+Pinned by [`pdf-viewer-compiled.test.tsx`](../../../src/components/__tests__/pdf-viewer-compiled.test.tsx)
+(the behaviour, on a faked viewer) and the census's "compiled role" legs (the
+vendored surface it stands on).

@@ -273,7 +273,7 @@ const LEAVES = leaves(PREFERENCES_TREE);
  */
 const PERMITTED_UNREAD_PREF_TOKENS: Readonly<Record<string, string>> = {
   "--tab-bg":
-    "no reader and no dialog row; the tab strip paints from --main-tab-bg (aliased to --background) and --topbar-bg",
+    "no reader and no dialog row; the active tab is the white tile and the strip stands on --topbar-bg",
   "--comment-color":
     "the Comments 'Highlight color' row paints through the DERIVED --comment-bg (.commented-text background-color, globals.css:4274); this base ink token has no reader",
   "--comment-border":

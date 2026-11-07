@@ -16,8 +16,7 @@ import { describe, expect, it } from "vitest";
  * the "+"/icons.
  *
  * This pins the fix: the WHOLE bar row shares ONE seam (bottom) anchor. Every
- * bar content group is 24px tall (`.topbarbtn` = 24px; `InlineTabLabel` =
- * h-[24px]), so `self-end mb-[var(--bar-seam-lift)]` lands each group's optical center at
+ * bar content group is 24px tall (`.topbarbtn` = 24px; a tab = h-6), so `self-end mb-[var(--bar-seam-lift)]` lands each group's optical center at
  * `seam − 15` uniformly — one baseline in BOTH the base and WCO-folded bar.
  *
  * These are source-string contracts (jsdom has no layout, so a pixel-baseline
@@ -62,24 +61,15 @@ describe("WCO bar seam-anchor (task 289)", () => {
     expect(plus).not.toMatch(/className="self-center inline-flex"/);
   });
 
-  it("the tab-title wrappers keep the 094 seam anchor (regression guard)", () => {
+  it("the tab row keeps the 094 seam anchor (regression guard)", () => {
     const strip = read("components/editor-layout/TabStrip.tsx");
-    // Inline (inactive) tab wrappers. RENEGOTIATED in place (task 561): the
-    // pre-561 needle pinned `shrink-0` on every inline wrapper, which was the
-    // strip's non-compression — not the seam anchor this leg is about. The
-    // seam anchor is `self-end mb-[var(--bar-seam-lift)]`; the flex-shrink is the occupancy
-    // ladder's (compressible tabs `shrink`, the pinned Library root
-    // `shrink-0`), and BOTH spellings must keep the anchor.
-    expect(strip).toMatch(/className="self-end mb-\[var\(--bar-seam-lift\)\] shrink"/);
-    expect(strip).toMatch(/className="self-end mb-\[var\(--bar-seam-lift\)\] shrink-0"/);
-    expect(strip, "an inline wrapper lost its seam anchor").not.toMatch(
-      /className="self-end shrink(?:-0)?"/,
-    );
-    // The strip itself fills the bar height and keeps tabs at the seam — and
-    // since 561 so does its SCROLLER, which is the box the tabs actually sit
-    // in (the strip's right padding moved onto the scroller as the row's
-    // trailing slack, so the root is `pl-2` rather than `px-2`).
-    expect(strip).toMatch(/className="flex items-end flex-1 min-w-0 gap-0\.5 pl-2 self-stretch relative"/);
+    // The anchor is the ROW's now, one owner for every tab: the scroller
+    // bottom-aligns it and its padding lifts it, so an active and an inactive
+    // tab sit on one line. Each wrapper used to carry its own
+    // `self-end mb-[var(--bar-seam-lift)]`.
     expect(strip).toMatch(/className="flex items-end flex-1 min-w-0 self-stretch"/);
+    expect(strip).toMatch(/className="flex items-end gap-1 min-w-0 px-px pb-\[var\(--bar-seam-lift\)\]"/);
+    // The strip itself fills the bar height and keeps tabs at the seam.
+    expect(strip).toMatch(/className="flex items-end flex-1 min-w-0 gap-0\.5 pl-2 self-stretch relative"/);
   });
 });

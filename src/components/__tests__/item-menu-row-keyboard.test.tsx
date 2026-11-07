@@ -152,7 +152,7 @@ describe("ItemMenu rows — registration + keyboard (task 477)", () => {
           setView,
         }}
       >
-        <ItemMenu align="left">
+        <ItemMenu panelHeader>
           <CardViewModeMenuItems kind="notes" />
         </ItemMenu>
       </CardArchiveViewProvider>,

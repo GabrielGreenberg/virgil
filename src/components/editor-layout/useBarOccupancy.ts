@@ -49,7 +49,7 @@ import { resolveBarOccupancy } from "./bar-occupancy";
  * ── The user always outranks the rule ────────────────────────────────────
  * `topbarRightCollapsed` (a persisted view pref) is the user's own choice and
  * is never written by the auto rule. Expanding out of an AUTO collapse sets a
- * session-scoped override instead, so the chip is never a dead control — the
+ * session-scoped override instead, so the toolbar row is never a dead control — the
  * same shape as "a pod the user has DRAGGED away from home keeps user
  * positioning". The override is dropped the moment the condition that created
  * it goes away, so it can't silently outlive a window resize.
@@ -59,7 +59,7 @@ export type BarOccupancy = {
   toolsCollapsed: boolean;
   /** True when the AUTO rule (not the user) is what collapsed the tools. */
   autoCollapsed: boolean;
-  /** Toggle the tools group — the chip's click handler. */
+  /** Toggle the tools group — the ⋯ menu's toolbar row. */
   toggleTools: () => void;
   /** Ref callback for the tab strip's SCROLLER box (the row's assigned width). */
   tabStripMeasureRef: (el: HTMLElement | null) => void;
@@ -216,7 +216,7 @@ export function useBarOccupancy(opts: {
       // bare `true`. An override minted while nothing was crowding has nothing
       // to expire: the drop below fires on the auto TRUE→FALSE edge, which
       // never comes if the verdict was already false, so a wide-window
-      // collapse-then-expand (an ordinary use of the chip) would leave a
+      // collapse-then-expand (an ordinary use of the row) would leave a
       // sticky override that silently disables auto-collapse for the rest of
       // the session — the tab row clipping instead of the tools yielding, the
       // exact inverse of the priority this hook exists to enforce.

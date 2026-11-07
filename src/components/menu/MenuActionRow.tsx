@@ -108,7 +108,7 @@ export function MenuActionRow({
     ? " flex items-center gap-2.5"
     : leading || shortcut
       ? " flex items-center gap-2"
-      : "";
+      : " block"; // not a button's inline-block: rows in one line would sum into the menu's width
   return (
     <button
       {...itemProps}

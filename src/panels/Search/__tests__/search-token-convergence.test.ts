@@ -19,8 +19,8 @@
 //  2. RAW TAILWIND AMBER. There is no `--color-amber-*` in the `@theme inline`
 //     block, so a bare `bg-amber-200` resolves to Tailwind v4's DEFAULT amber,
 //     not this repo's warm `--amber-*` scale — the identical class
-//     `bibliography-amber-strip-convergence.test.ts` (280/305) and
-//     `examples-amber-token.test.ts` (292) already pin on their surfaces.
+//     `bibliography-amber-strip-convergence.test.ts` (280/305) already pins on
+//     its surface.
 //
 // Resolved by Gabriel (2026-08-08): match the app's other toggles. The toggles
 // take the toggle-state SSOT's TINT path (`--control-selected-tint` /

@@ -87,7 +87,7 @@ const DOOR_CONSUMERS = [
   "src/lib/tex-assets.ts",
   "src/lib/example-doc/example-seeder.ts",
   "library/lib/skill-sync.ts",
-  "library/components/PdfView.tsx",
+  "src/components/PdfViewer.tsx",
 ];
 
 /** APIs that turn a string into a request. Leg 1b's shape scope. */
@@ -347,7 +347,7 @@ describe("PdfView viewer src — the defect leg (leg 5)", () => {
     // app and rendered the host's 404 page inside the pane.
     process.env.NEXT_PUBLIC_BASE_PATH = "/virgil";
     vi.resetModules();
-    const { VIEWER_SRC } = await import("@library/components/PdfView");
+    const { VIEWER_SRC } = await import("@/components/PdfViewer");
     expect(VIEWER_SRC).toBe("/virgil/pdfjs/web/viewer.html?file=");
   });
 
@@ -355,7 +355,7 @@ describe("PdfView viewer src — the defect leg (leg 5)", () => {
     // Non-regression: the query string is load-bearing (see PdfView's header).
     delete process.env.NEXT_PUBLIC_BASE_PATH;
     vi.resetModules();
-    const { VIEWER_SRC } = await import("@library/components/PdfView");
+    const { VIEWER_SRC } = await import("@/components/PdfViewer");
     expect(VIEWER_SRC).toBe("/pdfjs/web/viewer.html?file=");
   });
 });

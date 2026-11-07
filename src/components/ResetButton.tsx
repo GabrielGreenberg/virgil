@@ -8,12 +8,10 @@
 // slider and font rows had none at all. All raw `<button>`s, none with a name
 // that said WHAT it reset.
 //
-// One behaviour now: the control is ALWAYS present and DISABLED at the default.
-// Hiding it reflowed the row on every change across the default and taught
-// nothing about where reset lives; disabled-in-place keeps the row's geometry
-// still (the grid's column never jumps) and still says "this is resettable,
-// and is already at its default". `Button` keeps a disabled control's hint
-// (task 827), so the at-default state can say so.
+// One behaviour now: the control is ALWAYS present, and at the default it is
+// disabled and unpainted, so it keeps its place in the row (the grid's column
+// never jumps) without a column of grey "Reset"s saying nothing. It appears the
+// moment there is something to reset.
 
 import { Button } from "./Button";
 
@@ -36,9 +34,9 @@ export function ResetButton({ onReset, atDefault, target, className }: ResetButt
       onClick={onReset}
       disabled={atDefault}
       aria-label={target ? `Reset ${target}` : undefined}
-      data-hint={atDefault ? "Already at default" : "Reset to default"}
+      data-hint={atDefault ? undefined : "Reset to default"}
       data-reset-control=""
-      className={className}
+      className={`${atDefault ? "invisible" : ""} ${className ?? ""}`.trim()}
     >
       Reset
     </Button>

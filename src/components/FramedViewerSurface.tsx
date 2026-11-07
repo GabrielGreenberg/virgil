@@ -11,24 +11,13 @@ import type { CSSProperties, ReactNode } from "react";
  * (`<iframe>` etc.) plus any absolutely-positioned overlays (stale badge) as
  * `children` — the pod is `position: relative` so overlays anchor to it.
  *
- * Parameterized only by `backdrop`, so the two viewers stay geometrically
- * symmetric forever: `dark` (#525659, seamless with pdf.js's own dark chrome)
- * for the docs compiled PDF, `manila` (`--library-bg`) for the Library viewer.
+ * It stands on the colour the viewer paints around its pages, so the pod and the
+ * viewer read as one surface before the first page lands and behind a notice.
  * The bottom inset is overridable (the docs viewer tightens it to 4px in zen
  * mode; otherwise it's the `--pod-gap` that separates the pod from the chrome
  * below it).
  */
-const BACKDROPS = {
-  /** Docs compiled-PDF pane — matches pdf.js's own dark viewer chrome. */
-  dark: "#525659",
-  /** Library PDF pane — the warm "manila" library canvas. */
-  manila: "var(--library-bg)",
-} as const;
-
-export type FramedViewerBackdrop = keyof typeof BACKDROPS;
-
 interface FramedViewerSurfaceProps {
-  backdrop: FramedViewerBackdrop;
   /**
    * Bottom inset. Defaults to `--pod-gap` (the pod-to-chrome separation used
    * everywhere); the docs viewer passes `4` in zen mode to tighten it.
@@ -44,7 +33,6 @@ interface FramedViewerSurfaceProps {
 }
 
 export default function FramedViewerSurface({
-  backdrop,
   paddingBottom = "var(--pod-gap)",
   paddingLeft = 4,
   children,
@@ -62,7 +50,7 @@ export default function FramedViewerSurface({
       <div
         className="flex-1 flex flex-col min-h-0 overflow-hidden relative"
         style={{
-          background: BACKDROPS[backdrop],
+          background: "var(--background)",
           borderRadius: "var(--pod-radius)",
           border: "var(--pod-border)",
           boxShadow: "var(--pod-shadow)",

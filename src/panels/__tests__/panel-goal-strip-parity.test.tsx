@@ -90,7 +90,7 @@ function LegacyCutterGoalStrip({
 
   if (editing) {
     return (
-      <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
+      <div className="px-3 py-1.5 flex items-center gap-2 text-2xs border-b border-edge-subtle">
         <span className="text-[var(--muted)]">{fmt(currentWords)} words</span>
         <Input
           ref={inputRef}
@@ -112,7 +112,7 @@ function LegacyCutterGoalStrip({
           onBlur={commit}
           placeholder="goal"
           ink="strong"
-          className="ml-auto w-20 px-1.5 py-0.5 text-[11px]"
+          className="ml-auto w-20 px-1.5 py-0.5 text-2xs"
         />
       </div>
     );
@@ -120,7 +120,7 @@ function LegacyCutterGoalStrip({
 
   if (!goal) {
     return (
-      <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
+      <div className="px-3 py-1.5 flex items-center gap-2 text-2xs border-b border-edge-subtle">
         <span className="text-[var(--muted)]">{fmt(currentWords)} words</span>
         <button
           type="button"
@@ -143,14 +143,14 @@ function LegacyCutterGoalStrip({
 
   return (
     <div className="px-3 py-1.5 border-b border-edge-subtle">
-      <div className="flex items-center gap-2 text-[11px] mb-1">
+      <div className="flex items-center gap-2 text-2xs mb-1">
         <span className={reached ? "text-emerald-700" : "text-ink-body"}>
           {reached ? "goal reached" : `${fmt(leftToCut)} words to cut`}
         </span>
         <button
           type="button"
           onClick={startEditing}
-          className="ml-auto text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
+          className="ml-auto text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light"
           data-hint="Edit goal"
         >
           edit
@@ -158,7 +158,7 @@ function LegacyCutterGoalStrip({
         <button
           type="button"
           onClick={onClearGoal}
-          className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
+          className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light"
           data-hint="Clear goal"
           aria-label="Clear goal"
         >
@@ -172,7 +172,7 @@ function LegacyCutterGoalStrip({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="mt-1 text-[10px] text-[var(--muted-light)]">
+      <div className="mt-1 text-2xs text-[var(--muted-light)]">
         {fmt(currentWords)} / {fmt(goal.target)}
       </div>
     </div>
@@ -224,7 +224,7 @@ function LegacyRevisionsTrackerStrip({
 
   if (editing) {
     return (
-      <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
+      <div className="px-3 py-1.5 flex items-center gap-2 text-2xs border-b border-edge-subtle">
         <span className="text-[var(--muted)]">{summary}</span>
         <Input
           ref={inputRef}
@@ -246,7 +246,7 @@ function LegacyRevisionsTrackerStrip({
           onBlur={commit}
           placeholder="goal"
           ink="strong"
-          className="ml-auto w-20 px-1.5 py-0.5 text-[11px]"
+          className="ml-auto w-20 px-1.5 py-0.5 text-2xs"
         />
       </div>
     );
@@ -254,7 +254,7 @@ function LegacyRevisionsTrackerStrip({
 
   if (target == null) {
     return (
-      <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
+      <div className="px-3 py-1.5 flex items-center gap-2 text-2xs border-b border-edge-subtle">
         <span className="text-[var(--muted)]">{summary}</span>
         <button
           type="button"
@@ -275,7 +275,7 @@ function LegacyRevisionsTrackerStrip({
 
   return (
     <div className="px-3 py-1.5 border-b border-edge-subtle">
-      <div className="flex items-center gap-2 text-[11px] mb-1">
+      <div className="flex items-center gap-2 text-2xs mb-1">
         <span className={reached ? "text-emerald-700" : "text-ink-body"}>
           {reached
             ? "goal reached"
@@ -284,7 +284,7 @@ function LegacyRevisionsTrackerStrip({
         <button
           type="button"
           onClick={startEditing}
-          className="ml-auto text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
+          className="ml-auto text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light"
           data-hint="Edit goal"
         >
           edit
@@ -292,7 +292,7 @@ function LegacyRevisionsTrackerStrip({
         <button
           type="button"
           onClick={() => onSetTarget(null)}
-          className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
+          className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light"
           data-hint="Clear goal"
           aria-label="Clear goal"
         >
@@ -306,7 +306,7 @@ function LegacyRevisionsTrackerStrip({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="mt-1 text-[10px] text-[var(--muted-light)]">
+      <div className="mt-1 text-2xs text-[var(--muted-light)]">
         {fmt(acceptedCount)} / {fmt(target)} · {fmt(totalCount)} total
       </div>
     </div>
@@ -334,8 +334,8 @@ const TOKENIZED: ReadonlyArray<readonly [string, string]> = [
  *  measure stops being a reference. */
 const TOKENIZED_281: ReadonlyArray<readonly [string, string]> = [
   [
-    "cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light",
-    "cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light focus-ring",
+    "cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light",
+    "cursor-pointer text-2xs rounded px-1 py-0.5 hover-on-light focus-ring",
   ],
   // Task 1237: the "+ goal" chip took the same ring — it alone kept the UA
   // default while its two siblings drew the app's, because the pill/ring

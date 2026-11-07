@@ -23,7 +23,7 @@ export function AuthorByline({
   return (
     <div className="px-3 pb-2 flex items-center gap-1.5">
       <AuthorChip author={author} />
-      {when && <span className="text-[10px] text-ink-muted tabular-nums">{when}</span>}
+      {when && <span className="text-2xs text-ink-muted tabular-nums">{when}</span>}
     </div>
   );
 }

@@ -130,7 +130,7 @@ function SaveStateBadgeImpl({ docId }: { docId: string | null }) {
       }}
       aside={
         view.escalated && (
-          <span className="text-[10px] text-ink-subtle max-w-[420px] leading-snug">
+          <span className="text-2xs text-ink-subtle max-w-[420px] leading-snug">
             {desc
               ? desc.sentence
               : "Virgil has not managed to write this paper to disk. Save now, or copy your recent work somewhere safe."}

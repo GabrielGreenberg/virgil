@@ -98,8 +98,8 @@ export default function ReportsPanel({
     <CardListPanel<Item>
       kind="reports"
       onAddOptions={onAddOptions}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["report"]} />
           <CardViewModeMenuItems kind="reports" />
         </ItemMenu>

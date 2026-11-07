@@ -151,7 +151,7 @@ describe("PanelThemePicker — on the primitive", () => {
 
 describe("PanelThemePicker nested in ItemMenu — the task-151 shape", () => {
   const nested = () => (
-    <ItemMenu align="left">
+    <ItemMenu panelHeader>
       <div>
         <PanelThemePicker panelKey="note" />
       </div>
@@ -310,7 +310,7 @@ describe("click fences that survive portaling", () => {
 
   it("a click on the picker's padding ring does not dismiss the kebab", async () => {
     const { container } = render(
-      <ItemMenu align="left">
+      <ItemMenu panelHeader>
         <div>
           <PanelThemePicker panelKey="note" />
         </div>

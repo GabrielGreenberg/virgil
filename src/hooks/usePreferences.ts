@@ -5,6 +5,7 @@ import { GlobalTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
 import { PREFS_STORAGE_KEY, TRANSFORMS_STORAGE_KEY } from "@/lib/pref-css-bootstrap";
 import { DEFAULT_PREFS } from "./preferences-defaults";
+import { dropRetiredDefaults } from "@/lib/retired-pref-defaults.mjs";
 import { propagate, type LinkableKey } from "@/lib/pref-links";
 import { deepEqual } from "@/lib/sidecar-merge";
 import {
@@ -275,7 +276,13 @@ function loadPrefs(): EditorPreferences {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return DEFAULT_PREFS;
-    return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    const stored = JSON.parse(raw) as Record<string, unknown>;
+    const { next, dropped } = dropRetiredDefaults(stored);
+    // Write the retirement back once, so the blob the dev mirror reads (and the
+    // first-paint cache keys on) stops carrying the old value. No echo: the
+    // next load finds nothing retired and writes nothing.
+    if (dropped.length > 0) localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    return { ...DEFAULT_PREFS, ...next };
   } catch {
     return DEFAULT_PREFS;
   }

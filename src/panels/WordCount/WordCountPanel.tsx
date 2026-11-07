@@ -135,7 +135,7 @@ export function WordCountView({ counts, selection }: WordCountViewProps) {
                       {fmt(wc)}
                     </span>
                     <span
-                      className={`text-[10px] w-8 text-right ${included ? "text-[var(--muted)]" : "text-ink-faint"}`}
+                      className={`text-2xs w-8 text-right ${included ? "text-[var(--muted)]" : "text-ink-faint"}`}
                     >
                       {included ? `${pct}%` : "off"}
                     </span>

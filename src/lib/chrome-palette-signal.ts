@@ -5,7 +5,7 @@
  * …) are written onto the parent document's `:root` by ONE effect in
  * `EditorLayout`, and every surface in the parent document follows them for free
  * through `var()`. A same-origin IFRAME does not: it has its own `:root`, so a
- * surface rendered in one (the vendored pdf.js viewer, `PdfView`) must be TOLD
+ * surface rendered in one (the vendored pdf.js viewer, `PdfViewer`) must be TOLD
  * when the palette moves and copy the live values across itself.
  *
  * This is that telling — a plain listener set, fired once per palette write

@@ -13,6 +13,8 @@
  *  2. The popout glyph declares its weight once, on the outer svg: no child
  *     line carries a `stroke-width` of its own.
  *  3. The menu-trigger caret polyline has ONE speller, the `MenuCaret` leaf.
+ *  4. What reaches the screen is one line weight, set in the stylesheet; a glyph
+ *     opts out only by name.
  *
  * Population: every tracked `.ts`/`.tsx` under `src/`, tests excluded.
  */
@@ -37,6 +39,25 @@ const RUNG_LITERAL = /stroke(?:Width|-width)\s*[=:]\s*(?:\{\s*)?["']?2\.5\b/;
 const CARET_POINTS = /6 9 12 15 18 9/;
 
 describe("ICON STROKE RUNG CENSUS", () => {
+  it("the line weight is stated once, in the stylesheet, at zero specificity", () => {
+    const css = read("src/app/globals.css");
+    const rule = css.slice(css.indexOf("One line weight"));
+    expect(rule).toContain("vector-effect: non-scaling-stroke;");
+    expect(rule).toContain("stroke-width: var(--icon-stroke);");
+    // `:where()` is what lets a real rule (a folded chevron) still win.
+    expect(rule).toMatch(/:where\(svg\[stroke\]/);
+  });
+
+  it("only a glyph that is not a line of this weight opts out", () => {
+    const optedOut = SOURCES.filter((p) => read(p).includes('data-icon-weight="own"'));
+    expect(optedOut.sort()).toEqual([
+      "src/components/CheckSquare.tsx",
+      "src/components/chrome/FolderTabChrome.tsx",
+      "src/components/editor-layout/panel-icons.tsx", // the request ring
+      "src/components/icons/RadioMark.tsx",
+    ]);
+  });
+
   it("the population is real", () => {
     expect(SOURCES.length).toBeGreaterThan(200);
     expect(SOURCES).toContain(RUNG_DOOR);

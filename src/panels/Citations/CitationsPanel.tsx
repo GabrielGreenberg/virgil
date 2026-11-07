@@ -318,8 +318,8 @@ function CitationsPanel({
       onAdd={() => {
         onStartCreate();
       }}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["citation"]} />
           {/* Row migration (task 477): both groups were bare `<button>`s, so this
               kebab's registry was empty and the shared keyboard controller
@@ -436,7 +436,7 @@ function CitationsPanel({
                 <span className="flex-1 border-t border-edge-subtle" />
               </div>
             )}
-            <div className="ml-4 mb-0.5 text-[10px] font-medium text-ink-muted">
+            <div className="ml-4 mb-0.5 text-2xs font-medium text-ink-muted">
               {nestedInfo.number != null
                 ? `↳ in ${kindLabel} ${nestedInfo.number}`
                 : `↳ in ${kindLabel}`}

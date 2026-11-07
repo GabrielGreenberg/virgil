@@ -41,8 +41,7 @@
  *     AMBIENT rung (`--pod-shadow` / `--card-shadow-ambient`) is a floating
  *     chip on the wrong rung — the Library page lozenge sat there unlisted;
  *   - the in-flow rung is ONE token: the in-flow chips and sticky headers the
- *     guide enumerates each read `--card-shadow-ambient` (Omni's pending
- *     header read `--pod-shadow`, its siblings the card rung);
+ *     guide enumerates each read `--card-shadow-ambient`;
  *   - elevation is never keyed on a STATE: a ternary on an
  *     active/selected/… condition whose branches differ in an elevation read
  *     is a selected row that lifts (AIWindow's nav row did).
@@ -182,15 +181,14 @@ export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; wh
   { file: "src/app/globals.css", needle: ".hint-bubble {", what: "hint tooltip" },
   { file: "src/components/EditorPane.tsx", needle: "── Floating Save/Cancel chip", what: "drop-mode Save/Cancel chip" },
   { file: "src/components/CompilePaneStatus.tsx", needle: "bg-yellow-100 text-yellow-800", what: "stale-PDF badge" },
-  { file: "src/components/CompilePaneStatus.tsx", needle: "bg-neutral-900/85 text-white/90", what: "compile-running chip" },
+  { file: "src/components/CompilePaneStatus.tsx", needle: "bg-[var(--pod-panel)] text-ink-body", what: "compile-running chip" },
   { file: "src/app/globals.css", needle: ".label-ref-popover {", what: "label-ref popover" },
   { file: "src/app/globals.css", needle: ".label-ref-popover-dropdown {", what: "label-ref dropdown" },
   { file: "src/app/globals.css", needle: ".math-popover {", what: "math popover" },
   { file: "src/app/globals.css", needle: ".figure-popover {", what: "figure popover" },
   { file: "src/app/globals.css", needle: ".menu-surface {", what: "every MenuProvider menu" },
-  { file: "library/components/Toaster.tsx", needle: "borderLeft: `3px solid ${accent}`,", what: "toast" },
+  { file: "library/components/Toaster.tsx", needle: "padding: \"10px 12px 12px 14px\",", what: "toast" },
   { file: "src/components/SelectionActionsMenu.tsx", needle: "zIndex: IN_SCROLL_MARGIN_TRIGGER_Z,", what: "floating zap trigger" },
-  { file: "src/components/stack/StackIcon.tsx", needle: "const boxShadow = illuminated", what: "portaled stack pill" },
   { file: "library/styles/library.css", needle: ".page-scroll-lozenge {", what: "Library page-number lozenge" },
 ];
 
@@ -199,8 +197,6 @@ export const FLOATING_SURFACES: ReadonlyArray<{ file: string; needle: string; wh
  * ONE in-flow rung, `--card-shadow-ambient` (they sit among cards).
  */
 export const IN_FLOW_SURFACES: ReadonlyArray<{ file: string; needle: string; what: string }> = [
-  { file: "src/panels/Omni/OmniViewPanel.tsx", needle: "sticky top-0 z-30 mx-2 mb-2", what: "Omni pending navigator (sticky header)" },
-  { file: "src/app/globals.css", needle: ".omni-bin-pill {", what: ".omni-bin-pill" },
   { file: "src/panels/Outline/OutlinePanel.tsx", needle: "cursor-grab active:cursor-grabbing ${", what: "outline pod chip" },
 ];
 

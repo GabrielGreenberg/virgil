@@ -33,7 +33,6 @@ import {
   deriveMarkerPalette,
   accentInk,
   TEXT_CONTRAST_MIN,
-  AFFORDANCE_CONTRAST_TARGET,
   type PanelThemeKey,
 } from "../panel-theme";
 
@@ -97,14 +96,13 @@ describe("badge / title ink clears AA on every surface it lands on", () => {
     const card = deriveCardPalette(accent);
     const marker = deriveMarkerPalette(accent);
 
-    // ONE ink across the card badge, the card title and the marginalia glyph.
+    // ONE ink across the card badge and the marginalia glyph.
     expect(card.badgeColor).toBe(accentInk(accent));
-    expect(card.titleColor).toBe(card.badgeColor);
     expect(marker.color).toBe(card.badgeColor);
 
-    // Every surface that ink can land on. 10px badges and ~12.5px/500 titles
-    // are normal-size text — no large-text exemption applies.
-    for (const bg of [card.badgeBg, card.headerSelected, card.headerDefault, marker.bg, SURFACE]) {
+    // Every surface that ink can land on. Normal-size text — no large-text
+    // exemption applies.
+    for (const bg of [card.badgeBg, marker.bg, SURFACE]) {
       expect(ratio(card.badgeColor, bg)).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN - EPS);
     }
   });
@@ -119,39 +117,6 @@ describe("badge / title ink clears AA on every surface it lands on", () => {
   });
 });
 
-describe("borderSelected is one affordance strength, not one lightness coordinate", () => {
-  const ratios = ALL_ACCENTS.map(
-    ([name, hex]) => [name, ratio(deriveCardPalette(hex).borderSelected, SURFACE)] as const,
-  );
-
-  it.each(ratios)("%s sits at the affordance target", (_name, r) => {
-    // The target is a FLOOR (WCAG 1.4.11), so the low side is exact — a
-    // one-sided band is what gives this leg teeth. The upside allowance is 8-bit
-    // quantization only: the measured worst overshoot is ~2.5%.
-    expect(r).toBeGreaterThanOrEqual(AFFORDANCE_CONTRAST_TARGET - EPS);
-    expect(r).toBeLessThan(AFFORDANCE_CONTRAST_TARGET * 1.05);
-  });
-
-  it("every kind's selected border reads at the same strength", () => {
-    // The pre-fix spread was 4.1x (1.36:1 olive → 5.62:1 report). This bound is
-    // deliberately tighter than the ±5% band above implies, so it can still
-    // fail on a dispersion regression that stays inside the band.
-    const values = ratios.map(([, r]) => r);
-    expect(Math.max(...values) / Math.min(...values)).toBeLessThan(1.05);
-  });
-});
-
-/* ── The domain leg ──────────────────────────────────────────────────
- *
- * The census above is 27 hexes; the ACCENT DOMAIN is every value the color
- * picker's `<input type="color">` can emit (`SmartPreferences` /
- * `PanelThemePicker` → `setPanelColor`, which accepts any `#rrggbb`). A guard that only measures the
- * shipped table cannot tell this fix from the bug it replaced: substituting the
- * literal bug shape — `accentInk = (h) => withLightness(h, 0.25)`, a bare
- * hue-blind lightness coordinate — clears every assertion above, because on
- * those 27 hexes it happens to land safely. It does not on the domain, which is
- * why this leg exists: it is the one that catches the ORIGINAL shape.
- */
 describe("the contract holds across the whole accent domain, not just the shipped table", () => {
   /** A deterministic sweep: an even RGB grid plus an LCG scatter, so the set is
    *  reproducible run to run (a flaky guard is a guard people delete). */
@@ -176,20 +141,9 @@ describe("the contract holds across the whole accent domain, not just the shippe
     for (const accent of ACCENTS) {
       const card = deriveCardPalette(accent);
       const marker = deriveMarkerPalette(accent);
-      for (const bg of [card.badgeBg, card.headerSelected, card.headerDefault, marker.bg, SURFACE]) {
+      for (const bg of [card.badgeBg, marker.bg, SURFACE]) {
         const r = ratio(card.badgeColor, bg);
         if (r < TEXT_CONTRAST_MIN - EPS) failures.push(`${accent} ink ${card.badgeColor} on ${bg} = ${r.toFixed(3)}`);
-      }
-    }
-    expect(failures.slice(0, 8)).toEqual([]);
-  });
-
-  it("every accent's selected border meets the affordance floor", () => {
-    const failures: string[] = [];
-    for (const accent of ACCENTS) {
-      const r = ratio(deriveCardPalette(accent).borderSelected, SURFACE);
-      if (r < AFFORDANCE_CONTRAST_TARGET - EPS || r >= AFFORDANCE_CONTRAST_TARGET * 1.05) {
-        failures.push(`${accent} border = ${r.toFixed(3)}`);
       }
     }
     expect(failures.slice(0, 8)).toEqual([]);

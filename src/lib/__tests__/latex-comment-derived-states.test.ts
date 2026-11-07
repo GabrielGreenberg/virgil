@@ -57,11 +57,9 @@ describe("latex-comment interaction washes are derived from latexCommentColor", 
     expect(lum(active)).toBeLessThan(lum(hover));
   });
 
-  it("reproduces today's literals' RED channel at the default color (zero visual change)", () => {
-    // The retired literals were #e8f0f8 (hover) / #e0ecf5 (active); 0.16/0.22
-    // reproduce their dominant red channel exactly at #7191b0.
-    expect(derived("--latex-comment-bg-hover")!.compute(DEFAULT_PREFS)).toBe("#e8edf2");
-    expect(derived("--latex-comment-bg-active")!.compute(DEFAULT_PREFS)).toBe("#e0e7ee");
+  it("lands on the warm washes at the default color", () => {
+    expect(derived("--latex-comment-bg-hover")!.compute(DEFAULT_PREFS)).toBe("#eae5e0");
+    expect(derived("--latex-comment-bg-active")!.compute(DEFAULT_PREFS)).toBe("#e2dcd4");
   });
 });
 
@@ -82,10 +80,8 @@ describe("globals.css consumers read the derived vars (no frozen literal)", () =
     expect(globals).not.toMatch(/background:\s*#e0ecf5/);
   });
 
-  it(".latex-comment-handle:hover tracks its heading-annotation base, not a frozen #7fa8c8", () => {
-    expect(globals).toMatch(
-      /\.latex-comment-handle:hover\s*\{[^}]*color-mix\([^)]*--heading-annotation-border/,
-    );
+  it(".latex-comment-handle:hover reads the derived wash, not a frozen #7fa8c8", () => {
+    expect(globals).toMatch(/\.latex-comment-handle:hover\s*\{[^}]*var\(--latex-comment-bg-active/);
     expect(globals).not.toMatch(/background:\s*#7fa8c8/);
   });
 });

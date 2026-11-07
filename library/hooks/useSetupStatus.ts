@@ -79,7 +79,7 @@ export function useSetupStatus(
       }
       const summary = manifest
         ? `Library setup incomplete — missing: ${missing.join(", ")}. Run /library/setup.`
-        : `Library is missing extraction models. Run /library/setup to install marker-pdf + ocrmypdf and cache the ML weights locally.`;
+        : `Extraction models aren't installed. Run /library/setup to add them.`;
       setStatus({
         needed: true,
         missing,

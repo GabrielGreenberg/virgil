@@ -135,7 +135,7 @@ export function SourceMissingBanner({
         <button
           type="button"
           onClick={onClose}
-          className="text-[11px] underline underline-offset-2 hover:opacity-80"
+          className="text-2xs underline underline-offset-2 hover:opacity-80"
         >
           Close
         </button>
@@ -166,7 +166,7 @@ export function FloatStatusStrip({
   return (
     <div
       role="status"
-      className="flex items-center gap-2 px-2 h-6 text-[11px] bg-[var(--surface-warning,#fdf3d1)] border-b border-[var(--edge-warning,#e7d49a)] text-[var(--ink-warning,#7a5a16)]"
+      className="flex items-center gap-2 px-2 h-6 text-2xs bg-[var(--surface-warning,#fdf3d1)] border-b border-[var(--edge-warning,#e7d49a)] text-[var(--ink-warning,#7a5a16)]"
     >
       <span className="flex-1 truncate">{children}</span>
       {action}

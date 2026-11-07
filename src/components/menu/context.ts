@@ -15,10 +15,15 @@
  */
 
 import { createContext, useContext, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import type { MenuRegistry } from "./registry";
 import type { MenuRole } from "./types";
 
 type AnyKeyboardEvent = ReactKeyboardEvent | KeyboardEvent;
+
+/** The z-tier an open menu rides. A modal dialog raises it for everything inside
+ *  it, so no call site has to know it was opened from a dialog. */
+export const MenuLayerContext = createContext<number>(OPEN_CHROME_MENU_Z);
 
 export interface MenuContextValue {
   registry: MenuRegistry;

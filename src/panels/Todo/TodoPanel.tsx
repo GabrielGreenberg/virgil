@@ -94,8 +94,8 @@ export default function TodoPanel({
       // todos no longer inflate it. See `getCounted` on CardListPanel.
       getCounted={isPending}
       onAdd={(rect) => onAdd(rect)}
-      headerLeading={
-        <ItemMenu align="left">
+      headerMenu={
+        <ItemMenu panelHeader>
           <PanelThemeMenuRow keys={["todo"]} />
           <CardViewModeMenuItems kind="todo" />
         </ItemMenu>

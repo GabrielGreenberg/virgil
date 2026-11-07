@@ -10,20 +10,21 @@ import {
 } from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
 import { useSideSettings } from "@/lib/settings-stores";
-import { PREFERENCES_TREE } from "@/lib/preferences-tree";
+import { PREFERENCES_TREE, isLeaf } from "@/lib/preferences-tree";
+import { SMART_PREFERENCES } from "@/lib/smart-preferences";
 import PreferenceTree from "./PreferenceTree";
 import { Field, Input, Select } from "./field-primitives";
 import { Button } from "./Button";
-import SmartPreferences from "./SmartPreferences";
-import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
-import { iconHint } from "@/components/Hint";
-import { CloseIcon } from "@/components/icons/CloseIcon";
+import SmartPreferencesSection from "./SmartPreferences";
+import SystemDialog, { SystemDialogSidebarLayout, type SystemDialogSection } from "./system-dialog";
+import { ItemMenu } from "./panel-primitives";
+import { MenuActionRow } from "./menu/MenuActionRow";
 import {
   SUPPRESSIBLE_CONFIRM_LABELS,
   restoreAllConfirms,
   useSuppressedConfirms,
 } from "./confirm-suppression";
-import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
+import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -101,7 +102,7 @@ function TransformSlider({
     <Field label={label} className="flex-1 min-w-0 relative">
       {({ id }) => (
         <>
-          <span className="absolute right-0 top-0 text-[10px] text-ink-muted tabular-nums w-8 text-right">
+          <span className="absolute right-0 top-0 text-2xs text-ink-muted tabular-nums w-8 text-right">
             {value > 0 ? `+${value}` : value}
           </span>
           <input
@@ -123,6 +124,7 @@ function TransformSlider({
 // ─── Preset Bar ───────────────────────────────────────────────────────────────
 
 function PresetBar({
+  id,
   presets,
   onLoad,
   onSave,
@@ -132,6 +134,8 @@ function PresetBar({
   onRestoreSettings,
   settings,
 }: {
+  /** The picker's id, for the field label above it. */
+  id: string;
   presets: PreferencePreset[];
   onLoad: (name: string) => void;
   onSave: (name: string) => void;
@@ -225,11 +229,12 @@ function PresetBar({
   return (
     <div className="flex items-center gap-2">
       <Select
+        id={id}
         value=""
         onChange={handleSelectChange}
         className="flex-1 min-w-0 text-xs px-2 py-1.5"
       >
-        <option value="">Load preset...</option>
+        <option value="" hidden>Load preset...</option>
         {presets.map((p) => (
           <option key={p.name} value={p.name}>
             {p.name}{p.builtIn ? " (built-in)" : ""}
@@ -264,7 +269,7 @@ function PresetBar({
 
       {canDelete && (
         <Button
-          variant="danger"
+          variant="ghost"
           size="sm"
           onClick={() => {
             // A one-click delete with no way back (task 903) — snapshot it.
@@ -284,37 +289,9 @@ function PresetBar({
           data-hint={`Delete preset "${target}"`}
           className="max-w-[9rem]"
         >
-          <span className="truncate">Del &ldquo;{target}&rdquo;</span>
+          <span className="truncate">Delete &ldquo;{target}&rdquo;</span>
         </Button>
       )}
-    </div>
-  );
-}
-
-// ─── Header (drag handle) ───────────────────────────────────────────────────────
-// Rendered as a child of SystemDialog so it sits INSIDE the dialog's provider and
-// can read the drag handler via useSystemDialogDrag (SystemDialog owns the drag).
-
-function PreferencesHeader({ onClose }: { onClose: () => void }) {
-  const { onMouseDown, dragging } = useSystemDialogDrag();
-  return (
-    <div
-      className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] select-none shrink-0"
-      onMouseDown={onMouseDown}
-      style={{ cursor: dragging ? "grabbing" : "grab" }}
-    >
-      <h2 id="preferences-modal-title" className="text-sm font-semibold text-ink-body">
-        Preferences
-      </h2>
-      <button
-        type="button"
-        onClick={onClose}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="iconbtn-md"
-        {...iconHint({ label: "Close" })}
-      >
-        <CloseIcon size={16} />
-      </button>
     </div>
   );
 }
@@ -336,17 +313,22 @@ function RestoreHiddenConfirmations() {
   const suppressed = useSuppressedConfirms();
   if (suppressed.length === 0) return null;
   return (
-    <button
-      onClick={restoreAllConfirms}
-      data-hint={suppressed
-        .map((id) => SUPPRESSIBLE_CONFIRM_LABELS[id])
-        .join(", ")}
-      className="text-xs text-ink-muted hover:text-ink-body transition-colors"
-    >
-      Restore hidden confirmations ({suppressed.length})
-    </button>
+    <MenuActionRow
+      id="restore-confirmations"
+      label={`Restore hidden confirmations (${suppressed.length})`}
+      onSelect={restoreAllConfirms}
+    />
   );
 }
+
+/** The sidebar's pages: the theme, then the Smart sections, then the tree's
+ *  top-level groups. */
+const THEME_SECTION = "theme";
+const SECTIONS: readonly SystemDialogSection[] = [
+  { id: THEME_SECTION, label: "Theme" },
+  ...SMART_PREFERENCES.map(({ id, label }) => ({ id, label })),
+  ...PREFERENCES_TREE.map((node) => ({ id: `tree:${node.label}`, label: node.label })),
+];
 
 export default function PreferencesModal({
   prefs,
@@ -395,109 +377,118 @@ export default function PreferencesModal({
     pendingUndo.undo();
   }, [pendingUndo]);
 
+  const [sectionId, setSectionId] = useState<string>(THEME_SECTION);
+  const smartSection = SMART_PREFERENCES.find((s) => s.id === sectionId);
+  const treeNode = PREFERENCES_TREE.find((n) => `tree:${n.label}` === sectionId);
+
   // Scrimless draggable SystemDialog: it owns the portal, surface chrome
   // (SYSTEM_DIALOG_TOKENS), the DRAGGABLE_DIALOG_Z tier (retiring the old bare
-  // z-[9999] that collided with the drop indicator), the drag (grab the header),
-  // Esc, and outside-click-to-close. `ignoreOutsideSelector` preserves the
-  // topbar-trigger guard: clicking the Preferences button doesn't close-then-
-  // reopen (the same gesture would otherwise flip `preferencesOpen` back on).
+  // z-[9999] that collided with the drop indicator), the drag (grab either title
+  // strip), Esc, and outside-click-to-close. `ignoreOutsideSelector` preserves
+  // the topbar-trigger guard: clicking the Preferences button doesn't close-then-
+  // reopen (the same gesture would otherwise flip `preferencesOpen` back on), and
+  // a row of the window's own ⋯ menu, portaled outside the frame, is not outside.
   return (
     <SystemDialog
       open
       variant="draggable"
       onClose={onClose}
-      ignoreOutsideSelector='[data-hint="Preferences"]'
+      ignoreOutsideSelector='[data-hint="Preferences"], .menu-surface'
       /* A dismissal is FREE: every preference commits UPSTREAM the instant it
          changes (`onUpdate` writes straight to the prefs store), so closing
          loses no setting. The pockets of local state that do die with the
          unmount — `PresetBar`'s half-typed preset name,
-         `PreferenceTree.ColorPref`'s half-typed hex, and the footer's pending
-         Undo (an offer, like a toast's, that ends with the surface) — are
-         each a short token or a click. */
+         `PreferenceTree.ColorPref`'s half-typed hex, and the pending Undo (an
+         offer, like a toast's, that ends with the surface) — are each a short
+         token or a click. */
       dismissIsFree
       labelledBy="preferences-modal-title"
-      frameClassName="w-full max-w-[560px] max-h-[85vh] flex flex-col"
+      frameClassName="w-full max-w-[740px] h-[min(85vh,640px)] flex flex-col overflow-hidden"
     >
-      <PreferencesHeader onClose={onClose} />
-
-      {/* Presets + Global Sliders (sticky) */}
-      <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
-        <PresetBar
-          presets={presets}
-          onLoad={onLoadPreset}
-          onSave={onSavePreset}
-          onDelete={onDeletePreset}
-          onUndoable={setPendingUndo}
-          onRestore={onRestorePreset}
-          onRestoreSettings={onRestoreSettings}
-          settings={settings}
-        />
-
-        <div className="flex items-start gap-4">
-          <TransformSlider
-            label="Contrast"
-            value={transforms.contrast}
-            min={-100}
-            max={100}
-            step={5}
-            onChange={(v) => onUpdateTransform("contrast", v)}
-          />
-          <TransformSlider
-            label="Hue"
-            value={transforms.hue}
-            min={-180}
-            max={180}
-            step={5}
-            onChange={(v) => onUpdateTransform("hue", v)}
-          />
-          <TransformSlider
-            label="Brightness"
-            value={transforms.brightness}
-            min={-50}
-            max={50}
-            step={2}
-            onChange={(v) => onUpdateTransform("brightness", v)}
-          />
+      <SystemDialogSidebarLayout
+        title="Preferences"
+        titleId="preferences-modal-title"
+        sections={SECTIONS}
+        active={sectionId}
+        onSelect={setSectionId}
+        heading={SECTIONS.find((s) => s.id === sectionId)?.label ?? ""}
+        onClose={onClose}
+        actions={
+          <ItemMenu hint="More options">
+            <RestoreHiddenConfirmations />
+            <MenuActionRow
+              id="reset-all"
+              tone="danger"
+              label="Reset to defaults"
+              onSelect={handleReset}
+            />
+          </ItemMenu>
+        }
+      >
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-4">
+          {smartSection ? (
+            <SmartPreferencesSection section={smartSection} prefs={prefs} onUpdate={onUpdate} />
+          ) : treeNode && !isLeaf(treeNode) ? (
+            <PreferenceTree tree={treeNode.children} prefs={prefs} onUpdate={onUpdate} />
+          ) : (
+            <div className="space-y-5">
+              <Field label="Preset">
+                {({ id }) => (
+                  <PresetBar
+                    id={id}
+                    presets={presets}
+                    onLoad={onLoadPreset}
+                    onSave={onSavePreset}
+                    onDelete={onDeletePreset}
+                    onUndoable={setPendingUndo}
+                    onRestore={onRestorePreset}
+                    onRestoreSettings={onRestoreSettings}
+                    settings={settings}
+                  />
+                )}
+              </Field>
+              <div className="flex items-start gap-4">
+                <TransformSlider
+                  label="Contrast"
+                  value={transforms.contrast}
+                  min={-100}
+                  max={100}
+                  step={5}
+                  onChange={(v) => onUpdateTransform("contrast", v)}
+                />
+                <TransformSlider
+                  label="Hue"
+                  value={transforms.hue}
+                  min={-180}
+                  max={180}
+                  step={5}
+                  onChange={(v) => onUpdateTransform("hue", v)}
+                />
+                <TransformSlider
+                  label="Brightness"
+                  value={transforms.brightness}
+                  min={-50}
+                  max={50}
+                  step={2}
+                  onChange={(v) => onUpdateTransform("brightness", v)}
+                />
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-
-      {/* Body: smart preferences on top, then the full tree */}
-      <div className="flex-1 overflow-y-auto px-5 py-3 space-y-4">
-        <SmartPreferences prefs={prefs} onUpdate={onUpdate} />
-        <div className="flex items-center gap-2 pt-1">
-          <span className="section-caption">
-            All preferences
-          </span>
-          <div className="flex-1 h-px bg-edge-subtle" />
-        </div>
-        <PreferenceTree
-          tree={PREFERENCES_TREE}
-          prefs={prefs}
-          onUpdate={onUpdate}
-        />
-      </div>
-
-      {/* Footer — STYLE_GUIDE "Modal footers": the destructive action sits FAR
-          LEFT (task 903; it was `ml-auto`, the primary's corner). The pending
-          Undo is a live status so a screen reader hears the reset happened. */}
-      <div className="px-5 py-3 border-t border-[var(--border)] flex items-center gap-3">
-        <Button variant="danger" size="sm" onClick={handleReset} data-reset-all="">
-          Reset to defaults
-        </Button>
-        <div role="status" aria-live="polite" className="flex items-center gap-2 min-w-0 text-xs text-ink-muted">
+        {/* A live status, so a screen reader hears the reset happened. It stays
+            mounted and takes no room until there is an Undo to offer. */}
+        <div role="status" aria-live="polite" className="text-xs text-ink-muted">
           {pendingUndo && (
-            <>
+            <div className="flex items-center gap-2 min-w-0 px-5 py-2">
               <span className="truncate">{pendingUndo.message}</span>
               <Button variant="ghost" size="sm" onClick={runUndo}>
                 Undo
               </Button>
-            </>
+            </div>
           )}
         </div>
-        <div className="ml-auto">
-          <RestoreHiddenConfirmations />
-        </div>
-      </div>
+      </SystemDialogSidebarLayout>
     </SystemDialog>
   );
 }

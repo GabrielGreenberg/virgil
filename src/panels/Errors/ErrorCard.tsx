@@ -189,7 +189,7 @@ export function ErrorCard({
           </div>
         )}
 
-        <div className="text-[10px] mb-1 flex items-center gap-2 flex-wrap text-ink-muted">
+        <div className="text-2xs mb-1 flex items-center gap-2 flex-wrap text-ink-muted">
           <span className="font-medium" style={{ color: SEVERITY_INK[err.severity] }}>
             {text.severity}
           </span>
@@ -225,7 +225,7 @@ export function ErrorCard({
         {text.detail && (
           <div
             data-error-detail=""
-            className="text-[10px] card-mono text-ink-muted mt-1 whitespace-pre-wrap break-all"
+            className="text-2xs card-mono text-ink-muted mt-1 whitespace-pre-wrap break-all"
           >
             {text.detail}
           </div>

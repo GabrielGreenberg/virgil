@@ -20,43 +20,23 @@ import type { Library } from "@library/lib/library-store";
 import { ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE } from "@library/lib/dnd-types";
 import { addEntryToLibraryGlobal } from "@library/lib/library-store";
 import { IconLibrary, IconX } from "./panel-icons";
-import { DocumentFolderTab } from "./DocumentFolderTab";
-import { InlineTabLabel, LIBRARY_FOLDER_LABEL_TRAIL } from "./InlineTabLabel";
+import { ActiveBarTab } from "./ActiveBarTab";
+import { InlineTabLabel } from "./InlineTabLabel";
 import { InlineRenameInput } from "@/components/InlineRenameInput";
-import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
 import { PaperDropIndicator } from "./PaperDropIndicator";
 import { FONT_MONO } from "@/lib/font-stacks";
 import {
-  FOLDER_TAB_SEAM_OVERLAP,
-  FOLDER_TAB_VARIANTS,
   TAB_LABEL_MAX_PX,
 } from "@/components/chrome/folder-tab-geometry";
 import {
+  OUTER_TAB_FLOOR_MIN_WIDTH,
   TAB_LABEL_ATTRS,
   TAB_STRIP_SCROLLER_STYLE,
   autoScrollForDrag,
-  tabStripSeamPadding,
   useTabStripScroller,
 } from "@/components/chrome/tab-strip-occupancy";
 import { iconHint } from "@/components/Hint";
-
-// Negative margins applied to the active folder-tab wrapper so promoting a
-// tab from inline → folder keeps the surrounding strip pixel-stable. Kept
-// in lockstep with the inline-label padding (see InlineTabLabel).
-const ACTIVE_TAB_LEFT_SHIFT_PX = 18;
-const ACTIVE_TAB_RIGHT_SHIFT_PX = 8;
-
-// The scroller's trailing slack (px): a LAST active tab's border box extends
-// past its own margin box by ACTIVE_TAB_RIGHT_SHIFT_PX (the negative margin
-// above) plus the topbar cap's 1px stroke overhang. Inside a scroll
-// container that protrusion would be 9px of scrollable overflow — a strip
-// that "overflows" by a hair with every tab in view, and a phantom scroll
-// range. As the scroller's own padding it is inside the padding box, which a
-// scroll container never counts as overflow. (Pre-561 the strip's `px-2`
-// absorbed 8 of the 9 and clipped the cap's last column.)
-const TAB_ROW_END_SLACK_PX =
-  ACTIVE_TAB_RIGHT_SHIFT_PX + FOLDER_TAB_VARIANTS.topbar.capRightOverhang;
 
 export type TabStripProps = {
   /** Open docs (for TabPlusMenu + per-tab render). */
@@ -205,26 +185,15 @@ function TabStripImpl(props: TabStripProps) {
     tabCount: outerOrder.length,
   });
 
-  // Outer-tab strip render. Library root + the currently active entry render
-  // as full DocumentFolderTab silhouettes; every other entry collapses to a
-  // flat InlineTabLabel. A vertical separator slot sits between every pair of
-  // non-Library tabs and is only painted when both neighbors are inline.
+  // Outer-tab strip render. The active entry is a lozenge (ActiveBarTab); every
+  // other entry is a plain InlineTabLabel in the same box.
   const tabNodes: ReactNode[] = [];
-  type PrevKind = "inline" | "folder" | null;
-  let prevKind: PrevKind = null;
-  const pushSeparator = (currentKind: "inline" | "folder", entryId: string) => {
-    if (prevKind !== null) {
-      const visible = prevKind === "inline" && currentKind === "inline";
-      tabNodes.push(<TabSeparator key={`sep-${entryId}`} visible={visible} />);
-    }
-  };
   for (const entryId of outerOrder) {
     if (entryId === OUTER_LIBRARY_ROOT_ID) {
       const isActive =
         activePane === "library-outer" &&
         currentLibraryOuterId === OUTER_LIBRARY_ROOT_ID;
       if (isActive) {
-        pushSeparator("folder", entryId);
         tabNodes.push(
           <div
             key={entryId}
@@ -232,26 +201,17 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="flex items-end shrink-0"
+            className="shrink-0"
           >
-            <DocumentFolderTab
-              fill="var(--library-bg)"
+            <ActiveBarTab
               title="Library"
-              onClick={() => {}}
             >
               <IconLibrary />
-              <span
-                className="text-[13px] leading-4"
-                style={{ marginRight: LIBRARY_FOLDER_LABEL_TRAIL }}
-              >
-                Library
-              </span>
-            </DocumentFolderTab>
+              <span className="text-sm leading-4">Library</span>
+            </ActiveBarTab>
           </div>,
         );
-        prevKind = "folder";
       } else {
-        pushSeparator("inline", entryId);
         tabNodes.push(
           <div
             key={entryId}
@@ -260,22 +220,18 @@ function TabStripImpl(props: TabStripProps) {
               else outerTabRefs.current.delete(entryId);
             }}
             // The Library root is the strip's one PINNED tab (Chrome's
-            // pinned tabs): it never compresses, so its `library-pinned`
-            // padding — which pre-reserves the folder silhouette's footprint
-            // — is never squeezed under its own label.
-            className="self-end mb-[var(--bar-seam-lift)] shrink-0"
+            // pinned tabs): it never compresses.
+            className="shrink-0"
           >
             <InlineTabLabel
               id={OUTER_LIBRARY_ROOT_ID}
               icon={<IconLibrary />}
               label="Library"
               title="Library"
-              variant="library-pinned"
               onActivate={onActivateLibraryOuter}
             />
           </div>,
         );
-        prevKind = "inline";
       }
       continue;
     }
@@ -285,7 +241,6 @@ function TabStripImpl(props: TabStripProps) {
       const isActive =
         activePane === "paper" && currentPaperCitekey === citekey;
       if (isActive) {
-        pushSeparator("folder", entryId);
         tabNodes.push(
           <div
             key={entryId}
@@ -293,20 +248,14 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="flex items-end shrink-0"
-            style={{
-              marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
-              marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
-            }}
+            className="shrink-0"
           >
-            <DocumentFolderTab
-              fill="var(--background)"
+            <ActiveBarTab
               title={citekey}
-              onClick={() => {}}
             >
               <span
                 {...TAB_LABEL_ATTRS}
-                className="text-[13px] leading-4 truncate min-w-0"
+                className="text-sm leading-4 truncate min-w-0"
                 style={{ fontFamily: FONT_MONO, maxWidth: TAB_LABEL_MAX_PX }}
               >
                 {citekey}
@@ -321,12 +270,10 @@ function TabStripImpl(props: TabStripProps) {
               >
                 <IconX />
               </button>
-            </DocumentFolderTab>
+            </ActiveBarTab>
           </div>,
         );
-        prevKind = "folder";
       } else {
-        pushSeparator("inline", entryId);
         tabNodes.push(
           <div
             key={entryId}
@@ -334,11 +281,11 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            // COMPRESSIBLE (task 561): `shrink` (flex 0 1 auto) with the
-            // automatic flex minimum, which is this tab's fixed chrome plus
-            // the shared label floor (InlineTabLabel). Inactive tabs yield
-            // first; the active tab is `shrink-0` and resists.
-            className="self-end mb-[var(--bar-seam-lift)] shrink"
+            // COMPRESSIBLE (task 561): `shrink` (flex 0 1 auto) down to this
+            // tab's fixed chrome plus the shared label floor. Inactive tabs
+            // yield first; the active tab is `shrink-0` and resists.
+            className="shrink"
+            style={{ minWidth: OUTER_TAB_FLOOR_MIN_WIDTH }}
           >
             <InlineTabLabel
               id={citekey}
@@ -350,7 +297,6 @@ function TabStripImpl(props: TabStripProps) {
             />
           </div>,
         );
-        prevKind = "inline";
       }
       continue;
     }
@@ -406,7 +352,6 @@ function TabStripImpl(props: TabStripProps) {
           : undefined,
       };
       if (isActive) {
-        pushSeparator("folder", entryId);
         tabNodes.push(
           <div
             key={entryId}
@@ -414,23 +359,17 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="flex items-end shrink-0"
+            className="shrink-0"
             {...dropHandlers}
-            style={{
-              ...dropStyle,
-              marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
-              marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
-            }}
+            style={dropStyle}
           >
-            <DocumentFolderTab
-              fill="var(--library-bg)"
+            <ActiveBarTab
               title={label}
-              onClick={() => {}}
             >
               <IconLibrary />
               <span
                 {...TAB_LABEL_ATTRS}
-                className="text-[13px] leading-4 truncate min-w-0"
+                className="text-sm leading-4 truncate min-w-0"
                 style={{ maxWidth: TAB_LABEL_MAX_PX }}
               >
                 {label}
@@ -445,12 +384,10 @@ function TabStripImpl(props: TabStripProps) {
               >
                 <IconX />
               </button>
-            </DocumentFolderTab>
+            </ActiveBarTab>
           </div>,
         );
-        prevKind = "folder";
       } else {
-        pushSeparator("inline", entryId);
         tabNodes.push(
           <div
             key={entryId}
@@ -458,9 +395,9 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-end mb-[var(--bar-seam-lift)] shrink"
+            className="shrink"
             {...dropHandlers}
-            style={dropStyle}
+            style={{ ...dropStyle, minWidth: OUTER_TAB_FLOOR_MIN_WIDTH }}
           >
             <InlineTabLabel
               id={libId}
@@ -472,7 +409,6 @@ function TabStripImpl(props: TabStripProps) {
             />
           </div>,
         );
-        prevKind = "inline";
       }
       continue;
     }
@@ -486,7 +422,6 @@ function TabStripImpl(props: TabStripProps) {
       doc.name && doc.name !== doc.folderName ? doc.name : composedDefault;
     if (isDocPaneActive) {
       const isEditing = editingTabId === doc.id;
-      pushSeparator("folder", doc.id);
       tabNodes.push(
         <div
           key={doc.id}
@@ -494,18 +429,10 @@ function TabStripImpl(props: TabStripProps) {
             if (el) outerTabRefs.current.set(doc.id, el);
             else outerTabRefs.current.delete(doc.id);
           }}
-          className="flex items-end shrink-0"
-          style={{
-            marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
-            marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
-          }}
+          className="shrink-0"
         >
-          <DocumentFolderTab
-            fill="var(--main-tab-bg)"
+          <ActiveBarTab
             title={displayName}
-            onClick={() => {
-              if (isEditing) return;
-            }}
           >
             {isEditing ? (
               <InlineRenameInput
@@ -527,7 +454,7 @@ function TabStripImpl(props: TabStripProps) {
             ) : (
               <span
                 {...TAB_LABEL_ATTRS}
-                className="text-[13px] leading-4 truncate min-w-0"
+                className="text-sm leading-4 truncate min-w-0"
                 // The bar-wide label cap (task 395). `max-width` clamps the
                 // span's max-content CONTRIBUTION, so the tab's
                 // `calc-size(max-content, …)` width follows it — an active tab
@@ -550,12 +477,10 @@ function TabStripImpl(props: TabStripProps) {
             >
               <IconX />
             </button>
-          </DocumentFolderTab>
+          </ActiveBarTab>
         </div>,
       );
-      prevKind = "folder";
     } else {
-      pushSeparator("inline", doc.id);
       tabNodes.push(
         <div
           key={doc.id}
@@ -563,7 +488,8 @@ function TabStripImpl(props: TabStripProps) {
             if (el) outerTabRefs.current.set(doc.id, el);
             else outerTabRefs.current.delete(doc.id);
           }}
-          className="self-end mb-[var(--bar-seam-lift)] shrink"
+          className="shrink"
+          style={{ minWidth: OUTER_TAB_FLOOR_MIN_WIDTH }}
         >
           <InlineTabLabel
             id={doc.id}
@@ -574,7 +500,6 @@ function TabStripImpl(props: TabStripProps) {
           />
         </div>,
       );
-      prevKind = "inline";
     }
   }
 
@@ -673,23 +598,13 @@ function TabStripImpl(props: TabStripProps) {
       {/* The SCROLLER (task 561): the tab row's ASSIGNED box, and the one the
           occupancy rule measures as `tabStripPx`. `overflow-x: auto` with the
           scrollbar hidden; `overflow-y` stated `hidden` explicitly (per CSS
-          Overflow 3 an unstated `visible` axis would be coerced to `auto` and
-          grow a 1px vertical scroll range from the active tab's seam
-          overhang). The overhang is kept INSIDE the clip by the seam
-          padding/margin pair instead — the mechanism the inner strip has
-          carried since task 324 — so the active folder tab still hangs
-          FOLDER_TAB_SEAM_OVERLAP below the bar and merges into the canvas.
-          `self-stretch` fills the bar height so the tabs stay at the seam
-          (task 289). */}
+          Overflow 3 an unstated `visible` axis would be coerced to `auto`).
+          `self-stretch` fills the bar height, so the row's bottom sits on the seam. */}
       <div
         ref={scrollerMeasureRef}
         data-bar-occupant="tab-strip"
         className="flex items-end flex-1 min-w-0 self-stretch"
-        style={{
-          ...TAB_STRIP_SCROLLER_STYLE,
-          ...tabStripSeamPadding(FOLDER_TAB_SEAM_OVERLAP),
-          paddingRight: TAB_ROW_END_SLACK_PX,
-        }}
+        style={TAB_STRIP_SCROLLER_STYLE}
       >
         {/* The tab ROW. `width: max-content` capped at the scroller's width
             (`max-width: 100%`, `min-w-0`): ROOMY, its box IS the tabs'
@@ -701,13 +616,13 @@ function TabStripImpl(props: TabStripProps) {
             (`tabRowNaturalWidth`, tab-strip-occupancy.ts) — never the
             compressed box, which would make the tools decompress the tabs by
             expanding and oscillate (bar-occupancy.ts). It adds no layout of
-            its own: the strip's `items-end` + `gap-0.5`, and a
-            bottom-aligned item's negative margin resolves identically one
-            level in. */}
+            its own: `pb` lifts every tab onto the bar's one seam line, level with the
+            "+" and the StatusCluster, and an active tab and an inactive one are
+            the same 24px box. */}
         <div
           ref={tabsMeasureRef}
           data-bar-occupant="tabs"
-          className="flex items-end gap-0.5 min-w-0"
+          className="flex items-end gap-1 min-w-0 px-px pb-[var(--bar-seam-lift)]"
           style={{ width: "max-content", maxWidth: "100%" }}
         >
           {tabNodes}

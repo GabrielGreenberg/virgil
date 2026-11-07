@@ -1340,7 +1340,7 @@ export function CitationCard({
                   onBlur={() => codeSession.commit(commitCodeDraft)}
                   {...NEVER_SPELLCHECK_PROPS}
                   density="dense"
-                  className="text-[10px] card-mono px-1 py-0 flex-1 min-w-0"
+                  className="text-2xs card-mono px-1 py-0 flex-1 min-w-0"
                 />
               ) : (
                 <button
@@ -1350,7 +1350,7 @@ export function CitationCard({
                     codeOriginalRef.current = cit.command;
                     setCodeDraft(cit.command);
                   }}
-                  className="text-[10px] card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
+                  className="text-2xs card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
                   {...iconHint({ label: "Edit raw LaTeX" })}
                 >
                   {cit.command || (
@@ -1553,7 +1553,7 @@ function CitationKeyRow({
   // always visible (its value is the range); the empty "+range" prompt reveals
   // on row hover so an un-ranged citation stays clean.
   const pgControl = (
-    <span className="ml-1.5 inline-flex items-center gap-1 align-baseline whitespace-nowrap text-[10px] text-[var(--muted)]">
+    <span className="ml-1.5 inline-flex items-center gap-1 align-baseline whitespace-nowrap text-2xs text-[var(--muted)]">
       {pgOpen ? (
         <>
           <Input
@@ -1581,7 +1581,7 @@ function CitationKeyRow({
             }}
             placeholder="range"
             density="dense"
-            className="w-14 text-[10px] card-mono px-1 py-0"
+            className="w-14 text-2xs card-mono px-1 py-0"
           />
           {!row.postnote && pgDraft === "" && (
             <button
@@ -1616,7 +1616,7 @@ function CitationKeyRow({
             setPgOpen(true);
           }}
           data-button-exempt="10px hover-revealed row chip, below Button's sm scale"
-          className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 focus-ring"
+          className="text-2xs tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 focus-ring"
           data-hint="Add a page range or locator"
         >
           +range
@@ -1733,7 +1733,7 @@ function CitationKeyRow({
         <div
           // aligns: the reference text above, past its "•" bullet (≈6px glyph
           // at the body size) + the row's gap-2 (8px) — a glyph width, off-grid.
-          className="pl-[14px] flex items-center gap-1.5 text-[10px] text-[var(--muted)] min-w-0"
+          className="pl-[14px] flex items-center gap-1.5 text-2xs text-[var(--muted)] min-w-0"
         >
           <button
             type="button"
@@ -1761,8 +1761,8 @@ function CitationKeyRow({
                   e.stopPropagation();
                   onUseBibSpelling(caseTwinOf);
                 }}
-                data-button-exempt="10px meta-row chip beside the Bib toggle, below Button's sm scale"
-                className="text-[10px] uppercase tracking-wide px-1 py-0 rounded text-[var(--muted)] hover:text-ink-body hover-on-light focus-ring"
+                data-button-exempt="11px meta-row chip beside the Bib toggle, below Button's sm scale"
+                className="text-2xs px-1 py-0 rounded text-[var(--muted)] hover:text-ink-body hover-on-light focus-ring"
                 data-hint="Cite the key as the bibliography spells it"
               >
                 Use
@@ -1819,7 +1819,7 @@ function CitationKeyRow({
                 onToggleBib();
               }}
               aria-pressed={bibExpanded}
-              className={`text-[10px] uppercase tracking-wide px-1 py-0 rounded ${
+              className={`text-2xs px-1 py-0 rounded ${
                 bibExpanded
                   ? "text-ink-body bg-edge-subtle"
                   : "text-[var(--muted)] hover:text-ink-body hover-on-light"
@@ -1832,7 +1832,7 @@ function CitationKeyRow({
           {entryInLibrary && trimmed && (
             <OpenEntryLink
               citekey={trimmed}
-              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light"
+              className="inline-flex items-center gap-0.5 text-2xs text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover-on-light"
             />
           )}
           {/* +range moved to trail the citation display line above (task 010). */}
