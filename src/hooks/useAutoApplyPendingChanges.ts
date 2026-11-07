@@ -61,11 +61,12 @@ import type {
   RevisionCard,
   RevisionSuggestionCard,
 } from "@/lib/types";
-import { getLinkedTextObjectIds } from "@/links/links";
 import {
   applySuggestion,
+  suggestionAnchorBlock,
   suggestionApplicability,
 } from "@/links/pending-change-actions";
+import { buildCardAnchorPass, type CardAnchorPass } from "@/links/card-anchor-rows";
 import {
   PENDING_CHANGE_FAMILIES,
   type PendingChangeFamily,
@@ -218,12 +219,16 @@ export function reconcileDispatched(
 }
 
 /** Collect every AI-authored, still-pending suggestion across both families,
- *  each resolved to its Mode-A anchor uuid (cards with no anchor are dropped:
- *  not applicable). O(cards). */
+ *  each resolved to the block it is anchored on NOW — the authority's answer
+ *  (`suggestionAnchorBlock`, task 1506), not its first stored pid (cards with
+ *  no live anchor are dropped: not applicable). O(cards) over the pass.
+ *  `anchorPass` omitted → the indexless pass (stored pids, unverified). */
 export function collectPendingAiSuggestions(
   revisions: RevisionAutoApplyFamily,
   cutter: CutterAutoApplyFamily,
+  anchorPass?: CardAnchorPass | (() => CardAnchorPass),
 ): ResolvedSuggestion[] {
+  const passOf = typeof anchorPass === "function" ? anchorPass : () => anchorPass;
   const out: ResolvedSuggestion[] = [];
   // One input per suggestion family, keyed by the family's card kind. The
   // `satisfies` makes the table exhaustive over `PendingChangeFamily`, and the
@@ -242,7 +247,7 @@ export function collectPendingAiSuggestions(
     for (const card of fam.getCards()) {
       if (card.kind !== "suggestion") continue;
       if (card.author !== "ai" || card.status !== "pending") continue;
-      const anchorUuid = getLinkedTextObjectIds(card)[0];
+      const anchorUuid = suggestionAnchorBlock(card, passOf());
       if (!anchorUuid) continue;
       out.push({
         card,
@@ -285,22 +290,28 @@ export function runAutoApplyPass(args: {
   caretParagraphUuid: string | null;
   dispatched: Set<string>;
   onlyAnchor?: string;
+  /** The card-anchor pass to read live anchors from. Omitted → built from
+   *  `editor` the first time a pending AI suggestion needs one, and shared by
+   *  the whole run (one O(doc) index per run, none when nothing is pending). */
+  anchorPass?: CardAnchorPass;
 }): void {
   const { editor, revisions, cutter, caretParagraphUuid, dispatched, onlyAnchor } =
     args;
+  let pass = args.anchorPass;
+  const passOf = () => (pass ??= buildCardAnchorPass(editor));
   const live = [...revisions.getCards(), ...cutter.getCards()];
   reconcileDispatched(dispatched, live);
   const inFlight = paragraphsWithInFlightApplied(live);
   if (dispatched.size > 0) {
     for (const c of live) {
       if (c.kind !== "suggestion" || !dispatched.has(c.id)) continue;
-      const anchor = getLinkedTextObjectIds(c)[0];
+      const anchor = suggestionAnchorBlock(c, passOf());
       if (anchor) inFlight.add(anchor);
     }
   }
-  for (const target of collectPendingAiSuggestions(revisions, cutter)) {
+  for (const target of collectPendingAiSuggestions(revisions, cutter, passOf)) {
     if (onlyAnchor !== undefined && target.anchorUuid !== onlyAnchor) continue;
-    applyOne(editor, target, caretParagraphUuid, inFlight, dispatched);
+    applyOne(editor, target, caretParagraphUuid, inFlight, dispatched, passOf());
   }
 }
 
@@ -425,6 +436,7 @@ export function applyOne(
   caretParagraphUuid: string | null,
   inFlight: Set<string>,
   dispatched: Set<string>,
+  anchorPass?: CardAnchorPass,
 ): void {
   // Already claimed an apply for this card (status flip not yet committed) —
   // don't re-apply against post-splice text.
@@ -434,7 +446,8 @@ export function applyOne(
   // a card that could never apply neither burns its dispatch slot nor reaches
   // the splice path — `applySuggestion` would return `skipped` anyway; this
   // keeps the pass O(1) on it and the claim honest.
-  if (!suggestionApplicability(target.card, target.family).canApply) return;
+  if (!suggestionApplicability(target.card, target.family, target.anchorUuid).canApply)
+    return;
   if (
     !isAutoApplyEligible({
       card: target.card,
@@ -454,6 +467,7 @@ export function applyOne(
     setSuggestionStatus: target.setSuggestionStatus,
     setAppliedChange: target.setAppliedChange as never,
     generateAnchorId: generateEntityId,
+    anchorPass,
   });
   if (result.outcome === "applied") inFlight.add(target.anchorUuid);
 }

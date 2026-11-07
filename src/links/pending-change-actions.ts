@@ -50,11 +50,12 @@ import {
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 import type { SuggestionStatus } from "@/cards/suggestion-status";
 import type { MarkerConservationViolation } from "@/lib/latex-markers";
+import { removeLinkedAnchor, type CardWithLinks } from "@/links/links";
 import {
-  getLinkedTextObjectIds,
-  removeLinkedAnchor,
-  type CardWithLinks,
-} from "@/links/links";
+  buildCardAnchorPass,
+  cardAnchorPassOrIndexless,
+  type CardAnchorPass,
+} from "@/links/card-anchor-rows";
 import {
   getPreviewDir,
   resetPreviewDir,
@@ -319,6 +320,9 @@ export interface InsertBelowCardDeps {
   setSuggestionStatus: (id: string, status: SuggestionStatus) => void;
   setArchived: (id: string, archived: boolean) => void;
   setAppliedChange: (id: string, appliedChange: undefined) => void;
+  /** The card-anchor pass to read the live anchor block from (task 1506).
+   *  Omitted → built from the live `editor` at insert time. */
+  anchorPass?: CardAnchorPass;
 }
 
 /**
@@ -354,8 +358,15 @@ export function insertSuggestionBelow(
   // Can this card answer Insert below at all? ONE predicate, shared with the
   // button that offers the verb — no anchor, or nothing to insert (a
   // cutter/delete cut, or an unfinished revision) → refuse.
-  if (!suggestionInsertability(s.card).canApply) return false;
-  const anchorUuid = getLinkedTextObjectIds(s.card)[0];
+  // The block the card is anchored on NOW, from the authority (task 1506) —
+  // not its first STORED pid, which after a mid-session re-mint names a block
+  // no marker is drawn on.
+  const anchorUuid = suggestionAnchorBlock(
+    s.card,
+    deps.anchorPass ?? buildCardAnchorPass(editor),
+  );
+  if (!anchorUuid || !suggestionInsertability(s.card, anchorUuid).canApply)
+    return false;
 
   const inserted = insertParagraphAfter(
     editor,
@@ -444,6 +455,30 @@ export interface ApplySuggestionDeps {
   /** Mints the anchorId stamped on the blue range (so Keep/Revert can resolve
    *  it later). Injected = `generateEntityId` in app code, a stub in tests. */
   generateAnchorId: () => string;
+  /** The card-anchor pass to read the live anchor block from (task 1506) — the
+   *  auto-apply driver hands in the one pass it built for its whole run.
+   *  Omitted → built from the live `editor` at apply time. */
+  anchorPass?: CardAnchorPass;
+}
+
+/**
+ * **Which block is this suggestion anchored on NOW?** — the first of the
+ * authority's live anchor blocks (`CardAnchorPass.anchorBlocksOf`, task 1506),
+ * the same block its marker is drawn beside and its Jump lands on. `null` when
+ * the card is not anchored. Every landing door (Apply, Insert below, the
+ * auto-apply pass) and the button that offers the verb read THIS, then hand it
+ * to the predicates below — so a card the margin shows as anchored can never be
+ * refused as `unanchored`, and a card whose stored pid is a dead record can
+ * never be spliced against the wrong block.
+ *
+ * `pass` null/omitted (a card body rendered outside a pane) reads the indexless
+ * pass — the stored pids, unverified, the authority's mount-gap answer.
+ */
+export function suggestionAnchorBlock(
+  card: CardWithLinks,
+  pass?: CardAnchorPass | null,
+): string | null {
+  return cardAnchorPassOrIndexless(pass).anchorBlocksOf(card)[0] ?? null;
 }
 
 /** Why a pending suggestion cannot be applied AT ALL. Each reason is a fact
@@ -535,8 +570,10 @@ export const SUGGESTION_BLOCK_TEXT: Record<SuggestionBlockReason, string> = {
 export function suggestionApplicability(
   card: SuggestionLike,
   family: PendingChangeFamily,
+  /** The card's live anchor block — {@link suggestionAnchorBlock}. */
+  anchorBlock: string | null,
 ): SuggestionApplicability {
-  if (!getLinkedTextObjectIds(card)[0])
+  if (!anchorBlock)
     return { canApply: false, reason: "unanchored" };
   if (card.original_text.length === 0)
     return { canApply: false, reason: "no-capture" };
@@ -581,8 +618,10 @@ export function suggestionLacksReplacement(
  */
 export function suggestionInsertability(
   card: SuggestionLike,
+  /** The card's live anchor block — {@link suggestionAnchorBlock}. */
+  anchorBlock: string | null,
 ): SuggestionApplicability {
-  if (!getLinkedTextObjectIds(card)[0])
+  if (!anchorBlock)
     return { canApply: false, reason: "unanchored" };
   if (!hasSuggestionReplacement(card))
     return { canApply: false, reason: "no-replacement" };
@@ -621,11 +660,17 @@ export function applySuggestion(
   // Can this card answer Apply at all? ONE predicate, shared with the button
   // that offers the verb (task 695) — bail WITHOUT mutating the doc or the card
   // (matches Phase 1b's early return), carrying the reason out to the caller.
-  const applicability = suggestionApplicability(card, deps.family);
+  // The block the card is anchored on NOW (task 1506) — the authority's first
+  // live row, the block its marker sits beside — not its first stored pid.
+  const anchorBlock = suggestionAnchorBlock(
+    card,
+    deps.anchorPass ?? buildCardAnchorPass(editor),
+  );
+  const applicability = suggestionApplicability(card, deps.family, anchorBlock);
   if (!applicability.canApply)
     return { outcome: "skipped", reason: applicability.reason };
-  // Mode-A anchor: the first linked paragraph uuid — non-empty by the predicate.
-  const anchorUuid = getLinkedTextObjectIds(card)[0];
+  // Non-null by the predicate.
+  const anchorUuid = anchorBlock!;
 
   // TASK 713 — what lands is the card's REPLACEMENT, which is the human's
   // `user_text` when they typed one. This read was `card.suggested_text`, so a

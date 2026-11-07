@@ -35,7 +35,10 @@ vi.mock("@/lib/storage", async () =>
 
 import { useCutter } from "../useCutter";
 import { useRevisions } from "../useRevisions";
-import { suggestionApplicability } from "@/links/pending-change-actions";
+import {
+  suggestionAnchorBlock,
+  suggestionApplicability,
+} from "@/links/pending-change-actions";
 import {
   beginDocPipeline,
   __resetForTests,
@@ -114,7 +117,7 @@ describe.each(PANELS)("%s: a suggestion is seeded in the apply dialect (task 696
     // The card is anchored, so the refusal is about the CAPTURE, and the
     // surface says which — rather than rendering a live Apply that would
     // answer `stale` against a paragraph that never changed.
-    expect(suggestionApplicability(card as never, family)).toEqual({
+    expect(suggestionApplicability(card as never, family, suggestionAnchorBlock(card as never))).toEqual({
       canApply: false,
       reason: "no-capture",
     });

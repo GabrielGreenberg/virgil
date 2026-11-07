@@ -290,7 +290,8 @@ describe("applyOne — the cross-pass double-apply guard", () => {
       setAppliedChange: vi.fn(),
     };
   }
-  const ed = {} as Editor;
+  // An empty doc: the anchor authority (task 1506) fails open to stored pids.
+  const ed = { state: { doc: { descendants() {} } } } as unknown as Editor;
 
   it("skips a card whose id is already claimed in `dispatched` (the race fix)", () => {
     applySuggestionMock.mockClear();
@@ -330,7 +331,8 @@ describe("applyOne — the cross-pass double-apply guard", () => {
 });
 
 describe("runAutoApplyPass — per-paragraph serialization across the stale window (task 1326)", () => {
-  const ed = {} as Editor;
+  // An empty doc: the anchor authority (task 1506) fails open to stored pids.
+  const ed = { state: { doc: { descendants() {} } } } as unknown as Editor;
   const appliedA = {
     ...suggestion({ id: "a", anchorUuid: "P1", status: "applied" }),
     appliedChange: {

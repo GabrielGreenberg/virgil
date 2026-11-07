@@ -390,7 +390,6 @@ import {
 } from "@/panels/Omni/OmniViewPanel";
 import MenuBar from "./MenuBar";
 import {
-  getLinkedTextObjectIds,
   getTextAnchor,
   restampLinkedAnchorForKind,
   paragraphUuidAt,
@@ -2957,10 +2956,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropNotesApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.notes.some((n) => n.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const n = notesHook.notes.find((nn) => nn.id === id);
-        return n ? getLinkedTextObjectIds(n) : [];
-      },
+      getCard: (id: string) => notesHook.notes.find((nn) => nn.id === id),
       addTextObjectLink: notesHook.addCardParagraphId,
       removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
@@ -2975,10 +2971,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropHighlightsApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.highlights.some((h) => h.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const h = notesHook.highlights.find((hh) => hh.id === id);
-        return h ? getLinkedTextObjectIds(h) : [];
-      },
+      getCard: (id: string) => notesHook.highlights.find((hh) => hh.id === id),
       addTextObjectLink: notesHook.addCardParagraphId,
       removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
@@ -2992,10 +2985,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropTodosApi = useMemo(
     () => ({
       exists: (id: string) => todosHook.items.some((t) => t.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const t = todosHook.items.find((tt) => tt.id === id);
-        return t ? getLinkedTextObjectIds(t) : [];
-      },
+      getCard: (id: string) => todosHook.items.find((tt) => tt.id === id),
       addTextObjectLink: todosHook.addParagraphId,
       removeTextObjectLink: todosHook.removeParagraphId,
       modeB: releaseModeB(
@@ -3008,10 +2998,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropArchiveApi = useMemo(
     () => ({
       exists: (id: string) => archiveHook.snippets.some((s) => s.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const s = archiveHook.snippets.find((ss) => ss.id === id);
-        return s ? getLinkedTextObjectIds(s) : [];
-      },
+      getCard: (id: string) => archiveHook.snippets.find((ss) => ss.id === id),
       addTextObjectLink: archiveHook.addParagraphId,
       removeTextObjectLink: archiveHook.removeParagraphId,
       modeB: releaseModeB(
@@ -3024,10 +3011,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropCutterApi = useMemo(
     () => ({
       exists: (id: string) => cutterHook.cards.some((c) => c.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const c = cutterHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedTextObjectIds(c) : [];
-      },
+      getCard: (id: string) => cutterHook.cards.find((cc) => cc.id === id),
       addTextObjectLink: cutterHook.addCardParagraphId,
       removeTextObjectLink: cutterHook.removeCardParagraphId,
       modeB: releaseModeB(
@@ -3040,10 +3024,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropRevisionsApi = useMemo(
     () => ({
       exists: (id: string) => revisionsHook.cards.some((c) => c.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const c = revisionsHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedTextObjectIds(c) : [];
-      },
+      getCard: (id: string) => revisionsHook.cards.find((cc) => cc.id === id),
       addTextObjectLink: revisionsHook.addCardParagraphId,
       removeTextObjectLink: revisionsHook.removeCardParagraphId,
       modeB: releaseModeB(
@@ -3056,10 +3037,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropReportsApi = useMemo(
     () => ({
       exists: (id: string) => reportsHook.cards.some((c) => c.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const c = reportsHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedTextObjectIds(c) : [];
-      },
+      getCard: (id: string) => reportsHook.cards.find((cc) => cc.id === id),
       addTextObjectLink: reportsHook.addCardParagraphId,
       removeTextObjectLink: reportsHook.removeCardParagraphId,
       modeB: releaseModeB(
@@ -3720,10 +3698,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       revisionsHook.setSuggestionStatus(id, "accepted");
       aiRequestsHook.addRequest(
         "suggestion",
-        buildSuggestionApplyPrompt("revision-suggestion", s),
+        buildSuggestionApplyPrompt("revision-suggestion", s, buildCardAnchorPass(editor)),
       );
     },
-    [revisionsHook, aiRequestsHook],
+    [revisionsHook, aiRequestsHook, editor],
   );
   const onAcceptCutterLegacy = useCallback(
     (id: string) => {
@@ -3738,10 +3716,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cutterHook.setSuggestionStatus(id, "accepted");
       aiRequestsHook.addRequest(
         "suggestion",
-        buildSuggestionApplyPrompt("cutter-suggestion", s),
+        buildSuggestionApplyPrompt("cutter-suggestion", s, buildCardAnchorPass(editor)),
       );
     },
-    [cutterHook, aiRequestsHook],
+    [cutterHook, aiRequestsHook, editor],
   );
   // REJECT — a bare status write, the partner of Accept on the flag-OFF pending
   // card AND the `stale` card's Dismiss under the flag (a drifted anchor can no

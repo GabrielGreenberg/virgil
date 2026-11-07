@@ -62,7 +62,7 @@ function makeApi(initial: string[]): ParagraphAnchorApi {
   const set = new Set(initial);
   return {
     exists: () => true,
-    getAnchorTextObjectIds: () => [...set],
+    getCard: (id) => ({ id, links: [...set].map((p) => ({ id: `${id}@${p}`, kind: "anchor", anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: [p] } })) }) as never,
     addTextObjectLink: (_id, pid) => void set.add(pid),
     removeTextObjectLink: (_id, pid) => void set.delete(pid),
     preserveModeBAnchor: () => null,

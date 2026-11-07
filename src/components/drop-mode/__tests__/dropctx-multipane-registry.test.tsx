@@ -90,7 +90,7 @@ function makeEditor(): { editor: Editor; setVisible: (v: boolean) => void } {
 
 const makeAnchorApi = (): ParagraphAnchorApi => ({
   exists: () => true,
-  getAnchorTextObjectIds: () => [],
+  getCard: () => undefined,
   addTextObjectLink: noop,
   removeTextObjectLink: noop,
   modeB: { policy: "release", release: () => null },

@@ -43,6 +43,15 @@ export function useCardAnchorPass(): CardAnchorPass {
 }
 
 /**
+ * The pane's pass, or `null` outside a pane (a card body rendered in
+ * isolation). For a surface that must still render there — it hands the
+ * result to `cardAnchorPassOrIndexless`, never to a stored-pid read.
+ */
+export function useOptionalCardAnchorPass(): CardAnchorPass | null {
+  return useContext(CardAnchorCtx);
+}
+
+/**
  * The gate every docked panel takes as its `jumpGate` prop — the SAME
  * `cardJumpGate` the omni rows and the floats apply, over the SAME resolver.
  * A panel never re-derives the decision; it hands its handler to

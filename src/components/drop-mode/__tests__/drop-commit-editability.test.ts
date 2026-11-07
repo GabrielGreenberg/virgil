@@ -83,7 +83,10 @@ import type { DropCtx, ParagraphAnchorApi, Placement } from "../types";
 /** A surface whose pen the test can flip (`view.editable`). */
 function makeEditor(editable = true) {
   const view = { editable, dispatch() {} };
-  return { editor: { state: {}, view, storage: {} } as unknown as Editor, view };
+  // An empty doc: the anchor authority (task 1506) indexes nothing and fails
+  // open to the card's stored pids, as in the mount gap.
+  const state = { doc: { descendants() {} } };
+  return { editor: { state, view, storage: {} } as unknown as Editor, view };
 }
 
 function makeApi(initial: string[]) {
@@ -92,7 +95,7 @@ function makeApi(initial: string[]) {
   const removed: string[] = [];
   const api: ParagraphAnchorApi = {
     exists: () => true,
-    getAnchorTextObjectIds: () => [...set],
+    getCard: (id) => ({ id, links: [...set].map((p) => ({ id: `${id}@${p}`, kind: "anchor", anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: [p] } })) }) as never,
     addTextObjectLink: (_id, pid) => {
       added.push(pid);
       set.add(pid);

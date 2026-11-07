@@ -73,7 +73,7 @@ function makeApi(initial: string[]): {
   const removed: string[] = [];
   const api: ParagraphAnchorApi = {
     exists: () => true,
-    getAnchorTextObjectIds: () => [...set],
+    getCard: (id) => ({ id, links: [...set].map((p) => ({ id: `${id}@${p}`, kind: "anchor", anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: [p] } })) }) as never,
     addTextObjectLink: (_id, pid) => {
       added.push(pid);
       set.add(pid);

@@ -13,7 +13,12 @@
  * `drop-mode/registry.ts`.
  */
 
-import { removeLinkedAnchor, captureParagraphSnapshot } from "@/links/links";
+import {
+  removeLinkedAnchor,
+  captureParagraphSnapshot,
+  getLinkedTextObjectIds,
+} from "@/links/links";
+import { buildCardAnchorPass } from "@/links/card-anchor-rows";
 import { parseAnyKey } from "@/floats/float-key";
 import type { DropCtx, DropSpec, ParagraphAnchorApi } from "../types";
 
@@ -35,8 +40,15 @@ export function textObjectSideReanchorSpec(
       if (!api) return { kind: "no-op" };
       const id = extractId(cardKey);
       if (!id || !api.exists(id)) return { kind: "no-op" };
-      const current = api.getAnchorTextObjectIds(id);
-      if (current.length === 1 && current[0] === placement.paragraphId) {
+      // "Already there?" is asked of the AUTHORITY (task 1506): the block the
+      // card is anchored on NOW. Its stored pids are a record — a moved Mode-B
+      // highlight's birth block among them — so reading them here ignored a
+      // drop on the birth block as "already there" while the card sat
+      // elsewhere. O(doc) once, at release (classifyDrop is a commit-time
+      // decision, never per pointer move).
+      const card = api.getCard(id);
+      const live = card ? buildCardAnchorPass(ctx.mainEditor).anchorBlocksOf(card) : [];
+      if (live.length === 1 && live[0] === placement.paragraphId) {
         return { kind: "no-op" };
       }
       // A card anchored elsewhere MOVES — no confirm (task 1423). The move is
@@ -82,7 +94,10 @@ export function textObjectSideReanchorSpec(
           // The mark might already be gone (orphaned); ignore.
         }
       }
-      const current = api.getAnchorTextObjectIds(id);
+      // The WRITE removes stored links, so it reads the stored pids — the only
+      // thing `removeTextObjectLink` can remove.
+      const card = api.getCard(id);
+      const current = card ? getLinkedTextObjectIds(card) : [];
       for (const pid of current) {
         if (pid !== placement.paragraphId) {
           api.removeTextObjectLink(id, pid);
