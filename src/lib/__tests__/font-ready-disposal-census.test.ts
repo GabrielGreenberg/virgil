@@ -20,7 +20,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { codeOnly, walkFiles } from "./_source-scan";
+import { codeOnly, codeOnlyLines, walkFiles } from "./_source-scan";
 
 const SRC = join(process.cwd(), "src");
 const DEFINER = join(SRC, "lib", "text-metrics.ts");
@@ -76,7 +76,7 @@ function classifyFontReadySites(code: string, file: string): Site[] {
 describe("onFontReady — the disposal CENSUS", () => {
   const files = productionFiles();
   const sites = files.flatMap((f) =>
-    classifyFontReadySites(codeOnly(readFileSync(f, "utf8")), relative(process.cwd(), f)),
+    classifyFontReadySites(codeOnlyLines(readFileSync(f, "utf8")), relative(process.cwd(), f)),
   );
 
   it("finds a non-empty population (the walk is not vacuous)", () => {
