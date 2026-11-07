@@ -85,26 +85,43 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
 - **The LEFT rail is the tool gutter.** `PaneRail side="left"` takes a
   `toolGutter` node that replaces its omni desktop: `ToolGutter`
   ([tool-gutter/ToolGutter.tsx](../../src/components/editor-layout/tool-gutter/ToolGutter.tsx)),
-  sticky in the column (`top: var(--pod-gap)`, `max-height: var(--dock-slot-frame-h)`,
-  internal scroll). Everything in it is text on the manila (`.tool-gutter*` in
-  `globals.css`; no pod fill, no card frame):
+  sticky in the column at `--gutter-inset` (its tools row sits on the text
+  card's top edge), one pane tall, split into a TOP and a BOTTOM half that each
+  scroll on their own. Everything in it is text on the manila (`.tool-gutter*`
+  in `globals.css`; no pod fill, no card frame):
   1. **Tools** — three icon buttons across the top. The active tool's body is the
      SAME `PaneRailBody` the dock rendered (props built once as
      `paneRailBodyShared` in EditorPane), wrapped in `.tool-gutter-tool`, which
      flattens Search's result cards (`[data-card]`) and Word count's pods
      (`.rounded-lg`) onto the manila. There is no ×: the tool's own button in
      the row above closes it, and a tool mounts no `PanelChromeProvider`.
-  2. **Lists** — fold-out sections. None is required: Footnotes and Bibliography
-     show by default (`DEFAULT_GUTTER_SECTIONS`), any can be removed, and "More"
-     (an `AnchoredMenu`) adds the rest, including one the user removed. A row is ONE line of text from
+  2. **Lists** (the bottom half, round 3) — a second icon row, one icon per
+     list, same toggle style as the tools: a click writes THAT list beneath the
+     row, one at a time (`list` in the store). None is required: Footnotes and
+     Bibliography by default (`DEFAULT_GUTTER_SECTIONS`); "+" (an
+     `AnchoredMenu`) adds an icon and opens its list, "…" removes one or resets
+     to the defaults. A row is ONE line of text from
      [gutter-rows.ts](../../src/components/editor-layout/tool-gutter/gutter-rows.ts)
      (pure, archived cards left out via `archivedIds`, `\cite…{}` read as
      "Author Year"); a click selects the card (`useSelectionsContext`) and jumps
      through the editor handle's own doors (`scrollToFootnote` / `scrollToExample`
      / `scrollToCitation` / `jumpToCard` / `errorJump`); a to-do's checkbox calls
      `toggleItem`. The selected card's row wears `data-selected`.
-  The section set honours the host's `visiblePanels` (the Reader's whitelist).
-- **Store.** `tool-gutter-store.ts` — `{ tool, extra, folded }`, window-wide like
+  3. **Divider** — mounted only while a tool AND a list are open (otherwise the
+     open half takes the room). A `drag-gap-h band-grip` on the pane-resize
+     engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`
+     on the gutter, `commit` stores `split` (clamped 0.15–0.85) once.
+  The icon set honours the host's `visiblePanels` (the Reader's whitelist).
+- **One inset frames the text card** (round 3, Gabriel's notes): `--gutter-inset`
+  (8px) is the gap above the card and between it and each gutter's content —
+  the inboard column padding is dropped and the PanelColumn drag gap paints
+  `--gutter-inset − PANE_ROW_GAP_PX` under this layout (the grab keeps its
+  `--gutter-grab` floor), and the right cascade's `.omni-entry-slide` loses its
+  inboard `left-2`. Both gutters' head controls sit on the card's top edge; the
+  right head row is `--gutter-inset + 28px` tall (`--omni-sticky-top`), so the
+  first card starts just under it. A lit gutter toggle wears a thin azure ring
+  on top of the wash.
+- **Store.** `tool-gutter-store.ts` — `{ tool, sections, folded, list, split }`, window-wide like
   the dock it replaces, one `localStorage` key (`virgil:tool-gutter`) re-read on
   the `storage` event via `subscribeToStorageKey`.
 - **Shared top of the right column.** With every omni surface on the right, the

@@ -179,6 +179,11 @@
   --iconbtn-lg: 32px;
   --iconbtn-lg-glyph: 20px;
   --pod-gap: 10px;
+  /* The GUTTER INSET (gutter layout, task 1440 round 3): the one gap that
+     frames the text card on every side — above it, and between it and each
+     gutter's content (the left gutter's lists, the right gutter's cards). The
+     gutter heads' controls sit on the card's top edge, this far down. */
+  --gutter-inset: 8px;
   /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
      `--pod-gap` was answering two different questions, and only one of them
      is a gutter. (a) How wide is the resize gutter / how far is a pod inset
@@ -6905,13 +6910,23 @@ body.perf-contain .static-borrowed-text {
    is. Ink only — the one hover FILL is `.hover-on-light`, worn in JSX. */
 .tool-gutter {
   position: sticky;
-  top: var(--pod-gap);
-  max-height: var(--dock-slot-frame-h, 100vh);
-  overflow-y: auto;
-  scrollbar-width: thin;
+  /* The tools row sits on the text card's top edge — in flow (the margin)
+     and pinned (the sticky offset) alike. */
+  top: var(--gutter-inset);
+  margin-top: var(--gutter-inset);
+  /* Two halves split ONE fixed height (the visible pane), each scrolling on
+     its own, so the list icons stay in reach however long the tool runs. */
+  height: calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--gutter-inset));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* The top half's share of the split; the store's value is written over it
+     inline (and per frame by the divider drag). */
+  --tool-gutter-split: 0.5;
   /* The column runs to the window edge (no strip column), so the gutter
-     carries its own edge inset. The bottom is `::after`'s. */
-  padding: 6px 4px 0 6px;
+     carries its own edge inset. The bottom keeps the lists clear of the
+     pane's Stack button, which sits over the gutter's foot. */
+  padding: 0 0 40px 6px;
   /* The Outline's voice: the UI sans at text-sm — stated here because the
      pane around the gutter speaks the paper's serif. */
   font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
@@ -6919,23 +6934,62 @@ body.perf-contain .static-borrowed-text {
   line-height: 1.375;
   color: var(--foreground);
 }
-/* The gutter's bottom edge. In flow it reserves room below the last row, so the
-   Stack button never sits on a list; stuck to the scrollport it dissolves the
-   list before it reaches that button. */
-.tool-gutter::after {
-  content: "";
-  display: block;
-  position: sticky;
-  bottom: 0;
-  height: 56px;
-  background: linear-gradient(to bottom, transparent, var(--background) 62%);
-  pointer-events: none;
+/* A half is its icon row plus, when something is open, a scrolling body. A
+   closed half is just its row; an open one takes the room, and with BOTH open
+   they share it by `--tool-gutter-split` (the divider's position). */
+.tool-gutter-half {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 0 0 auto;
+}
+.tool-gutter[data-top-open] > [data-gutter-half="top"],
+.tool-gutter[data-bottom-open] > [data-gutter-half="bottom"] {
+  flex: 1 1 0;
+}
+.tool-gutter[data-top-open][data-bottom-open] > [data-gutter-half="top"] {
+  flex: var(--tool-gutter-split) 1 0;
+}
+.tool-gutter[data-top-open][data-bottom-open] > [data-gutter-half="bottom"] {
+  flex: calc(1 - var(--tool-gutter-split)) 1 0;
+}
+/* With the top half closed, the list row sits right under the tools row. */
+.tool-gutter:not([data-top-open]) > [data-gutter-half="bottom"] {
+  margin-top: 6px;
+}
+.tool-gutter-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* The divider between the halves: the shared gutter look (`band-grip`'s
+   pill on hover/drag), over a hairline painted at rest so the seam between
+   the halves is visible before you reach for it. */
+.tool-gutter-divider {
+  height: 11px;
+  flex: 0 0 auto;
+  margin-right: 4px;
+  background: linear-gradient(var(--border), var(--border)) center / 100% 1px no-repeat;
 }
 .tool-gutter-tools {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-bottom: 8px;
+}
+/* A lit gutter toggle reads at a glance: the azure wash PLUS a thin azure
+   ring (Gabriel, round 3: "not just the highlight color"). */
+.tool-gutter-tools .iconbtn-toggle[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--control-selected-ink) 55%, transparent);
+}
+.tool-gutter-add {
+  border: 1px dashed var(--muted-light);
+}
+/* The right gutter's cards come right up to the gutter's inboard edge, so
+   the text card's gap to them is the one `--gutter-inset` (the cascade's
+   `left-2` inset would add 8px on this side only). */
+[data-gutter-side-host="right"] .omni-entry-slide {
+  left: 0;
 }
 /* The right gutter's head (task 1440, edge to edge): the collapse toggle on
    a sticky row above the cards, where the left gutter's tools row sits —
@@ -6950,10 +7004,12 @@ body.perf-contain .static-borrowed-text {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  /* 2px, not the tool gutter's 6px: the left column sits 4px lower in its
-     rail, and the two toggles must share a row across the window. */
-  height: calc(var(--pod-gap) + 42px);
-  padding: calc(var(--pod-gap) + 2px) 4px 8px;
+  /* The toggle sits on the text card's top edge, level with the left
+     gutter's tools row; the row is only as tall as that (inset + 24px button
+     + 4px), so the first card starts close under it. */
+  height: calc(var(--gutter-inset) + 28px);
+  padding: var(--gutter-inset) 4px 4px;
+  align-items: flex-start;
   background: var(--background);
 }
 .gutter-side-head::after {
@@ -6970,6 +7026,10 @@ body.perf-contain .static-borrowed-text {
    edge, under the tool buttons, and its controls at the right. */
 .tool-gutter-tool .panel-header {
   padding-inline: 2px 0;
+  /* Tight under the tools row: the header's own band is shorter here than a
+     docked panel's, so OUTLINE sits just beneath the buttons. */
+  height: 22px;
+  margin-top: 2px;
 }
 .tool-gutter-tool .panel-header > .flex-1 {
   display: none;
@@ -6996,9 +7056,7 @@ body.perf-contain .static-borrowed-text {
    height (it grows with its content inside the gutter's scroll), and its
    header bar takes the manila instead of the pod fill. */
 .tool-gutter-tool {
-  padding-bottom: 12px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
 }
 .tool-gutter-tool > div,
 .tool-gutter-tool .h-full {
@@ -7024,7 +7082,7 @@ body.perf-contain .static-borrowed-text {
   border-radius: 0 !important;
 }
 .tool-gutter-section {
-  margin-bottom: 12px;
+  margin: 4px 0 12px;
 }
 .tool-gutter-section-head {
   display: flex;

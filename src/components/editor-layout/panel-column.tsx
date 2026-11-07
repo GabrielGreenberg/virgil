@@ -12,6 +12,8 @@ import { BandDivider } from "../panel-primitives";
 import { paneColumn, type PaneScope } from "./pane-dom";
 import { flexColumnGestureId, pinFlexColumn, useFlexColumnPin } from "./flex-column-pin";
 import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
+import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { PANE_ROW_GAP_PX } from "./normal-view-rails";
 
 /** One docked band in a column's stack: a panel id plus an optional
  *  resized height (px). Absent height ⇒ content-sized (flex auto). */
@@ -474,6 +476,7 @@ export function PanelColumn({
   // resize handle and the bin slot fell below the visible pane. The window
   // formula survives only as the pre-measure fallback, naming the bar token.
   const frameTop = 'var(--pod-gap)';
+  const gutterInboard = gutterLayoutOn();
   const frameH =
     'calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--pod-gap))';
 
@@ -514,8 +517,11 @@ export function PanelColumn({
         // below the band. The flow inset lives on the inner row instead
         // (the row just inside it), so the fade, the sticky floor and the clip
         // edge are one edge.
-        paddingLeft: collapsed ? 0 : 4,
-        paddingRight: collapsed ? 0 : 4,
+        // The gutter layout (task 1440 round 3) drops the INBOARD 4px, so the
+        // text card's gap to this column's content is the one
+        // `--gutter-inset` (row gap + the drag gap below), like its top gap.
+        paddingLeft: collapsed || (gutterInboard && side === "right") ? 0 : 4,
+        paddingRight: collapsed || (gutterInboard && side === "left") ? 0 : 4,
       }}
     >
       <ColumnEdgeFade side={side} edge="top" ramp={STACKED_FADE_RAMP} />
@@ -653,7 +659,13 @@ export function PanelColumn({
         // toward-editor class nudges only the pill.
         className={`drag-gap drag-gap-v band-grip ${side === "left" ? "order-3 drag-gap-toward-editor-right drag-gap-grab-end" : "order-1 drag-gap-toward-editor-left drag-gap-grab-start"}`}
         {...gutterHandle}
-        style={{ ...gutterHandle.style, width: 'var(--pod-gap)' }}
+        style={{
+          ...gutterHandle.style,
+          // Painted width only — the grab keeps its --gutter-grab floor.
+          width: gutterInboard
+            ? `calc(var(--gutter-inset) - ${PANE_ROW_GAP_PX}px)`
+            : 'var(--pod-gap)',
+        }}
       />
       </div>
       <ColumnEdgeFade

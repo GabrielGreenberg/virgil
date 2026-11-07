@@ -10,18 +10,23 @@
  *  1. Three tool icons across the top — Outline, Search, Word count. A click
  *     writes that tool's body at the top of the gutter (the same panel body
  *     the dock used to frame, rendered with no frame). Click again to close.
- *  2. Fold-out TEXT LISTS beneath. Footnotes and Bibliography by default; none
- *     is required, and "More" adds any of the others (Numbered examples,
- *     To-dos, Notes, Citations, Reports, Archive, Revisions, Cuts, Errors).
- *     Each card is ONE LINE of text; a click jumps to it in the paper and
- *     selects its card in the right gutter; a to-do's box still ticks.
+ *  2. The BOTTOM HALF: a second icon row, one icon per TEXT LIST (Footnotes
+ *     and Bibliography by default). A click writes that list beneath the row,
+ *     one at a time, like the tools. "+" adds any of the others (Numbered
+ *     examples, To-dos, Notes, Citations, Reports, Archive, Revisions, Cuts,
+ *     Errors); "…" removes one, or resets to the defaults. Each card is ONE
+ *     LINE of text; a click jumps to it in the paper and selects its card in
+ *     the right gutter; a to-do's box still ticks.
+ *  3. A DIVIDER between the halves while both are open, dragged through the
+ *     pane-resize engine; its position is the store's `split`. Each half
+ *     scrolls on its own.
  *
  * The CARDS themselves live only in the right gutter (`resolvePanelSide`
  * answers "right" for every panel under this layout). View state is the
  * window-wide `tool-gutter-store`.
  */
 
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
 import type {
   ArchivedSnippet,
@@ -39,16 +44,21 @@ import { PANEL_ICONS } from "../panel-icons";
 import { iconHint } from "@/components/Hint";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
-import { PodDisclosure } from "@/components/PodDisclosure";
+import { usePaneResizeHandle } from "@/lib/pane-resize";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import {
   GUTTER_SECTIONS,
   GUTTER_TOOLS,
+  MAX_GUTTER_SPLIT,
+  MIN_GUTTER_SPLIT,
+  getToolGutterState,
   removeGutterSection,
+  resetGutterSections,
   revealGutterSection,
-  toggleGutterSectionFold,
+  setGutterSplit,
+  toggleGutterList,
   toggleGutterTool,
   useToolGutterState,
   type GutterSection,
@@ -110,6 +120,7 @@ export function ToolGutter(p: ToolGutterProps) {
   const activeTool = state.tool && offered.has(state.tool) ? state.tool : null;
 
   const sections = state.sections.filter((s) => offered.has(s));
+  const activeList = state.list && sections.includes(state.list) ? state.list : null;
   const moreChoices = GUTTER_SECTIONS.filter(
     (s) => offered.has(s) && !state.sections.includes(s),
   );
@@ -149,94 +160,206 @@ export function ToolGutter(p: ToolGutterProps) {
   const selectedId =
     selectedIdSet(selected?.id ?? null, selectedBibKey, diagnostics.selectedErrorId);
 
+  // The DIVIDER between the two halves — shown only while both a tool and a
+  // list are open (otherwise the open half simply takes the room). Dragged
+  // through the ONE pane-resize engine: the halves' share is a CSS var on
+  // the gutter, written imperatively per frame and committed to the store
+  // once, on release.
+  const split = activeTool !== null && activeList !== null;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const totalRef = useRef(0);
+  const divider = usePaneResizeHandle({
+    id: "tool-gutter-split",
+    axis: "y",
+    disabled: !split,
+    getValue: () => {
+      const top = topRef.current?.getBoundingClientRect().height ?? 0;
+      const bottom = bottomRef.current?.getBoundingClientRect().height ?? 0;
+      totalRef.current = top + bottom;
+      return top;
+    },
+    clamp: (px) => {
+      const total = totalRef.current;
+      return Math.min(total * MAX_GUTTER_SPLIT, Math.max(total * MIN_GUTTER_SPLIT, px));
+    },
+    apply: (px) => {
+      const total = totalRef.current;
+      if (total > 0) rootRef.current?.style.setProperty(SPLIT_VAR, String(px / total));
+    },
+    commit: (px) => {
+      const total = totalRef.current;
+      if (total > 0) setGutterSplit(px / total);
+    },
+    restore: () => {
+      rootRef.current?.style.setProperty(SPLIT_VAR, String(getToolGutterState().split));
+    },
+  });
+
   return (
-    <div className="tool-gutter" data-tool-gutter="">
-      {(tools.length > 0 || p.leading) && (
-        <div className="tool-gutter-tools" role="toolbar" aria-label="Tools">
-          {p.leading}
-          {tools.map((t) => {
-            const on = activeTool === t;
+    <div
+      ref={rootRef}
+      className="tool-gutter"
+      data-tool-gutter=""
+      data-top-open={activeTool ? "" : undefined}
+      data-bottom-open={activeList ? "" : undefined}
+      style={{ [SPLIT_VAR]: String(state.split) } as React.CSSProperties}
+    >
+      <div ref={topRef} className="tool-gutter-half" data-gutter-half="top">
+        {(tools.length > 0 || p.leading) && (
+          <div className="tool-gutter-tools" role="toolbar" aria-label="Tools">
+            {p.leading}
+            {tools.map((t) => {
+              const on = activeTool === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  className="iconbtn-md iconbtn-toggle"
+                  data-gutter-tool-button={t}
+                  aria-pressed={on}
+                  onClick={() => toggleGutterTool(t)}
+                  data-iconbtn-glyph="aligns: the 18px panel glyphs (panel-icons.tsx)"
+                  {...iconHint({ label: PANEL_REGISTRY[t].label })}
+                >
+                  {PANEL_ICONS[t](on)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTool && (
+          <div className="tool-gutter-scroll tool-gutter-tool" data-gutter-tool={activeTool}>
+            {p.renderTool(activeTool)}
+          </div>
+        )}
+      </div>
+
+      {split && (
+        <div
+          {...divider}
+          className="drag-gap drag-gap-h band-grip tool-gutter-divider"
+          data-gutter-divider=""
+        />
+      )}
+
+      <div ref={bottomRef} className="tool-gutter-half" data-gutter-half="bottom">
+        <div className="tool-gutter-tools tool-gutter-lists-row" role="toolbar" aria-label="Lists">
+          {sections.map((s) => {
+            const on = activeList === s;
             return (
               <button
-                key={t}
+                key={s}
                 type="button"
                 className="iconbtn-md iconbtn-toggle"
-                data-gutter-tool-button={t}
+                data-gutter-list-button={s}
                 aria-pressed={on}
-                onClick={() => toggleGutterTool(t)}
+                onClick={() => toggleGutterList(s)}
                 data-iconbtn-glyph="aligns: the 18px panel glyphs (panel-icons.tsx)"
-                {...iconHint({ label: PANEL_REGISTRY[t].label })}
+                {...iconHint({ label: sectionTitle(s) })}
               >
-                {PANEL_ICONS[t](on)}
+                {PANEL_ICONS[s](on)}
               </button>
             );
           })}
-        </div>
-      )}
-
-      {activeTool && (
-        <div className="tool-gutter-tool" data-gutter-tool={activeTool}>
-          {p.renderTool(activeTool)}
-        </div>
-      )}
-
-      <div className="tool-gutter-lists">
-        {sections.map((s) => (
-          <GutterSectionView
-            key={s}
-            section={s}
-            rows={rowsFor(s)}
-            folded={state.folded.includes(s)}
-            onActivate={activate}
-            onToggleTodo={p.toggleTodo}
-            selectedIds={selectedId}
-          />
-        ))}
-
-        {moreChoices.length > 0 && (
-          <AnchoredMenu
-            ariaLabel="More lists"
-            triggerHint="Add another list"
-            triggerClassName="tool-gutter-heading hover-on-light"
-            wrapperClassName="relative"
-            // A column, sized to its longest label. The rows are buttons —
-            // inline-block by default — so a plain block container's
-            // max-content lays all eight side by side on one line and the
-            // surface comes out half the window wide; as flex items they are
-            // blockified and the column is as wide as "Bibliography".
-            menuClassName="flex flex-col w-max min-w-[140px] whitespace-nowrap"
-            // "More" ADDS a list rather than folding one, so its glyph is the
-            // add "+", not a disclosure chevron.
-            trigger={() => (
-              <>
-                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <span className="flex-1" />
+          {moreChoices.length > 0 && (
+            <AnchoredMenu
+              ariaLabel="Add a list"
+              triggerAriaLabel="Add a list"
+              triggerHint="Add a list"
+              triggerClassName="iconbtn-md tool-gutter-add"
+              wrapperClassName="relative"
+              align="end"
+              // A column, sized to its longest label (rows are buttons, so a
+              // plain block container would lay them side by side).
+              menuClassName="flex flex-col w-max min-w-[140px] whitespace-nowrap"
+              trigger={() => (
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
-                More
-              </>
+              )}
+            >
+              {({ close }) => (
+                <>
+                  {moreChoices.map((s) => (
+                    <MenuActionRow
+                      key={s}
+                      id={`gutter-more-${s}`}
+                      label={sectionTitle(s)}
+                      onSelect={() => {
+                        revealGutterSection(s);
+                        close();
+                      }}
+                    />
+                  ))}
+                </>
+              )}
+            </AnchoredMenu>
+          )}
+          <AnchoredMenu
+            ariaLabel="List options"
+            triggerAriaLabel="List options"
+            triggerHint="Remove lists"
+            triggerClassName="iconbtn-md"
+            wrapperClassName="relative"
+            align="end"
+            menuClassName="flex flex-col w-max min-w-[160px] whitespace-nowrap"
+            trigger={() => (
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="5" cy="12" r="1.8" />
+                <circle cx="12" cy="12" r="1.8" />
+                <circle cx="19" cy="12" r="1.8" />
+              </svg>
             )}
           >
             {({ close }) => (
               <>
-                {moreChoices.map((s) => (
+                {sections.map((s) => (
                   <MenuActionRow
                     key={s}
-                    id={`gutter-more-${s}`}
-                    label={sectionTitle(s)}
+                    id={`gutter-remove-${s}`}
+                    label={`Remove ${sectionTitle(s)}`}
                     onSelect={() => {
-                      revealGutterSection(s);
+                      removeGutterSection(s);
                       close();
                     }}
                   />
                 ))}
+                <MenuActionRow
+                  id="gutter-reset-lists"
+                  label="Reset to the defaults"
+                  onSelect={() => {
+                    resetGutterSections();
+                    close();
+                  }}
+                />
               </>
             )}
           </AnchoredMenu>
+        </div>
+
+        {activeList && (
+          <div className="tool-gutter-scroll tool-gutter-lists">
+            <GutterSectionView
+              key={activeList}
+              section={activeList}
+              rows={rowsFor(activeList)}
+              onActivate={activate}
+              onToggleTodo={p.toggleTodo}
+              selectedIds={selectedId}
+            />
+          </div>
         )}
       </div>
     </div>
   );
 }
+
+/** The CSS var holding the top half's share (0–1) of the split height. */
+const SPLIT_VAR = "--tool-gutter-split";
 
 /** The ids a row may be selected by: the card store's one selection, the
  *  bibliography's key slot, and the Errors panel's own slot. */
@@ -255,7 +378,6 @@ function selectedIdSet(
 function GutterSectionView({
   section,
   rows,
-  folded,
   onActivate,
   onToggleTodo,
   selectedIds,
@@ -263,7 +385,6 @@ function GutterSectionView({
   selectedIds: ReadonlySet<string>;
   section: GutterSection;
   rows: GutterRow[];
-  folded: boolean;
   onActivate: (jump: GutterJump, el: HTMLElement | null) => void;
   onToggleTodo: (id: string) => void;
 }) {
@@ -274,63 +395,47 @@ function GutterSectionView({
   const marked = rows.some((r) => !!r.marker || !!r.todo);
   return (
     <section className="tool-gutter-section" data-gutter-section={section}>
-      <div className="tool-gutter-section-head group">
-        <PodDisclosure
-          expanded={!folded}
-          onToggle={() => toggleGutterSectionFold(section)}
-          className="tool-gutter-heading hover-on-light"
-        >
+      <div className="tool-gutter-section-head">
+        <h3 className="tool-gutter-heading">
           {title}
           {rows.length > 0 && <span className="tool-gutter-count">{rows.length}</span>}
-        </PodDisclosure>
-        <button
-          type="button"
-          className="iconbtn-xs tool-gutter-remove opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-          onClick={() => removeGutterSection(section)}
-          {...iconHint({ label: `Remove ${title} from the list` })}
-        >
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        </h3>
       </div>
-      {!folded && (
-        rows.length === 0 ? (
-          <p className="tool-gutter-empty">None yet</p>
-        ) : (
-          <ul className="tool-gutter-rows" data-marked={marked ? "" : undefined}>
-            {rows.map((r) => (
-              <li
-                key={r.key}
-                className="tool-gutter-row"
-                data-gutter-row={r.key}
-                data-muted={r.muted ? "" : undefined}
-                data-selected={selectedIds.has(rowEntityId(r)) ? "" : undefined}
+      {rows.length === 0 ? (
+        <p className="tool-gutter-empty">None yet</p>
+      ) : (
+        <ul className="tool-gutter-rows" data-marked={marked ? "" : undefined}>
+          {rows.map((r) => (
+            <li
+              key={r.key}
+              className="tool-gutter-row"
+              data-gutter-row={r.key}
+              data-muted={r.muted ? "" : undefined}
+              data-selected={selectedIds.has(rowEntityId(r)) ? "" : undefined}
+            >
+              {r.todo ? (
+                <input
+                  type="checkbox"
+                  className="tool-gutter-check"
+                  checked={r.todo.done}
+                  onChange={() => onToggleTodo(r.todo!.id)}
+                  aria-label={r.todo.done ? "Mark not done" : "Mark done"}
+                />
+              ) : marked ? (
+                <span className="tool-gutter-marker" aria-hidden={r.marker ? undefined : true}>
+                  {r.marker}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                className="tool-gutter-row-text"
+                onClick={(e) => onActivate(r.jump, e.currentTarget)}
               >
-                {r.todo ? (
-                  <input
-                    type="checkbox"
-                    className="tool-gutter-check"
-                    checked={r.todo.done}
-                    onChange={() => onToggleTodo(r.todo!.id)}
-                    aria-label={r.todo.done ? "Mark not done" : "Mark done"}
-                  />
-                ) : marked ? (
-                  <span className="tool-gutter-marker" aria-hidden={r.marker ? undefined : true}>
-                    {r.marker}
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  className="tool-gutter-row-text"
-                  onClick={(e) => onActivate(r.jump, e.currentTarget)}
-                >
-                  {r.text}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )
+                {r.text}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

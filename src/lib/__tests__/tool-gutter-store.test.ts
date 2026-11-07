@@ -8,6 +8,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_GUTTER_SECTIONS,
+  MAX_GUTTER_SPLIT,
+  MIN_GUTTER_SPLIT,
   DEFAULT_TOOL_GUTTER_STATE,
   TOOL_GUTTER_STORAGE_KEY,
   __resetToolGutterStoreForTests,
@@ -15,8 +17,11 @@ import {
   openGutterTool,
   parseToolGutterState,
   removeGutterSection,
+  resetGutterSections,
   revealGutterSection,
   routePanelOpenToGutter,
+  setGutterSplit,
+  toggleGutterList,
   toggleGutterSectionFold,
   toggleGutterTool,
 } from "@/lib/tool-gutter-store";
@@ -43,7 +48,14 @@ describe("parseToolGutterState", () => {
         folded: ["todo", "nope"],
       }),
     );
-    expect(s).toEqual({ tool: "search", sections: ["notes", "footnotes"], folded: ["todo"] });
+    // A blob from before the split gutter names no open list: its first opens.
+    expect(s).toEqual({
+      tool: "search",
+      sections: ["notes", "footnotes"],
+      folded: ["todo"],
+      list: "notes",
+      split: 0.5,
+    });
     expect(parseToolGutterState(JSON.stringify({ tool: "omni" })).tool).toBeNull();
   });
 
@@ -131,6 +143,49 @@ describe("cross-window", () => {
       );
       window.dispatchEvent(new StorageEvent("storage", { key: TOOL_GUTTER_STORAGE_KEY }));
     });
-    expect(result.current).toEqual({ tool: "outline", sections: ["errors"], folded: [] });
+    expect(result.current).toEqual({
+      tool: "outline",
+      sections: ["errors"],
+      folded: [],
+      list: "errors",
+      split: 0.5,
+    });
+  });
+});
+
+describe("the split gutter's bottom half (round 3)", () => {
+  it("keeps a stored list only if its icon is present, and a closed list closed", () => {
+    expect(
+      parseToolGutterState(JSON.stringify({ sections: ["notes"], list: "footnotes" })).list,
+    ).toBe("notes");
+    expect(parseToolGutterState(JSON.stringify({ sections: ["notes"], list: null })).list).toBeNull();
+    expect(parseToolGutterState(JSON.stringify({ sections: [], list: "notes" })).list).toBeNull();
+  });
+
+  it("clamps the stored split into the drag's bounds", () => {
+    expect(parseToolGutterState(JSON.stringify({ split: 0.01 })).split).toBe(MIN_GUTTER_SPLIT);
+    expect(parseToolGutterState(JSON.stringify({ split: 3 })).split).toBe(MAX_GUTTER_SPLIT);
+    expect(parseToolGutterState(JSON.stringify({ split: 0.3 })).split).toBe(0.3);
+  });
+
+  it("toggles one list, opens an added one, and closes a removed one", () => {
+    toggleGutterList("bibliography");
+    expect(getToolGutterState().list).toBe("bibliography");
+    toggleGutterList("bibliography");
+    expect(getToolGutterState().list).toBeNull();
+    revealGutterSection("notes");
+    expect(getToolGutterState()).toMatchObject({ list: "notes", sections: ["footnotes", "bibliography", "notes"] });
+    removeGutterSection("notes");
+    expect(getToolGutterState()).toMatchObject({ list: null, sections: ["footnotes", "bibliography"] });
+    removeGutterSection("footnotes");
+    resetGutterSections();
+    expect(getToolGutterState().sections).toEqual(["footnotes", "bibliography"]);
+  });
+
+  it("commits the divider's share once, clamped", () => {
+    setGutterSplit(0.7);
+    expect(getToolGutterState().split).toBe(0.7);
+    setGutterSplit(0.99);
+    expect(getToolGutterState().split).toBe(MAX_GUTTER_SPLIT);
   });
 });

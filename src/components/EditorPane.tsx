@@ -8875,7 +8875,7 @@ function PaneRail({
           // below it.
           ...(gutterLayout && !isLeft
             ? {
-                ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)",
+                ["--omni-sticky-top" as string]: "calc(var(--gutter-inset) + 28px)",
                 ["--omni-frame-z" as string]: 30,
                 ["--omni-head-clear" as string]: "28px",
               }
