@@ -29,8 +29,6 @@ import type { Editor } from "@tiptap/react";
 import { paneRootOf, resolvePaneMarker } from "@/components/editor-layout/pane-dom";
 import { jumpTargetElement, resolveCardRowTargets } from "../jump-to-card";
 import { alignEntryToYIfNeeded } from "@/components/editor-layout/layout-scroll";
-import { cardPopKey } from "@/panels/panel-registry";
-import type { CardKind } from "@/panels/_shared/types";
 import {
   useStoreSelection,
   type AnchoredCardRef,
@@ -130,10 +128,3 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     alignEntryToYIfNeeded(best.el, cardY);
   }, [selection, editor, collections, store]);
 }
-
-// Helper to keep type-checker happy with CardKind import (used implicitly
-// via cardKeyForEntity / cardPopKey internal types).
-export type { CardKind };
-// cardPopKey re-exported as a convenience for callers that build keys
-// from the entity ref shape.
-export { cardPopKey };

@@ -28,7 +28,11 @@ import type { JSONContent } from "@tiptap/react";
 import { inlineAtoms } from "@/lib/inline-content";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
-import { type CardAtomKind, cardAtomMetaForNodeName } from "@/lib/tiptap/atom-registry";
+import {
+  CARD_ATOM_MIRROR_ID_ATTR,
+  type CardAtomKind,
+  cardAtomMetaForNodeName,
+} from "@/lib/tiptap/atom-registry";
 import {
   type BlockEntry,
   type CitationContainer,
@@ -110,12 +114,16 @@ export function exampleIdentityOf(n: PMNode): ReturnType<typeof deriveExampleIde
 /**
  * A Card-bearing atom's kind and entity id (`""` when unset), or null for any
  * other node. Both halves come from the atom registry (task 1300) — the node
- * name and the id attr are never spelled here.
+ * name and the id attr are never spelled here. The id is the per-kind attr,
+ * else the registry's unified mirror ({@link CARD_ATOM_MIRROR_ID_ATTR}) — the
+ * ONE answer to "what is this atom's id" (task 1508), which the `src/links`
+ * liveness walkers read too rather than spelling their own fallback.
  */
 export function cardAtomIdOf(n: PMNode): { kind: CardAtomKind; id: string } | null {
   const meta = cardAtomMetaForNodeName(n.type.name);
   if (!meta) return null;
-  return { kind: meta.kind, id: str((n.attrs as Record<string, unknown>)[meta.idAttr]) };
+  const attrs = n.attrs as Record<string, unknown>;
+  return { kind: meta.kind, id: str(attrs[meta.idAttr]) || str(attrs[CARD_ATOM_MIRROR_ID_ATTR]) };
 }
 
 interface CardAtomVisit {

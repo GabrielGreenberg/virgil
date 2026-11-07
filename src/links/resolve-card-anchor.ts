@@ -37,11 +37,6 @@ import { isDormantLink, isFullyDormant } from "./dormant";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { paragraphUuidAt, type CardWithLinks } from "./links";
 
-// Re-export so consumers (and CHIP-D's capture side) keep importing the
-// canonical normalization from the resolver's public surface, even though
-// the implementation lives in a leaf module to break the links.ts cycle.
-export { normalizeParagraphText };
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
