@@ -1022,8 +1022,8 @@ export default function EditorLayout() {
   // selected-card-placement.ts — task 1179), which pins the Omni card or
   // slides the native list so the selected card sits level with the click.
 
-  // Card-body click → editor scroll alignment. `jumpToLink`/`jumpToCard`
-  // (links.ts) scroll the row so the in-text anchor lands at the card's
+  // Card-body click → editor scroll alignment. `jumpToTarget`
+  // (jump-to-card.ts) scrolls the row so the in-text anchor lands at the card's
   // pre-jump viewport Y — and fire this event ONLY when that scroll actually
   // happened, since the pin exists to compensate for the document moving
   // under the card. The publisher computes `pinTop` from the pre-scroll pod

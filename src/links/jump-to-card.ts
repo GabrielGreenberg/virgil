@@ -19,7 +19,7 @@
  *     where it is drawn: its span when it sits at one, else its block (task
  *     1409) — the asking row when a row is asking, else the authority's seed.
  *     Inline-atom links (footnote / citation), which the authority does not
- *     resolve, are the one fallback, located by `resolveLink`.
+ *     resolve, are the one fallback, located by `resolveInlineAtomLink`.
  *   - `jumpToTarget` is the ONE door that turns a target into a scroll: the
  *     card-aligned / centered scroll and the omni pin, written once.
  *
@@ -28,9 +28,14 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Link } from "./_shared/types";
-import { resolveLink, type CardWithLinks } from "./links";
-import { buildCardAnchorPass } from "./card-anchor-rows";
+import { resolveInlineAtomLink, type CardWithLinks } from "./links";
+import {
+  buildCardAnchorPass,
+  type CardAnchorPass,
+  type CardJumpTarget,
+} from "./card-anchor-rows";
 import { linkIdSelector } from "./link-dom-contract";
+import { paneRootOf } from "@/components/editor-layout/pane-dom";
 import {
   alignEntryToYIfNeeded,
   scrollEntryIntoViewIfNeeded,
@@ -49,7 +54,7 @@ export type JumpTarget =
  * Name the place a Jump on `card` should land: the anchor authority's reading
  * (`CardAnchorPass.jumpTarget` — the row's own paragraph when a row asks, else
  * the authority's winner), and only for a card the authority does not bind, an
- * inline-atom link located by `resolveLink`.
+ * inline-atom link located by `resolveInlineAtomLink`.
  */
 export function resolveCardJumpTarget(
   editor: Editor,
@@ -57,20 +62,52 @@ export function resolveCardJumpTarget(
   rowPid?: string | null,
 ): JumpTarget | null {
   const hit = buildCardAnchorPass(editor).jumpTarget(card, rowPid);
-  if (hit) {
-    return hit.anchorId
-      ? { kind: "mark", anchorId: hit.anchorId }
-      : { kind: "paragraph", paragraphId: hit.paragraphId, pos: hit.pos };
+  return hit ? targetOfHit(hit) : atomTargetOf(editor, card);
+}
+
+/**
+ * EVERY place `card` is drawn, as jump targets — one per live row of the
+ * authority, each landed exactly where `jumpTarget` would land a Jump from
+ * that row (task 1505). Selection placement picks among these, so selecting a
+ * card can only align the document to a row the margin marks. A card the
+ * authority does not bind falls back to its inline atom, as Jump does.
+ */
+export function resolveCardRowTargets(
+  editor: Editor,
+  card: CardWithLinks,
+  pass: CardAnchorPass = buildCardAnchorPass(editor),
+): JumpTarget[] {
+  const out: JumpTarget[] = [];
+  const { rows, anchored } = pass.resolve(card);
+  if (anchored) {
+    for (const row of rows) {
+      const hit = pass.jumpTarget(card, row.pid);
+      if (hit && hit.paragraphId === row.pid) out.push(targetOfHit(hit));
+    }
   }
-  // Inline atoms are not paragraph anchors, so the authority never binds them.
+  if (out.length > 0) return out;
+  const atom = atomTargetOf(editor, card);
+  return atom ? [atom] : [];
+}
+
+function targetOfHit(hit: CardJumpTarget): JumpTarget {
+  return hit.anchorId
+    ? { kind: "mark", anchorId: hit.anchorId }
+    : { kind: "paragraph", paragraphId: hit.paragraphId, pos: hit.pos };
+}
+
+/** Inline atoms are not paragraph anchors, so the authority never binds them;
+ *  `resolveInlineAtomLink` (atom-only) locates them. */
+function atomTargetOf(editor: Editor, card: CardWithLinks): JumpTarget | null {
   for (const link of card.links ?? []) {
     if (link.anchor.type !== "inline-atom") continue;
-    if (resolveLink(editor, link)?.domEl) return { kind: "atom", link };
+    if (resolveInlineAtomLink(editor, link)?.domEl) return { kind: "atom", link };
   }
   return null;
 }
 
-function targetElement(editor: Editor, target: JumpTarget): HTMLElement | null {
+/** The DOM element a jump target lands on, or null when it is not rendered. */
+export function jumpTargetElement(editor: Editor, target: JumpTarget): HTMLElement | null {
   switch (target.kind) {
     case "mark":
       return editor.view.dom.querySelector(
@@ -90,7 +127,7 @@ function targetElement(editor: Editor, target: JumpTarget): HTMLElement | null {
         : (nodeDom?.parentElement as HTMLElement | null) ?? null;
     }
     case "atom":
-      return resolveLink(editor, target.link)?.domEl ?? null;
+      return resolveInlineAtomLink(editor, target.link)?.domEl ?? null;
   }
 }
 
@@ -114,15 +151,16 @@ export function jumpToTarget(
   target: JumpTarget,
   sourceEl?: HTMLElement | null,
 ): boolean {
-  const domEl = targetElement(editor, target);
+  const domEl = jumpTargetElement(editor, target);
   if (!domEl) return false;
   if (sourceEl) {
     const preY = sourceEl.getBoundingClientRect().top;
     // Pin pod-rel = marker's pre-scroll pod-relative Y. After the row
     // scrolls (by `markerY - preY`), the pod moves with it, and pin Y =
     // `markerY_pre - podTop_pre` lands the card at preY viewport-Y — the
-    // card's original click position. See the same derivation in
-    // `jumpToLink`.
+    // card's original click position:
+    //   newPodTop = podTop - (markerY - preY)
+    //   card viewportY = newPodTop + pinTop = preY  ✓
     const omniWrapper = sourceEl.closest(
       "[data-omni-entry-wrapper]",
     ) as HTMLElement | null;
@@ -140,7 +178,9 @@ export function jumpToTarget(
     if (moved && omniKey && pinTop !== null) {
       window.dispatchEvent(
         new CustomEvent("virgil-card-jumped", {
-          detail: { omniKey, pinTop },
+          // The wrapper's own pane rides along (task 1458): the key is
+          // per-document, and another visible Reader may mount it too.
+          detail: { omniKey, pinTop, paneRoot: paneRootOf(omniWrapper) },
         }),
       );
     }

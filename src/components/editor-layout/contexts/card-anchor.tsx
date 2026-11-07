@@ -18,7 +18,7 @@ import type { CardWithLinks } from "@/links/links";
  * none at all: they gated Jump on "the card STORES a link"
  * (`getLinkedTextObjectIds(card).length > 0`), which is true of a card whose
  * paragraph was deleted (a Jump that silently does nothing) and false of a
- * range-only highlight whose mark `resolveLink` finds (a working Jump hidden).
+ * range-only highlight whose mark the authority finds (a working Jump hidden).
  *
  * Every surface that asks "where is this card anchored?" or "may this card
  * offer Jump?" now reads THIS pass — one index per structural change, one

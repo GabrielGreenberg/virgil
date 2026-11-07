@@ -170,8 +170,10 @@ export function isRangedModeB(link: Link): link is RangedModeBLink {
   return isModeB(link) && !!link.anchor.textRange;
 }
 
-/** Result of looking up a link's current position in the live editor. */
-export type LinkResolution =
-  | { kind: "inline-atom"; pos: number; nodeSize: number; domEl: HTMLElement | null }
-  | { kind: "text-range"; from: number; to: number; domEl: HTMLElement | null }
-  | { kind: "paragraph"; paragraphId: string; pos: number; domEl: HTMLElement | null };
+/** Where an inline-atom link sits in the live editor (`resolveInlineAtomLink`). */
+export type LinkResolution = {
+  kind: "inline-atom";
+  pos: number;
+  nodeSize: number;
+  domEl: HTMLElement | null;
+};

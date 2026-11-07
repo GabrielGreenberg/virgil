@@ -215,12 +215,12 @@ describe("no call site keeps a private copy of the rule", () => {
       path.join(SRC, "components/editor-layout/selected-card-placement.ts"),
     )!;
     expect(selection).toMatch(/requestOmniCardPlacement\s*\(/);
-    // … and the two jump paths, whose pin rides the scroll's verdict: the
+    // … and the jump path, whose pin rides the scroll's verdict: the
     // `virgil-card-jumped` dispatch must sit behind the align door's report,
     // because the pin exists only to compensate for a scroll that happened.
-    // `jumpToLink` lives in links.ts; the card jump's door, `jumpToTarget`,
-    // in jump-to-card.ts (task 935) — one dispatch each.
-    for (const rel of ["links/links.ts", "links/jump-to-card.ts"]) {
+    // ONE door since task 1505 — `jumpToTarget` (jump-to-card.ts, task 935);
+    // links.ts's `jumpToLink` copy was folded into it.
+    for (const rel of ["links/jump-to-card.ts"]) {
       const src = CODE.get(path.join(SRC, rel))!;
       const dispatches = src.match(/moved\s*&&\s*omniKey/g) ?? [];
       expect(dispatches.length, rel).toBe(1);
