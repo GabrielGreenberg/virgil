@@ -44,6 +44,9 @@ vi.mock("@/lib/storage", () => ({
   readSidecar: vi.fn(async (_docId: string, _file: string, dflt: unknown) =>
     _file === "ai-requests.json" ? { requests: [...DISK.requests] } : dflt,
   ),
+  readSidecarIfExists: vi.fn(async (_docId: string, _file: string) =>
+    _file === "ai-requests.json" ? { requests: [...DISK.requests] } : null,
+  ),
   writeSidecar: vi.fn(async () => {
     if (mode.value === "throw") throw writeError;
   }),
@@ -256,6 +259,8 @@ describe("the same channel carries the other sidecar writers", () => {
     const refusal = getSidecarRefusal(DOC);
     expect(refusal?.reason).toBe("no-handle");
     expect(refusal?.what).toBe("bibliography review");
+    // …and the optimistic row is TAKEN BACK (reconciled to disk, task 1504).
+    expect(result.current.getRequestStatus("smith2020", "fields")).toBe("none");
   });
 });
 

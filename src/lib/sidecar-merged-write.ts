@@ -55,6 +55,21 @@ export function newMergeBase<S>(): MergeBase<S> {
   return { value: null, submits: 0 };
 }
 
+/**
+ * THE STALE-READ GUARD, stated once (task 1078; shared by task 1504). Call it
+ * as a re-read STARTS: it notes the write generation and returns a predicate
+ * answering "has a write started since?". A read it answers yes for holds
+ * pre-write disk — applying it would read the user's just-landed record as an
+ * external delete (merge) or simply drop it (adopt) — so the caller discards it
+ * and re-issues the read. A dirty guard alone cannot see this: a write that
+ * starts AND lands inside the read leaves nothing in flight by the time the read
+ * resolves. Every sidecar re-read that applies disk to memory asks this.
+ */
+export function markReadStart(gen: { readonly submits: number }): () => boolean {
+  const at = gen.submits;
+  return () => gen.submits !== at;
+}
+
 /** What {@link writeSidecarMerged} landed, and which submission it was. */
 export interface MergedWrite<S> {
   /** The merged value now on disk; null when the layer below wrote nothing. */
