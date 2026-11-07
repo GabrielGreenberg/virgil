@@ -7050,6 +7050,19 @@ body.perf-contain .static-borrowed-text {
   border-radius: var(--pod-radius);
   box-shadow: var(--gutter-lozenge-shadow);
 }
+/* The sand above that lozenge: a card disappears at the lozenge's top edge,
+   and reaches behind it as far as the top corners' curve, so nothing shows
+   over the lozenge or in its corners. Zero net flow height. */
+[data-gutter-side-host="right"]::before {
+  content: "";
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: calc(var(--gutter-inset) + var(--pod-radius));
+  margin: 0 -4px calc(-1 * (var(--gutter-inset) + var(--pod-radius))) 0;
+  background: var(--background);
+}
 /* A tool's header runs the gutter's width: the title at the left
    edge, under the tool buttons, and its controls at the right. */
 .tool-gutter-tool .panel-header {

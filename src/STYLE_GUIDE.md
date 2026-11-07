@@ -2052,7 +2052,8 @@ tools lozenge and closes the right gutter's own lozenge, which sticks over the
 cards (`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
 one piece of chrome. The cards' notices (the pending-change navigator and the
 anchor button) share that lozenge, left of the toggle; the first card starts
-directly under it, and cards then run under it with no fade. Generalisable rule: **a list of what is IN the paper reads
+directly under it, and cards then run under it with no fade, ending at its top
+edge: the sand above the lozenge is opaque. Generalisable rule: **a list of what is IN the paper reads
 as text; a thing you can open and edit reads as a card** — and the cards are on
 the right.
 
