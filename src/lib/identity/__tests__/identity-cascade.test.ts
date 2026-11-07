@@ -29,6 +29,7 @@ import {
   renameCitekeyChange,
 } from "../identity-cascade";
 import {
+  citesRenamedEntry,
   rewriteCiteCommandString,
   rewriteCiteKeyInDoc,
 } from "../bib-cite-rewrite";
@@ -267,6 +268,63 @@ describe("rewriteCiteKeyInDoc: live-doc rename, footnote-deep", () => {
   it("no matching key → no dispatch (0 touched)", () => {
     const editor = mount("top-1", "\\cite{jones2019}");
     expect(rewriteCiteKeyInDoc(editor, "absent", "x")).toBe(0);
+    editor.destroy();
+  });
+});
+
+// ── Case-folded identity (task 1511) ────────────────────────────────────────
+// The readers resolve `\cite{smith2020}` to the bib's `Smith2020` (task 1325),
+// so the rename must follow it — except where the bib holds an exact twin.
+
+describe("citesRenamedEntry: the rename's key-equality door", () => {
+  it("matches the exact key and every case-variant when no twin is known", () => {
+    const names = citesRenamedEntry("Smith2020");
+    expect(["Smith2020", "smith2020", "SMITH2020"].map(names)).toEqual([true, true, true]);
+    expect(names("Smith2020a")).toBe(false);
+  });
+  it("an exact-case twin in the bib keeps its own spelling", () => {
+    const names = citesRenamedEntry("Smith2020", ["Smith2020", "smith2020", "other"]);
+    expect(names("Smith2020")).toBe(true);
+    expect(names("smith2020")).toBe(false);
+    // A third spelling goes where the readers send it: first in source order.
+    expect(names("SMITH2020")).toBe(true);
+    expect(citesRenamedEntry("smith2020", ["Smith2020", "smith2020"])("SMITH2020")).toBe(false);
+  });
+});
+
+describe("rewriteCiteCommandString: case-twin cites follow (task 1511)", () => {
+  it("rewrites a case-differing token to newKey verbatim, notes untouched", () => {
+    expect(
+      rewriteCiteCommandString("\\citep[see Smith][p.~2]{ smith2020 ,foo}", "Smith2020", "Jones2020"),
+    ).toBe("\\citep[see Smith][p.~2]{ Jones2020 ,foo}");
+  });
+  it("exact-case behaviour is unchanged", () => {
+    expect(rewriteCiteCommandString("\\cite{Smith2020}", "Smith2020", "Jones2020")).toBe(
+      "\\cite{Jones2020}",
+    );
+  });
+  it("leaves the cites of an exact-case twin alone", () => {
+    const bib = ["Smith2020", "smith2020"];
+    expect(
+      rewriteCiteCommandString("\\cite{smith2020,Smith2020}", "Smith2020", "Jones2020", bib),
+    ).toBe("\\cite{smith2020,Jones2020}");
+  });
+});
+
+describe("rewriteCiteKeyInDoc: case-twin cites follow, footnote-deep (task 1511)", () => {
+  it("rewrites top-level AND footnote-nested case-variants", () => {
+    const editor = mount("top-1", "\\cite{smith2020}", "\\citep[p.~3]{SMITH2020}");
+    expect(rewriteCiteKeyInDoc(editor, "Smith2020", "Jones2020", ["Smith2020"])).toBe(2);
+    expect(topLevelCommands(editor)).toEqual(["\\cite{Jones2020}"]);
+    expect(footnoteNestedCommands(editor)).toEqual(["\\citep[p.~3]{Jones2020}"]);
+    editor.destroy();
+  });
+  it("an exact twin's cites are not retargeted", () => {
+    const editor = mount("top-1", "\\cite{smith2020}", "\\cite{Smith2020}");
+    const touched = rewriteCiteKeyInDoc(editor, "Smith2020", "Jones2020", ["Smith2020", "smith2020"]);
+    expect(touched).toBe(1);
+    expect(topLevelCommands(editor)).toEqual(["\\cite{smith2020}"]);
+    expect(footnoteNestedCommands(editor)).toEqual(["\\cite{Jones2020}"]);
     editor.destroy();
   });
 });

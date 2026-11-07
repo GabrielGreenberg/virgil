@@ -27,7 +27,7 @@ import {
   IdentityCascade,
   renameCitekeyChange,
 } from "@/lib/identity/identity-cascade";
-import { rewriteCiteCommandString } from "@/lib/identity/bib-cite-rewrite";
+import { citesRenamedEntry, rewriteCiteCommandString } from "@/lib/identity/bib-cite-rewrite";
 import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import { spliceBibBlock } from "@/lib/bib-source";
 import {
@@ -556,14 +556,21 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
    *  (`rewriteCiteCommandString`, task 910), so only the `{…}` key lists
    *  change — never the command word or a `[pre][post]` note. */
   const rewriteCitationRefs = useCallback(
-    (oldKey: string, newKey: string) => {
+    (oldKey: string, newKey: string, bibKeys?: readonly string[]) => {
       if (oldKey === newKey) return;
+      // The SAME key-equality door the editor rewrite asks (task 1511): a
+      // case-twin cite of the renamed entry follows; an exact twin's does not.
+      const names = citesRenamedEntry(oldKey, bibKeys);
       update((prev) => ({
         ...prev,
         citations: prev.citations.map((c) => {
-          if (!c.keys.includes(oldKey)) return c;
-          const newKeys = c.keys.map((k) => (k === oldKey ? newKey : k));
-          return { ...c, keys: newKeys, command: rewriteCiteCommandString(c.command, oldKey, newKey) };
+          if (!c.keys.some(names)) return c;
+          const newKeys = c.keys.map((k) => (names(k) ? newKey : k));
+          return {
+            ...c,
+            keys: newKeys,
+            command: rewriteCiteCommandString(c.command, oldKey, newKey, bibKeys),
+          };
         }),
       }));
     },
@@ -665,8 +672,13 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       // that had not caught up yet). Reset per run, so the disk run — always
       // the last — is the one that answers.
       let conflict: string | null = null;
+      // The bib's keys as the LANDING run saw them, before the rename (task
+      // 1511) — the rename fan-out asks of them whether a case-variant cite
+      // named the renamed entry or an exact-case twin of it.
+      let bibKeys: readonly string[] = [];
       return runBibMutation((prev) => {
         conflict = null;
+        bibKeys = prev.map((e) => e.key);
         const next = mapAddressedBibEntry(prev, address, (e) => {
           // A delta save rebases onto THIS run's entry; an absolute save is
           // set-all when fields are part of it: the supplied map is the
@@ -708,14 +720,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         // that permits it is `written`.
         if (result.kind !== "written") return result;
         // citation-refs sidecar rewrite (boundary-safe, whole-token).
-        rewriteCitationRefs(oldKey, newKey);
+        rewriteCitationRefs(oldKey, newKey, bibKeys);
         // …then every registered migrator: the editor `\cite{}` doc-rewrite
         // (without which the line above is undone by the next
         // `syncFromEditor`), the float-key + panel-selection re-point, and the
         // annotation / bib-review re-key. A rename with no migrators
         // registered is a well-formed no-op.
         void identityCascade.runIdentityChange(
-          renameCitekeyChange({ uid, oldKey, newKey, newType }),
+          renameCitekeyChange({ uid, oldKey, newKey, newType, bibKeys }),
         );
         return result;
       });

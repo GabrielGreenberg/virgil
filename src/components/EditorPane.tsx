@@ -1335,11 +1335,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   useEffect(() => {
     const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
       if (!isRenameCitekey(change)) return;
-      const { oldKey, newKey } = change.renameCitekey;
+      const { oldKey, newKey, bibKeys } = change.renameCitekey;
       if (oldKey === newKey) return;
       const ed = innerRef.current?.getEditor();
       if (!ed) return;
-      rewriteCiteKeyInDoc(ed, oldKey, newKey);
+      rewriteCiteKeyInDoc(ed, oldKey, newKey, bibKeys);
     });
     return unregister;
   }, [identityCascade]);

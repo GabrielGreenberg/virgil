@@ -213,3 +213,34 @@ describe("updateBibKeyAndType: the sidecar rewrite touches only key lists (task 
     expect(cit.command).toBe("\\citep[cf. foo's view][p.2]{newfoo}");
   });
 });
+
+describe("updateBibKeyAndType: a case-twin cite follows the rename (task 1511)", () => {
+  // The readers fold case (task 1325): `\cite{FOO}` resolves to the bib's
+  // `foo`. A rename that matched exactly left it citing a key that no longer
+  // exists — the dangling reference task 689 exists to prevent.
+  it("rewrites the sidecar ref and hands the migrators the bib's keys", async () => {
+    setIdentityCascadeFlag(false);
+    const result = await mountLoaded("doc-case-twin");
+    const bibKeysSeen: Array<readonly string[] | undefined> = [];
+    let id = "";
+    act(() => {
+      result.current.identityCascade.registerMigrator("bibEntry", (c) => {
+        if (isRenameCitekey(c)) bibKeysSeen.push(c.renameCitekey.bibKeys);
+      });
+      id = result.current.addCitation("\\citep[p.~2]{FOO,foobar}").id;
+    });
+    await waitFor(() => {
+      expect(result.current.citations.some((c) => c.id === id)).toBe(true);
+    });
+    act(() => {
+      result.current.updateBibKeyAndType(namedBibEntry(result.current.bibEntries, "foo"), "newfoo", "article");
+    });
+    await waitFor(() => {
+      expect(result.current.citations.find((c) => c.id === id)?.keys).toEqual(["newfoo", "foobar"]);
+    });
+    expect(result.current.citations.find((c) => c.id === id)!.command).toBe(
+      "\\citep[p.~2]{newfoo,foobar}",
+    );
+    expect(bibKeysSeen).toEqual([["foo", "foobar", "smith:2020"]]);
+  });
+});
