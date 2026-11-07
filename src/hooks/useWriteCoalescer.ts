@@ -21,12 +21,16 @@ import {
  * Lifetime is the caller's: an owner that must deliver a held write on
  * teardown calls `flush()` (or its own settle door) from its cleanup; this
  * hook never cancels on unmount, because a silently dropped write is the
- * failure this primitive exists to prevent.
+ * failure this primitive exists to prevent. An owner bound by the timer-
+ * lifetime law passes its `useViewLifetime()` scope as `scheduler`: the scope's
+ * disposal then disarms the window — a deliberate cancel, as with the citation
+ * card's code field, whose unmount ends its session as a cancel (task 686).
  */
 export function useWriteCoalescer({
   delayMs,
   maxWaitMs,
   fire,
+  scheduler,
 }: WriteCoalescerOptions): WriteCoalescer {
   const fireRef = useRef(fire);
   useEffect(() => {
@@ -38,6 +42,7 @@ export function useWriteCoalescer({
       delayMs,
       maxWaitMs,
       fire: () => fireRef.current(),
+      scheduler,
     });
   }
   return useMemo<WriteCoalescer>(() => {
