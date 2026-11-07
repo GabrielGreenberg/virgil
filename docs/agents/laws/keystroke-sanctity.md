@@ -1,4 +1,4 @@
-<!-- last-verified: 25db9fea 2026-11-05 -->
+<!-- last-verified: 4ef13f4d 2026-11-07 -->
 <!-- derives-from: AGENTS.md#laws -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -838,6 +838,14 @@ The observer's contract is `applyDiff(snapshot(old), inspectSteps(tr)) == buildI
 ### The membership half: classify against the SNAPSHOT, not the touched range (task 1493)
 
 Which step bundle an entity landed in is a fact about the touched RANGE; whether it is new, changed or gone is a fact about the PRIOR SNAPSHOT. The reconcilers used to answer the second question with the first, and the two came apart three ways: a collapsed insert INSIDE a highlight put the anchor on the added side only and reported it "added" on every keystroke (`emitCount` climbed while typing); an entity inserted and re-marked in one transaction (the footnote input rule + `writeFootnoteNumbers`) sat in both bundles and was reported "changed" for an id the index never held, so `applyDiff` dropped it; an entity born and deleted in one transaction was reported removed. Now: ONE `reconcileKeyed` in `step-inspector.ts` classifies every keyed table against `prevStructure` membership and the LIVE doc (`collectStructure(newDoc)` — the rebuild's own walk, lazy, at most once per tx, reached only from removals; it replaced three hand-rolled survivor caches). The removed bundle keeps the FIRST sighting per key and skips a node whose back-mapped start was deleted (born this tx). An added-only anchor id the snapshot holds is a WIDEN candidate settled in O(1) against the prior span mapped by `mapAnchorSpan` — the same mapper the plugin uses, with `to` at assoc −1 because `linkedAnchor` is `inclusive: false`. `applyDiff`'s keyed arrays fold through one `foldKeyed`: a changed key's entries are REPLACED by the changed set (so deleting one of two same-id cites keeps the survivor), and a changed key the table lacks is appended (fail-open). Pinned in `structure-congruence-oracle.test.ts` ("prior-snapshot membership" + the emitCount case).
+
+### The field-table half: "changed" compares EVERY snapshot field by one declared table (task 1495)
+
+The step inspector used to decide "changed" from five hand-picked predicates, so a field nobody listed went stale silently (a cite re-collected under a re-minted example kept its old container; the Citations panel nested it late). Now ONE declared table, `ENTRY_FIELDS` in `step-inspector.ts`, exhaustive per entry type, is what "changed" compares; a field that cannot be kept current incrementally and that nothing reads leaves the snapshot rather than riding stale (`HeadingEntry.text`, `FigureEntry.number`). Related (task 1494): a MARK step (bold, italic, `linkedAnchor`, any formatting) records content-changed for every block it spans and the enclosing example — content-only, so structural watchers stay asleep.
+
+### The local-walk half: a one-textblock range is answered from that textblock (task 1497)
+
+The per-step range walks (`forEachAnchorableStart` in the backfill; the step inspector's `collectRange` / `shapeNodesStartingIn` / `noteContentSpan`) go through ONE primitive, `nodesBetweenLocal` ([changed-ranges.ts](../../../src/lib/tiptap/changed-ranges.ts)), which answers a range lying inside one textblock from that textblock alone — `doc.nodesBetween` scans every top-level block before the range, so a keystroke at block N used to visit the N blocks above it.
 
 ### Why this exists
 

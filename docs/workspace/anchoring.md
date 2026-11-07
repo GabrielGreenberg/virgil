@@ -1,4 +1,4 @@
-<!-- last-verified: 3010f199 2026-11-06 -->
+<!-- last-verified: 4ef13f4d 2026-11-07 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -78,9 +78,9 @@ read by the Mode-A anchor rail), but which side a card's margin chrome sits on
 follows its PANEL's dock and is resolved live by
 [src/lib/margin-side.ts](../../src/lib/margin-side.ts) — a stored copy could only
 be right until the user re-docked. Skills must not write one.
-Resolution at measure time returns a `LinkResolution`
-(`paragraph` / `text-range` / `inline-atom`) — skills don't compute it; they read
-`textObjectIds` (Mode A) or the `textRange` (Mode B).
+Resolution at measure time is the anchor authority's (`CardAnchorPass`); only an
+inline atom resolves to a `LinkResolution` (`inline-atom`, task 1505) — skills don't
+compute either; they read `textObjectIds` (Mode A) or the `textRange` (Mode B).
 
 ### OriginalAnchor
 
@@ -213,9 +213,11 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   ([src/links/card-anchor-rows.ts](../../src/links/card-anchor-rows.ts)), never from
   "the card STORES a link" (`getLinkedTextObjectIds(...).length`), which is equally
   true of a card whose anchor is dead; the Archive list orders on the same rows via
-  `sortCardsByResolvedAnchor`. And the ACT now has the gate's rungs: `resolveLink`
-  ([src/links/links.ts](../../src/links/links.ts)) carries the **snapshot** rung
-  (normalized through the authority's own `normalizeParagraphText`). Since task 935
+  `sortCardsByResolvedAnchor`. And the ACT reads the same rows: since task 1505 `resolveLink`'s private
+  ladder is gone (narrowed to the atom-only `resolveInlineAtomLink` in
+  [src/links/links.ts](../../src/links/links.ts)); hover/selection paint and placement
+  ask the authority (`paintRows`, `resolveCardRowTargets`), and since task 1506 the
+  act-side surfaces read `CardAnchorPass.anchorBlocksOf`, not the stored first pid. Since task 935
   `jumpToCard` ([src/links/jump-to-card.ts](../../src/links/jump-to-card.ts)) no longer
   walks links itself: it asks `CardAnchorPass.jumpTarget(card, rowPid?)` — the row's
   pid when live, else the authority's winner — so it lands where the marker is.
