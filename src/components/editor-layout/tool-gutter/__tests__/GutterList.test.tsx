@@ -157,6 +157,16 @@ describe("GutterList — the row model", () => {
     expect(document.activeElement).toBe(first);
   });
 
+  it("a row that can be dragged is draggable and hands its drag to the list", () => {
+    const onRowDragStart = vi.fn();
+    const { container } = mount({ canDrag: (r) => r.entityId === "2", onRowDragStart });
+    expect(rowEl(container, "1").getAttribute("draggable")).toBeNull();
+    const r2 = rowEl(container, "2");
+    expect(r2.getAttribute("draggable")).toBe("true");
+    fireEvent.dragStart(r2);
+    expect(onRowDragStart).toHaveBeenCalledWith(expect.objectContaining({ entityId: "2" }), expect.anything());
+  });
+
   it("marks the rows whose anchor is on screen", () => {
     const { container } = mount({ hereIds: new Set(["2"]) });
     expect(rowEl(container, "2").hasAttribute("data-here")).toBe(true);

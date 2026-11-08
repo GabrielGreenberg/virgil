@@ -4,14 +4,13 @@ import React, { useState, useCallback, useMemo } from "react";
 import type { BibEntry } from "@/lib/types";
 import type { SaveBibEntry } from "@/hooks/useCitations";
 import type { RequestBibReview } from "@/hooks/useBibReview";
-import { bibFieldDisplay, formatMinimalCitation } from "@/lib/bib-parser";
+import { bibFieldDisplay } from "@/lib/bib-parser";
 import { PanelCard, PANEL, PodDisclosure, Button, CardJumpTarget, cardTitleStyle, cardBodyScroll } from "./panel-primitives";
 import { Input } from "./field-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
-import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
+import { startBibEntryDrag } from "./bib-entry-drag";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
 import { AMBER_ATTENTION_INK } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
@@ -419,34 +418,10 @@ export default function BibEntryCard({
     void copy(entry.key);
   };
 
-  const handleDragStart = useCallback((e: React.DragEvent) => {
-    const cmd = `\\cite{${entry.key}}`;
-    const display = bibEntries ? formatMinimalCitation(entry.key, bibEntries) : entry.key;
-    e.dataTransfer.setData("text/plain", cmd);
-    e.dataTransfer.setData(MIME_CITATION, JSON.stringify({ command: cmd, bibKey: entry.key }));
-    // Also advertise the card-merge discriminator so a CitationCard's drop ring
-    // lights ONLY for a bib-entry drag (which merges), never for another
-    // citation card's atom-move drag (MIME_CITATION alone). `dragover` can read
-    // `types` but not `getData`, so the distinct type is the only signal the
-    // ring can predict the drop from. See MIME_BIB_MERGE in marginalia.ts.
-    e.dataTransfer.setData(MIME_BIB_MERGE, JSON.stringify({ bibKey: entry.key }));
-    // "copyMove", not "copy": the editor drop surface shows a "move" affordance
-    // (Editor.tsx dragover); the card/panel merge targets still take "copy".
-    e.dataTransfer.effectAllowed = "copyMove";
-    attachClampedDragGhost({
-      dragStartEvent: e,
-      buildGhost: () =>
-        // Citation cream via tokens \u2014 one home with CitationCard's ghost.
-        buildTextDragGhost(display, {
-          maxChars: 80,
-          bg: "var(--citation-ghost-bg, #fdf8e1)",
-          border: "var(--citation-border-color)",
-          ink: "var(--citation-color)",
-        }),
-      cursorOffsetX: 10,
-      cursorOffsetY: 14,
-    });
-  }, [entry.key, bibEntries]);
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => startBibEntryDrag(e, entry, bibEntries),
+    [entry, bibEntries],
+  );
 
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
   // The jump-to-citation chevron is always rendered (when the entry is cited)

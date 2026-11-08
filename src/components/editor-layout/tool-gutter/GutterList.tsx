@@ -50,6 +50,10 @@ export interface GutterListProps {
   renderCard: (card: GutterCardRef, row: GutterListRow) => ReactNode;
   /** Opening / closing a row also expands / collapses its card. */
   onOpenChange?: (card: GutterCardRef, open: boolean) => void;
+  /** A row that can be dragged into the text (a bibliography entry, as a
+   *  `\cite`) — returns false when this row can't. */
+  canDrag?: (row: GutterListRow) => boolean;
+  onRowDragStart?: (row: GutterListRow, e: React.DragEvent) => void;
   empty?: ReactNode;
 }
 
@@ -152,6 +156,7 @@ export function GutterList(p: GutterListProps) {
                   onJump={p.onJump}
                   onStep={p.onStep}
                   onOpen={r.card ? () => setOpen(r) : undefined}
+                  onDragStart={p.onRowDragStart && p.canDrag?.(r) ? (e) => p.onRowDragStart!(r, e) : undefined}
                 />
               ),
             )}
@@ -170,6 +175,7 @@ function Row({
   onJump,
   onStep,
   onOpen,
+  onDragStart,
 }: {
   row: GutterListRow;
   selected: boolean;
@@ -178,6 +184,7 @@ function Row({
   onJump: GutterListProps["onJump"];
   onStep?: GutterListProps["onStep"];
   onOpen?: () => void;
+  onDragStart?: (e: React.DragEvent) => void;
 }) {
   const stepping = !!onStep && !!r.bibKey && (r.count ?? 0) > 1;
   return (
@@ -188,6 +195,8 @@ function Row({
       data-here={here ? "" : undefined}
       data-muted={r.muted ? "" : undefined}
       data-missing={r.missing ? "" : undefined}
+      draggable={onDragStart ? true : undefined}
+      onDragStart={onDragStart}
     >
       <button
         type="button"

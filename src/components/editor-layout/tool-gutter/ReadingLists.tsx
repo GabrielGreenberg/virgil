@@ -32,6 +32,7 @@ import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { countLabelRefs } from "@/lib/tiptap/label-rename";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { downloadCitedBib } from "@/lib/bib-export-cited";
+import { startBibEntryDrag } from "@/components/bib-entry-drag";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { Button, ItemMenu } from "@/components/panel-primitives";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
@@ -388,6 +389,11 @@ export function ReadingList({
         onStep={kind === "bibliography" ? onStep : undefined}
         renderCard={renderCard}
         onOpenChange={onOpenChange}
+        canDrag={kind === "bibliography" ? (row) => !!rowEntry(row) : undefined}
+        onRowDragStart={(row, e) => {
+          const entry = rowEntry(row);
+          if (entry) startBibEntryDrag(e, entry, data.bibEntries);
+        }}
         empty={kind === "bibliography" && query ? "Nothing matches" : "None yet"}
       />
       )}
@@ -400,6 +406,12 @@ export function ReadingList({
       {kind === "bibliography" && <BibLibraryPicker flow={flow} />}
     </section>
   );
+}
+
+/** The bib entry a bibliography row stands for (none for a missing key). */
+function rowEntry(row: GutterListRow): BibEntry | undefined {
+  const s = row.snippet;
+  return s.kind === "reference" || s.kind === "short" ? s.entry : undefined;
 }
 
 /** Library-scope search results: each entry as it will print, with Add
