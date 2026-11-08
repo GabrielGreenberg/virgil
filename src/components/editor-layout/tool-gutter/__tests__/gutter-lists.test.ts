@@ -130,6 +130,19 @@ describe("bibliography", () => {
     ]);
     expect(method[1].repeat).toBe(true);
   });
+
+  it("as cited: one row per entry within a section, with N×; ↺ only across sections", () => {
+    const again = [
+      ...cites,
+      { citationId: "c4", keys: ["bolter2001"], pos: 230 },
+      { citationId: "c5", keys: ["bolter2001"], pos: 240 },
+    ];
+    const method = bibliographyGroups(entries, again, sections, "cited")[1].rows;
+    expect(method.map((r) => [r.entityId, r.count, r.repeat])).toEqual([
+      ["bolter2001", 3, false],
+      ["grafton1997", undefined, true],
+    ]);
+  });
 });
 
 describe("exampleGroups", () => {

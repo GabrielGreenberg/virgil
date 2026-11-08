@@ -412,16 +412,31 @@ export function bibliographyGroups(
       groups[groups.length - 1].rows.push(bibRow(e, byKey.get(e.key) ?? []));
     }
   } else {
+    // One row per entry per section, at its first citation there, with "N×"
+    // when the section cites it more than once; ↺ only when an EARLIER
+    // section already cited it.
     const entryOf = new Map(unique.map((e) => [e.key, e]));
-    const used = new Set<string>();
+    const seenInEarlier = new Set<string>();
     const cited: GutterListRow[] = [];
+    let section = Number.NaN;
+    let inSection = new Map<string, GutterListRow>();
     for (const c of [...cites].sort((a, b) => a.pos - b.pos)) {
+      const sec = sectionIndexAt(sections, c.pos);
+      if (sec !== section) {
+        for (const k of inSection.keys()) seenInEarlier.add(k);
+        inSection = new Map();
+        section = sec;
+      }
       for (const k of c.keys) {
         const e = entryOf.get(k);
         if (!e) continue;
-        const repeat = used.has(k);
-        used.add(k);
-        cited.push({
+        const here = inSection.get(k);
+        if (here) {
+          here.count = (here.count ?? 1) + 1;
+          continue;
+        }
+        const repeat = seenInEarlier.has(k);
+        const row: GutterListRow = {
           ...bibRow(e, byKey.get(k) ?? []),
           key: `bib-cite:${c.citationId}:${k}`,
           snippet: { kind: "short", entry: e, key: k },
@@ -431,7 +446,9 @@ export function bibliographyGroups(
           muted: repeat,
           marker: repeat ? "↺" : "",
           count: undefined,
-        });
+        };
+        inSection.set(k, row);
+        cited.push(row);
       }
     }
     groups.push(...bySection(cited, sections, "bib"));

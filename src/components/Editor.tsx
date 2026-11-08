@@ -247,6 +247,10 @@ export interface ExampleInfo {
   bodyContent: JSONContent | null;
   /** Top-level sub-items (one entry per `\a`). Empty for `\ex` with no items. */
   items: ExampleSubItem[];
+  /** A glossed example (`\begingl`): its first aligned tier (the source line,
+   *  cells joined by spaces) and its free translation (`\glft`, "" when none).
+   *  Absent for an example with no gloss. */
+  gloss?: { source: string; translation: string } | null;
   /** Round-trippable LaTeX source for the entire `\ex…\xe` block. */
   latex: string;
 }
@@ -1224,6 +1228,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             });
           }
         });
+        // A gloss sits beside the body paragraphs, not in them: read its first
+        // aligned tier and its free translation so a list can show the example
+        // by its source line rather than every tier run together.
+        let gloss: ExampleInfo["gloss"] = null;
+        node.forEach((child) => {
+          if (gloss || child.type.name !== "exampleGloss") return;
+          let source = "";
+          let translation = "";
+          child.forEach((row) => {
+            if (!source && row.type.name === "alignedGlossRow") {
+              const cells: string[] = [];
+              row.forEach((cell) => cells.push(cell.textContent.trim()));
+              source = cells.filter(Boolean).join(" ");
+            } else if (row.type.name === "proseGlossRow") {
+              translation = row.textContent.trim();
+            }
+          });
+          gloss = { source, translation };
+        });
         const subs = items.map((it) => it.subLabel).filter(Boolean);
         const subLabelRange =
           subs.length > 1 ? `${subs[0]}–${subs[subs.length - 1]}` : subs[0] || "";
@@ -1251,6 +1274,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           bodyText,
           bodyContent,
           items,
+          gloss,
           latex,
         });
         return false;

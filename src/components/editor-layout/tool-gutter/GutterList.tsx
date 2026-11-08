@@ -320,12 +320,13 @@ function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
         );
       }
       // A glossed example shows its first tier (the source line), italic like
-      // the object language; a plain one renders its body.
-      const gloss = JSON.stringify(e.bodyContent ?? "").includes('"exampleGloss"');
-      if (gloss) {
+      // the object language, then its free translation; a plain one renders
+      // its body.
+      if (e.gloss?.source) {
         return (
           <span className="gutter-snippet" data-lines="2">
-            <i>{oneLine(exampleBodyText(e.bodyContent) || e.bodyText || e.preview)}</i>
+            <i>{e.gloss.source}</i>
+            {e.gloss.translation ? <span className="gutter-gloss-translation"> {e.gloss.translation}</span> : null}
           </span>
         );
       }
@@ -334,7 +335,7 @@ function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
           {e.bodyContent ? (
             <StaticBorrowedText value={e.bodyContent} schemaScope="excerpt" />
           ) : (
-            oneLine(e.bodyText || e.preview)
+            oneLine(exampleBodyText(e.bodyContent) || e.bodyText || e.preview)
           )}
         </span>
       );
