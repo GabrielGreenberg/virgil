@@ -95,14 +95,15 @@ function pressEnterOn(target: Element): KeyboardEvent {
 }
 
 describe("DEFECT: every strip affordance is a keyboard-operable control", () => {
-  it("type chip, #, Label + and × are real buttons with no hand-rolled role", () => {
+  it("type chip, # and Label + are real buttons with no hand-rolled role", () => {
     const { el } = buildEditor(null);
     const annot = annotOf(el);
     expectOperableButton(annot.querySelector(".heading-annotation-type-chip"), "the type chip");
     expect(annot.querySelector(".heading-annotation-type-chip")!.getAttribute("aria-haspopup")).toBe("menu");
     expectOperableButton(annot.querySelector(".heading-annotation-numbered-toggle"), "the # toggle");
     expectOperableButton(annot.querySelector(".heading-label-add"), "Label +");
-    expectOperableButton(annot.querySelector(".heading-annotation-delete"), "the × delete");
+    // The × delete is gone (Gabriel, 2026-11-08): a heading has no delete button.
+    expect(annot.querySelector(".heading-annotation-delete")).toBeNull();
     expect(annot.querySelectorAll("[role]").length).toBe(0);
   });
 
@@ -141,16 +142,6 @@ describe("DEFECT: every strip affordance is a keyboard-operable control", () => 
     // Focus followed the affordance, not the element: a keyboard user who
     // pressed # is still on # and can press it again.
     expect(document.activeElement).toBe(after);
-  });
-
-  it("× deletes the heading", () => {
-    const { editor, el } = buildEditor();
-    expect(blockCount(editor)).toBe(2);
-    annotOf(el).querySelector<HTMLButtonElement>(".heading-annotation-delete")!.click();
-    return new Promise<void>((r) => setTimeout(r, 0)).then(() => {
-      expect(blockCount(editor)).toBe(1);
-      expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
-    });
   });
 });
 

@@ -3253,7 +3253,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // ── Confirm-dialog instance backing the shared `deleteMarginItem` ──
   // Surfaces the "This item has text. Delete it?" warning when the user
   // deletes the last anchor on a non-empty card via the margin marker.
-  // Distinct from `confirmHeadingDelete` below so the two dialogs can
+  // Distinct from the NodeView confirm below so the two dialogs can
   // coexist independently.
   const { confirm: confirmMarginItemDelete, dialog: confirmMarginItemDeleteDialog } =
     useConfirmDialog();
@@ -4871,10 +4871,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [headingTypeTriggerEl]);
 
   // ONE confirm-dialog instance for every question a NodeView asks through
-  // `<VirgilEditor>`'s optional callbacks — the heading lozenge's ×, the
-  // figure lozenge's ×, the label-rename "Update references?", and the
-  // footnote panel-drop move. They are modal and never concurrent, so one
-  // instance serves all four; what matters is that EACH callback the editor
+  // `<VirgilEditor>`'s optional callbacks — the figure lozenge's ×, the
+  // label-rename "Update references?", and the footnote panel-drop move. They
+  // are modal and never concurrent, so one instance serves all three; what matters is that EACH callback the editor
   // consumes has a PRODUCER here. Task 534: `onConfirmLabelRename` and
   // `onConfirmFootnoteMove` had none for five months, so their consumers were
   // dead with every type green — `editor-callback-producer-census.test.ts`
@@ -4884,16 +4883,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     choose: chooseFromNodeView,
     dialog: nodeViewConfirmDialog,
   } = useConfirmDialog();
-  const handleConfirmHeadingDelete = useCallback(
-    (typeName: string) =>
-      confirmFromNodeView({
-        title: "Delete heading?",
-        message: `Remove this ${typeName} heading. The body underneath stays in place.`,
-        confirmLabel: "Delete heading",
-        tone: "danger",
-      }),
-    [confirmFromNodeView],
-  );
   const handleConfirmFigureDelete = useCallback(
     () =>
       confirmFromNodeView({
@@ -8034,7 +8023,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     anchoredUuidsRef={anchoredUuidsRef}
                     onBlockAbsorbedRef={onBlockAbsorbedRef}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
-                    onConfirmHeadingDelete={handleConfirmHeadingDelete}
                     onConfirmFigureDelete={handleConfirmFigureDelete}
                     onConfirmLabelRename={handleConfirmLabelRename}
                     onConfirmFootnoteMove={handleConfirmFootnoteMove}

@@ -299,7 +299,6 @@ describe("the block surfaces read the destructive family", () => {
   it.each([
     // The heading label lozenge — the twin the finding did not mention, whose
     // four sites are byte-identical to the figure ones it did.
-    ".heading-annotation-delete:hover",
     ".heading-label-input.has-conflict",
     ".heading-label-warning",
     // The figure label lozenge.

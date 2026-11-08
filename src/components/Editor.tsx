@@ -181,11 +181,6 @@ interface EditorProps {
     onPick: (pick: HeadingTypePick) => void;
   }) => void;
   /**
-   * Confirmation for the lozenge `×` button. Resolving `false` cancels
-   * the delete. When omitted, the delete fires without prompting.
-   */
-  onConfirmHeadingDelete?: (typeName: string) => Promise<boolean>;
-  /**
    * Confirmation for the figure lozenge `×` button. Resolving `false`
    * cancels the delete. When omitted, the delete fires without prompting.
    */
@@ -275,9 +270,6 @@ export interface EditorHandle {
     newLabel: string | null,
     refCount: number,
   ) => Promise<LabelRenameChoice>;
-  /** Confirm deleting a heading (unused from floats — delete is gated off
-   *  there — but exposed for parity with the main NodeView). */
-  onConfirmHeadingDelete: (typeName: string) => Promise<boolean>;
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
   /** Re-insert an archived excerpt at the caret. Returns whether the content
@@ -445,7 +437,7 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   // The ONE timer scope this editor component arms through (law "a NodeView
@@ -496,8 +488,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // DOM heading node view through the standard ref-mirror pattern.
   const onOpenHeadingTypeMenuRef = useRef(onOpenHeadingTypeMenu);
   onOpenHeadingTypeMenuRef.current = onOpenHeadingTypeMenu;
-  const onConfirmHeadingDeleteRef = useRef(onConfirmHeadingDelete);
-  onConfirmHeadingDeleteRef.current = onConfirmHeadingDelete;
 
   const onConfirmFigureDeleteRef = useRef(onConfirmFigureDelete);
   onConfirmFigureDeleteRef.current = onConfirmFigureDelete;
@@ -524,7 +514,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       cardContext: false,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
         onOpenHeadingTypeMenu: onOpenHeadingTypeMenuRef,
         onConfirmFigureDelete: onConfirmFigureDeleteRef,
       },
@@ -997,10 +986,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // No host dialog ⇒ carry the refs — the door's own fail-toward-not-
       // orphaning default (`label-rename.ts`), never a silent "leave".
       return fn ? fn(oldLabel, newLabel, refCount) : Promise.resolve("confirm");
-    },
-    onConfirmHeadingDelete(typeName: string): Promise<boolean> {
-      const fn = onConfirmHeadingDeleteRef.current;
-      return fn ? fn(typeName) : Promise.resolve(true);
     },
     getSelectedText(): string {
       if (!editor) return "";

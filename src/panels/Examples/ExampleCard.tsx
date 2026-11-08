@@ -162,11 +162,6 @@ function ExampleCardEditor({
     editorRef.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    editorRef.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   // Seed once at mount from the live block (recomputed only when the editor
   // identity or example id changes — content re-seeds ride the rev counter).
@@ -275,7 +270,6 @@ function ExampleCardEditor({
       docIdRef,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       // The card omits ExpexNumbering (surface: "float"), so the example
       // number + sub-item letters ride in via the synced node attrs and

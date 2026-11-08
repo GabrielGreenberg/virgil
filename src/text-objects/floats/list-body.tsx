@@ -138,11 +138,6 @@ export function ListBody({
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   const docId = useDocWriteHandleOrNull()?.docId ?? null;
   const docIdRef = useRef<string | null>(docId);
@@ -161,7 +156,6 @@ export function ListBody({
       boundRoot: soleRoot("bulletList", "orderedList"),
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       // Issue-4: thread the real docId so figure/graphics atoms resolve and
       // render their actual image (read-only) in the popped list instead of a

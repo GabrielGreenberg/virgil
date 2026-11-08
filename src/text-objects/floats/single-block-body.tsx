@@ -262,11 +262,6 @@ export function SingleBlockBody({
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
@@ -284,7 +279,6 @@ export function SingleBlockBody({
       cardContext: true,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       // None of these kinds holds a figure (blockquote content is prose,
       // codeBlock is text, displayMath is an atom), so — like paragraph-body —
