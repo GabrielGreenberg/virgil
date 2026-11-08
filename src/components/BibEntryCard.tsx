@@ -35,6 +35,8 @@ import {
 } from "@/components/editor-layout/chrome-config";
 import { didBibSaveLand, bibSaveRefusalReason } from "@/lib/project-bib";
 import type { BibEditState } from "@/lib/bib-edit-rebase";
+import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
+import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -388,20 +390,63 @@ export default function BibEntryCard({
         key: editBibKey.trim(),
         ...(editBibSeed ? { base: editBibSeed } : {}),
       })
-      .then((result) => {
-        setSavingBib(false);
-        if (didBibSaveLand(result)) {
-          setEditingBib(false);
-          setShowBibWarning(false);
-        } else {
-          setSaveBibError(bibSaveRefusalReason(result));
-        }
-      });
+      .then(
+        (result) => {
+          setSavingBib(false);
+          if (didBibSaveLand(result)) {
+            setEditingBib(false);
+            setShowBibWarning(false);
+          } else {
+            setSaveBibError(bibSaveRefusalReason(result));
+          }
+        },
+        // A save that REJECTS (task 1522) is a refusal like any other: it
+        // releases the in-flight lock and says why, beside the still-open
+        // draft. Without this the lock stayed set and Save stayed disabled
+        // until remount.
+        (err: unknown) => {
+          setSavingBib(false);
+          setSaveBibError(
+            `references.bib was not changed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        },
+      );
   };
+  // CANCEL is unreachable while a save is in flight (task 1522). The write is
+  // already on the `.bib`'s serial queue and cannot be un-sent — a citekey
+  // rename and its `\cite` rewrite land regardless — so a Cancel then closed
+  // the editor over a write still landing, and a REFUSAL reported to a closed
+  // editor: the reason went unseen and the draft (task 1158's only copy) was
+  // gone. The button is disabled and Escape is a no-op until the result is in.
   const cancelEditBib = () => {
+    if (savingBib) return;
     setEditingBib(false);
     setShowBibWarning(false);
     setSaveBibError(null);
+  };
+  /** The editor's keyboard endings (task 1522; law: Escape means cancel) —
+   *  the same two channels its buttons carry, spelled by the shared
+   *  predicates: Escape CANCELS (a no-op while a save is in flight), ⌘/Ctrl+
+   *  Enter COMMITS (a held chord saves once; `commitEditBib` keeps its own
+   *  head-check and in-flight gates). Bound on the editor's container so every
+   *  field — `@type`, key, each value — answers both. */
+  const onEditBibKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isCancelEscape(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Closes a surface holding a draft: the first press answers, a held
+      // Escape's repeats are swallowed so they cannot go on to close the
+      // enclosing card / float (task 1448's repeat doctrine).
+      if (e.repeat) return;
+      swallowRepeatsUntilKeyup(e);
+      cancelEditBib();
+      return;
+    }
+    const press = chordPress(e, FIELD_COMMIT_SHORTCUT);
+    if (!press) return;
+    e.preventDefault();
+    if (press === "held") return;
+    commitEditBib();
   };
   /** Drop a field from the in-progress edit map. A field the SEED held and
    *  the editor no longer does is a removal in Save's delta (task 1359), so it
@@ -552,7 +597,12 @@ export default function BibEntryCard({
             )}
             <div className={PANEL.subpod}>
               {editingBib ? (
-                <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="space-y-1"
+                  data-bib-entry-editor=""
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={onEditBibKeyDown}
+                >
                   {showBibWarning && (
                     <div className="text-[var(--amber-600)] bg-[var(--amber-50)] border border-[var(--amber-200)] rounded px-2 py-1 mb-1 text-xs">
                       Warning: editing will modify the .bib file. Changing the
@@ -620,7 +670,15 @@ export default function BibEntryCard({
                     >
                       Save
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={cancelEditBib}>Cancel</Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={cancelEditBib}
+                      disabled={savingBib}
+                      data-hint={savingBib ? "Saving… — the write is already on its way" : undefined}
+                    >
+                      {savingBib ? "Saving…" : "Cancel"}
+                    </Button>
                   </div>
                 </div>
               ) : (
