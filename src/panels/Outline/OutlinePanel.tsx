@@ -32,6 +32,8 @@ import {
   extractHeadings,
   buildTree,
   buildPods,
+  isCollapsible,
+  collapsibleHeadingIds,
   computeHiddenPods,
   podIndent,
   type HeadingItem,
@@ -612,8 +614,7 @@ function OutlineNode({
   onFocusExpandTo?: (target: BlockAddress) => void;
 }) {
   const hasSubHeadings = node.children.length > 0;
-  const hasTitles = showTitles && node.heading.parTitles.length > 0;
-  const hasChildren = hasSubHeadings || hasTitles;
+  const hasChildren = isCollapsible(node, showTitles);
   const isCollapsed = collapsed.has(node.heading.id);
 
   const isFocusEditing = focusState?.active && !focusState.locked;
@@ -723,7 +724,7 @@ function OutlineNode({
         )}
       </div>
 
-      {!isCollapsed && hasTitles && (
+      {!isCollapsed && showTitles && node.heading.parTitles.length > 0 && (
         <div>
           {node.heading.parTitles.map((pt) => {
             const ptOutside = focusState?.active
@@ -1622,12 +1623,10 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   // Collapse/expand-all replace ONLY this doc's fold bucket — they can no
   // longer wipe another paper's persisted folds (task 111 member 1).
   const collapseAll = useCallback(() => {
-    setOutlineCollapsedForDoc(foldDocId, new Set(headings.filter((h, i) => {
-      const hasSubHeading = i < headings.length - 1 && headings[i + 1].level > h.level;
-      const hasTitles = showTitles && h.parTitles.length > 0;
-      return hasSubHeading || hasTitles;
-    }).map((h) => h.id)));
-  }, [foldDocId, headings, showTitles]);
+    // The mode's own "titles shown": edit mode always shows title pods, so a
+    // title-only section folds there whatever the view toggle says (task 1531).
+    setOutlineCollapsedForDoc(foldDocId, new Set(collapsibleHeadingIds(tree, showTitles || editMode)));
+  }, [foldDocId, tree, showTitles, editMode]);
 
   const expandAll = useCallback(() => {
     setOutlineCollapsedForDoc(foldDocId, new Set());

@@ -22,12 +22,15 @@ class NoopResizeObserver {
 globalThis.ResizeObserver ??= NoopResizeObserver as unknown as typeof ResizeObserver;
 
 import OutlinePanel from "../OutlinePanel";
+import { setOutlinePrefs } from "../outline-prefs-store";
 import {
   OUTLINE_BASE_INSET,
   buildPods,
   buildTree,
+  collapsibleHeadingIds,
   computeHiddenPods,
   extractHeadings,
+  isCollapsible,
   headingIndent,
   parTitleIndent,
   podIndent,
@@ -147,5 +150,48 @@ describe("edit mode renders the one model (task 1347)", () => {
     const pods = container.querySelectorAll<HTMLElement>('[draggable="true"]');
     expect(pods.length).toBe(7);
     for (const el of pods) expect(parseFloat(el.style.marginLeft)).toBeGreaterThanOrEqual(OUTLINE_BASE_INSET);
+  });
+});
+
+// Task 1531 — "can this heading fold?" is ONE predicate (`isCollapsible`), and
+// Collapse all asks it with the MODE's "titles shown": edit mode always shows
+// title pods, so a title-only section folds there even with the toggle off.
+describe("Collapse all folds what the chevron says can fold (task 1531)", () => {
+  // A heading with ONLY paragraph titles under it (no sub-heading).
+  const TITLE_ONLY: JSONContent = {
+    type: "doc",
+    content: [h(2, "s1", "Only titles"), titled("t1", "Lone title")],
+  };
+
+  afterEach(() => setOutlinePrefs({ showTitles: true }));
+
+  it("isCollapsible / collapsibleHeadingIds read titlesShown", () => {
+    const tree = buildTree(extractHeadings(TITLE_ONLY).headings);
+    expect(isCollapsible(tree[0], false)).toBe(false);
+    expect(isCollapsible(tree[0], true)).toBe(true);
+    expect(collapsibleHeadingIds(tree, false)).toEqual([]);
+    expect(collapsibleHeadingIds(tree, true)).toEqual([tree[0].heading.id]);
+    // The edit-mode pod's chevron flag is the same predicate at titlesShown=true.
+    const pod = buildPods(extractHeadings(TITLE_ONLY), 2).find((p) => p.type === "heading")!;
+    expect(pod.hasCollapsibleChildren).toBe(true);
+  });
+
+  it("edit mode, titles toggle OFF: Collapse all hides the title-only section's pods", () => {
+    setOutlinePrefs({ showTitles: false });
+    const utils = render(
+      <OutlinePanel
+        content={TITLE_ONLY}
+        docId="doc-1531"
+        onScrollTo={() => {}}
+        onReorderBlocks={() => {}}
+        onRenameHeading={() => {}}
+        onRenameParTitle={() => {}}
+      />,
+    );
+    fireEvent.click(utils.container.querySelector('[data-hint="Edit mode"]') as HTMLElement);
+    expect(utils.queryByText("Lone title")).toBeTruthy();
+    fireEvent.click(utils.container.querySelector('[data-hint="Collapse all"]') as HTMLElement);
+    expect(utils.queryByText("Lone title")).toBeNull();
+    fireEvent.click(utils.container.querySelector('[data-hint="Expand all"]') as HTMLElement);
   });
 });

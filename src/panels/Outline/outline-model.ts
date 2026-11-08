@@ -182,6 +182,25 @@ export function buildTree(headings: HeadingItem[]): TreeNode[] {
   return roots;
 }
 
+/** "Can this heading fold?" — the ONE answer the chevron (both modes) and
+ *  Collapse all read: it has sub-headings, or it has paragraph titles AND
+ *  titles are shown. `titlesShown` is the view toggle in view mode and always
+ *  `true` in edit mode (edit mode always shows title pods — see `buildPods`). */
+export function isCollapsible(node: TreeNode, titlesShown: boolean): boolean {
+  return node.children.length > 0 || (titlesShown && node.heading.parTitles.length > 0);
+}
+
+/** Every heading id in the tree that `isCollapsible` — what Collapse all folds. */
+export function collapsibleHeadingIds(tree: TreeNode[], titlesShown: boolean): string[] {
+  const ids: string[] = [];
+  const visit = (node: TreeNode) => {
+    if (isCollapsible(node, titlesShown)) ids.push(node.heading.id);
+    node.children.forEach(visit);
+  };
+  tree.forEach(visit);
+  return ids;
+}
+
 /* ── Edit-mode pods: the tree, flattened ────────────────────────────── */
 
 export interface OutlinePod {
@@ -260,7 +279,7 @@ export function buildPods(
       id: h.id,
       uuid: h.uuid,
       parentHeadingId: node.parentId,
-      hasCollapsibleChildren: node.children.length > 0 || h.parTitles.length > 0,
+      hasCollapsibleChildren: isCollapsible(node, true),
     });
     pushTitles(h.parTitles, node.depth, h.id);
     node.children.forEach(visit);
