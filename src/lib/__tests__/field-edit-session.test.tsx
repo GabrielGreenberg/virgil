@@ -594,8 +594,14 @@ describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
     //
     // `editor-layout/TabStrip.tsx` LEFT (task 1013): its doc-tab rename box is
     // now `InlineRenameInput`, which takes the door (census above).
+    //
+    // BibEntryCard JOINED (task 1522): its "Edit entry" editor's container
+    // keydown — Escape unmounts the editor (`cancelEditBib`), ⌘Enter commits
+    // through the same Save as the button, and no field has a blur commit, so
+    // there is no second ending for the door to suppress. A member.
     expect(unmountingCancelFields()).toEqual([
       "library/components/BibCard.tsx",
+      "src/components/BibEntryCard.tsx",
       "src/components/ManageStylesModal.tsx",
       "src/components/PreferencesModal.tsx",
       "src/components/bib-review-request.tsx",
