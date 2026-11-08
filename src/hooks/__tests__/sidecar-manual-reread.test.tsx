@@ -306,7 +306,6 @@ describe("census · a sidecar is read into hook memory only through a sanctioned
     "src/hooks/useSidecarReread.ts": { count: 1, why: "THE re-read door (watcher + manual)" },
     "src/hooks/usePersistentState.ts": { count: 1, why: "mount loader" },
     "src/hooks/useFootnotes.ts": { count: 1, why: "mount loader" },
-    "src/hooks/useBibReview.ts": { count: 1, why: "mount loader only (task 1504)" },
     "src/hooks/useEditorUIState.ts": { count: 1, why: "per-view UI state, not a record sidecar" },
     "src/hooks/useCollab.ts": { count: 1, why: "cowork pen/presence poll; writes via mutate" },
     "src/lib/ai-requests-store.ts": { count: 1, why: "the inbox store's own guarded read" },
@@ -351,12 +350,12 @@ describe("census · a sidecar is read into hook memory only through a sanctioned
     expect(review).toMatch(/const refresh = rereadNow;/);
   });
 
-  it("the mount loaders are called ONCE — a reconcile is never a private re-read (task 1504)", () => {
+  it("useBibReview has NO private loader — its mount load is the shared door's (tasks 1504, 1520)", () => {
     const review = codeOnly(
       fs.readFileSync(path.join(REPO_ROOT, "src/hooks/useBibReview.ts"), "utf8"),
     );
-    // The mount effect's one call (the definition is a useCallback).
-    expect(review.match(/\bfetchState\s*\(/g)).toHaveLength(1);
+    expect(review).not.toMatch(/\bfetchState\b/);
+    expect(review).toMatch(/load:\s*\{\s*what:/);
     expect(review).toMatch(/rereadNow\(\{ adopt: true \}\)/);
   });
 
