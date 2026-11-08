@@ -234,7 +234,7 @@ describe("the sink's FLOAT half (task 789 — a deleted card's popped window clo
     const at = src.indexOf("const handleArchiveRestore = useCallback(");
     const end = src.indexOf("const handleArchiveDelete", at);
     const body = src.slice(at, end);
-    expect(body).toMatch(/origin\?\.kind === "card"[\s\S]*cardLifecycleSignal\(\{ type: "card-deleted", kind: "archive", id \}\)/);
+    expect(body).toMatch(/restored\.route === "card"[\s\S]*cardLifecycleSignal\(\{ type: "card-deleted", kind: "archive", id \}\)/);
   });
 
   it("the morph executor's signal carries the remap (no hand remap beside it)", async () => {

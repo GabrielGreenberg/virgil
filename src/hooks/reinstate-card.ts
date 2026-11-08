@@ -1,3 +1,5 @@
+import type { ReinstateOutcome } from "@/lib/archive-restore-outcome";
+
 /**
  * `reinstateCard` — put a card set aside by `/editor/archive-card` back in its
  * panel (task 712): the app-side twin of `apply_response.py cmd_restore`,
@@ -20,14 +22,14 @@ export function reinstateCard<S, C extends { id: string }>(
   withList: (s: S, next: C[]) => S,
   migrate: (raw: unknown) => C | null,
   raw: unknown,
-): boolean {
+): ReinstateOutcome {
   const card = migrate(raw);
-  if (!card || !card.id) return false;
-  if (list(current).some((c) => c.id === card.id)) return false;
+  if (!card || !card.id) return "rejected";
+  if (list(current).some((c) => c.id === card.id)) return "duplicate";
   update((prev) =>
     list(prev).some((c) => c.id === card.id)
       ? prev
       : withList(prev, [...list(prev), card]),
   );
-  return true;
+  return "ok";
 }

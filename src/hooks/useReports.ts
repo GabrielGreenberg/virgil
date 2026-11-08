@@ -38,6 +38,7 @@ import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
 import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
+import type { ReinstateOutcome } from "@/lib/archive-restore-outcome";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -420,7 +421,7 @@ export function useReports(
 
   // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
   const reinstate = useCallback(
-    (raw: unknown): boolean =>
+    (raw: unknown): ReinstateOutcome =>
       reinstateCard<ReportsState, ReportItem>(
         stateRef.current,
         update,

@@ -320,6 +320,7 @@ import {
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
 import { archiveRestoreRefusal } from "@/lib/archive-restore-gate";
+import { restoreRefusalMessage } from "@/lib/archive-restore-outcome";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   buildMarginItemHandlers,
@@ -5252,7 +5253,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       dragHandleNotify({ message: refusal });
       return;
     }
-    const origin = archiveHook.snippetOrigin(id);
     // RETURN ADDRESS (task 965): an anchored clip goes back where it came
     // from, read off the SAME authority its Jump lands on (`jumpTarget`), so
     // Restore and Jump can never name two different places. Just after that
@@ -5301,48 +5301,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           settleDormancy(card as unknown as DormantCardShape, inArchive(), dormancyLiveness()),
         ),
     );
-    if (!restored && origin && origin.kind !== "excerpt") {
-      // A card, not an excerpt: the only ways back to its panel failing are a
-      // card with the same id already there, or an origin record the app
-      // can't read. Either way nothing moved, and nothing was pasted into the
-      // paper.
-      dragHandleNotify({
-        message:
-          origin.kind === "card"
-            ? `Couldn't put this card back in ${ARCHIVE_ORIGIN_PANEL_LABEL[origin.panel]} — ` +
-              "a card with the same id is already there. Nothing was removed from the Archive."
-            : "Couldn't restore this card: its record of where it came from is " +
-              "unreadable. Nothing was removed from the Archive.",
-      });
+    if (!restored.ok) {
+      // THE CAUSE IS A VALUE (task 1525): `restoreSnippet` names why it
+      // refused, where it refused, and ONE table words it — this handler
+      // re-guesses nothing from the origin or the address. A repeat press
+      // after a restore that already happened (`gone` / `already-restored`)
+      // words to null: silent, because nothing failed.
+      const message = restoreRefusalMessage(restored, { addressed: address !== null });
+      if (message) dragHandleNotify({ message });
       return;
     }
-    if (!restored && address) {
-      // It had somewhere to go and still didn't land — a body the document's
-      // schema can't hold (a read-only surface was refused above, by name). Moving the caret would not help,
-      // so don't tell the user to.
-      dragHandleNotify({
-        message:
-          "Couldn't put this back where it came from. Nothing was removed from the Archive.",
-      });
-      return;
-    }
-    if (!restored) {
-      // Nothing left the Archive — say so, and say what to do. The card body is
-      // the ONLY copy of this prose (it was deleted from the document when
-      // archived), so a silent no-op reads as "the button is broken" and a
-      // silent success would be data loss. The overwhelmingly common refusal is
-      // the caret sitting somewhere a block insert would tear (inside an
-      // example, a list, a heading, a gloss row) — hence the instruction rather
-      // than an apology.
-      dragHandleNotify({
-        message:
-          "Couldn't put this back. Click in an ordinary paragraph where the " +
-          "text should go, then try again — it can't be dropped inside a " +
-          "heading, list, or example. Nothing was removed from the Archive.",
-      });
-      return;
-    }
-    if (origin?.kind !== "card") {
+    if (restored.route === "excerpt") {
       // RESTORE'S END EDGE (task 1329): the snippet is retired, so it can no
       // longer bring anything back. The landing revived what it placed (same
       // transaction, and `onRemap` for collisions) — a carried word run it
@@ -5353,7 +5322,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // dormant links.
       settleDormantStores((snippetId) => snippetId !== id);
     }
-    if (origin?.kind === "card") {
+    if (restored.route === "card") {
       // A reinstated CARD leaves the Archive outright (`restoreSnippet` removes
       // the snippet — it does not retire it), so the archive card is gone as
       // surely as a trash-click deletes it and owes the same `card-deleted`
@@ -5372,7 +5341,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // stable per doc (it reads the live snippets off `stateRef`).
   }, [
     archiveHook.restoreSnippet,
-    archiveHook.snippetOrigin,
     archiveHook.snippets,
     anchorPass,
     anchorRetarget,
