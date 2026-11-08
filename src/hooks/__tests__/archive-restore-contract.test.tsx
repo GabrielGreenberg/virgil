@@ -36,6 +36,7 @@ import {
   beginDocPipeline,
   __resetForTests,
 } from "@/lib/multi-window/doc-pipeline";
+import type { RestoreOutcome } from "@/lib/archive-restore-outcome";
 
 beforeEach(() => {
   mockRead.mockReset();
@@ -128,11 +129,11 @@ describe("B. restoreSnippet — the content leaves the card only if it landed", 
     await waitFor(() => expect(result.current.snippets.length).toBe(1));
     mockWrite.mockClear();
 
-    let out: boolean | undefined;
+    let out: RestoreOutcome | undefined;
     act(() => {
       out = result.current.restoreSnippet("a1", () => false);
     });
-    expect(out).toBe(false);
+    expect(out).toEqual({ ok: false, cause: "land-refused" });
     expect(result.current.snippets.map((s) => s.id)).toEqual(["a1"]);
     expect(result.current.snippets[0].archived).toBeFalsy();
     expect(mockWrite).not.toHaveBeenCalled();
@@ -166,11 +167,11 @@ describe("B. restoreSnippet — the content leaves the card only if it landed", 
     expect(result.current.snippets.length).toBe(1);
     mockWrite.mockClear();
 
-    let out: boolean | undefined;
+    let out: RestoreOutcome | undefined;
     act(() => {
       out = result.current.restoreSnippet("a1", () => true);
     });
-    expect(out).toBe(true);
+    expect(out).toEqual({ ok: true, route: "excerpt" });
     expect(result.current.snippets.length).toBe(1);
     expect(result.current.snippets[0].archived).toBe(true);
     expect(result.current.snippets[0].content).toEqual(snippet.content);
@@ -190,11 +191,15 @@ describe("B. restoreSnippet — the content leaves the card only if it landed", 
     const land = vi.fn((_content: unknown) => true);
     // Both calls in ONE tick — React has not re-rendered between them, so the
     // guard has to come off the ref mirror, not off `state`.
+    const outs: RestoreOutcome[] = [];
     act(() => {
-      result.current.restoreSnippet("a1", land);
-      result.current.restoreSnippet("a1", land);
+      outs.push(result.current.restoreSnippet("a1", land));
+      outs.push(result.current.restoreSnippet("a1", land));
     });
     expect(land).toHaveBeenCalledTimes(1);
+    // Task 1525: the repeat names WHY it did nothing — the excerpt already
+    // landed — so the caller stays silent instead of reporting a failure.
+    expect(outs).toEqual([{ ok: true, route: "excerpt" }, { ok: false, cause: "already-restored" }]);
   });
 
   it("an unknown id lands nothing and removes nothing", async () => {
@@ -203,11 +208,11 @@ describe("B. restoreSnippet — the content leaves the card only if it landed", 
     const { result } = renderHook(() => useArchive("doc-d"));
     await waitFor(() => expect(result.current.snippets.length).toBe(1));
     const land = vi.fn((_content: unknown) => true);
-    let out: boolean | undefined;
+    let out: RestoreOutcome | undefined;
     act(() => {
       out = result.current.restoreSnippet("nope", land);
     });
-    expect(out).toBe(false);
+    expect(out).toEqual({ ok: false, cause: "gone" });
     expect(land).not.toHaveBeenCalled();
     expect(result.current.snippets.length).toBe(1);
   });

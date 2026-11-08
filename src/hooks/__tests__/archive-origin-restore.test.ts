@@ -23,6 +23,7 @@ import { useNotes } from "../useNotes";
 import { useTodos } from "../useTodos";
 import { archiveOriginOf } from "@/lib/archive-origin";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
+import type { ReinstateOutcome, RestoreOutcome } from "@/lib/archive-restore-outcome";
 
 beforeEach(() => {
   mockRead.mockReset();
@@ -83,12 +84,12 @@ describe("useArchive.restoreSnippet routes by origin", () => {
   it("a card with an origin goes back to its panel and never reaches the document", async () => {
     const { result } = await mountArchive("doc-1", [originSnippet, excerptSnippet]);
     const land = vi.fn(() => true);
-    const reinstate = vi.fn(() => true);
-    let ok = false;
+    const reinstate = vi.fn((): ReinstateOutcome => "ok");
+    let ok: RestoreOutcome | undefined;
     act(() => {
       ok = result.current.restoreSnippet("n-1", land, reinstate);
     });
-    expect(ok).toBe(true);
+    expect(ok).toEqual({ ok: true, route: "card" });
     expect(land).not.toHaveBeenCalled();
     expect(reinstate).toHaveBeenCalledWith("notes", originalNote);
     // A MOVE, like cmd_restore: the snippet leaves archive.json (not set aside),
@@ -99,34 +100,50 @@ describe("useArchive.restoreSnippet routes by origin", () => {
   it("with no reinstate door, an origin card refuses rather than paste into the prose", async () => {
     const { result } = await mountArchive("doc-2", [originSnippet]);
     const land = vi.fn(() => true);
-    let ok = true;
+    let ok: RestoreOutcome | undefined;
     act(() => {
       ok = result.current.restoreSnippet("n-1", land);
     });
-    expect(ok).toBe(false);
+    expect(ok).toEqual({ ok: false, cause: "card-rejected", panel: "notes" });
     expect(land).not.toHaveBeenCalled();
     expect(result.current.snippets).toHaveLength(1);
     expect(result.current.snippets[0].archived).toBeFalsy();
   });
 
-  it("a refused reinstate leaves the snippet standing", async () => {
+  it("a refused reinstate leaves the snippet standing, and its cause passes through (task 1525)", async () => {
     const { result } = await mountArchive("doc-3", [originSnippet]);
+    const outs: RestoreOutcome[] = [];
     act(() => {
-      result.current.restoreSnippet("n-1", vi.fn(() => true), () => false);
+      outs.push(result.current.restoreSnippet("n-1", vi.fn(() => true), () => "rejected"));
+      outs.push(result.current.restoreSnippet("n-1", vi.fn(() => true), () => "duplicate"));
     });
+    expect(outs).toEqual([
+      { ok: false, cause: "card-rejected", panel: "notes" },
+      { ok: false, cause: "card-duplicate", panel: "notes" },
+    ]);
     expect(result.current.snippets).toHaveLength(1);
+  });
+
+  it("a repeat press after a card restore answers `gone`, not a failure (task 1525)", async () => {
+    const { result } = await mountArchive("doc-3b", [originSnippet]);
+    const outs: RestoreOutcome[] = [];
+    act(() => {
+      outs.push(result.current.restoreSnippet("n-1", vi.fn(() => true), () => "ok"));
+      outs.push(result.current.restoreSnippet("n-1", vi.fn(() => true), () => "ok"));
+    });
+    expect(outs).toEqual([{ ok: true, route: "card" }, { ok: false, cause: "gone" }]);
   });
 
   it("an unreadable origin refuses and never lands", async () => {
     const broken = { ...originSnippet, originalPanel: "nowhere" };
     const { result } = await mountArchive("doc-4", [broken]);
     const land = vi.fn(() => true);
-    const reinstate = vi.fn(() => true);
-    let ok = true;
+    const reinstate = vi.fn((): ReinstateOutcome => "ok");
+    let ok: RestoreOutcome | undefined;
     act(() => {
       ok = result.current.restoreSnippet("n-1", land, reinstate);
     });
-    expect(ok).toBe(false);
+    expect(ok).toEqual({ ok: false, cause: "unreadable-origin" });
     expect(land).not.toHaveBeenCalled();
     expect(reinstate).not.toHaveBeenCalled();
     expect(result.current.snippetOrigin("n-1")).toEqual({ kind: "unknown-card", panel: "nowhere" });
@@ -135,7 +152,7 @@ describe("useArchive.restoreSnippet routes by origin", () => {
   it("an excerpt still lands in the document (the pre-712 path is unchanged)", async () => {
     const { result } = await mountArchive("doc-5", [excerptSnippet]);
     const land = vi.fn(() => true);
-    const reinstate = vi.fn(() => true);
+    const reinstate = vi.fn((): ReinstateOutcome => "ok");
     act(() => {
       result.current.restoreSnippet("x-1", land, reinstate);
     });
@@ -151,18 +168,18 @@ describe("panel reinstate doors", () => {
     mockRead.mockResolvedValue({ cards: [] });
     const { result } = renderHook(() => useNotes("doc-n"));
     await waitFor(() => expect(result.current.cards).toEqual([]));
-    let ok = false;
+    let ok: ReinstateOutcome | undefined;
     act(() => {
       ok = result.current.reinstate(originalNote);
     });
-    expect(ok).toBe(true);
+    expect(ok).toBe("ok");
     expect(result.current.cards).toHaveLength(1);
     expect(result.current.cards[0]).toMatchObject({ kind: "note", id: "n-1", title: "Why" });
     expect(result.current.cards[0].links[0].anchor).toMatchObject({ textObjectIds: ["p-9"] });
     act(() => {
       ok = result.current.reinstate(originalNote);
     });
-    expect(ok).toBe(false);
+    expect(ok).toBe("duplicate");
     expect(result.current.cards).toHaveLength(1);
   });
 

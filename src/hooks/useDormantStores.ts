@@ -6,6 +6,7 @@ import type { CardKind } from "@/cards/types";
 import type { ArchiveOriginPanel } from "@/lib/archive-origin";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { DormantDoors } from "./useDormantRevival";
+import type { ReinstateOutcome } from "@/lib/archive-restore-outcome";
 
 /**
  * The CARRYING STORES (task 1271) — the card stores whose records can travel
@@ -27,7 +28,7 @@ import type { DormantDoors } from "./useDormantRevival";
  */
 export interface DormantStore extends DormantDoors {
   /** Archive-origin restore door (task 712): put the verbatim card back. */
-  reinstate: (raw: unknown) => boolean;
+  reinstate: (raw: unknown) => ReinstateOutcome;
 }
 
 export type DormantStoreTable = Record<ArchiveOriginPanel, DormantStore>;

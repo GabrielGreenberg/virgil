@@ -41,6 +41,7 @@ import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
+import type { ReinstateOutcome } from "@/lib/archive-restore-outcome";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -694,7 +695,7 @@ export function useCutter(
 
   // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
   const reinstate = useCallback(
-    (raw: unknown): boolean =>
+    (raw: unknown): ReinstateOutcome =>
       reinstateCard<CutterState, CutterCard>(
         stateRef.current,
         update,
