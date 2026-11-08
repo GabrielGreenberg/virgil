@@ -15,7 +15,7 @@ import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
-import { cardTypeLabel } from "@/panels/panel-registry";
+import { cardTypeLabel, panelEmptySentence } from "@/panels/panel-registry";
 import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { RevisionRequestCard } from "./RevisionRequestCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
@@ -129,7 +129,7 @@ export default function RevisionsPanel({
       onActivateItem={keyboardJump && ((it) => keyboardJump(it.data))}
       emptyState={
         <div className={PANEL.empty}>
-          No comments or revisions yet.
+          {panelEmptySentence("revisions")}
           <CreationHint action="suggest-edit" />
         </div>
       }

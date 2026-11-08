@@ -19,6 +19,7 @@ import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
+import { panelEmptySentence } from "@/panels/panel-registry";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import type { NestedContainerInfo } from "@/components/editor-layout/panels/nest-footnote-children";
@@ -384,7 +385,7 @@ function CitationsPanel({
       emptyState={
         !pendingCreate ? (
           <div className={PANEL.empty}>
-            No citations yet.
+            {panelEmptySentence("citations")}
             <CreationHint action="citation" />
           </div>
         ) : undefined

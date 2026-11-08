@@ -11,6 +11,7 @@ import {
 import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
+import { panelEmptySentence } from "@/panels/panel-registry";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import {
@@ -146,7 +147,7 @@ function FootnotePanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No footnotes yet.
+          {panelEmptySentence("footnotes")}
           <CreationHint action="footnote" />
         </div>
       }

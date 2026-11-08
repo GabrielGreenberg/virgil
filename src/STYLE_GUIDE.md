@@ -2157,12 +2157,17 @@ bare *"No items yet"* fails it: it names the absence and teaches nothing. A
 found."*) — nothing is missing, and the way forward is the query the user
 already has.
 
-**The panel writes the NOUN; the registry owns the ROUTE; the host owns the
-"+".** The teaching half is not copy at all — it is a projection of
+**The card registry owns the NOUN; the action registry owns the ROUTE; the
+host owns the "+".** The noun is `panelEmptySentence(panelKind)`
+([panel-registry.ts](panels/panel-registry.ts)), built from the labels of the
+kinds the panel hosts — the same labels its "+" menu offers — so Cutter reads
+*"No requests or revisions yet."*, never a pair of nouns its menu does not
+know (task 1526). Archive, Errors and Bibliography keep hand copy, named in
+the contract's exemptions with the reason. The teaching half is not copy at all — it is a projection of
 `VIRGIL_ACTION_REGISTRY`, painted by
 [`<CreationHint action="…" />`](panels/_shared/CreationHint.tsx) off
 [`creation-routes.ts`](lib/actions/creation-routes.ts), so a panel supplies
-*"No examples yet."* and nothing more. This paragraph itself used to model the
+`{panelEmptySentence("examples")}` and nothing more. This paragraph itself used to model the
 contract with *"No examples. Click the (1) glyph in the formatting toolbar to
 insert one."* — a control retired with the MenuBar's example buttons, quoted
 here and shipped in the panel long after it stopped existing, which is the

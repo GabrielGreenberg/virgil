@@ -93,7 +93,8 @@ export interface CardListPanelProps<T> {
   onSelect: (id: string | null) => void;
 
   /** The panel's GENUINELY-empty state — the NOUN that names what is missing
-   *  ("No examples yet."), followed by `<CreationHint action="…" />` for the way
+   *  ("No examples yet.", from `panelEmptySentence(panelKind)` — task 1526),
+   *  followed by `<CreationHint action="…" />` for the way
    *  in. Rendered when nothing is filtered out.
    *
    *  This docstring used to say the panel authors the whole sentence "because

@@ -233,6 +233,33 @@ export function cardBodyPlaceholder(kind: CardKind): string {
   return CARD_REGISTRY[kind].bodyPlaceholder ?? `${CARD_TYPE_LABELS[kind]} text…`;
 }
 
+/** The NOUN half of a card panel's empty state (task 1526) — "No requests or
+ *  revisions yet." — derived from the kinds the panel HOSTS (each
+ *  `CARD_REGISTRY` entry whose `panel` is this one, in registry order), so the
+ *  sentence names exactly the labels the panel's "+" menu, overline and
+ *  kind-chevron already show. Each label is lower-cased and pluralized with a
+ *  plain `s`; two nouns join with "or", three or more as "a, b, or c". Before
+ *  this the sentence was hand-spelled per panel, and Cutter's "No comments or
+ *  suggestions yet." named neither of its kinds' labels. The way-in half stays
+ *  `<CreationHint>`'s (task 727). */
+export function panelEmptySentence(panelKind: PanelKind): string {
+  const nouns = [
+    ...new Set(
+      (Object.keys(CARD_REGISTRY) as CardKind[])
+        .filter((k) => CARD_REGISTRY[k].panel === panelKind)
+        .map((k) => `${CARD_TYPE_LABELS[k].toLowerCase()}s`),
+    ),
+  ];
+  if (nouns.length === 0) {
+    throw new Error(`panelEmptySentence: panel "${panelKind}" hosts no card kind`);
+  }
+  const phrase =
+    nouns.length <= 2
+      ? nouns.join(" or ")
+      : `${nouns.slice(0, -1).join(", ")}, or ${nouns[nouns.length - 1]}`;
+  return `No ${phrase} yet.`;
+}
+
 /** Singular display name for a card type, used as the auto-title prefix
  *  when a new card is created (e.g. "Note 3", "Footnote 1"). null = the
  *  kind opts out of auto-titling because it has no user-editable title
