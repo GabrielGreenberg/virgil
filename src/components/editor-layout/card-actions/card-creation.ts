@@ -17,7 +17,7 @@ import type {
 } from "@/lib/types";
 import type { ArchiveCaptureRecord } from "@/hooks/useArchive";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
-import { isPanelDocked } from "@/hooks/view-prefs-derived";
+import { isPanelDocked, panelSideOf } from "@/hooks/view-prefs-derived";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind, focusesBodyOnCreate } from "@/cards/predicates";
@@ -383,8 +383,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // its side. The opener is internally idempotent, but an unconditional
       // call still churns the dock MRU + fires a spurious openPanel.
       if (isPanelDocked(prefs, id)) return;
-      const placement = prefs.placements.find((p) => p.id === id);
-      const side = placement?.side ?? "right";
+      const side = panelSideOf(prefs, id);
       if (side === "left") setActiveLeft(id);
       else setActiveRight(id);
     },
