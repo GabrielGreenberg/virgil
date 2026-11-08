@@ -12,7 +12,7 @@ import { cardEntrySelector } from "../panel-selection";
 // Pure dock-stack derivation — imported from the LEAF (not the hook module) so
 // this bridge stays clear of `useViewPrefs`'s heavy `OmniViewPanel` → storage
 // runtime chain (see view-prefs-derived.ts + anchor-route-derivation-contract).
-import { isPanelDocked } from "@/hooks/view-prefs-derived";
+import { isPanelDocked, panelSideOf } from "@/hooks/view-prefs-derived";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
 import { CARD_KINDS, panelForCardKind } from "@/cards/predicates";
@@ -552,8 +552,7 @@ export function useMarkerClickBridges(deps: {
       // calling it unconditionally still churns the dock MRU + fires a spurious
       // openPanel — skip it when there's nothing to open.
       if (isPanelDocked(p, "errors")) return;
-      const placement = p.placements.find((pl) => pl.id === "errors");
-      if (placement?.side === "left") route.setActiveLeft("errors");
+      if (panelSideOf(p, "errors") === "left") route.setActiveLeft("errors");
       else route.setActiveRight("errors");
     };
     window.addEventListener(ERROR_MARKER_CLICK_EVENT, handler);

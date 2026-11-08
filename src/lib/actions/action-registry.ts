@@ -1665,7 +1665,7 @@ function cardRun(id: CardActionId, ctx: ActionContext): void {
  * Which side, if any, is `omniSideToReveal`'s single answer.
  */
 function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
-  revealOmniFor(routing, "citations", "right");
+  revealOmniFor(routing, "citations");
 }
 
 /** Expand the side `omniSideToReveal` names for `id`, if any. Shared by the
@@ -1673,9 +1673,8 @@ function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRoutin
 function revealOmniFor(
   routing: NonNullable<ActionContext["panelRouting"]>,
   id: PanelId,
-  fallback: "left" | "right",
 ): void {
-  const side = omniSideToReveal(routing.prefs, id, fallback);
+  const side = omniSideToReveal(routing.prefs, id);
   if (side === "left") routing.expandLeft?.();
   else if (side === "right") routing.expandRight?.();
   // null: the side is shown and omni is already visible behind any bands.
@@ -1786,7 +1785,7 @@ function citationRun(ctx: ActionContext): void {
  * Footnotes panel).
  */
 function softRouteFootnoteToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
-  revealOmniFor(routing, "footnotes", "left");
+  revealOmniFor(routing, "footnotes");
 }
 
 /**
