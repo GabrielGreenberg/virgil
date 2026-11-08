@@ -16,6 +16,7 @@ import {
   type SuggestionField,
 } from "@/panels/_shared/suggestion-field-vocabulary";
 import { compileLiteral } from "@/lib/whole-word";
+import { bibMatchText } from "@/lib/bib-searcher";
 import type { CardWithLinks } from "@/links/links";
 import { rowAnchorPos, type CardAnchorResolver } from "@/links/card-anchor-rows";
 import type {
@@ -649,8 +650,14 @@ export function searchBibliography(
         unanchored: true,
       });
     }
-    for (const [fieldName, value] of Object.entries(e.fields)) {
-      if (!value) continue;
+    for (const [fieldName, raw] of Object.entries(e.fields)) {
+      if (!raw) continue;
+      // Match what the card SHOWS, not the `.bib` bytes (task 1521): a field
+      // holds `G{\"o}del`, the card shows `G{ö}del`, and this matches
+      // `Gödel` (`bibMatchText` also drops the grouping braces). A bib hit is
+      // UNANCHORED and carries no offsets — only the snippet — so the snippet
+      // is that text too, and nothing here can be written back.
+      const value = bibMatchText(raw);
       for (const m of scanText(value, re)) {
         out.push({
           scope: "bibliography",
