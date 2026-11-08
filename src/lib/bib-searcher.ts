@@ -12,8 +12,9 @@
  *     matching gives token-order-independent multi-field matching.
  *   - Per-field weights (title and author dominate; year, publisher, etc.
  *     contribute secondary signal).
- *   - Diacritic folding on both indexed values and the query so e.g.
- *     "munoz" matches "Muñoz".
+ *   - Indexed values are the DISPLAY text (`bibSearchText`: LaTeX escapes
+ *     projected, grouping braces dropped), and diacritics are folded on both
+ *     sides — so "munoz" matches "Muñoz" AND `Mu{\~n}oz`.
  *   - Per-array WeakMap cache so building the Fuse index is a one-time
  *     cost per stable entries reference (BibliographyPanel useMemo'd
  *     arrays stay stable across keystrokes).
@@ -26,12 +27,35 @@
  */
 
 import Fuse, { type IFuseOptions } from "fuse.js";
+import { latexToDisplayText } from "@/lib/latex-typography";
 import type { BibEntry } from "@/lib/types";
 
 /** Strip combining diacritical marks. `Muñoz` → `Munoz`, `Pöggeler` →
  *  `Poggeler`. Applied to both indexed values and queries. */
 export function foldDiacritics(s: string): string {
   return s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+/** The text a `.bib` field value is SEARCHED as: what the reader SEES, never
+ *  the raw bytes (task 1521). A field holds LaTeX — `G{\"o}del` — while every
+ *  card shows its projection through the one display door
+ *  (`latexToDisplayText`, behind `bibFieldDisplay`) — `G{ö}del`. Indexing the
+ *  bytes made a short accented surname cost two fuzzy edits for the escape
+ *  alone, past the threshold, so `godel` found nothing.
+ *
+ *  Index-only, so it also drops the unescaped BibTeX grouping braces the
+ *  display door deliberately KEEPS (`bibFieldDisplay` → "PARTIAL, BY
+ *  DECISION"): a brace is never something a user types into a search box.
+ *  Then folds diacritics, as the query is folded. Never written back. */
+export function bibSearchText(value: string): string {
+  return foldDiacritics(bibMatchText(value));
+}
+
+/** `bibSearchText` before the diacritic fold — the display projection with
+ *  grouping braces dropped. The Search panel's bibliography scope matches its
+ *  (accent-sensitive) regex against this, so `Gödel` finds `G{\"o}del`. */
+export function bibMatchText(value: string): string {
+  return latexToDisplayText(value).replace(/(^|[^\\])[{}]+/g, "$1");
 }
 
 const FUSE_OPTIONS: IFuseOptions<BibEntry> = {
@@ -49,13 +73,13 @@ const FUSE_OPTIONS: IFuseOptions<BibEntry> = {
   threshold: 0.35,
   minMatchCharLength: 2,
   isCaseSensitive: false,
-  // Fold diacritics on the way into the index so the query can match
-  // accent-free user input.
+  // Index the DISPLAY projection, diacritic-folded (`bibSearchText`), so the
+  // query matches what the card shows, in accent-free user input.
   getFn: (obj, path) => {
     const value = Fuse.config.getFn(obj, path);
-    if (typeof value === "string") return foldDiacritics(value);
+    if (typeof value === "string") return bibSearchText(value);
     if (Array.isArray(value)) {
-      return value.map((v) => (typeof v === "string" ? foldDiacritics(v) : v));
+      return value.map((v) => (typeof v === "string" ? bibSearchText(v) : v));
     }
     return value;
   },
