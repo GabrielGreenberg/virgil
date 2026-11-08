@@ -157,10 +157,10 @@ export function useEditorOps(deps: {
   // (math / cite / ref) and mark in the heading; `renameHeadingByUuid` splices
   // the new label back around them instead.
   const handleRenameHeading = useCallback(
-    (uuid: string, newText: string) => {
+    (uuid: string, newText: string, seed: string) => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
-      renameHeadingByUuid(editor, uuid, newText);
+      renameHeadingByUuid(editor, uuid, newText, seed);
     },
     [editorRef],
   );
@@ -195,10 +195,10 @@ export function useEditorOps(deps: {
   // so a drifted address can no longer stamp `parTitle` onto the wrong node or
   // throw (OUT-F5-02 / OUT-F8-04).
   const handleRenameParTitle = useCallback(
-    (uuid: string, newTitle: string) => {
+    (uuid: string, newTitle: string, seed: string) => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
-      renameParTitleByUuid(editor, uuid, newTitle);
+      renameParTitleByUuid(editor, uuid, newTitle, seed);
     },
     [editorRef],
   );

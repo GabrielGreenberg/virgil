@@ -60,7 +60,12 @@ export interface HeadingItem {
    *  rename then no-ops gracefully rather than mis-addressing by index. */
   uuid: string | null;
   level: number;
+  /** The DISPLAY text — `editText`, or "Untitled" when that is empty. */
   text: string;
+  /** The editable projection itself (task 707) — what the rename box opens
+   *  with, and the seed its commit rebases from (task 1532). Unlike `text` it
+   *  is never a placeholder: an empty heading's seed is "", not "Untitled". */
+  editText: string;
   label: string | null;
   sectionNumber: string | null;
   index: number; // top-level block index in doc.content
@@ -111,6 +116,7 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
       // first interaction) fall back to the positional id so they remain
       // foldable until they earn a uuid; once hydrated they key durably.
       const uuid = (node.attrs.uuid as string | null) || null;
+      const editText = projectInline(node).text;
       headings.push({
         id: uuid ?? `heading-${idx}`,
         uuid,
@@ -119,7 +125,8 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         // this and `buildHeadingRenameFragment` splices it back through the
         // same `projectInline`, so the two cannot disagree. A footnote is an
         // opaque zero-width atom here (its body is not heading text).
-        text: projectInline(node).text || "Untitled",
+        text: editText || "Untitled",
+        editText,
         label: (node.attrs.label as string) || null,
         sectionNumber: (node.attrs.sectionNumber as string) || null,
         index: idx,
@@ -212,6 +219,9 @@ export interface OutlinePod {
   /** The heading's LaTeX level (its type scale); null on a parTitle pod. */
   level: number | null;
   text: string;
+  /** What the rename box opens with — the raw value, never a placeholder
+   *  (see `HeadingItem.editText`). */
+  editText: string;
   blockIndex: number;   // top-level block index in doc.content (reorder/scroll)
   blockCount: number;   // how many top-level blocks this pod covers
   id: string;
@@ -254,6 +264,7 @@ export function buildPods(
         depth,
         level: null,
         text: pt.title,
+        editText: pt.title,
         blockIndex: pt.index,
         blockCount: 1,
         id: parTitleId(pt),
@@ -269,6 +280,7 @@ export function buildPods(
       depth: node.depth,
       level: h.level,
       text: h.text,
+      editText: h.editText,
       blockIndex: h.index,
       // From this heading to the next heading of same/higher level — through
       // the SHARED section rule (task 285), whose doc-side adapter the reorder
