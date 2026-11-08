@@ -68,6 +68,7 @@ function ctx() {
     resolve: () => ({ rows: [{ pid: "P1" } as never], anchored: true }),
     onClick: vi.fn(),
     onDelete,
+    mayDelete: () => true,
   };
   return Object.assign(c, { onDelete });
 }
@@ -170,6 +171,7 @@ describe("margin markers derive from CARD_REGISTRY.markerType (task 939)", () =>
       delete: del,
     };
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "todo",
       cardId: "t1",
       paragraphId: "P1",

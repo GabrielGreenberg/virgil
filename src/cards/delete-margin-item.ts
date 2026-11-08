@@ -53,7 +53,7 @@ import {
   type CardContentKind,
 } from "@/cards/has-content";
 import { cardKindFromRecord } from "@/cards/predicates";
-import type { MarkerType } from "@/cards/types";
+import type { CardKind, MarkerType } from "@/cards/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { DeclinableCardDelete } from "@/panels/card-lifecycle-registry";
 
@@ -163,14 +163,37 @@ export interface DeleteMarginItemArgs {
   /** Live editor instance, used to strip the `linkedAnchor` mark when
    *  the card is fully deleted. */
   editor: Editor | null;
+  /**
+   * The host's per-kind mutation permit — `isCardMutationAllowed(chrome, ·)`
+   * in the app (task 1527). Asked of the card's OWN kind before anything
+   * moves; a refusal is a silent no-op (no confirm, no detach, no delete, no
+   * mark strip). The marker builder already withholds `onDelete` for such a
+   * kind, so this is the FLOOR, not the affordance: it makes "the margin
+   * Delete honours the host" a property of this one door rather than of each
+   * caller. Before it, a Library Reader todo/report/cut/revision marker's
+   * Backspace dropped the card from React state while the sidecar write was
+   * refused — gone until reload, nothing written, nothing said. Required, so
+   * no caller can forget to ask.
+   */
+  mayMutate: (kind: CardKind) => boolean;
+}
+
+/** The card's own kind, read through its bundle's `contentKind` — every
+ *  `CardContentKind` IS a `CardKind`, so the content predicate and the host
+ *  permit are asked about one and the same kind. */
+function cardKindOf(handlers: MarginItemHandlers, card: CardWithLinks): CardContentKind {
+  return typeof handlers.contentKind === "function"
+    ? handlers.contentKind(card)
+    : handlers.contentKind;
 }
 
 /** See file header for the behavior contract. Pure async function — no
  *  React coupling, easy to unit-test. */
 export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void> {
-  const { cardId, paragraphId, anchorPids, sources, handlers, confirm, editor } = args;
+  const { cardId, paragraphId, anchorPids, sources, handlers, confirm, editor, mayMutate } = args;
   const card = handlers.findCard(cardId);
   if (!card) return;
+  if (!mayMutate(cardKindOf(handlers, card))) return;
 
   // Compute remaining paragraph anchors after we drop this one. Cards
   // can be anchored to multiple paragraphs (`links[]` with N entries);
@@ -201,11 +224,7 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
   }
 
   // This is the card's last anchor. Confirm-on-content before deleting.
-  const contentKind =
-    typeof handlers.contentKind === "function"
-      ? handlers.contentKind(card)
-      : handlers.contentKind;
-  if (cardHasContent(contentKind, card)) {
+  if (cardHasContent(cardKindOf(handlers, card), card)) {
     const ok = await confirm({
       message: CARD_DELETE_CONFIRM_MESSAGE,
       confirmLabel: "Delete",

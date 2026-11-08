@@ -65,6 +65,12 @@ export interface CardMarkerCtx {
    *  cohort and the links it is drawn from travel together, so the door can
    *  never be given one without the others (tasks 669, 1149). */
   onDelete: (kind: MarginItemKind, cardId: string, row: MarginMarkerRow) => void;
+  /** The host's per-kind delete permit (`isCardMutationAllowed`, task 1527).
+   *  A kind the host will not let the user mutate gets NO `onDelete`, so its
+   *  marker's Delete/Backspace is inert — the margin's answer to the trash
+   *  button the panel hides for the same kind (`useCardDeleteAllowed`).
+   *  Required, so a new caller cannot build markers that forget to ask. */
+  mayDelete: (kind: CardKind) => boolean;
 }
 
 const label = (kind: CardKind) => CARD_REGISTRY[kind].label;
@@ -146,6 +152,7 @@ export function buildCardMarkers<T extends CardWithLinks>(
   if (type == null) return [];
   const title = source.title(card, kind);
   const muted = source.muted?.(card);
+  const deletable = ctx.mayDelete(kind);
   return buildMarginMarkerRows(card, ctx.resolve).map((row) => {
     const { pid, unanchored } = row;
     return {
@@ -162,7 +169,7 @@ export function buildCardMarkers<T extends CardWithLinks>(
       // (`undefined` for a single-row card, whose row carries no suffix).
       onClick: (clickY?: number) =>
         ctx.onClick({ kind, id: card.id }, clickY, marginAnchorRowPid(card, pid, ctx.resolve)),
-      onDelete: () => ctx.onDelete(type, card.id, row),
+      ...(deletable ? { onDelete: () => ctx.onDelete(type, card.id, row) } : {}),
     };
   });
 }

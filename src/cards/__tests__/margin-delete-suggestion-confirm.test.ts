@@ -62,6 +62,7 @@ async function runMarginDelete(author: "human" | "ai", confirmAnswer: boolean) {
   const confirm = vi.fn(async () => confirmAnswer);
   const del = vi.fn(async () => true);
   await deleteMarginItem({
+    mayMutate: () => true,
     kind: "revision",
     cardId: "c1",
     paragraphId: "P1",
