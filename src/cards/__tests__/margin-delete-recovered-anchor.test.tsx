@@ -144,6 +144,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
     const { bundle, unanchor, del } = handlers(card);
     const confirm = vi.fn(async () => true);
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "archive",
       cardId: "c1",
       paragraphId: rows[0].pid,
@@ -168,6 +169,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
 
     const { bundle, unanchor, del } = handlers(card);
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "archive",
       cardId: "c1",
       paragraphId: rows[0].pid,
@@ -194,6 +196,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
     const { bundle, unanchor, detach, del } = handlers(card);
     const confirm = vi.fn(async () => true);
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "archive",
       cardId: "c1",
       paragraphId: "P1",
@@ -224,6 +227,7 @@ describe("margin Delete on a RECOVERED anchor (task 669)", () => {
 
     const { bundle, unanchor, del } = handlers(card);
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "archive",
       cardId: "c1",
       paragraphId: rows[0].pid,

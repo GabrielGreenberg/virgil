@@ -135,6 +135,7 @@ async function deleteRow(editor: Editor, s: ReturnType<typeof store>, pid: strin
   const row = rows.find((r) => r.pid === pid);
   if (!row) throw new Error(`no row for ${pid}`);
   await deleteMarginItem({
+    mayMutate: () => true,
     kind: "note",
     cardId: s.card.id,
     paragraphId: row.pid,

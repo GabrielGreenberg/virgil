@@ -307,8 +307,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   const rightOverflow = overflowGroups.filter((g) => g.side === "right");
 
   // When the surface is read-only — the host (Library Reader) OR the pen
-  // (collab) — suppress drag-to-rebind on every marker. Click + Delete still
-  // work. The ONE gate (task 1338): a live predicate each button re-asks at
+  // (collab) — suppress drag-to-rebind on every marker. Click still works;
+  // Delete works only where the host permits mutating that card's kind (the
+  // builder withholds `onDelete` otherwise — task 1527). The ONE gate (task 1338): a live predicate each button re-asks at
   // press time, so it needs no editor subscription of its own.
   const dragEnabled = repinGate;
 

@@ -86,6 +86,7 @@ import {
 import {
   FULL_CHROME,
   filterPanelKinds,
+  isCardMutationAllowed,
   viewPrefProjection,
   viewToggleClasses,
   type EditorChromeConfig,
@@ -3307,6 +3308,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
    * it undeletable from the margin (task 669). `sources` — the same row's
    * links — is what a multi-anchor Delete detaches (task 1149).
    */
+  // The host's per-kind delete permit (task 1527) — the SAME derivation the
+  // panel trash (`useCardDeleteAllowed`) and the drag-handle menu ask. Read by
+  // the marker builder (a refused kind's marker gets no `onDelete`) AND by the
+  // delete door below as its floor.
+  const mayDeleteCardKind = useCallback(
+    (kind: CardKind) => isCardMutationAllowed(chrome, kind),
+    [chrome],
+  );
   const handleMarginItemDelete = useCallback(
     (kind: MarginItemKind, cardId: string, row: MarginMarkerRow) =>
       deleteMarginItem({
@@ -3318,8 +3327,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         handlers: marginItemHandlers[kind],
         confirm: confirmMarginItemDelete,
         editor: innerRef.current?.getEditor() ?? null,
+        mayMutate: mayDeleteCardKind,
       }),
-    [marginItemHandlers, confirmMarginItemDelete],
+    [marginItemHandlers, confirmMarginItemDelete, mayDeleteCardKind],
   );
 
   // ── Margin marker click (R15) ────────────────────────────────────
@@ -4022,6 +4032,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onDelete: (kind, cardId, row) => {
         void handleMarginItemDelete(kind, cardId, row);
       },
+      mayDelete: mayDeleteCardKind,
     };
     const src = MARGIN_MARKER_SOURCES;
     pushSourceMarkers(result, notesHook.notes, src.notes, markerCtx);
@@ -4061,6 +4072,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisionsHook.cards,
     reportsHook.cards,
     handleMarginItemDelete,
+    mayDeleteCardKind,
     handleMarginMarkerClick,
     handleErrorMarkerClick,
     allLatexErrors,
