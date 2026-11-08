@@ -76,9 +76,16 @@ function cslItemToEntry(
   raw: string,
   uid: string,
   source?: BibSourceRef,
+  sourceType?: string,
 ): BibEntry {
   const key = (item["citation-key"] || item.id || "") as string;
-  const type = cslTypeToBib((item.type as string) || "misc");
+  // `type` is the SOURCE head's `@type` whenever the item has a block (task
+  // 1518). The CSL round trip knows eight types and folds the rest — so
+  // `@mastersthesis` came back `phdthesis`, `@inbook` `incollection`,
+  // `@online`/`@booklet`/`@manual` `misc` — and the paper-bib save then wrote
+  // that projection over the real head on an edit to any field. The CSL map
+  // survives only for an item with no source block to read.
+  const type = sourceType || cslTypeToBib((item.type as string) || "misc");
   const fields: Record<string, string> = {};
 
   if (item.author) fields.author = formatCslAuthors(item.author as Array<{ given?: string; family?: string }>);
@@ -132,6 +139,8 @@ interface OrderedRawBlock {
   balanced: boolean;
   /** uid recovered from a preceding `\vbid{}` marker, or undefined → mint. */
   vbidUid?: string;
+  /** The block head's own `@type`, lower-cased by the scanner (task 1518). */
+  type: string;
 }
 
 /**
@@ -168,6 +177,7 @@ function extractOrderedRawBlocks(bibText: string, masked: string): OrderedRawBlo
       end: block.end,
       balanced: block.balanced,
       vbidUid: binding?.uid,
+      type: block.type,
     });
   }
   return result;
@@ -251,7 +261,13 @@ export function parseBibFile(bibText: string): BibEntry[] {
       const key = (item["citation-key"] || item.id || "") as string;
       const block = takeBlock(key);
       entries.push(
-        cslItemToEntry(item, block?.raw ?? "", uidForBlock(block), block ? sourceRefOf(block) : undefined),
+        cslItemToEntry(
+          item,
+          block?.raw ?? "",
+          uidForBlock(block),
+          block ? sourceRefOf(block) : undefined,
+          block?.type,
+        ),
       );
     }
     return rememberParse(bibText, entries);
@@ -267,7 +283,7 @@ export function parseBibFile(bibText: string): BibEntry[] {
       const cite = new CiteClass(block.raw);
       for (const item of cite.data) {
         consumed[i] = true;
-        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block), sourceRefOf(block)));
+        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block), sourceRefOf(block), block.type));
       }
     } catch {
       if (!WARNED_KEYS.has(block.key)) {

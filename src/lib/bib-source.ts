@@ -532,7 +532,9 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
   const fields = scanBibFields(block);
   const patches: Patch[] = [];
 
-  if (edit.type && edit.type !== head.type) {
+  // The scanner lower-cases `head.type`; a type that differs only in CASE is
+  // the same type, so `@Article` is not rewritten to `@article` (task 1518).
+  if (edit.type && edit.type.toLowerCase() !== head.type) {
     patches.push({ start: 1, end: 1 + head.type.length, text: edit.type });
   }
   if (edit.key !== undefined && edit.key !== head.key) {
