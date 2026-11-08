@@ -45,6 +45,7 @@ import {
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { MIME_OUTLINE_POD } from "@/lib/marginalia";
 import { iconHint } from "@/components/Hint";
+import { InlineRenameInput } from "@/components/InlineRenameInput";
 import { FoldChevronGlyph } from "@/components/icons/FoldChevronGlyph";
 import { activatableProps } from "@/lib/activatable-props";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
@@ -370,8 +371,8 @@ interface OutlinePanelProps {
     side: "above" | "below",
   ) => void;
   // T3 (W3a): rename/label address by durable block uuid, not integer index.
-  onRenameHeading?: (uuid: string, newText: string) => void;
-  onRenameParTitle?: (uuid: string, newTitle: string) => void;
+  onRenameHeading?: (uuid: string, newText: string, seed: string) => void;
+  onRenameParTitle?: (uuid: string, newTitle: string, seed: string) => void;
   onUpdateLabel?: (uuid: string, newLabel: string | null) => void;
   /** Central label-conflict predicate — thread down to every label
       input so they all agree on what counts as a collision. */
@@ -841,29 +842,15 @@ const EditablePod = memo(function EditablePod({
   onDragOver: (podId: string, e: React.DragEvent) => void;
   onDragLeave: (podId: string) => void;
   onDrop: (podId: string, e: React.DragEvent) => void;
-  onRename: (pod: OutlinePod, newText: string) => void;
+  onRename: (pod: OutlinePod, newText: string, seed: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(pod.text);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const commitRename = () => {
-    // Task 707: a heading's rename commits the string AS EDITED — the splice
-    // diffs it against the seed, so trimming here would silently delete the
-    // space in `Intro \footnote{…}` on an edit elsewhere. A parTitle is
-    // attr-only and trims in its own mutator.
-    if (editText.trim() && editText !== pod.text) {
-      onRename(pod, editText);
-    }
-    setEditing(false);
-  };
+  // Task 1532: the rename runs through the ONE inline-rename field
+  // (`InlineRenameInput` — its session owns Enter/Escape/blur/unmount), and
+  // the pod holds only the SEED: the text the box opened with. Non-null =
+  // editing. The commit hands `(draft, seed)` on, so the mutator replays the
+  // user's edit onto the live heading rather than writing the draft over a
+  // change made elsewhere while the box was open.
+  const [seed, setSeed] = useState<string | null>(null);
 
   // Task 1347: indent by TREE DEPTH through the same helpers as the view row,
   // so entering edit mode cannot shift a row sideways (raw LaTeX level put a
@@ -871,6 +858,7 @@ const EditablePod = memo(function EditablePod({
   const indent = podIndent(pod);
 
   const isParTitle = pod.type === "parTitle";
+  const canRename = pod.uuid != null;
   const showChevron = !isParTitle && pod.hasCollapsibleChildren;
 
   return (
@@ -929,25 +917,32 @@ const EditablePod = memo(function EditablePod({
           <span className="w-3 shrink-0" />
         )}
         <DragHandle />
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            onKeyDown={(e) => {
-              if (isCommitEnter(e)) commitRename();
-              if (isCancelEscape(e)) { setEditText(pod.text); setEditing(false); }
+        {seed !== null ? (
+          <InlineRenameInput
+            initialValue={seed}
+            // A heading's commit is spliced character by character (task
+            // 707), so it is not trimmed; a parTitle trims in its mutator.
+            preserveWhitespace={!isParTitle}
+            onRename={(next) => onRename(pod, next, seed)}
+            onClose={() => setSeed(null)}
+            aria-label={isParTitle ? "Rename title" : "Rename heading"}
+            style={{
+              boxShadow: "inset 0 -1px 0 var(--accent)",
+              ...(isParTitle
+                ? { fontSize: "var(--text-2xs)", lineHeight: "var(--text-2xs--line-height)", color: "var(--par-title-color-dense,#b05756)" }
+                : { color: "var(--color-ink-strong)" }),
             }}
-            onBlur={commitRename}
-            className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
-              isParTitle ? "text-2xs text-[var(--par-title-color-dense,#b05756)]" : "text-sm text-ink-strong"
-            }`}
           />
         ) : (
           <button
             type="button"
-            onClick={() => { setEditText(pod.text); setEditing(true); }}
-            className={`flex-1 min-w-0 text-left truncate cursor-text rounded focus-ring ${
+            // The same gate as drag (above): a pod with no durable uuid has no
+            // address a rename could land on, so the field is not offered —
+            // an opened box would discard the draft on commit (task 1532).
+            aria-disabled={canRename ? undefined : true}
+            onClick={() => { if (canRename) setSeed(pod.editText); }}
+            {...(canRename ? {} : iconHint({ label: "Can't rename yet — this row isn't linked to the document", pos: "above" }))}
+            className={`flex-1 min-w-0 text-left truncate rounded focus-ring ${canRename ? "cursor-text" : "cursor-default"} ${
               isParTitle
                 ? "text-2xs text-[var(--par-title-color-dense,#b05756)]"
                 : (pod.level ?? 0) <= 1
@@ -992,8 +987,8 @@ function EditableOutline({
     target: BlockSpanAddress,
     side: "above" | "below",
   ) => void;
-  onRenameHeading: (uuid: string, newText: string) => void;
-  onRenameParTitle: (uuid: string, newTitle: string) => void;
+  onRenameHeading: (uuid: string, newText: string, seed: string) => void;
+  onRenameParTitle: (uuid: string, newTitle: string, seed: string) => void;
 }) {
   const pods = useMemo(() => buildPods(outline, totalBlocks, tree), [outline, totalBlocks, tree]);
   const hiddenIds = useMemo(() => computeHiddenPods(pods, collapsed), [pods, collapsed]);
@@ -1118,15 +1113,14 @@ function EditableOutline({
     setDropTarget(null);
   }, [draggingId, dropTarget, pods, onReorderBlocks]);
 
-  const handleRename = useCallback((pod: OutlinePod, newText: string) => {
-    // Address by durable uuid (T3 / W3a). A pod that hasn't earned a uuid yet
-    // (lazy backfill) can't be safely renamed by index — skip rather than
-    // mis-address the live doc.
+  const handleRename = useCallback((pod: OutlinePod, newText: string, seed: string) => {
+    // Address by durable uuid (T3 / W3a). The pod offers no rename without one
+    // (task 1532); this guard is the type narrowing, not a silent drop.
     if (!pod.uuid) return;
     if (pod.type === "heading") {
-      onRenameHeading(pod.uuid, newText);
+      onRenameHeading(pod.uuid, newText, seed);
     } else {
-      onRenameParTitle(pod.uuid, newText);
+      onRenameParTitle(pod.uuid, newText, seed);
     }
   }, [onRenameHeading, onRenameParTitle]);
 

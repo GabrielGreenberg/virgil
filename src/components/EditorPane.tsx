@@ -707,8 +707,8 @@ export interface EditorPaneViewPrefs {
     target: BlockSpanAddress,
     side: "above" | "below",
   ) => void;
-  onRenameHeading: (uuid: string, newText: string) => void;
-  onRenameParTitle: (uuid: string, newTitle: string) => void;
+  onRenameHeading: (uuid: string, newText: string, seed: string) => void;
+  onRenameParTitle: (uuid: string, newTitle: string, seed: string) => void;
   onUpdateLabel: (uuid: string, newLabel: string | null) => void;
   isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   onFocusActivate: () => void;

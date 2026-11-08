@@ -23,7 +23,11 @@
  * tab rename.
  *
  * The commit rule lives here, once:
- *   - the draft is trimmed;
+ *   - the draft is trimmed — unless the owner asks to `preserveWhitespace`
+ *     (the Outline's heading rename, task 1532: its commit is spliced
+ *     character by character into the heading, and trimming would delete the
+ *     space in `Intro \footnote{…}` on an edit elsewhere — task 707); a
+ *     whitespace-only draft is empty either way;
  *   - an empty draft becomes `emptyValue` when the owner names one (the
  *     Library: "Untitled", the same rule its store applies), and is otherwise
  *     NO rename (the editor's doc tab);
@@ -31,6 +35,10 @@
  *     nothing must not happen — `field-draft.ts`, task 532).
  * `onClose` runs once, on whichever ending comes first; `onRename` only on a
  * real change.
+ *
+ * A fourth owner joined in task 1532: the Outline's edit-mode pod rename
+ * (`OutlinePanel.tsx` → `EditablePod`), which keeps the seed it opened the
+ * field with so its commit can be rebased onto the live heading.
  *
  * UNMOUNT IS AN ENDING (task 1211). React dispatches no `blur` on unmount, so
  * a field torn down while focused — every owner renders it only on the ACTIVE
@@ -64,6 +72,8 @@ export interface InlineRenameInputProps {
   onClose: () => void;
   /** What an empty draft means. Omitted → an empty draft renames nothing. */
   emptyValue?: string;
+  /** Commit the draft as typed rather than trimmed (see the commit rule). */
+  preserveWhitespace?: boolean;
   /** `fill` takes the row's free width; `content` sizes to the draft. */
   fit?: "fill" | "content";
   /** `content` only: the floor of the `size` attribute, in characters. */
@@ -94,8 +104,10 @@ export function normalizeRename(
   draft: string,
   initialValue: string,
   emptyValue?: string,
+  preserveWhitespace = false,
 ): string | null {
-  const next = draft.trim() || emptyValue || "";
+  const trimmed = draft.trim();
+  const next = trimmed ? (preserveWhitespace ? draft : trimmed) : emptyValue || "";
   if (!next || next === initialValue) return null;
   return next;
 }
@@ -105,6 +117,7 @@ export function InlineRenameInput({
   onRename,
   onClose,
   emptyValue,
+  preserveWhitespace,
   fit = "fill",
   minChars = 1,
   style,
@@ -137,7 +150,7 @@ export function InlineRenameInput({
   };
   const finish = () => {
     if (ended.current) return;
-    const next = normalizeRename(draft, initialValue, emptyValue);
+    const next = normalizeRename(draft, initialValue, emptyValue, preserveWhitespace);
     if (next !== null) onRename(next);
     close();
   };

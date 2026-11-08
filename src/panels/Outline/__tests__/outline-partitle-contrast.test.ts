@@ -230,8 +230,11 @@ describe("census: the Outline reads the rung, nothing else has to", () => {
     // If the rows ever move to the family's 12.5px/500, the rung's premise is
     // gone and the plain token should come back (resolution (1) in the 284
     // memo). Pin the premise so that is a decision rather than a drift.
+    // Two spellings: the Tailwind class pair on a row, and the inline style
+    // the edit-mode rename field takes (task 1532 — `InlineRenameInput` takes
+    // no className by design).
     const sites = outline.match(
-      /text-2xs[^"`]*text-\[var\(--par-title-color-dense/g,
+      /text-2xs[^"`]*text-\[var\(--par-title-color-dense|fontSize: "var\(--text-2xs\)"[^}]*color: "var\(--par-title-color-dense/g,
     );
     expect(sites?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
