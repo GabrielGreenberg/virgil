@@ -76,6 +76,10 @@ type ReportsHook = ReturnType<typeof useReports>;
 
 export interface OmniHostProps {
   side: Side;
+  /** The side is collapsed (its width kept, its cards hidden): build and
+   *  publish the cards to the omni card registry, so the tool gutter can open
+   *  a row into one, but render none — no card mounts, no editor starts. */
+  publishOnly?: boolean;
   // Footnotes
   footnotes: FootnoteInfo[];
   orphanedFootnotes: OrphanedFootnote[];
@@ -790,6 +794,7 @@ export function OmniHost(p: OmniHostProps) {
       ? p.bulkPendingChanges
       : undefined;
 
+  if (p.publishOnly) return null;
   return (
     <OmniViewPanel
       side={p.side}

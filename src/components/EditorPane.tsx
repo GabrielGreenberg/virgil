@@ -50,7 +50,9 @@
  */
 
 import {
+  cloneElement,
   forwardRef,
+  isValidElement,
   memo,
   useCallback,
   useEffect,
@@ -8915,7 +8917,13 @@ function PaneRail({
           <div className="gutter-side-head" data-gutter-head={side}>
             <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
           </div>
-          {contentsHidden ? null : omniBody}
+          {contentsHidden
+            ? // Collapsed: the cards are hidden, but OmniHost still publishes
+              // them (rendering none) so the tool gutter can open a row.
+              isValidElement(omniBody)
+              ? cloneElement(omniBody as React.ReactElement<{ publishOnly?: boolean }>, { publishOnly: true })
+              : null
+            : omniBody}
         </div>
       ) : (
         omniBody
