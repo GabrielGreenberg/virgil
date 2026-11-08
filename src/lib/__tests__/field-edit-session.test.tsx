@@ -594,11 +594,18 @@ describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
     //
     // `editor-layout/TabStrip.tsx` LEFT (task 1013): its doc-tab rename box is
     // now `InlineRenameInput`, which takes the door (census above).
+    //
+    // The gutter's reading lists JOINED (2026-11-08): Escape closes an open
+    // row's card (`GutterList`) and the bibliography's search box
+    // (`ReadingLists`) — both by unmounting, neither with a blur commit, and
+    // the card yields to any field inside it that already handled the Escape.
     expect(unmountingCancelFields()).toEqual([
       "library/components/BibCard.tsx",
       "src/components/ManageStylesModal.tsx",
       "src/components/PreferencesModal.tsx",
       "src/components/bib-review-request.tsx",
+      "src/components/editor-layout/tool-gutter/GutterList.tsx",
+      "src/components/editor-layout/tool-gutter/ReadingLists.tsx",
       "src/panels/Bibliography/BibliographyPanel.tsx",
       "src/panels/Outline/OutlinePanel.tsx",
       "src/panels/_shared/PanelGoalStrip.tsx",

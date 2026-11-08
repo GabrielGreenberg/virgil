@@ -37,6 +37,9 @@ vi.mock("../../contexts/selections", () => ({
     setSelectedReportCardId: vi.fn(),
   }),
 }));
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 vi.mock("@/hooks/useDiagnostics", () => ({
   useDiagnosticsContext: () => ({
     allLatexErrors: [],

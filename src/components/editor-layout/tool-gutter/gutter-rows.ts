@@ -130,28 +130,45 @@ export function footnoteRows(
 
 /** An example body as one line. A glossed example (`\\begingl`) is a grid of
  *  cells the generic projection runs together; its first aligned tier — the
- *  source line — read cell by cell is what the example IS. */
+ *  source line — read cell by cell is what the example IS. The gloss may sit
+ *  inside a wrapper block, so it is found wherever it is in the body. */
 export function exampleBodyText(content: unknown): string {
+  const gloss = findGloss(content);
+  if (gloss) return glossFirstTier(gloss);
   const doc = content as { content?: Array<Record<string, unknown>> } | null;
   const blocks = doc?.content ?? [];
-  const parts: string[] = [];
-  for (const block of blocks) {
-    if (block.type === "exampleGloss") {
-      const rows = (block.content ?? []) as Array<Record<string, unknown>>;
-      const first = rows.find((r) => r.type === "alignedGlossRow") ?? rows[0];
-      const cells = ((first?.content ?? []) as unknown[]).map((c) =>
-        first?.type === "alignedGlossRow" ? plain({ type: "doc", content: [{ type: "paragraph", content: (c as { content?: unknown[] }).content ?? [] }] }) : "",
-      );
-      parts.push(
-        first?.type === "alignedGlossRow"
-          ? cells.filter(Boolean).join(" ")
-          : plain({ type: "doc", content: [{ type: "paragraph", content: (first?.content as unknown[]) ?? [] }] }),
-      );
-      continue;
-    }
-    parts.push(plain({ type: "doc", content: [block] }));
+  return blocks
+    .map((block) => plain({ type: "doc", content: [block] }))
+    .filter(Boolean)
+    .join(" ");
+}
+
+type JsonNode = { type?: string; content?: JsonNode[] };
+
+function findGloss(node: unknown): JsonNode | null {
+  const n = node as JsonNode | null;
+  if (!n || typeof n !== "object") return null;
+  if (n.type === "exampleGloss") return n;
+  for (const c of n.content ?? []) {
+    const hit = findGloss(c);
+    if (hit) return hit;
   }
-  return parts.filter(Boolean).join(" ");
+  return null;
+}
+
+/** The gloss's first tier: the first aligned row read cell by cell, else the
+ *  first row as prose. */
+function glossFirstTier(gloss: JsonNode): string {
+  const rows = gloss.content ?? [];
+  const first = rows.find((r) => r.type === "alignedGlossRow") ?? rows[0];
+  if (!first) return "";
+  if (first.type === "alignedGlossRow") {
+    return (first.content ?? [])
+      .map((cell) => plain({ type: "doc", content: [{ type: "paragraph", content: cell.content ?? [] }] }))
+      .filter(Boolean)
+      .join(" ");
+  }
+  return plain({ type: "doc", content: [{ type: "paragraph", content: first.content ?? [] }] });
 }
 
 export function exampleRows(examples: readonly ExampleInfo[]): GutterRow[] {

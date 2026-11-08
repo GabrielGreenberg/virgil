@@ -107,6 +107,30 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      through the editor handle's own doors (`scrollToFootnote` / `scrollToExample`
      / `scrollToCitation` / `jumpToCard` / `errorJump`); a to-do's checkbox calls
      `toggleItem`. The selected card's row wears `data-selected`.
+     **Reading lists** (Gabriel, 2026-11-08): Footnotes, Bibliography and
+     Numbered examples are not one-line rows but `GutterList`s
+     ([GutterList.tsx](../../src/components/editor-layout/tool-gutter/GutterList.tsx),
+     groups from the pure
+     [gutter-lists.ts](../../src/components/editor-layout/tool-gutter/gutter-lists.ts),
+     wired in [ReadingLists.tsx](../../src/components/editor-layout/tool-gutter/ReadingLists.tsx)).
+     One row model: a click selects (no scroll); hover/focus shows ↗ jump and ⌄
+     open (a bib entry cited more than once shows ‹ › instead, stepping through
+     its citations); open turns the row IN PLACE into the kind's own card
+     ([GutterCardBody.tsx](../../src/components/editor-layout/tool-gutter/GutterCardBody.tsx):
+     FootnoteCard and its orphan/unanchored twins, BibEntryCard plus a "Cited
+     in" list, ExampleCard) — one open per list, closed by ⌃ or Escape (a card
+     field that handled Escape keeps it); ↑/↓ move between rows; a 2px accent bar
+     marks rows whose anchor is on screen (an IntersectionObserver over the
+     anchors' own nodes, re-synced on structural revisions only). Footnotes group
+     under their top-level sections, numbered as the paper does, with orphaned
+     and unanchored ones last; the … menu adds one and picks Active/Archives/All.
+     The bibliography toggles A–Z (the reference as it will print, letter
+     dividers, "N×") and As cited (section groups, a repeat dimmed with ↺), both
+     ending in "Needs attention" (cited but not in the .bib, then uncited); its …
+     menu has cited-only and Export cited.bib (`@/lib/bib-export-cited`, shared
+     with the panel). Examples show "(N)", lettered sub-items, a gloss's first
+     tier, and "label · referred to N×" (`countLabelRefs`). The other lists keep
+     the one-line rows for now.
   3. **Divider** — mounted only while a tool AND a list are open (otherwise the
      open half takes the room). A `drag-gap-h band-grip` on the pane-resize
      engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`

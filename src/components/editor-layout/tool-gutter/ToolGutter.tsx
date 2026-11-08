@@ -80,6 +80,7 @@ import {
   type GutterJump,
   type GutterRow,
 } from "./gutter-rows";
+import { READING_LISTS, ReadingList, type ReadingListKind, type ReadingListsData } from "./ReadingLists";
 
 /** Gutter headings — each section's panel's `PANEL_REGISTRY.shortLabel`
  *  (task 1475), except where the gutter says it the way Gabriel does. */
@@ -114,6 +115,9 @@ export interface ToolGutterProps {
   cutterCards: readonly CutterCard[];
   reportCards: readonly ReportItem[];
   archivedIds: ReadonlySet<string>;
+  /** Footnotes, bibliography and examples as reading lists that open into
+   *  their cards. Absent: those lists fall back to one-line rows. */
+  readingLists?: ReadingListsData;
 }
 
 export function ToolGutter(p: ToolGutterProps) {
@@ -356,7 +360,17 @@ export function ToolGutter(p: ToolGutterProps) {
           </AnchoredMenu>
         </div>
 
-        {activeList && (
+        {activeList && p.readingLists && READING_LISTS.has(activeList) && (
+          <div className="tool-gutter-scroll tool-gutter-lists">
+            <ReadingList
+              key={activeList}
+              kind={activeList as ReadingListKind}
+              title={sectionTitle(activeList)}
+              data={p.readingLists}
+            />
+          </div>
+        )}
+        {activeList && !(p.readingLists && READING_LISTS.has(activeList)) && (
           <div className="tool-gutter-scroll tool-gutter-lists">
             <GutterSectionView
               key={activeList}

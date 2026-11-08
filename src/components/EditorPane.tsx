@@ -347,6 +347,8 @@ import { gutterLayoutOn } from "@/lib/gutter-layout";
 import { useMarginLabelMode } from "@/lib/editor-geometry/use-margin-label-mode";
 import { useToolGutterState } from "@/lib/tool-gutter-store";
 import { ToolGutter } from "./editor-layout/tool-gutter/ToolGutter";
+import { GutterCardBody } from "./editor-layout/tool-gutter/GutterCardBody";
+import type { ReadingListsData } from "./editor-layout/tool-gutter/ReadingLists";
 import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import FloatingPanel from "./FloatingPanel";
@@ -6772,6 +6774,82 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // so a fresh object per render costs nothing it didn't already pay.
   // The docked/floating panel bodies AND the tool gutter's tool bodies (task
   // 1440) render the same PaneRailBody; its props are built once here.
+  // The tool gutter's reading lists (footnotes, bibliography, examples): what
+  // they list, and the card an open row turns into — the same stores and
+  // handlers the old docked panels used.
+  const orphanedFootnotesForLists = effectiveViewPrefs?.orphanedFootnotes;
+  const gutterReadingLists = useMemo<ReadingListsData>(() => {
+    const citedKeys = new Set(allEditorCitations.flatMap((c) => c.keys));
+    const firstCite = new Map<string, string>();
+    for (const c of [...allEditorCitations].sort((a, b) => a.pos - b.pos)) {
+      for (const k of c.keys) if (!firstCite.has(k)) firstCite.set(k, c.citationId);
+    }
+    return {
+      footnotes: footnoteInfos,
+      orphanedFootnotes: orphanedFootnotesForLists ?? [],
+      unanchoredFootnotes: unanchoredFootnoteRefs,
+      examples,
+      bibEntries: citationsHook.bibEntries,
+      bibSource: citationsHook.bibRaw,
+      editorCitations: allEditorCitations,
+      onActiveCitation: setBibActiveCitationId,
+      renderCard: (card) => (
+        <GutterCardBody
+          card={card}
+          footnotes={footnoteInfos}
+          orphanedFootnotes={orphanedFootnotesForLists ?? []}
+          unanchoredFootnotes={unanchoredFootnoteRefs}
+          examples={examples}
+          bibEntries={citationsHook.bibEntries}
+          citedKeys={citedKeys}
+          onEditFootnote={handleEditFootnote}
+          onEditFootnoteTitle={handleEditFootnoteTitle}
+          onDeleteFootnote={handleDeleteFootnote}
+          onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
+          onEditOrphan={effectiveViewPrefs?.onEditOrphan ?? (() => {})}
+          onEditOrphanTitle={effectiveViewPrefs?.onEditOrphanTitle ?? (() => {})}
+          onDeleteOrphan={effectiveViewPrefs?.onDeleteOrphan ?? (() => {})}
+          footnoteAiRequests={footnoteAiRequests}
+          onSetFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
+          getAnnotation={annotationsHook.getAnnotation}
+          setAnnotation={annotationsHook.setAnnotation}
+          requestBibReview={bibReviewHook.requestReview}
+          cancelBibReview={bibReviewHook.cancelRequest}
+          getBibReviewStatus={bibReviewHook.getRequestStatus}
+          getBibReviewNotes={bibReviewHook.getRequestNotes}
+          saveBibEntry={citationsHook.saveBibEntry}
+          onJumpToBibKey={(key, el) => {
+            const id = firstCite.get(key);
+            if (id) innerRef.current?.scrollToCitation(id, el);
+          }}
+        />
+      ),
+    };
+  }, [
+    footnoteInfos,
+    orphanedFootnotesForLists,
+    unanchoredFootnoteRefs,
+    examples,
+    citationsHook.bibEntries,
+    citationsHook.bibRaw,
+    citationsHook.saveBibEntry,
+    allEditorCitations,
+    setBibActiveCitationId,
+    handleEditFootnote,
+    handleEditFootnoteTitle,
+    handleDeleteFootnote,
+    handleDeleteUnanchoredFootnote,
+    effectiveViewPrefs,
+    footnoteAiRequests,
+    footnotesHook.setFootnoteAiRequest,
+    annotationsHook.getAnnotation,
+    annotationsHook.setAnnotation,
+    bibReviewHook.requestReview,
+    bibReviewHook.cancelRequest,
+    bibReviewHook.getRequestStatus,
+    bibReviewHook.getRequestNotes,
+  ]);
+
   const paneRailBodyShared: Omit<PaneRailBodyProps, "side" | "panelKind"> = {
     content: outlineContentEffective,
     examples,
@@ -7185,6 +7263,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       cutterCards={cutterHook.cards}
                       reportCards={reportsHook.cards}
                       archivedIds={archivedIds}
+                      readingLists={gutterReadingLists}
                     />
                   ) : undefined
                 }

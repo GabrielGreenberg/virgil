@@ -2059,6 +2059,25 @@ edge: the sand above the lozenge is opaque. Generalisable rule: **a list of what
 as text; a thing you can open and edit reads as a card** — and the cards are on
 the right.
 
+**Reading lists: sans rows, serif cards, rendered snippets** (Gabriel,
+2026-11-08). The footnotes, bibliography and examples lists are read, not just
+scanned. Two rules hold in every one of them:
+
+- **A row is sans; an open card is serif.** The row speaks the gutter's UI sans
+  at `text-sm`; when it opens it becomes the kind's own card, in place, on panel
+  paper (`--pod-panel`, `--card-shadow-ambient`), and its editable body takes
+  the paper's serif — the face the text will print in. So serif means "this is
+  the paper's text", and sans means "this is the list about it".
+- **A snippet is rendered, never raw.** Citations read as their display text,
+  `\ref` as the number its label has now, math through KaTeX, emphasis as
+  italics — through the static borrowed renderer (`StaticBorrowedText`), in the
+  row's sans, clamped to a few lines. A bare `\command` or a `$…$` in a row is a
+  bug. Plain text is only the renderer's own refusal fallback.
+
+A reference in the bibliography list is set the way it will print (surname
+bold, initials, year, the title italic for a book or quoted for an article, then
+the venue) with a hanging indent.
+
 ## Panels
 
 Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is
