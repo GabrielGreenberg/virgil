@@ -98,6 +98,9 @@ export interface ToolGutterProps {
   /** Leads the tools row — the side's collapse toggle, so the gutter's
    *  controls read as ONE row and no strip column is needed. */
   leading?: ReactNode;
+  /** The side is collapsed but keeps its width (`collapseKeepsGutterWidth`):
+   *  only the lozenge with `leading` renders — no tools, lists or divider. */
+  collapsed?: boolean;
   footnotes: readonly FootnoteInfo[];
   examples: readonly ExampleInfo[];
   todoItems: readonly TodoItem[];
@@ -196,6 +199,18 @@ export function ToolGutter(p: ToolGutterProps) {
       rootRef.current?.style.setProperty(SPLIT_VAR, String(getToolGutterState().split));
     },
   });
+
+  if (p.collapsed) {
+    return (
+      <div className="tool-gutter" data-tool-gutter="" data-collapsed="">
+        <div className="tool-gutter-half" data-gutter-half="top">
+          <div className="tool-gutter-tools" role="toolbar" aria-label="Tools">
+            {p.leading}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

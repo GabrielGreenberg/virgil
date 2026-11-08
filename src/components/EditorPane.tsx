@@ -79,6 +79,7 @@ import AIWindow, {
 } from "./AIWindow";
 import {
   EditorChromeProvider,
+  useEditorChrome,
   ViewPrefProjectionProvider,
   useStableViewPrefProjection,
   useViewPrefProjectionAttrs,
@@ -7167,6 +7168,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       // The side's collapse toggle leads the tools row — one
                       // row of controls, no strip column (task 1440).
                       leading={viewPrefs ? <SideCollapseToggle side="left" viewPrefs={viewPrefs} bare /> : undefined}
+                      collapsed={chrome.collapseKeepsGutterWidth === true && !!viewPrefs?.prefs.collapsedLeft}
                       renderTool={(tool) => (
                         <PaneRailBody side="left" panelKind={tool} {...paneRailBodyShared} />
                       )}
@@ -8656,6 +8658,7 @@ function PaneRail({
   toolGutter,
 }: PaneRailProps) {
   const isLeft = side === "left";
+  const chromeConfig = useEditorChrome();
 
   // Whether this side's omni-view is currently showing ≥1 card. Reported up
   // from OmniViewPanel (post enabled-category + hideAll filter) and threaded
@@ -8792,6 +8795,11 @@ function PaneRail({
     const isCollapsed = side === "left"
       ? viewPrefs.prefs.collapsedLeft
       : viewPrefs.prefs.collapsedRight;
+    // The main editor's collapse keeps the gutter's width and hides only its
+    // contents, so the text card never moves (Gabriel, 2026-11-08); the
+    // Library Reader's chrome leaves it off and still reclaims the space.
+    const keepWidth = gutterLayout && chromeConfig.collapseKeepsGutterWidth === true;
+    const contentsHidden = keepWidth && isCollapsed;
 
     // The gutter layout runs edge to edge (task 1440): the collapse toggle
     // lives IN the column — first in the tool gutter's tools lozenge on the
@@ -8805,7 +8813,7 @@ function PaneRail({
           <div className="gutter-side-head" data-gutter-head={side}>
             <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
           </div>
-          {omniBody}
+          {contentsHidden ? null : omniBody}
         </div>
       ) : (
         omniBody
@@ -8815,7 +8823,7 @@ function PaneRail({
     // COLLAPSED — it is then the one control that brings the column back.
     const stripJsx = !viewPrefs.zenMode && (
       gutterLayout ? (
-        isCollapsed ? <GutterCollapseButton side={side} viewPrefs={viewPrefs} /> : null
+        isCollapsed && !keepWidth ? <GutterCollapseButton side={side} viewPrefs={viewPrefs} /> : null
       ) : (
         <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
       )
@@ -8838,7 +8846,8 @@ function PaneRail({
         onPanelPrefChange={(w) => viewPrefs.setPanelWidth(side, "omni", w)}
         isResizing={viewPrefs.isResizingPanels}
         onResizingChange={viewPrefs.setIsResizingPanels}
-        collapsed={isCollapsed}
+        collapsed={isCollapsed && !keepWidth}
+        widthLocked={contentsHidden}
         tail={tail}
         onBinSurfaceChange={(present) => onBinSurfaceChange?.(side, present)}
       />

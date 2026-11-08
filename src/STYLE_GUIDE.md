@@ -2049,8 +2049,10 @@ tool body (Outline / Search / Word count) keeps its own layout but its boxed
 rows lie flat (`.tool-gutter-tool` overrides). **There is no strip:** both
 gutters run to the window edge, the collapse toggle leads the left gutter's
 tools lozenge and closes the right gutter's own lozenge, which sticks over the
-cards (`.gutter-side-head`), and only a COLLAPSED side keeps the bare toggle as its
-one piece of chrome. The cards' notices (the pending-change navigator and the
+cards (`.gutter-side-head`). In the main editor a collapse keeps the gutter's width and hides only what is
+in it: the lozenge stays with its toggle, and the text card never moves
+(`collapseKeepsGutterWidth`). In the Library Reader a collapse still reclaims the
+space, and the collapsed side keeps only the bare toggle as its one piece of chrome. The cards' notices (the pending-change navigator and the
 anchor button) share that lozenge, left of the toggle; the first card starts
 directly under it, and cards then run under it with no fade, ending at its top
 edge: the sand above the lozenge is opaque. Generalisable rule: **a list of what is IN the paper reads

@@ -54,6 +54,15 @@ export interface EditorChromeConfig {
    */
   editableCardKinds?: readonly CardKind[];
   /**
+   * In the gutter layout, whether a side's collapse toggle keeps the
+   * gutter's WIDTH and only hides what is in it (Gabriel, 2026-11-08): the
+   * text card, and so the document's measure, never moves. The lozenge stays
+   * with its collapse button; the tools, lists and cards are not rendered.
+   * `undefined` = the collapse reclaims the space for the page (the Library
+   * Reader, where a narrow pane wants the room).
+   */
+  collapseKeepsGutterWidth?: boolean;
+  /**
    * The active EditorPane's MenuBar view-toggle bundle, threaded through
    * so DOM-portaled float popouts (which live outside `.editor-pane-column`)
    * can re-derive the same view-toggle ancestor classes the column carries
@@ -154,6 +163,7 @@ export const FULL_CHROME: EditorChromeConfig = {
   showMenuBarEditItems: true,
   showHeadingFloatLabelEdit: true,
   showParagraphFloatTitleEdit: true,
+  collapseKeepsGutterWidth: true,
   // visiblePanelKinds undefined → show all
   // editableCardKinds undefined → all editable
 };

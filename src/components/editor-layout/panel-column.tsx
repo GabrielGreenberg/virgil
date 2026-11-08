@@ -252,6 +252,7 @@ export function PanelColumn({
   onResizeBottomEdge,
   onFocusBand,
   collapsed,
+  widthLocked = false,
   tail,
   onBinSurfaceChange,
 }: {
@@ -277,6 +278,9 @@ export function PanelColumn({
   /** Mark a band most-recently-used on interaction (MRU bump). */
   onFocusBand: (id: PanelId) => void;
   collapsed?: boolean;
+  /** The side is collapsed but keeps its width: the column stays as wide,
+   *  and its resize gesture is refused so the text card cannot move. */
+  widthLocked?: boolean;
   /** Optional adornment rendered inside the inner flex row, adjacent
    *  to the drag-gap on the editor-facing side (between the panel
    *  content and the drag-gap). The Library Reader uses this to mount
@@ -335,8 +339,9 @@ export function PanelColumn({
     // The right column grows as the pointer moves LEFT (toward the origin).
     direction: side === "right" ? -1 : 1,
     // A collapsed column renders `flex: 0 0 0px` — an imperative width write
-    // would silently override the collapse, so the gesture is refused.
-    disabled: collapsed,
+    // would silently override the collapse, so the gesture is refused. A
+    // width-locked one keeps the card where it is, so it is refused too.
+    disabled: collapsed || widthLocked,
     getValue: () => {
       const col = colRef.current;
       const rendered = col?.getBoundingClientRect().width ?? panelPref;
