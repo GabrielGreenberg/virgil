@@ -6793,6 +6793,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       bibSource: citationsHook.bibRaw,
       editorCitations: allEditorCitations,
       onActiveCitation: setBibActiveCitationId,
+      bibActions: {
+        addBibEntry: citationsHook.addBibEntry,
+        saveBibEntry: citationsHook.saveBibEntry,
+        requestReview: bibReviewHook.requestReview,
+        entryRequests: bibSettingsHook.entryRequests,
+        addEntryRequest: bibSettingsHook.addEntryRequest,
+        removeEntryRequest: bibSettingsHook.removeEntryRequest,
+      },
       renderCard: (card) => (
         <GutterCardBody
           card={card}
@@ -6833,6 +6841,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     citationsHook.bibEntries,
     citationsHook.bibRaw,
     citationsHook.saveBibEntry,
+    citationsHook.addBibEntry,
+    bibSettingsHook.entryRequests,
+    bibSettingsHook.addEntryRequest,
+    bibSettingsHook.removeEntryRequest,
     allEditorCitations,
     setBibActiveCitationId,
     handleEditFootnote,

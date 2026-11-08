@@ -7182,6 +7182,9 @@ body.perf-contain .static-borrowed-text {
 .gutter-example-sub {
   color: var(--muted);
 }
+.gutter-gloss-translation {
+  color: var(--muted);
+}
 /* An open row: the kind's own card, on paper, in the paper's serif. */
 .gutter-list-open {
   margin: 4px 0 6px;
@@ -7209,6 +7212,31 @@ body.perf-contain .static-borrowed-text {
   border: 1px solid var(--border-light);
   background: var(--pod-panel);
   font-size: 13px;
+}
+.gutter-list-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px 6px;
+}
+.gutter-list-searchbar .gutter-list-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+}
+.gutter-library-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px 8px;
+}
+.gutter-library-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 8px;
+  padding: 4px 6px;
 }
 .gutter-cited-in {
   padding: 4px 10px 8px;

@@ -8,10 +8,24 @@
  * handlers the old panels used).
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
-import type { BibEntry, FootnoteRef, OrphanedFootnote } from "@/lib/types";
+import type { BibEntry, BibEntryRequest, FootnoteRef, OrphanedFootnote } from "@/lib/types";
+import type { SaveBibEntry } from "@/hooks/useCitations";
+import type { RequestBibReview } from "@/hooks/useBibReview";
+import { useLibraryItems, useLibraryMasterBib } from "@/hooks/useLibrary";
+import { searchCentralLibrary } from "@/lib/bib-search";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import {
+  BibConflictStrip,
+  BibLibraryPicker,
+  BibPendingRequests,
+  BibRequestForm,
+  LIBRARY_NOT_CONNECTED_HINT,
+  useBibLibraryFlow,
+  type BibLibraryFlow,
+} from "@/panels/Bibliography/bib-library-flow";
 import { readDocStructure } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
@@ -19,7 +33,7 @@ import { countLabelRefs } from "@/lib/tiptap/label-rename";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { downloadCitedBib } from "@/lib/bib-export-cited";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
-import { ItemMenu } from "@/components/panel-primitives";
+import { Button, ItemMenu } from "@/components/panel-primitives";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { iconHint } from "@/components/Hint";
@@ -68,7 +82,22 @@ export interface ReadingListsData {
   renderCard: (card: GutterCardRef) => ReactNode;
   /** The citation the bibliography is currently pointing at. */
   onActiveCitation?: (citationId: string | null) => void;
+  /** The bibliography's writes: add from the library, the conflict flow's
+   *  one-write Replace and AI merge, and entry requests. */
+  bibActions?: {
+    addBibEntry: (entry: BibEntry) => void;
+    saveBibEntry: SaveBibEntry;
+    requestReview: RequestBibReview;
+    entryRequests: readonly BibEntryRequest[];
+    addEntryRequest: (description: string) => void;
+    removeEntryRequest: (id: string) => void;
+  };
 }
+
+// A host with no bibliography writes (none today) — the flow's actions do nothing.
+const NO_SAVE = (() => Promise.resolve(undefined)) as unknown as SaveBibEntry;
+const NO_REVIEW = (() => Promise.resolve(undefined)) as unknown as RequestBibReview;
+const NO_REQUEST = () => {};
 
 export function ReadingList({
   kind,
@@ -96,6 +125,37 @@ export function ReadingList({
   const [bibMode, setBibMode] = useState<"az" | "cited">(() => readBibMode());
   const [citedOnly, setCitedOnly] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
+  const [scope, setScope] = useState<"local" | "library">("local");
+
+  // The library flow the Bibliography panel runs too: add from the library,
+  // the four-way citekey conflict, entry requests.
+  const flow = useBibLibraryFlow({
+    bibEntries: data.bibEntries,
+    onAddBibEntry: data.bibActions?.addBibEntry,
+    onSaveBibEntry: data.bibActions?.saveBibEntry ?? NO_SAVE,
+    onRequestReview: data.bibActions?.requestReview ?? NO_REVIEW,
+    onAddEntryRequest: data.bibActions?.addEntryRequest ?? NO_REQUEST,
+    select: (key) => sel.setSelectedBibKey(key),
+    onAddedUnderNewKey: (key) => {
+      // A new `<key>-N` is uncited: leave the search, show every entry, select it.
+      setQuery(null);
+      setScope("local");
+      setCitedOnly(false);
+      sel.setSelectedBibKey(key);
+    },
+  });
+  const { hasFolder: libraryConnected } = useLibraryItems();
+  const librarySearch = kind === "bibliography" && query !== null && scope === "library";
+  const { entries: libraryEntries } = useLibraryMasterBib(librarySearch);
+  const libraryResults = useMemo(
+    () => (librarySearch && query?.trim() ? searchCentralLibrary(libraryEntries, query) : []),
+    [librarySearch, libraryEntries, query],
+  );
+  const closeSearch = () => {
+    setQuery(null);
+    setScope("local");
+    flow.clearConflict();
+  };
 
   const groups = useMemo<GutterListGroup[]>(() => {
     switch (kind) {
@@ -108,13 +168,13 @@ export function ReadingList({
       case "bibliography":
         return filterBib(
           bibliographyGroups(data.bibEntries, data.editorCitations, sections, bibMode, citedOnly),
-          query,
+          scope === "local" ? query : null,
         );
     }
     // `rev.labels`-free on purpose: example ref counts refresh with the
     // examples list itself (a `\ref` edit is a structural change upstream).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, data, sections, fnView, bibMode, citedOnly, query, editorInstance]);
+  }, [kind, data, sections, fnView, bibMode, citedOnly, query, scope, editorInstance]);
 
   const count = useMemo(() => {
     if (kind === "bibliography") return new Set(data.bibEntries.map((e) => e.key)).size;
@@ -255,7 +315,13 @@ export function ReadingList({
               writeBibMode(m);
             }}
             searching={query !== null}
-            onToggleSearch={() => setQuery((q) => (q === null ? "" : null))}
+            onToggleSearch={() => (query === null ? setQuery("") : closeSearch())}
+            libraryConnected={libraryConnected}
+            onSearchLibrary={(rect) => flow.libraryMenu.openAt(rect)}
+            onRequestEntry={() => {
+              closeSearch();
+              flow.request.show();
+            }}
             citedOnly={citedOnly}
             onCitedOnly={setCitedOnly}
             onExport={() => downloadCitedBib(data.bibEntries, new Set(byKey.keys()), data.bibSource)}
@@ -264,24 +330,54 @@ export function ReadingList({
         {kind === "footnotes" && <FootnoteControls />}
       </div>
       {kind === "bibliography" && query !== null && (
-        <input
-          className="gutter-list-search"
-          type="search"
-          autoFocus
-          placeholder="Search the bibliography"
-          aria-label="Search the bibliography"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (isCancelEscape(e)) {
-              e.preventDefault();
-              if (e.repeat) return;
-              swallowRepeatsUntilKeyup(e);
-              setQuery(null);
-            }
-          }}
-        />
+        <div className="gutter-list-searchbar">
+          <input
+            className="gutter-list-search"
+            type="search"
+            autoFocus
+            placeholder={scope === "library" ? "Search the library" : "Search the bibliography"}
+            aria-label={scope === "library" ? "Search the library" : "Search the bibliography"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (isCancelEscape(e)) {
+                e.preventDefault();
+                if (e.repeat) return;
+                swallowRepeatsUntilKeyup(e);
+                closeSearch();
+              }
+            }}
+          />
+          <SegmentedToggle
+            ariaLabel="Search scope"
+            value={scope}
+            onChange={(v) => {
+              setScope(v);
+              // Leaving the library abandons the context that raised a conflict.
+              if (v === "local") flow.clearConflict();
+            }}
+            options={[
+              { value: "local", label: "Local", hint: "Search this paper's bibliography" },
+              {
+                value: "library",
+                label: "Library",
+                hint: "Search the library",
+                disabled: !libraryConnected,
+                disabledHint: LIBRARY_NOT_CONNECTED_HINT,
+              },
+            ]}
+          />
+        </div>
       )}
+      {kind === "bibliography" && (
+        <>
+          <BibConflictStrip flow={flow} />
+          <BibRequestForm flow={flow} />
+        </>
+      )}
+      {librarySearch ? (
+        <LibraryResults query={query ?? ""} results={libraryResults} flow={flow} />
+      ) : (
       <GutterList
         list={kind}
         groups={groups}
@@ -294,7 +390,55 @@ export function ReadingList({
         onOpenChange={onOpenChange}
         empty={kind === "bibliography" && query ? "Nothing matches" : "None yet"}
       />
+      )}
+      {kind === "bibliography" && data.bibActions && (
+        <BibPendingRequests
+          requests={data.bibActions.entryRequests}
+          onRemove={data.bibActions.removeEntryRequest}
+        />
+      )}
+      {kind === "bibliography" && <BibLibraryPicker flow={flow} />}
     </section>
+  );
+}
+
+/** Library-scope search results: each entry as it will print, with Add
+ *  (or Added, or Resolve when the paper holds a different version). */
+function LibraryResults({
+  query,
+  results,
+  flow,
+}: {
+  query: string;
+  results: readonly BibEntry[];
+  flow: BibLibraryFlow;
+}) {
+  if (!query.trim()) return <p className="tool-gutter-empty">Type to search the library</p>;
+  if (results.length === 0) return <p className="tool-gutter-empty">Nothing in the library matches</p>;
+  return (
+    <ul className="gutter-library-results">
+      {results.map((e) => {
+        const state = flow.libraryRowState(e);
+        const p = referenceParts(e);
+        return (
+          <li key={`${e.key}:${e.uid}`} className="gutter-library-result">
+            <span className="gutter-snippet gutter-reference" data-lines="3">
+              <b>{p.surname}</b>
+              {p.rest ? `, ${p.rest}` : ""}
+              {p.year ? ` ${p.year}.` : "."} {p.title ? (p.titleStyle === "italic" ? <i>{p.title}</i> : `“${p.title}.”`) : null}
+            </span>
+            <Button
+              variant={state === "added" ? "ghost" : "warm"}
+              size="sm"
+              disabled={state === "added"}
+              onClick={() => flow.addEntry(e, true)}
+            >
+              {state === "added" ? "Added" : state === "conflict" ? "Resolve" : "Add"}
+            </Button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -362,10 +506,14 @@ function BibControls(p: {
   onMode: (m: "az" | "cited") => void;
   searching: boolean;
   onToggleSearch: () => void;
+  libraryConnected: boolean;
+  onSearchLibrary: (anchor: DOMRect | null) => void;
+  onRequestEntry: () => void;
   citedOnly: boolean;
   onCitedOnly: (v: boolean) => void;
   onExport: () => void;
 }) {
+  const plusRef = useRef<HTMLSpanElement>(null);
   return (
     <>
       <SegmentedToggle
@@ -390,6 +538,45 @@ function BibControls(p: {
           <path d="M20 20l-4-4" />
         </svg>
       </button>
+      <span ref={plusRef} className="relative inline-flex">
+        <AnchoredMenu
+          ariaLabel="Add an entry"
+          triggerAriaLabel="Add an entry"
+          triggerHint="Add an entry"
+          triggerClassName="iconbtn-sm"
+          wrapperClassName="relative"
+          align="end"
+          menuClassName="flex flex-col w-max min-w-[160px] whitespace-nowrap"
+          trigger={() => (
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          )}
+        >
+          {({ close }) => (
+            <>
+              <MenuActionRow
+                id="gutter-bib-search-library"
+                label="Search library…"
+                disabledReason={p.libraryConnected ? undefined : LIBRARY_NOT_CONNECTED_HINT}
+                onSelect={() => {
+                  const rect = plusRef.current?.getBoundingClientRect() ?? null;
+                  close();
+                  p.onSearchLibrary(rect);
+                }}
+              />
+              <MenuActionRow
+                id="gutter-bib-request-entry"
+                label="Request entry"
+                onSelect={() => {
+                  close();
+                  p.onRequestEntry();
+                }}
+              />
+            </>
+          )}
+        </AnchoredMenu>
+      </span>
       <ItemMenu hint="Bibliography options">
         <MenuActionRow
           id="gutter-bib-cited-only"
