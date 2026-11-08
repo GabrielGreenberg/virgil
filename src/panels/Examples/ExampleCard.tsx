@@ -15,8 +15,10 @@ import type { ExampleInfo, EditorHandle } from "@/components/Editor";
 // `parseLinkCardKey` consumers have to keep agreeing with both.
 import { linkCardKey } from "@/links/link-dom-contract";
 import {
+  BORROWED_LINE_HEIGHT,
   CardEmptyText,
   PanelCard,
+  clampCeiling,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { registerEditorMount } from "@/lib/editor-census-probe";
@@ -410,14 +412,13 @@ function ExampleCardEditor({
     // Height-clamp the real expex grid to a compact preview. We can't use
     // -webkit-line-clamp (the block is a CSS grid, not text flow), so cap
     // the height to clampLines prose lines at the LIVE --editor-line-height
-    // (same factor #42 uses) and clip the overflow. The full expex vocabulary
-    // (black native (N), serif, grid alignment) renders above the fold.
-    // The var FALLBACK (1.8) must equal the `.tiptap p` line-height fallback
-    // (globals.css:657) so an undefined var can't clamp tighter than the line.
+    // (`BORROWED_LINE_HEIGHT`, the same factor #42 uses) and clip the
+    // overflow. The full expex vocabulary (black native (N), serif, grid
+    // alignment) renders above the fold.
     return (
       <div
         style={{
-          maxHeight: `calc(var(--editor-line-height) * 1em * ${Math.max(1, clampLines)})`,
+          maxHeight: clampCeiling(BORROWED_LINE_HEIGHT, clampLines),
           overflow: "hidden",
         }}
       >

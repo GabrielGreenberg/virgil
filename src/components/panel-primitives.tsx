@@ -539,17 +539,28 @@ export function CardChromeTrailing({
  *  plain-text summary builder so every site honours `useCompressedLines()`
  *  uniformly. N=1 is the legacy single-line ellipsized behaviour. */
 
+/** The line-height a BORROWED-body preview (footnote/archive/example) renders
+ *  at: the LIVE `--editor-line-height` prose pref (1.6 by default, but
+ *  user-tunable) — `.tiptap` reads the same var bare. A clamp ceiling over a
+ *  borrowed body must track this same unit-less factor or line 2 gets clipped
+ *  (#42); a literal factor would drift from the pref. `:root` always declares
+ *  the token, so there is NO fallback to keep in step (task 1381's
+ *  fallback-agreement census rejects one). Every borrowed-body clamp reads
+ *  this ONE spelling. */
+export const BORROWED_LINE_HEIGHT = "var(--editor-line-height)";
+
+/** The hard content-height ceiling for N lines at line-height `lh` — a
+ *  unit-less factor (number or `var(...)` string) × 1em × N, valid CSS `calc`
+ *  either way. Shared by `compressedBodyStyle` and ExampleCard's grid clamp. */
+export function clampCeiling(lh: number | string, lines: number): string {
+  return `calc(${lh} * 1em * ${Math.max(1, lines)})`;
+}
+
 export function compressedBodyStyle(
   lines: number,
   // `lineHeight` may be a number (plain-summary kinds default to 1.4) or a
-  // CSS-var string. Borrowed-body kinds (footnote/archive/example) render
-  // their preview <p> at the LIVE `--editor-line-height` prose pref (1.6 by
-  // default, but user-tunable), so they pass `'var(--editor-line-height)'`
-  // — the ceiling must track that same unit-less factor or line 2 gets clipped
-  // (#42). A literal value would drift from the pref; the var stays in sync.
-  // The var FALLBACK (1.8) must equal the `.tiptap p` line-height fallback
-  // (globals.css:657): if the var were ever undefined, a tighter clamp ceiling
-  // than the rendered line would re-introduce the #42 clip.
+  // CSS-var string — borrowed-body kinds pass `BORROWED_LINE_HEIGHT` so the
+  // ceiling tracks the line their preview <p> actually renders at (#42).
   opts?: { lineHeight?: number | string },
 ): React.CSSProperties {
   const n = Math.max(1, lines);
@@ -565,9 +576,7 @@ export function compressedBodyStyle(
     // clamped next line gets clipped, not shown. box-sizing:content-box
     // makes maxHeight apply to the content area only, so the wrapping
     // div's padding lives outside the ceiling and isn't squeezed.
-    // `${lh} * 1em` works for both a number and a `var(...)` string
-    // (a unit-less factor × 1em), valid CSS `calc` either way.
-    maxHeight: `calc(${lh} * 1em * ${n})`,
+    maxHeight: clampCeiling(lh, n),
     boxSizing: "content-box",
   };
 }
@@ -2056,13 +2065,10 @@ export function EditableCard({
               // `--editor-line-height` prose pref (BorrowedMainText doesn't
               // override it), so the clamp ceiling must track the SAME factor
               // or the 2nd line clips (#42). Plain-summary kinds keep 1.4.
-              // The var FALLBACK must equal the `.tiptap p` fallback
-              // (globals.css:657) so an undefined var can't clamp tighter than
-              // the rendered line.
               ...compressedBodyStyle(
                 compressedLines,
                 useBorrowedCompressed
-                  ? { lineHeight: "var(--editor-line-height)" }
+                  ? { lineHeight: BORROWED_LINE_HEIGHT }
                   : undefined,
               ),
             }}

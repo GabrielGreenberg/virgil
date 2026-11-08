@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 //
 // Chip A fold (#42) — `compressedBodyStyle` is the SSOT for the collapsed-card
-// line clamp. The #42 fix made borrowed-body kinds (footnote/archive/example)
-// pass a `var(--editor-line-height, …)` lineHeight so the maxHeight ceiling
-// tracks the SAME unit-less factor the preview <p> renders at (instead of a
-// literal that would drift from the prose pref and clip line 2). This pins:
+// line clamp. Borrowed-body kinds (footnote/archive/example) render their
+// preview at the LIVE `--editor-line-height` prose pref, so their clamp
+// ceiling must ride that same var — a literal factor would drift from the
+// pref and clip line 2. This pins the PRODUCTION contract:
 //
-//   • the BORROWED call emits a var-based maxHeight (a `calc(var(...) …)`) and
-//     a var lineHeight — the ceiling rides the live `--editor-line-height`;
-//   • the var FALLBACK is 1.8 (FOLD 2) so it matches the `.tiptap p` fallback
-//     (globals.css:657) — an undefined var can't clamp tighter than the line;
+//   • `BORROWED_LINE_HEIGHT` is the bare live var — no fallback (`:root`
+//     always declares the token; task 1381's fallback-agreement census
+//     rejects one) and no literal factor;
+//   • the borrowed call emits `calc(var(--editor-line-height) * 1em * N)`;
+//   • both borrowed-body callers (the PanelCard compressed body and
+//     ExampleCard's grid clamp) read the shared constant, not a restated
+//     spelling — so a caller that drops the var goes red here;
 //   • the DEFAULT (plain-summary) call keeps the literal 1.4-based ceiling.
 //
 // `panel-primitives.tsx` transitively imports `@/lib/storage` (the known
@@ -21,7 +24,14 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
-import { compressedBodyStyle, makeCompressedSummary } from "@/components/panel-primitives";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  BORROWED_LINE_HEIGHT,
+  clampCeiling,
+  compressedBodyStyle,
+  makeCompressedSummary,
+} from "@/components/panel-primitives";
 
 function docOf(text: string) {
   return {
@@ -30,24 +40,42 @@ function docOf(text: string) {
   };
 }
 
-describe("compressedBodyStyle — borrowed var ceiling (#42 / FOLD 2)", () => {
-  it("the BORROWED call emits a var-based maxHeight + var lineHeight", () => {
-    // The exact fallback Chip A passes after FOLD 2: the `.tiptap p` fallback.
-    const style = compressedBodyStyle(2, {
-      lineHeight: "var(--editor-line-height, 1.8)",
-    });
+describe("compressedBodyStyle — borrowed var ceiling (#42)", () => {
+  it("BORROWED_LINE_HEIGHT is the bare live var (no fallback, no literal)", () => {
+    expect(BORROWED_LINE_HEIGHT).toBe("var(--editor-line-height)");
+  });
+
+  it("the BORROWED call emits a ceiling over the live var × 1em × N", () => {
+    const style = compressedBodyStyle(2, { lineHeight: BORROWED_LINE_HEIGHT });
     // lineHeight rides the live var (so the rendered text + clamp agree).
-    expect(style.lineHeight).toBe("var(--editor-line-height, 1.8)");
-    // The ceiling is a calc over the SAME var × 1em × N — NOT a literal factor.
-    expect(style.maxHeight).toBe(
-      "calc(var(--editor-line-height, 1.8) * 1em * 2)",
+    expect(style.lineHeight).toBe("var(--editor-line-height)");
+    expect(style.maxHeight).toBe("calc(var(--editor-line-height) * 1em * 2)");
+    // ExampleCard's grid clamp builds the same ceiling through the same door.
+    expect(clampCeiling(BORROWED_LINE_HEIGHT, 3)).toBe(
+      "calc(var(--editor-line-height) * 1em * 3)",
     );
-    // The var is what tracks the prose pref; a literal would drift (#42).
-    expect(String(style.maxHeight)).toContain("var(--editor-line-height");
-    // FOLD 2 alignment: the fallback equals the `.tiptap p` fallback (1.8,
-    // globals.css:657), never 1.6 (which would clamp tighter than the line).
-    expect(String(style.maxHeight)).toContain("1.8");
-    expect(String(style.maxHeight)).not.toContain("1.6");
+  });
+
+  it("both borrowed-body callers read BORROWED_LINE_HEIGHT, not a restated spelling", () => {
+    const src = (rel: string) =>
+      readFileSync(resolve(__dirname, "..", "..", rel), "utf8");
+    const primitives = src("components/panel-primitives.tsx");
+    const example = src("panels/Examples/ExampleCard.tsx");
+    // The PanelCard compressed body passes the constant on the borrowed branch.
+    expect(primitives).toMatch(
+      /useBorrowedCompressed\s*\?\s*\{\s*lineHeight:\s*BORROWED_LINE_HEIGHT\s*\}/,
+    );
+    // ExampleCard's grid clamp builds its ceiling from the constant.
+    expect(example).toMatch(
+      /maxHeight:\s*clampCeiling\(\s*BORROWED_LINE_HEIGHT\s*,/,
+    );
+    // The var is spelled ONCE — in the constant's own declaration. Comments
+    // aside, neither caller restates it (a restated spelling is how the old
+    // fallback doctrine drifted).
+    const code = (t: string) =>
+      t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code(primitives).match(/var\(--editor-line-height/g)).toHaveLength(1);
+    expect(code(example)).not.toContain("var(--editor-line-height");
   });
 
   it("the DEFAULT call (no opts) emits the literal 1.4-based ceiling", () => {
