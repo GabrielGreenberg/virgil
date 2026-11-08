@@ -7312,7 +7312,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // --pod-top; CONTENT-area chrome reads --chrome-top.
                 // --chrome-top is emitted as plain px (not calc) so
                 // chrome-scroll-margin.ts parses it directly.
-                ['--pod-cap-inner' as string]: '8px',
+                // The card's top gap is the gutters' one inset, so the card's
+                // top edge and both gutter lozenges share one line.
+                ['--pod-cap-inner' as string]: 'var(--gutter-inset)',
                 ['--pod-cap-bleed' as string]: 'calc(4px + var(--pod-gap))',
                 ['--pod-cap-h' as string]:
                   'calc(var(--editor-pod-radius) + 4px + var(--pod-gap))',
@@ -7420,11 +7422,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   // The surplus 14px (= bleed) goes ABOVE the white
                   // inner. marginTop pulls the whole cap up by that
                   // 14px so the white edge stays at its original flow
-                  // position; marginBottom negates just the white inner
-                  // (--pod-cap-inner) so flow is neutral and the pod
-                  // isn't pushed. Net flow: -14 + 22 - 8 = 0.
+                  // position; marginBottom negates the white inner (the
+                  // cap's height less the bleed) so flow is neutral and
+                  // the pod isn't pushed: -bleed + h - (h - bleed) = 0.
+                  // Negating only --pod-cap-inner left the radius's excess
+                  // over it (12 - 8 since the Sand radius) in flow, so the
+                  // card sat 4px low at scroll 0 and jumped up as it stuck.
                   marginTop: 'calc(-1 * var(--pod-cap-bleed))',
-                  marginBottom: 'calc(-1 * var(--pod-cap-inner))',
+                  marginBottom: 'calc(var(--pod-cap-bleed) - var(--pod-cap-h))',
                   marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
                   marginRight: 'calc(-1 * var(--pod-cap-bleed))',
                   background: 'var(--canvas-paint)',
@@ -7435,7 +7440,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               >
                 <div
                   style={{
-                    height: 'var(--pod-cap-inner)',
+                    // From the card edge (--pod-top) to the cap's bottom.
+                    height: 'calc(var(--pod-cap-h) - var(--pod-cap-bleed))',
                     marginLeft: 'var(--pod-cap-bleed)',
                     marginRight: 'var(--pod-cap-bleed)',
                     background: 'var(--pod-editor)',
