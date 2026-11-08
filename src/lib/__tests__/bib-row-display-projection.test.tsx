@@ -178,14 +178,22 @@ describe("author sort runs on projected text", () => {
     // order the user was looking at. The one-time re-ordering of the first
     // export after this lands is the accepted cost (decision 3) — a diff, not
     // a loss — and it is only a ONE-time diff because the two agree.
+    // The comparator lives in the export module (shared with the tool
+    // gutter's bibliography list); the panel imports it and sorts its list
+    // with it, and the export sorts with it inside that module.
     const code = codeOnlyLines(
       readFileSync(
         join(REPO_ROOT, "src", "panels", "Bibliography", "BibliographyPanel.tsx"),
         "utf8",
       ),
     );
-    expect(code).toContain("function byProjectedAuthor(");
-    expect([...code.matchAll(/byProjectedAuthor\b/g)]).toHaveLength(3); // decl + 2 uses
+    const shared = codeOnlyLines(
+      readFileSync(join(REPO_ROOT, "src", "lib", "bib-export-cited.ts"), "utf8"),
+    );
+    expect(shared).toContain("function byProjectedAuthor(");
+    expect(shared).toContain("cited.sort(byProjectedAuthor)");
+    expect(code).not.toContain("function byProjectedAuthor(");
+    expect(code).toContain(".sort(byProjectedAuthor)");
     // …and neither call site kept a private copy of the old key.
     expect(code).not.toContain("const authorA =");
   });

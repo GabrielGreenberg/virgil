@@ -13,7 +13,8 @@ import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
-import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
+import { bibFieldDisplay } from "@/lib/bib-parser";
+import { byProjectedAuthor, downloadCitedBib } from "@/lib/bib-export-cited";
 import { NO_BIB_UID } from "@/lib/bib-uid";
 import { bibKeyIndex, citekeyIdentity, findBibEntryByKey } from "@/lib/bib-address";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -76,23 +77,6 @@ function formatBibEntryForNote(entry: BibEntry): string {
   }
   lines.push("}");
   return lines.join("\n");
-}
-
-/**
- * Author sort, on PROJECTED text (task 409, decision 3). Sorting the raw `.bib`
- * bytes filed every accented surname under its escape — `L{\'o}pez` sorts on
- * `L{` and lands above "Adams" — so the list order was simply wrong. ONE
- * comparator, read by the panel list AND by the cited-export, because the two
- * disagreeing about order is how the export's byte order drifts from what the
- * user was looking at.
- *
- * Stated cost: the first `cited.bib` export after this lands is a one-time
- * deterministic RE-ORDERING of the exported file. That is a diff, not a loss.
- */
-function byProjectedAuthor(a: BibEntry, b: BibEntry): number {
-  const keyOf = (e: BibEntry) =>
-    (bibFieldDisplay(e, "author") || e.key).toLowerCase();
-  return keyOf(a).localeCompare(keyOf(b));
 }
 
 interface BibliographyPanelProps {
@@ -399,32 +383,8 @@ function BibliographyPanel({
   );
 
   const handleExportCited = useCallback(() => {
-    const seen = new Set<string>();
-    const cited = bibEntries.filter((e) => {
-      if (!citedKeys.has(e.key) || seen.has(e.key)) return false;
-      seen.add(e.key);
-      return true;
-    });
-    if (cited.length === 0) return;
-    cited.sort(byProjectedAuthor);
-    // Reconstruct every entry through the serializer — NEVER the raw-passthrough
-    // that `.filter(Boolean)`-drops an in-memory entry with empty `raw`
-    // (BIB-F7-01, DATA-LOSS). `serializeBibForExport` rebuilds from fields when
-    // `raw === ""`, so a "Save under new citekey"/library-added/AI-found entry
-    // exports its reconstructed block instead of silently vanishing.
-    // …and from the SOURCE, so the file carries what those entries depend on
-    // (their `@string` macros, `@preamble`, crossref parents — task 949).
-    const content = serializeBibForExport(cited, bibSource);
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "cited.bib";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [bibEntries, bibSource, citedKeys]);
+    downloadCitedBib(bibEntries, citedKeys, bibSource);
+}, [bibEntries, bibSource, citedKeys]);
 
   const handleAddFromCentralLibrary = useCallback(
     (anchor: DOMRect | null) => {
