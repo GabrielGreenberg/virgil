@@ -7095,6 +7095,13 @@ body.perf-contain .static-borrowed-text {
 .gutter-list-row[data-missing] .gutter-snippet {
   color: var(--danger-strong);
 }
+/* A to-do's box sits in the marker column, over the row's first cell. */
+.gutter-list-check {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 1;
+}
 .gutter-list-marker {
   color: var(--gutter-number);
   text-align: right;

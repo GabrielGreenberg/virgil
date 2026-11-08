@@ -408,6 +408,11 @@ export function ReadingList({
   );
 }
 
+/** An element's rect, to anchor a popover under it (none when unmounted). */
+function anchorOf(el: HTMLElement | null): DOMRect | null {
+  return el ? el.getBoundingClientRect() : null;
+}
+
 /** The bib entry a bibliography row stands for (none for a missing key). */
 function rowEntry(row: GutterListRow): BibEntry | undefined {
   const s = row.snippet;
@@ -572,7 +577,8 @@ function BibControls(p: {
                 label="Search library…"
                 disabledReason={p.libraryConnected ? undefined : LIBRARY_NOT_CONNECTED_HINT}
                 onSelect={() => {
-                  const rect = plusRef.current?.getBoundingClientRect() ?? null;
+                  // The picker opens under the "+" it came from.
+                  const rect = anchorOf(plusRef.current);
                   close();
                   p.onSearchLibrary(rect);
                 }}

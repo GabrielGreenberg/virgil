@@ -54,6 +54,8 @@ export interface GutterListProps {
    *  `\cite`) — returns false when this row can't. */
   canDrag?: (row: GutterListRow) => boolean;
   onRowDragStart?: (row: GutterListRow, e: React.DragEvent) => void;
+  /** A to-do row's checkbox. */
+  onToggleTodo?: (id: string) => void;
   empty?: ReactNode;
 }
 
@@ -157,6 +159,7 @@ export function GutterList(p: GutterListProps) {
                   onStep={p.onStep}
                   onOpen={r.card ? () => setOpen(r) : undefined}
                   onDragStart={p.onRowDragStart && p.canDrag?.(r) ? (e) => p.onRowDragStart!(r, e) : undefined}
+                  onToggleTodo={p.onToggleTodo}
                 />
               ),
             )}
@@ -176,6 +179,7 @@ function Row({
   onStep,
   onOpen,
   onDragStart,
+  onToggleTodo,
 }: {
   row: GutterListRow;
   selected: boolean;
@@ -185,6 +189,7 @@ function Row({
   onStep?: GutterListProps["onStep"];
   onOpen?: () => void;
   onDragStart?: (e: React.DragEvent) => void;
+  onToggleTodo?: (id: string) => void;
 }) {
   const stepping = !!onStep && !!r.bibKey && (r.count ?? 0) > 1;
   return (
@@ -198,6 +203,15 @@ function Row({
       draggable={onDragStart ? true : undefined}
       onDragStart={onDragStart}
     >
+      {r.todo && (
+        <input
+          type="checkbox"
+          className="gutter-list-check"
+          checked={r.todo.done}
+          onChange={() => onToggleTodo?.(r.todo!.id)}
+          aria-label={r.todo.done ? "Mark not done" : "Mark done"}
+        />
+      )}
       <button
         type="button"
         className="gutter-list-body hover-on-light"

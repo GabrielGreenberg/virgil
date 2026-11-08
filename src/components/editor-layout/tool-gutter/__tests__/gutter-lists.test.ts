@@ -10,6 +10,7 @@ import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
 import type { BibEntry, FootnoteRef, OrphanedFootnote } from "@/lib/types";
 import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import {
+  cardListGroups,
   bibliographyGroups,
   exampleGroups,
   footnoteGroups,
@@ -154,5 +155,21 @@ describe("exampleGroups", () => {
       ["(1)", "ex:one · referred to 2×"],
       ["(2)", undefined],
     ]);
+  });
+});
+
+describe("cardListGroups", () => {
+  it("opens every row into its omni card, keeps a to-do's box, renders a rich body", () => {
+    const content = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Body" }] }] };
+    const [g] = cardListGroups("notes", [
+      { key: "note:n1", marker: "", text: "Body", jump: { kind: "card", slot: "note", card: { id: "n1", content } as never } },
+      { key: "todo:t1", marker: "", text: "Do it", todo: { id: "t1", done: false }, jump: { kind: "card", slot: "todo", card: { id: "t1" } as never } },
+    ]);
+    expect(g.rows.map((r) => r.card)).toEqual([
+      { kind: "omni", id: "n1" },
+      { kind: "omni", id: "t1" },
+    ]);
+    expect(g.rows[0].snippet.kind).toBe("rich");
+    expect(g.rows[1]).toMatchObject({ snippet: { kind: "text", text: "Do it" }, todo: { id: "t1", done: false } });
   });
 });

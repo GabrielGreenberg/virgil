@@ -56,6 +56,7 @@ import type { ErrorJump } from "@/panels/Errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
 import { useCardAnchorPass } from "../contexts/card-anchor";
+import { useOmniCardRegistry } from "../contexts/omni-card-registry";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -681,6 +682,14 @@ export function OmniHost(p: OmniHostProps) {
     p.updateCutterSuggestionField, p.deleteCutterCard,
     // Reports handlers
   ]);
+
+  // Publish the built cards so the tool gutter's lists open a row into the
+  // SAME card (see omni-card-registry.ts). Runs when `items` changes — on
+  // data or selection, never per keystroke.
+  const omniCardRegistry = useOmniCardRegistry();
+  useEffect(() => {
+    omniCardRegistry?.set(p.side, items);
+  }, [omniCardRegistry, p.side, items]);
 
   // Container-child nesting (PHASE 1 footnotes + PHASE 2a examples). Derive the
   // `citationId → { kind, id }` container-owner map from the DocStructureObserver

@@ -16,7 +16,7 @@ import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
 import type { BibEntry, FootnoteRef, OrphanedFootnote } from "@/lib/types";
 import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import { bibFieldDisplay } from "@/lib/bib-parser";
-import { bibShortLabel, type GutterJump } from "./gutter-rows";
+import { bibShortLabel, rowEntityId, type GutterJump, type GutterRow } from "./gutter-rows";
 
 /** What an open row mounts — the kind's own card. */
 export type GutterCardRef =
@@ -24,7 +24,9 @@ export type GutterCardRef =
   | { kind: "orphan"; id: string }
   | { kind: "footnote-ref"; id: string }
   | { kind: "bib"; key: string }
-  | { kind: "example"; id: string };
+  | { kind: "example"; id: string }
+  /** Any other kind: the card OmniHost built for this entity id. */
+  | { kind: "omni"; id: string };
 
 /** What a row's snippet shows: a rich body (rendered through the static
  *  borrowed renderer), a bibliography reference, or plain words. */
@@ -58,6 +60,8 @@ export interface GutterListRow {
   missing?: boolean;
   /** The citekey a bibliography row steps through with ‹ ›. */
   bibKey?: string;
+  /** A to-do's checkbox, in the marker column. */
+  todo?: { id: string; done: boolean };
 }
 
 export interface GutterListGroup {
@@ -460,6 +464,30 @@ export function bibliographyGroups(
 
 /** "Jackson 2001" for a citekey, as a row's short label. */
 export const shortLabel = (entry: BibEntry | undefined, key: string) => bibShortLabel(entry, key);
+
+// ── Every other list ──────────────────────────────────────────────────────
+
+/** A one-line row (`gutter-rows.ts`) as a reading-list row that opens into
+ *  its kind's card. A card with a rich body shows it rendered. */
+export function cardListGroups(section: string, rows: readonly GutterRow[]): GutterListGroup[] {
+  const out: GutterListRow[] = rows.map((r) => {
+    const id = rowEntityId(r);
+    const body = r.jump.kind === "card" ? (r.jump.card as { content?: unknown; title?: string }) : null;
+    const rich = body && body.content && !body.title && typeof body.content === "object";
+    return {
+      key: r.key,
+      entityId: id,
+      marker: r.todo ? "" : r.marker,
+      snippet: rich ? { kind: "rich", value: body!.content, fallback: r.text } : { kind: "text", text: r.text },
+      pos: null,
+      jump: r.jump,
+      card: { kind: "omni", id },
+      muted: r.muted,
+      todo: r.todo,
+    };
+  });
+  return out.length ? [{ key: `${section}:all`, label: "", rows: out }] : [];
+}
 
 // ── Numbered examples ─────────────────────────────────────────────────────
 

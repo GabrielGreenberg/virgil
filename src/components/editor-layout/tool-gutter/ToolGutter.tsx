@@ -81,6 +81,11 @@ import {
   type GutterRow,
 } from "./gutter-rows";
 import { READING_LISTS, ReadingList, type ReadingListKind, type ReadingListsData } from "./ReadingLists";
+import { GutterList } from "./GutterList";
+import { cardListGroups, type GutterCardRef, type GutterListRow } from "./gutter-lists";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { useOmniCard, useOmniCardRegistry } from "../contexts/omni-card-registry";
+import type { CardKind } from "@/cards/types";
 
 /** Gutter headings — each section's panel's `PANEL_REGISTRY.shortLabel`
  *  (task 1475), except where the gutter says it the way Gabriel does. */
@@ -370,7 +375,20 @@ export function ToolGutter(p: ToolGutterProps) {
             />
           </div>
         )}
-        {activeList && !(p.readingLists && READING_LISTS.has(activeList)) && (
+        {activeList && p.readingLists && !READING_LISTS.has(activeList) && (
+          <div className="tool-gutter-scroll tool-gutter-lists">
+            <CardList
+              key={activeList}
+              section={activeList}
+              title={sectionTitle(activeList)}
+              rows={rowsFor(activeList)}
+              onActivate={activate}
+              onToggleTodo={p.toggleTodo}
+              selectedIds={selectedId}
+            />
+          </div>
+        )}
+        {activeList && !p.readingLists && (
           <div className="tool-gutter-scroll tool-gutter-lists">
             <GutterSectionView
               key={activeList}
@@ -467,6 +485,110 @@ function GutterSectionView({
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * Every other list on the reading-list row model: a click selects, ↗ jumps,
+ * ⌄ opens the row in place into the card OmniHost built for it (the
+ * registry), one at a time; a to-do's box still ticks.
+ */
+function CardList({
+  section,
+  title,
+  rows,
+  onActivate,
+  onToggleTodo,
+  selectedIds,
+}: {
+  section: GutterSection;
+  title: string;
+  rows: GutterRow[];
+  onActivate: (jump: GutterJump, el: HTMLElement | null) => void;
+  onToggleTodo: (id: string) => void;
+  selectedIds: ReadonlySet<string>;
+}) {
+  const groups = useMemo(() => cardListGroups(section, rows), [section, rows]);
+  const select = useGutterSelect();
+  const cardStore = useCardStore();
+  const registry = useOmniCardRegistry();
+  const diagnostics = useDiagnosticsContext();
+  const onOpenChange = useCallback(
+    (card: GutterCardRef, open: boolean) => {
+      if (card.kind !== "omni") return;
+      const hit = registry?.find(card.id);
+      if (!hit) return;
+      // An error card opens through the diagnostics owner; every other card
+      // through the doc's card store, like the right gutter's chevron.
+      if (hit.kind === "error") {
+        if (open && !diagnostics.expandedErrorIds?.has(card.id)) diagnostics.expandError?.(card.id);
+        return;
+      }
+      const ref = { kind: hit.kind as CardKind, id: card.id };
+      if (open) cardStore.expand(ref);
+      else cardStore.collapse(ref);
+    },
+    [registry, cardStore, diagnostics],
+  );
+  return (
+    <section className="tool-gutter-section" data-gutter-section={section}>
+      <div className="tool-gutter-section-head">
+        <h3 className="tool-gutter-heading">
+          {title}
+          {rows.length > 0 && <span className="tool-gutter-count">{rows.length}</span>}
+        </h3>
+      </div>
+      <GutterList
+        list={section}
+        groups={groups}
+        selectedIds={selectedIds}
+        onSelect={(r: GutterListRow) => r.jump && select(r.jump)}
+        onJump={(r: GutterListRow, el) => r.jump && onActivate(r.jump, el)}
+        renderCard={(card) => <OmniCardSlot card={card} />}
+        onOpenChange={onOpenChange}
+        onToggleTodo={onToggleTodo}
+      />
+    </section>
+  );
+}
+
+function OmniCardSlot({ card }: { card: GutterCardRef }) {
+  const hit = useOmniCard(card.kind === "omni" ? card.id : null);
+  return <>{hit?.content ?? null}</>;
+}
+
+/** A row's select-only click: the card is selected (its anchor lights), and
+ *  nothing scrolls. */
+function useGutterSelect(): (jump: GutterJump) => void {
+  const sel = useSelectionsContext();
+  const diagnostics = useDiagnosticsContext();
+  return useCallback(
+    (jump: GutterJump) => {
+      switch (jump.kind) {
+        case "footnote":
+          return sel.setSelectedFootnoteId(jump.id);
+        case "example":
+          return sel.setSelectedExampleId(jump.id);
+        case "citation":
+          return sel.setSelectedCitationId(jump.id);
+        case "bib":
+          return sel.setSelectedBibKey(jump.key);
+        case "error":
+          return diagnostics.setSelectedErrorId(jump.error.id);
+        case "card": {
+          const setters = {
+            note: sel.setSelectedNoteId,
+            todo: sel.setSelectedTodoId,
+            archive: sel.setSelectedArchiveId,
+            revision: sel.setSelectedCommentId,
+            cutter: sel.setSelectedCutterCardId,
+            report: sel.setSelectedReportCardId,
+          } as const;
+          return setters[jump.slot](jump.card.id);
+        }
+      }
+    },
+    [sel, diagnostics],
   );
 }
 

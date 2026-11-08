@@ -129,8 +129,17 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      ending in "Needs attention" (cited but not in the .bib, then uncited); its …
      menu has cited-only and Export cited.bib (`@/lib/bib-export-cited`, shared
      with the panel). Examples show "(N)", lettered sub-items, a gloss's first
-     tier, and "label · referred to N×" (`countLabelRefs`). The other lists keep
-     the one-line rows for now.
+     tier, and "label · referred to N×" (`countLabelRefs`). Every other list
+     (to-dos, notes, citations, archive, revisions, cuts, reports, errors) runs
+     on the same row model (`CardList` in ToolGutter.tsx, rows from
+     `cardListGroups`): its open row is the card OmniHost already built, read
+     from the pane's omni card registry
+     ([omni-card-registry.tsx](../../src/components/editor-layout/contexts/omni-card-registry.tsx))
+     without the omni-only `data-omni-entry`, so it is the right gutter's card;
+     a to-do keeps its box. The bibliography list also has the panel's library
+     flow (`bib-library-flow.tsx`: Search library… / add, the four-way citekey
+     conflict, Request entry and pending requests, Local/Library search scope),
+     and its rows drag into the text as `\cite` (`startBibEntryDrag`).
   3. **Divider** — mounted only while a tool AND a list are open (otherwise the
      open half takes the room). A `drag-gap-h band-grip` on the pane-resize
      engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`

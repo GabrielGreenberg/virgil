@@ -348,6 +348,7 @@ import { useMarginLabelMode } from "@/lib/editor-geometry/use-margin-label-mode"
 import { useToolGutterState } from "@/lib/tool-gutter-store";
 import { ToolGutter } from "./editor-layout/tool-gutter/ToolGutter";
 import { GutterCardBody } from "./editor-layout/tool-gutter/GutterCardBody";
+import { OmniCardRegistryProvider, createOmniCardRegistry } from "./editor-layout/contexts/omni-card-registry";
 import type { ReadingListsData } from "./editor-layout/tool-gutter/ReadingLists";
 import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
@@ -6778,6 +6779,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // they list, and the card an open row turns into — the same stores and
   // handlers the old docked panels used.
   const orphanedFootnotesForLists = effectiveViewPrefs?.orphanedFootnotes;
+  // The cards OmniHost builds, readable by the tool gutter (one per pane).
+  const [omniCardRegistry] = useState(createOmniCardRegistry);
   const gutterReadingLists = useMemo<ReadingListsData>(() => {
     const citedKeys = new Set(allEditorCitations.flatMap((c) => c.keys));
     const firstCite = new Map<string, string>();
@@ -6980,6 +6983,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     <PaneRootContext.Provider value={paneRootId}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar, mainTextEditable: editable }}>
+    <OmniCardRegistryProvider value={omniCardRegistry}>
     <ViewPrefProjectionProvider value={viewPrefRoot}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
@@ -8435,6 +8439,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       </CardAnchorProvider>
       </EditorRefProvider>
     </ViewPrefProjectionProvider>
+    </OmniCardRegistryProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
     </PaneRootContext.Provider>
