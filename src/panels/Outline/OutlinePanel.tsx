@@ -20,7 +20,7 @@ import {
   setOutlineCollapsedForDoc,
   getOutlineCollapsedForDoc,
 } from "./outline-prefs-store";
-import { useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
+import { paintedBandRows, useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
 import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
 import { sectionExtentFromHeadings, type BlockAddress, type BlockSpanAddress } from "@/lib/tiptap/block-address";
 import {
@@ -1259,15 +1259,17 @@ function FocusBand({
       if (attr) rowMap.set(attr, el);
     });
 
-    let topEl: HTMLElement | null = null;
-    let botEl: HTMLElement | null = null;
+    // The RENDERED rows in document order, then the band's one paint rule
+    // (`paintedBandRows`, task 1530) — the same rule the edge drag takes its
+    // commit baseline from, so the painted edge and the compared row agree.
+    const rendered: { index: number; el: HTMLElement }[] = [];
     for (const r of allRowAttrs) {
       const el = rowMap.get(r.attr);
-      if (!el) continue;
-      if (r.blockIndex < focusState.startBlockIndex || r.blockIndex > focusState.endBlockIndex) continue;
-      if (!topEl) topEl = el;
-      botEl = el;
+      if (el) rendered.push({ index: r.blockIndex, el });
     }
+    const painted = paintedBandRows(rendered, focusState.startBlockIndex, focusState.endBlockIndex);
+    const topEl = painted ? rendered[painted.first].el : null;
+    const botEl = painted ? rendered[painted.last].el : null;
     // No in-band row is rendered. A rect is only ever the rect OF a row, so
     // the previous one is kept for exactly ONE frame of grace (a row remount
     // can miss a single measure) and then dropped: when the miss persists —
@@ -1350,10 +1352,27 @@ function FocusBand({
   // N-row drag = 1 state write + 1 re-render + 1 breadcrumb recompute (not N).
   // The hook also owns the two pointer invariants a released-but-unobserved
   // pointer would otherwise break (task 185).
+  // The rows' (and the band's) positioning frame sits inside the scroll
+  // container's padding, so its top in the container's content is the sum of
+  // offsets from a row's offsetParent up to the container (task 1530) — the
+  // cursor is measured in the container, the rows in the frame.
+  const getRowFrameTop = useCallback((): number => {
+    const container = scrollRef.current;
+    const row = container?.querySelector<HTMLElement>("[data-outline-pos]");
+    let frame = row?.offsetParent as HTMLElement | null | undefined;
+    let top = 0;
+    while (frame && frame !== container) {
+      top += frame.offsetTop;
+      frame = frame.offsetParent as HTMLElement | null;
+    }
+    return frame === container ? top : 0;
+  }, [scrollRef]);
+
   const { startDrag } = useFocusBandEdgeDrag({
     getScrollContainer: () => scrollRef.current,
     enabled: !!onSnapBoundary && !focusState.locked,
     measureRows,
+    getRowFrameTop,
     getBand: () => band,
     getRange: () => ({
       startBlockIndex: focusState.startBlockIndex,

@@ -10,38 +10,64 @@ import {
 import type { BlockAddress } from "@/lib/tiptap/block-address";
 
 /**
- * Focus-band drag commit decision (task 113).
+ * The rows a committed range is PAINTED on (task 1530) — the band's one paint
+ * rule, read by both the band's `measure()` and the drag's commit baseline, so
+ * the row the user sees an edge on and the row the release is compared against
+ * are the same row by construction.
+ *
+ * `rows` are the RENDERED outline rows in document order. The band's top is
+ * the first row inside `[start, end]`; its bottom is the LAST row ≤ `end` —
+ * the row that OWNS `end` under the row→range rule (`regionForNode`), since
+ * `end` is usually a section's last BODY block, which has no row of its own.
+ * Returns positions into `rows`, or null when no rendered row is in range.
+ */
+export function paintedBandRows(
+  rows: readonly { index: number }[],
+  startBlockIndex: number,
+  endBlockIndex: number,
+): { first: number; last: number } | null {
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const idx = rows[i].index;
+    if (idx < startBlockIndex || idx > endBlockIndex) continue;
+    if (first === -1) first = i;
+    last = i;
+  }
+  return first === -1 ? null : { first, last };
+}
+
+/**
+ * Focus-band drag commit decision (tasks 113, 1530).
  *
  * On mouseup the FocusBand drag commits its single snapBoundary write only if
  * the dragged edge actually landed on a different row than the one it STARTED
- * on. The baseline is the dragged edge's OWN committed block index — not the
- * opposite (fixed) edge's. Comparing against the fixed edge (the original bug)
- * silently dropped the standard shrink gesture: dragging an edge onto the
- * opposite edge's row (pending === fixed) read as "not moved", so the range
- * never shrank and the collapsed transient rect stayed painted.
+ * on. The baseline is the dragged edge's OWN row — not the opposite (fixed)
+ * edge's: comparing against the fixed edge (task 113) silently dropped the
+ * standard shrink gesture. And it is the row the edge was PAINTED on at
+ * mousedown (`paintedBandRows`), not the committed block index: the bottom
+ * index is usually a body block with no row, so comparing a row against it
+ * (task 1530) read a press-and-release on the very row the handle sat on as a
+ * move, and committed.
  *
  * Pure so the decision is unit-testable independent of DOM measurement.
  */
 export function resolveDragCommit({
-  edge,
   pending,
-  startBlockIndex,
-  endBlockIndex,
+  paintedIndex,
 }: {
-  edge: "top" | "bottom";
   /** Row the dragged edge is snapped to at release; null = no mousemove ran. */
   pending: BlockAddress | null;
-  /** Committed range at drag start. */
-  startBlockIndex: number;
-  endBlockIndex: number;
+  /** Block index of the row the dragged edge was painted on at mousedown;
+   *  null when no rendered row was in the band. */
+  paintedIndex: number | null;
 }): { commit: false } | { commit: true; target: BlockAddress } {
-  const draggedBlockIndex = edge === "top" ? startBlockIndex : endBlockIndex;
   // The MOVED test is an index comparison, and correctly so: both sides come
   // from the outline's own snapshot (the rows were measured from it and the
   // baseline is the snapshot-resolved band), so they describe one revision.
   // What crosses the async gap is the COMMIT, and that carries the address
   // (task 285).
-  if (pending == null || pending.index === draggedBlockIndex) {
+  if (pending == null || pending.index === paintedIndex) {
     return { commit: false };
   }
   return { commit: true, target: pending };
@@ -74,9 +100,12 @@ interface FocusBandDragState {
   rows: FocusBandRow[];
   /** Pixel position of the edge that stays put for the whole gesture. */
   fixedPx: number;
-  /** The committed range at mousedown (the commit baseline — task 113). */
-  startBlockIndex: number;
-  endBlockIndex: number;
+  /** Block index of the row the dragged edge was painted on at mousedown —
+   *  the commit baseline (tasks 113, 1530). */
+  paintedIndex: number | null;
+  /** The rows' positioning frame's top within the scroll container's content
+   *  (task 1530) — subtracted from the cursor so both share one frame. */
+  frameTop: number;
   /** Row the dragged edge is snapped to right now; null = no move ran. */
   pending: BlockAddress | null;
 }
@@ -86,8 +115,14 @@ export interface FocusBandEdgeDragOptions {
   getScrollContainer: () => HTMLElement | null;
   /** False while Focus mode is locked or nothing can be committed. */
   enabled: boolean;
-  /** Candidate snap rows, measured fresh at each mousedown. */
+  /** Candidate snap rows, measured fresh at each mousedown — RENDERED rows in
+   *  document order, their offsets in the band's own positioning frame. */
   measureRows: () => FocusBandRow[];
+  /** Top of that positioning frame inside the scroll container's content
+   *  (its padding, any wrapper above it), read at mousedown. Row offsets are
+   *  in the frame, the cursor in the container, so without it the snap lands
+   *  that many pixels early (task 1530). Defaults to 0 (same frame). */
+  getRowFrameTop?: () => number;
   /** The band's current rect, for capturing the fixed edge's pixel. */
   getBand: () => { top: number; height: number } | null;
   /** The committed range at mousedown. */
@@ -248,12 +283,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
 
       const decision =
         mode === "commit"
-          ? resolveDragCommit({
-              edge: drag.edge,
-              pending: drag.pending,
-              startBlockIndex: drag.startBlockIndex,
-              endBlockIndex: drag.endBlockIndex,
-            })
+          ? resolveDragCommit({ pending: drag.pending, paintedIndex: drag.paintedIndex })
           : ({ commit: false } as const);
 
       dragRef.current = null;
@@ -294,7 +324,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
         rectContainer = container;
         rectTop = container.getBoundingClientRect().top;
       }
-      lastY = e.clientY - rectTop + container.scrollTop;
+      lastY = e.clientY - rectTop + container.scrollTop - dragRef.current.frameTop;
       if (rafId === null) rafId = requestAnimationFrame(flush);
     };
 
@@ -333,23 +363,28 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
       if (!isPrimaryDragStart(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const { measureRows, getBand, getRange, setAnimated, setDragging } = optionsRef.current;
+      const { measureRows, getRowFrameTop, getBand, getRange, setAnimated, setDragging } =
+        optionsRef.current;
       const band = getBand();
       if (!band || !endDragRef.current) return;
       const rows = measureRows();
       if (rows.length === 0) return;
       // The OPPOSITE edge stays put for the whole drag. Capture its pixel
       // position from the current band rect so the transient rect references
-      // it, plus the full committed range so the moved-check on commit
-      // compares the dragged edge against its OWN row (task 113).
+      // it, plus the row the dragged edge is PAINTED on, so the moved-check on
+      // commit compares the edge against its OWN visible row (tasks 113, 1530).
       const fixedPx = edge === "top" ? band.top + band.height : band.top;
       const range = getRange();
+      const painted = paintedBandRows(rows, range.startBlockIndex, range.endBlockIndex);
+      const paintedIndex = painted
+        ? rows[edge === "top" ? painted.first : painted.last].index
+        : null;
       dragRef.current = {
         edge,
         rows,
         fixedPx,
-        startBlockIndex: range.startBlockIndex,
-        endBlockIndex: range.endBlockIndex,
+        paintedIndex,
+        frameTop: getRowFrameTop?.() ?? 0,
         pending: null,
       };
       setDragging(true);

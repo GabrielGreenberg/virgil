@@ -30,9 +30,14 @@ vi.mock("@/lib/storage", () => ({
   mutateBib: vi.fn(async () => null),
 }));
 
-import { regionForAddress, regionForNode } from "@/hooks/useFocusMode";
+import { collectTitledBlocks, regionForAddress, regionForNode } from "@/hooks/useFocusMode";
 import { collectTopLevelHeadings } from "@/lib/tiptap/block-address";
-import { doc, heading, paragraph } from "@/lib/tiptap/doc-structure/__tests__/fixtures";
+import { doc, heading, paragraph, testSchema } from "@/lib/tiptap/doc-structure/__tests__/fixtures";
+
+/** A paragraph carrying a par-title — an outline row of its own. */
+function titled(uuid: string, title: string, text: string) {
+  return testSchema.nodes.paragraph.create({ uuid, parTitle: title }, testSchema.text(text));
+}
 
 /** Alpha [0..2] · Beta(level 2) [3..4] · Gamma [5..6]. */
 function sections() {
@@ -83,8 +88,26 @@ describe("regionForAddress — the focus band's live entry point", () => {
 
   it("takes the Document-start row positionally, so it survives an insert above", () => {
     // `{uuid: null, index: 0}` means "whatever block is first", which after the
-    // insert is the intruder — correct, and the row's stated intent.
-    expect(regionForAddress(shifted(), { uuid: null, index: 0 })).toEqual([0, 0]);
+    // insert is the intruder — correct, and the row's stated intent. The row
+    // owns the untitled blocks up to the first row (task 1530): both intruders.
+    expect(regionForAddress(shifted(), { uuid: null, index: 0 })).toEqual([0, 1]);
+  });
+
+  it("gives a PAR-TITLE row its title block plus the untitled blocks under it (task 1530)", () => {
+    const d = doc(
+      heading("h-alpha", 1, "Alpha"),
+      titled("t-1", "First", "t1"),
+      paragraph("p-1", "under t1"),
+      paragraph("p-2", "under t1"),
+      titled("t-2", "Second", "t2"),
+      paragraph("p-3", "under t2"),
+      heading("h-beta", 2, "Beta"),
+      paragraph("p-4", "b"),
+    );
+    expect(collectTitledBlocks(d)).toEqual([1, 4]);
+    expect(regionForAddress(d, { uuid: "t-1", index: 1 })).toEqual([1, 3]);
+    // Stops at the next row of ANY level — a sub-heading included.
+    expect(regionForAddress(d, { uuid: "t-2", index: 4 })).toEqual([4, 5]);
   });
 
   it("refuses an unhydrated address whose index is out of bounds", () => {
@@ -97,7 +120,7 @@ describe("regionForAddress — the focus band's live entry point", () => {
     const d = sections();
     const headings = collectTopLevelHeadings(d);
     for (const idx of [0, 1, 2, 3, 4, 5, 6]) {
-      const viaList = regionForNode(idx, headings, d.childCount);
+      const viaList = regionForNode(idx, headings, d.childCount, collectTitledBlocks(d));
       const uuid = (d.child(idx).attrs?.uuid as string | null) ?? null;
       expect(regionForAddress(d, { uuid, index: idx })).toEqual(viaList);
     }
