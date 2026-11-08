@@ -163,9 +163,13 @@ function rebuildRaw(prev: BibEntry, next: BibEntry): string {
   }
   const remove = Object.keys(prev.fields).filter((k) => !(k in next.fields));
   if (prev.raw) {
+    // The type is a DIFF too, like the fields (task 1518): only a type the
+    // user actually changed is written, so no projection of the head can
+    // reach the disk on an edit to something else.
+    const typeChanged = next.type.toLowerCase() !== prev.type.toLowerCase();
     const spliced = spliceBibBlock(prev.raw, {
       key: next.key,
-      type: next.type,
+      ...(typeChanged ? { type: next.type } : {}),
       set,
       remove,
     });
