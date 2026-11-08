@@ -5836,6 +5836,22 @@ body.perf-contain .static-borrowed-text {
   max-height: min(50vh, calc(var(--scroll-viewport-h, 100dvh) * 0.5));
 }
 
+/* The ONE card-textarea sizing rule (task 1524). A plain `<textarea>` card
+   body (a todo's notes, an editable suggestion field) GROWS with its content
+   so the enclosing `.card-body-scroll` above is the one bounded scroller — a
+   fixed `rows={2}` box made the textarea a two-line inner scroller nested in
+   the capped body, and the half-pane cap never engaged. `field-sizing:
+   content` (Chrome 123+; Virgil ships as a Chrome PWA) costs no per-keystroke
+   layout read, unlike a scrollHeight sizer. The two-line floor replaces
+   `rows` (which content sizing ignores). Unlayered, so it outranks a call
+   site's `min-h-*` utility. A popped-out todo's `flex-1 min-h-0` still fills
+   its window: flex growth is unaffected by content sizing.
+   card-body-scroll-census.test.ts fails on a card textarea without it. */
+.card-textarea {
+  field-sizing: content;
+  min-height: 2lh;
+}
+
 /* RETIRED (task 525): `.toolbar-scroll` and `.hide-scrollbar` — two
    byte-identical hide-the-scrollbar utilities with zero producers in either
    silo. The surfaces that actually hide a scrollbar do it inline or through
