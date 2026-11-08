@@ -72,25 +72,32 @@ export function StaticBorrowedText({
   const resolveCitation =
     getCitationDisplayText ?? citationCtx?.getCitationDisplayText;
 
+  // `\ref`s resolve against the main doc too, so a stored "??" reads as
+  // the number the label has now.
+  const resolveRef = citationCtx?.getRefDisplayText;
   const html = useMemo(
-    () => renderBorrowedHtml(value, schemaScope, resolveCitation),
-    [value, schemaScope, resolveCitation],
+    () => renderBorrowedHtml(value, schemaScope, resolveCitation, resolveRef),
+    [value, schemaScope, resolveCitation, resolveRef],
   );
 
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // One-shot KaTeX pass per rendered HTML: repaint each math atom from its
-  // `latex` attr, which `renderHTML` carries in the clipboard codec's lane
-  // (`data-attr-latex`, task 1068). Keyed on `html` so a body edit re-runs it; never runs on
-  // any editor event — this surface has no editor.
+  // KaTeX pass: repaint each math atom from its `latex` attr, which
+  // `renderHTML` carries in the clipboard codec's lane (`data-attr-latex`,
+  // task 1068). It runs after every commit but paints only atoms still
+  // showing their source, so it is idempotent: keyed on `html` alone, a commit
+  // that rewrote the inner HTML without changing that string (the gutter's
+  // reading lists hit it at doc open) left the math as raw `$…$`. Never runs
+  // on any editor event — this surface has no editor and subscribes to nothing.
   useEffect(() => {
     const root = rootRef.current;
     if (!root || !html) return;
+    const unpainted = (el: HTMLElement) => !el.querySelector(".katex, .math-placeholder, .math-error");
     const inline = root.querySelectorAll<HTMLElement>(STATIC_MATH_SELECTORS.inline);
-    for (const el of inline) renderMath(el, staticLatex(el), false);
+    for (const el of inline) if (unpainted(el)) renderMath(el, staticLatex(el), false);
     const display = root.querySelectorAll<HTMLElement>(STATIC_MATH_SELECTORS.display);
-    for (const el of display) renderMath(el, staticLatex(el), true);
-  }, [html]);
+    for (const el of display) if (unpainted(el)) renderMath(el, staticLatex(el), true);
+  });
 
   // Panel typography, inline — the ONE mapping the live twin also writes
   // (`borrowed-body-style.ts`, task 823); a static div carries it in render.

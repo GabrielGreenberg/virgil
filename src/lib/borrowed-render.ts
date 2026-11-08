@@ -89,6 +89,35 @@ export function refreshCitationDisplay(
   return walk(doc);
 }
 
+/**
+ * Rewrite `\ref` (labelRef) nodes so their `displayText` is the number the
+ * label resolves to in the MAIN doc now. A card body owns no headings or
+ * examples, and the doc-level ref-display pass can't reach into it, so a
+ * stored ref reads stale (or "??") without this. `resolve` returns null when
+ * it can't answer; the stored text then stays. Pure.
+ */
+export function refreshRefDisplay(
+  doc: JSONContent,
+  resolve: ((label: string, refCommand: string) => string | null) | undefined,
+): JSONContent {
+  if (!resolve) return doc;
+  function walk(node: JSONContent): JSONContent {
+    if (node.type === "labelRef" && node.attrs) {
+      const label = (node.attrs.label as string) || "";
+      const desired = label ? resolve!(label, (node.attrs.refCommand as string) || "ref") : null;
+      if (desired != null && node.attrs.displayText !== desired) {
+        return { ...node, attrs: { ...node.attrs, displayText: desired } };
+      }
+      return node;
+    }
+    if (node.content) {
+      return { ...node, content: node.content.map(walk) };
+    }
+    return node;
+  }
+  return walk(doc);
+}
+
 // One extension list per scope, cached — composed once. Composition mirrors
 // BorrowedMainText's editor construction exactly (StarterKit at the scope's
 // config + the borrowed sub-schema with includeLabelRefFootnote), which is
@@ -289,11 +318,12 @@ export function renderBorrowedHtml(
   value: unknown,
   scope: CardBodySchemaScope,
   resolveCitation?: (command: string) => string,
+  resolveRef?: (label: string, refCommand: string) => string | null,
 ): string | null {
   try {
-    const resolved = refreshCitationDisplay(
-      normalizeRichContent(value),
-      resolveCitation,
+    const resolved = refreshRefDisplay(
+      refreshCitationDisplay(normalizeRichContent(value), resolveCitation),
+      resolveRef,
     );
     const { schema, serializer } = rendererForScope(scope);
     const doc = withStaticCommandRuns(PMNode.fromJSON(schema, resolved), schema);
