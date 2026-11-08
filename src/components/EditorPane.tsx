@@ -8809,7 +8809,13 @@ function PaneRail({
     // through the variables set on the rail below.
     const omniNode: React.ReactNode =
       gutterLayout && !isLeft ? (
-        <div data-gutter-side-host={side}>
+        <div
+          data-gutter-side-host={side}
+          // With the cards hidden the host would shrink to the lozenge, and a
+          // sticky lozenge cannot travel inside its own height: keep the host
+          // as tall as the document so the lozenge stays pinned.
+          style={contentsHidden ? { minHeight: "var(--row-bound-h, 100%)" } : undefined}
+        >
           <div className="gutter-side-head" data-gutter-head={side}>
             <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
           </div>
