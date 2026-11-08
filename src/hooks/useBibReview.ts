@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { readSidecar } from "@/lib/storage";
 import {
   convergeOnWrite,
   newMergeBase,
@@ -134,7 +133,7 @@ export function useBibReview(
     [bibEntries],
   );
   // Live mirrors of the latest resolver/flag/map for the stable
-  // `fetchState`/`matchesKey` callbacks (which can't list these in deps without
+  // `normalize`/`matchesKey` callbacks (which can't list these in deps without
   // re-running the load effect on every keystroke-adjacent bib change). Updated
   // in an effect — never written during render (react-hooks/refs).
   const keyToUidRef = useRef(keyToUid);
@@ -165,36 +164,40 @@ export function useBibReview(
       : raw;
   }, []);
 
-  const fetchState = useCallback(async (id: string) => {
-    try {
-      const data = await readSidecar<BibReviewState>(
-        id,
-        "bib-review-requests.json",
-        EMPTY,
-      );
-      if (docIdRef.current !== id) return;
-      const loadedState = normalize(data);
-      baselineRef.current.value = loadedState;
-      setState(loadedState);
-    } catch {
-      // ignore
-    }
-  }, [normalize]);
+  // Whether this doc's LOAD has applied (task 1520), and the renames that
+  // arrived before it. A rename re-keys the rows memory holds; before the load
+  // memory holds none, so it returned early and stranded the on-disk rows
+  // under the old citekey. It now waits for the rows, and replays on the load.
+  const loadedRef = useRef(false);
+  const pendingRenamesRef = useRef<Array<[string, string]>>([]);
+  const renameRef = useRef<(oldKey: string, newKey: string) => void>(() => {});
+  const onLoaded = useCallback(() => {
+    loadedRef.current = true;
+    const queued = pendingRenamesRef.current;
+    pendingRenamesRef.current = [];
+    for (const [oldKey, newKey] of queued) renameRef.current(oldKey, newKey);
+  }, []);
 
   useEffect(() => {
     docIdRef.current = docId;
-    // A base belongs to ONE document — re-earned only by this doc's read.
+    // A base belongs to ONE document — re-earned only by this doc's read. So
+    // does memory: a switched pane must not show (or WRITE, from a mutator
+    // fired before the new doc's load lands) the previous doc's rows.
     baselineRef.current = newMergeBase();
-    if (!docId) { setState(EMPTY); return; }
-    fetchState(docId);
-  }, [docId, fetchState]);
+    loadedRef.current = false;
+    pendingRenamesRef.current = [];
+    stateRef.current = EMPTY;
+    setState(EMPTY);
+  }, [docId]);
 
-  // Re-stamp entryUids once the bib entries arrive after the sidecar load
-  // (the read can resolve before the .bib parse). Idempotent + non-destructive.
-  useEffect(() => {
-    if (!cascadeOn) return;
-    setState((prev) => migrateBibReviewToUid(prev, keyToUid));
-  }, [cascadeOn, keyToUid]);
+  // Every apply keeps `stateRef` current synchronously: the mutators read it,
+  // and a read merged in between must not be overwritten by a stale snapshot.
+  const apply = useCallback(
+    (fn: (prev: BibReviewState) => BibReviewState) => {
+      commit(fn(stateRef.current));
+    },
+    [commit],
+  );
 
   // THE EXTERNAL RE-READ (task 1078) — the one every sidecar hook shares. It
   // REPLACES a private 10 s poll that re-read this file wholesale while any row
@@ -207,15 +210,40 @@ export function useBibReview(
   // 1503). A refusal is answered to the composer that asked, so only the
   // in-flight half is this hook's to publish.
   const [workPublisher] = useState(createSidecarWorkPublisher);
-  const { replayDeferred: replayDeferredRead, rereadNow } = useSidecarReread<BibReviewState>({
+  //
+  // It is also THE MOUNT LOAD (task 1520). The load used to be a private
+  // `readSidecar → setState` that neither asked the dirty predicate nor took
+  // the stale-read mark, while nothing gated `requestReview` on it: a request
+  // sent while the first read was in flight landed on disk, then the read
+  // resolved and replaced memory with pre-write disk — pending on disk, absent
+  // from the panel, uncancellable, and still served to the skill. A failed
+  // load was a bare `catch {}`, so the panel showed "no reviews" over a file it
+  // could not read.
+  const {
+    replayDeferred: replayDeferredRead,
+    rereadNow,
+    migrateInPlace,
+  } = useSidecarReread<BibReviewState>({
     docId,
     filename: "bib-review-requests.json",
     baselineRef,
     defaultValue: EMPTY,
     migrate: normalize,
     hasPendingWrite,
-    apply: setState,
+    apply,
+    load: { what: "bibliography review", onLoaded },
   });
+
+  // Re-stamp entryUids once the bib entries arrive after the sidecar load
+  // (the read can resolve before the .bib parse). Idempotent + non-destructive
+  // — and applied to the merge base in the same step (task 1520): a re-stamp
+  // of memory alone left every stamped row looking locally edited, so a
+  // skill's on-disk completion was hidden on re-read and reverted on the next
+  // write (a duplicate AI review).
+  useEffect(() => {
+    if (!cascadeOn) return;
+    migrateInPlace((prev) => migrateBibReviewToUid(prev, keyToUid));
+  }, [cascadeOn, keyToUid, migrateInPlace]);
 
   /**
    * Persist the queue — and SAY SO when it does not land (task 630).
@@ -283,7 +311,7 @@ export function useBibReview(
           normalize,
         );
         if (baselineRef.current === base) {
-          convergeOnWrite("bib-review-requests.json", base, ticket, s, wrote, setState);
+          convergeOnWrite("bib-review-requests.json", base, ticket, s, wrote, apply);
         }
         return { ok: true };
       } catch (err) {
@@ -300,7 +328,7 @@ export function useBibReview(
         replayDeferredRead();
       }
     },
-    [handle, rereadNow, normalize, replayDeferredRead, workPublisher],
+    [handle, rereadNow, normalize, replayDeferredRead, workPublisher, apply],
   );
 
   /** Does a row target the same entry as `bibKey`? Under the flag, prefer the
@@ -400,9 +428,9 @@ export function useBibReview(
     [persist, matchesKey, commit],
   );
 
-  // The manual Refresh is the shared re-read (task 1332), NOT the mount
-  // loader: `fetchState` adopts disk wholesale and moves the merge base, so a
-  // Refresh during an in-flight request write dropped the new row from memory.
+  // The manual Refresh is the shared re-read (task 1332) — the same door the
+  // mount load goes through (task 1520). A private adopt-and-move-the-base
+  // dropped a request written during the read from memory.
   const refresh = rereadNow;
 
   /**
@@ -420,10 +448,16 @@ export function useBibReview(
    *
    * So: every row naming `oldKey` is re-pointed, whatever its shape. Idempotent
    * (a second run finds no `oldKey` row), and it persists only when a row moved.
+   * A rename that arrives before this doc's load has applied WAITS for the rows
+   * (task 1520) — memory holds none yet, so it would find nothing to move.
    */
   const renameBibKey = useCallback(
     (oldKey: string, newKey: string) => {
       if (!oldKey || !newKey || oldKey === newKey) return;
+      if (!loadedRef.current) {
+        pendingRenamesRef.current.push([oldKey, newKey]);
+        return;
+      }
       const prev = stateRef.current;
       if (!prev.requests.some((r) => r.bibKey === oldKey)) return;
       const next = {
@@ -439,6 +473,9 @@ export function useBibReview(
     },
     [persist, commit],
   );
+  useEffect(() => {
+    renameRef.current = renameBibKey;
+  });
 
   return useMemo(
     () => ({

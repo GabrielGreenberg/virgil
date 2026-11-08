@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { readSidecarIfExists } from "@/lib/storage";
 import { mergeSidecarState } from "@/lib/sidecar-merge";
 import { markReadStart, type MergeBase } from "@/lib/sidecar-merged-write";
+import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import {
   SIDECAR_CHANGED_EVENT,
   type SidecarChangedDetail,
@@ -23,6 +24,21 @@ export interface SidecarRereadOptions<S> {
   hasPendingWrite: () => boolean;
   /** Applies a derivation to memory (functional, so a concurrent edit survives). */
   apply: (fn: (prev: S) => S) => void;
+  /**
+   * THE MOUNT LOAD, through this door (task 1520). When set, the door performs
+   * the document's FIRST read itself, under the same dirty and stale-read
+   * guards as every re-read, instead of the hook taking a private
+   * `readSidecar → setState` beside it. Needed by a hook whose writes are NOT
+   * gated on its load (`useBibReview`: a request can be sent, or the rename
+   * migrator fire, while the first read is in flight) — a private load that
+   * resolves after such a write replaces memory with pre-write disk.
+   *
+   * `what` is the user-facing noun a failed load is reported under (the
+   * `unreadable` reason on the sidecar-refusal channel, task 679); `onLoaded`
+   * runs once the load has APPLIED (work that needs the loaded rows — a rename
+   * that arrived before them — replays there).
+   */
+  load?: { what: string; onLoaded?: () => void };
 }
 
 /**
@@ -69,7 +85,7 @@ export interface SidecarRereadOptions<S> {
  * KEYSTROKE SANCTITY: a `window` listener for a wall-clock watcher event, not
  * an `editor.on(...)` subscriber. Typing runs zero code here.
  */
-export interface SidecarReread {
+export interface SidecarReread<S> {
   /** Pays a deferred re-read once the hook's writes have drained. */
   replayDeferred: () => void;
   /**
@@ -81,16 +97,38 @@ export interface SidecarReread {
    * and the next write delete it from disk.
    */
   rereadNow: (opts?: { adopt?: boolean }) => void;
+  /**
+   * THE MIGRATION DOOR (task 1520). A derivation applied to memory OUTSIDE a
+   * read (the uid re-stamp once the bib entries arrive after the load) is
+   * applied to the MERGE BASE in the same step. Memory and base must live in
+   * the same normalized space: a re-stamp of memory alone made every stamped
+   * row differ from its base record, so the merge read each as a LOCAL edit —
+   * hiding a skill's on-disk completion on re-read and reverting it on the next
+   * write.
+   */
+  migrateInPlace: (fn: (s: S) => S) => void;
 }
 
-type RereadMode = "merge" | "adopt";
+/**
+ * `load` is a merge (memory is the doc's empty default until it lands, and a
+ * write that raced it merged against disk) whose failure is REPORTED and whose
+ * success fires `onLoaded`.
+ */
+type RereadMode = "merge" | "load" | "adopt";
 
-/** Remembers a deferred re-read. An owed adopt is never downgraded to a merge. */
+const MODE_RANK: Record<RereadMode, number> = { merge: 0, load: 1, adopt: 2 };
+
+/**
+ * Remembers a deferred re-read. An owed mode is never downgraded: an adopt
+ * dominates (disk after the drain holds the union), and an owed load stays a
+ * load until one lands.
+ */
 function owe(debt: { current: RereadMode | null }, mode: RereadMode): void {
-  debt.current = debt.current === "adopt" ? "adopt" : mode;
+  const prior = debt.current;
+  debt.current = prior && MODE_RANK[prior] >= MODE_RANK[mode] ? prior : mode;
 }
 
-export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarReread {
+export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarReread<S> {
   const { docId, filename, baselineRef } = opts;
   // Latest callbacks/values in a ref, so the listener effect keys on `docId`
   // alone (a re-render must not re-subscribe).
@@ -117,7 +155,14 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarRerea
       owe(deferredRef, mode);
       return;
     }
-    rehydrateRef.current(deferredRef.current === "adopt" ? "adopt" : mode);
+    const owed = deferredRef.current;
+    rehydrateRef.current(owed && MODE_RANK[owed] > MODE_RANK[mode] ? owed : mode);
+  }, []);
+
+  const migrateInPlace = useCallback((fn: (s: S) => S): void => {
+    const cell = optsRef.current.baselineRef.current;
+    if (cell.value !== null) cell.value = fn(cell.value);
+    optsRef.current.apply(fn);
   }, []);
 
   useEffect(() => {
@@ -145,6 +190,14 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarRerea
             return;
           }
           if (raw === null) {
+            if (mode === "load") {
+              // No file yet: the doc's honest base IS the empty default (so a
+              // later merge can tell a deletion from an absence), and memory
+              // keeps whatever it holds — nothing on disk to merge in.
+              cell.value = defaultValue;
+              optsRef.current.load?.onLoaded?.();
+              return;
+            }
             // External removal → the empty default (the file existed, then
             // went away, so an explicit reset is correct).
             cell.value = null;
@@ -158,15 +211,34 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarRerea
             apply(() => read);
             return;
           }
+          // A LOAD merges too (task 1520): with no write yet the base is null
+          // and memory the empty default, so the union IS disk; after a write
+          // raced it, the base is that write's payload and the merge is exact.
           apply((prev) => mergeSidecarState<S>(filename, base, read, prev));
+          if (mode === "load") optsRef.current.load?.onLoaded?.();
         })
-        .catch(() => {
+        .catch((err) => {
+          if (cancelled || baselineRef.current !== cell) return;
+          // A failed LOAD is said, not swallowed (task 679's channel): what the
+          // panel shows is the empty default, not the file. The base stays
+          // null, so a write degrades to a union and cannot delete what it
+          // never read.
+          const load = optsRef.current.load;
+          if (mode === "load" && load) {
+            recordSidecarRefusal({
+              docId,
+              what: load.what,
+              reason: "unreadable",
+              detail: err instanceof Error ? err.message : undefined,
+            });
+          }
           // Transient read failure — leave memory and re-arm, so the next
           // drain retries. The watcher will not re-emit.
           owe(deferredRef, mode);
         });
     };
     rehydrateRef.current = rehydrate;
+    if (optsRef.current.load) rehydrate("load");
 
     const onSidecarChanged = (e: Event) => {
       const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
@@ -176,7 +248,7 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarRerea
         owe(deferredRef, "merge");
         return;
       }
-      rehydrate(deferredRef.current === "adopt" ? "adopt" : "merge");
+      rehydrate(deferredRef.current ?? "merge");
     };
 
     window.addEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
@@ -191,5 +263,5 @@ export function useSidecarReread<S>(opts: SidecarRereadOptions<S>): SidecarRerea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
 
-  return { replayDeferred, rereadNow };
+  return { replayDeferred, rereadNow, migrateInPlace };
 }
