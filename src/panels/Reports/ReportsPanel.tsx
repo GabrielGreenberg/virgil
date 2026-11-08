@@ -14,7 +14,7 @@ import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
-import { cardTypeLabel } from "@/panels/panel-registry";
+import { cardTypeLabel, panelEmptySentence } from "@/panels/panel-registry";
 import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { ReportCard } from "./ReportCard";
 import { ReportRequestCard } from "./ReportRequestCard";
@@ -112,7 +112,7 @@ export default function ReportsPanel({
       onActivateItem={keyboardJump && ((it) => keyboardJump(it.data))}
       emptyState={
         <div className={PANEL.empty}>
-          No reports yet.
+          {panelEmptySentence("reports")}
           <CreationHint action="report" />
         </div>
       }

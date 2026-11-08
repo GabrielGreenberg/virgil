@@ -14,7 +14,8 @@
  *
  * So the split here is three-way and each fact is stated by whoever holds it:
  *
- *   noun   the panel, as ordinary copy before this element;
+ *   noun   `panelEmptySentence(panelKind)`, derived from the hosted kinds'
+ *          registry labels (task 1526), rendered before this element;
  *   route  `creationRoutesFor(action)` — see `@/lib/actions/creation-routes`;
  *   "+"    `PanelAddProvider`, which `CardListPanel` feeds from the button it
  *          is ACTUALLY about to render.

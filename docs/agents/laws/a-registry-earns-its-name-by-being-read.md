@@ -5515,7 +5515,7 @@ whoever holds it:
 
 | fact | owner | how |
 | --- | --- | --- |
-| the NOUN ("No examples yet.") | the panel | ordinary copy |
+| the NOUN ("No examples yet.") | `CARD_REGISTRY` labels of the hosted kinds (task 1526) | `panelEmptySentence(panelKind)` |
 | the ROUTE | `VIRGIL_ACTION_REGISTRY` | `creationRoutesFor(id)` → `<CreationHint action="…" />` |
 | the "+" | `CardListPanel` | `PanelAddProvider`, fed by the button it is about to render |
 

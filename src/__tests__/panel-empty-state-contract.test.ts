@@ -538,6 +538,60 @@ describe("an empty state does not name a creation surface from memory", () => {
   );
 });
 
+// ── Leg 6: the NOUN is derived too (task 1526) ─────────────────────────────
+
+/**
+ * Card-list slots whose genuinely-empty sentence is NOT the hosted kinds'
+ * plural labels — each with why the derived "No <labels> yet." would be wrong.
+ * Keyed on the file; a new card panel never qualifies by default.
+ */
+const NOUN_EXEMPT: { file: string; why: string }[] = [
+  {
+    file: "panels/Archive/ArchivePanel.tsx",
+    why: 'the kind is labelled "Archive" (the panel\'s name); its cards are archived TEXT, and "No archives yet." would misname them',
+  },
+  {
+    file: "panels/Bibliography/BibliographyPanel.tsx",
+    why: "every branch is a search miss or a .bib-file state, and the kind's label is the panel's name, not a noun for an entry",
+  },
+  {
+    file: "panels/Errors/ErrorsPanel.tsx",
+    why: "a diagnostics status (\"No errors.\" plus a compile hint), not an absence the user creates their way out of",
+  },
+];
+
+describe("an empty card panel names the kinds its own menu offers", () => {
+  it.each(SLOTS.map((s) => [s.file, s] as const))(
+    "%s derives its noun from the hosted kinds' labels",
+    (file, slot) => {
+      if (NOUN_EXEMPT.some((e) => e.file === file)) return;
+      expect(
+        slot.body,
+        `${file}: spell the empty sentence as {panelEmptySentence("<panel>")} ` +
+          "(src/panels/panel-registry.ts). A hand-written noun drifts from the " +
+          "labels the panel's \"+\" menu, overline and kind-chevron show — Cutter " +
+          'said "No comments or suggestions yet." while offering Request and Revision.',
+      ).toMatch(/\{panelEmptySentence\("[a-z-]+"\)\}/);
+      const hand = copyUnits(slot.body).filter((u) => /^No\b.*\byet\b/.test(u));
+      expect(hand, `${file}: a hand-spelled "No … yet." survives beside the derivation`).toEqual([]);
+    },
+  );
+
+  it("every noun exemption is still claimed by a live slot", () => {
+    const unclaimed = NOUN_EXEMPT.filter((e) => !SLOTS.some((s) => s.file === e.file));
+    expect(unclaimed.map((e) => e.file), "delete the entry").toEqual([]);
+  });
+
+  it("flags the sentence task 1526 was filed for", () => {
+    const shipped =
+      '<div className={PANEL.empty}>No comments or suggestions yet.<CreationHint action="cutter" /></div>';
+    expect(/\{panelEmptySentence\(/.test(shipped)).toBe(false);
+    expect(copyUnits(shipped).filter((u) => /^No\b.*\byet\b/.test(u))).toEqual([
+      "No comments or suggestions yet.",
+    ]);
+  });
+});
+
 // ── Leg 4: the richer composition is genuinely NOT shipped ──────────────────
 
 describe("the design the guide declines to specify stays unbuilt", () => {
