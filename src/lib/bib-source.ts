@@ -97,8 +97,13 @@ export interface BibFieldSpan {
   valueStart: number;
   /** Offset just past the last character of the value's content. */
   valueEnd: number;
-  /** How the value is delimited — a bare value is a macro reference or number. */
-  delimiter: "brace" | "quote" | "bare";
+  /**
+   * How the value is delimited — a bare value is a macro reference or number.
+   * `"concat"` is a `#`-joined expression of several terms (`"A" # vol`); its
+   * `valueStart`/`valueEnd` cover the WHOLE expression, delimiters included,
+   * because no one term is "the value" (task 1519).
+   */
+  delimiter: "brace" | "quote" | "bare" | "concat";
 }
 
 /** `@type` tokens that are BibTeX declarations rather than references. */
@@ -126,6 +131,35 @@ export function fieldAliasesOf(name: string): string[] {
   const lc = name.toLowerCase();
   const group = FIELD_ALIASES.find((g) => g.includes(lc));
   return group ? [...group] : [lc];
+}
+
+/**
+ * THE comment model of a `.bib` source (task 1519): MASK every line whose first
+ * non-blank character is `%`, replacing it with the same number of spaces.
+ *
+ * Length-preserving is load-bearing (task 688): every scan in this module runs
+ * on the masked text while every `raw` slice and every splice offset is taken
+ * against the ORIGINAL, so the two share one coordinate system and the `%`
+ * note itself survives every write byte-for-byte.
+ *
+ * It is ONE model because there used to be two. The parser masked before it
+ * located blocks (task 1156), but the field scanner, the splice's own re-scan,
+ * the balance check and the `\vbid` binder all read the text raw — so a
+ * `% note, the title below is wrong` line hid the field after it (a set
+ * appended a duplicate, a remove did nothing), a `% checked {against print`
+ * made the block "unbalanced" and refused every edit to it, and a commented-out
+ * `% @article{old2019,` was read as an entry head that stole the next entry's
+ * `\vbid`. Every scanner now masks through here, idempotently.
+ *
+ * Only LINE-anchored comments: a `%` mid-line inside a value (`{100% sure}`)
+ * is text — the same rule the parser hands citation-js.
+ */
+export function maskBibComments(text: string): string {
+  if (!text.includes("%")) return text;
+  return text
+    .split("\n")
+    .map((line) => (line.trimStart().startsWith("%") ? " ".repeat(line.length) : line))
+    .join("\n");
 }
 
 /** Is `ch` a BibTeX name character (a field name / `@type` token)? */
@@ -265,8 +299,12 @@ export function lineAnchoredOpeners(text: string): number[] {
  *
  * Everything OUTSIDE the returned spans — the header comment block, `%` notes,
  * `\vbid{}` markers, blank lines — is free text this module never touches.
+ * The scan runs on {@link maskBibComments}' view, so offsets are the source's.
  */
-export function scanBibSource(text: string): BibSourceBlock[] {
+export function scanBibSource(source: string): BibSourceBlock[] {
+  // Comment lines are blank to the scan (task 1519) — a `% @article{old,` is
+  // not a block, and a brace inside a `%` note does not unbalance one.
+  const text = maskBibComments(source);
   const blocks: BibSourceBlock[] = [];
   const openers = lineAnchoredOpeners(text);
   let i = 0;
@@ -322,6 +360,92 @@ export function scanBibSource(text: string): BibSourceBlock[] {
   return blocks;
 }
 
+/** One value TERM — `{…}`, `"…"`, or a bare macro name / number. */
+interface ValueTerm {
+  /** Offset of the term's first character (its delimiter, if any). */
+  start: number;
+  /** Offset just past the term. */
+  end: number;
+  delimiter: "brace" | "quote" | "bare";
+}
+
+/**
+ * Read ONE term starting at `i`, or `null` if none can be read there (an
+ * unclosed delimiter, or a character no term starts with).
+ */
+function readValueTerm(text: string, i: number, bodyEnd: number): ValueTerm | null {
+  if (text[i] === "{") {
+    const close = walkBlockBody(text, i, bodyEnd + 1, "value");
+    return close === -1 ? null : { start: i, end: close, delimiter: "brace" };
+  }
+  if (text[i] === '"') {
+    const j = walkQuotedValue(text, i, bodyEnd);
+    return j === -1 ? null : { start: i, end: j + 1, delimiter: "quote" };
+  }
+  let j = i;
+  while (j < bodyEnd && isWordChar(text[j])) j++;
+  return j > i ? { start: i, end: j, delimiter: "bare" } : null;
+}
+
+/** The first non-whitespace offset at or after `i` (or `bodyEnd`). */
+function skipSpace(text: string, i: number, bodyEnd: number): number {
+  while (i < bodyEnd && /\s/.test(text[i])) i++;
+  return i;
+}
+
+/**
+ * A field VALUE as BibTeX reads it (task 1519): a `#`-joined sequence of
+ * terms — `title = "Essays" # vol`, `month = jan # ", 1"`. The field's span
+ * runs to the end of the LAST term, so the removal separator logic finds the
+ * real `,` (reading only the first term made a remove take the comma BEFORE
+ * the field and splice `# vol` into the citekey head), and a set can see that
+ * the value is an expression rather than overwrite one term of it.
+ *
+ * A bare value that is neither followed by `#` nor ends at a `,` / the body's
+ * end is not a macro reference at all (`url = http://x.org/a`, unquoted): it
+ * keeps the legacy reading — to the next `,` or newline — so this walk never
+ * makes a sloppy value shorter than it was.
+ */
+function readValueExpression(
+  text: string,
+  i: number,
+  bodyEnd: number,
+): { end: number; valueStart: number; valueEnd: number; delimiter: BibFieldSpan["delimiter"] } | null {
+  const terms: ValueTerm[] = [];
+  let at = i;
+  for (;;) {
+    const term = readValueTerm(text, at, bodyEnd);
+    if (!term) break;
+    terms.push(term);
+    const next = skipSpace(text, term.end, bodyEnd);
+    if (text[next] !== "#") break;
+    at = skipSpace(text, next + 1, bodyEnd);
+  }
+  const first = terms[0];
+  const last = terms[terms.length - 1];
+  const after = last ? skipSpace(text, last.end, bodyEnd) : i;
+  const clean = after >= bodyEnd || text[after] === ",";
+  if (!first || (!clean && last.delimiter === "bare")) {
+    // Legacy bare reading — no term here, or a bare token run on into text.
+    if (!first && (text[i] === "{" || text[i] === '"')) return null; // unclosed
+    let j = i;
+    while (j < bodyEnd && text[j] !== "," && text[j] !== "\n") j++;
+    let valueEnd = j;
+    while (valueEnd > i && /\s/.test(text[valueEnd - 1])) valueEnd--;
+    return { end: j, valueStart: i, valueEnd, delimiter: terms.length > 1 ? "concat" : "bare" };
+  }
+  if (terms.length > 1) {
+    return { end: last.end, valueStart: first.start, valueEnd: last.end, delimiter: "concat" };
+  }
+  const inner = first.delimiter === "bare" ? 0 : 1;
+  return {
+    end: first.end,
+    valueStart: first.start + inner,
+    valueEnd: first.end - inner,
+    delimiter: first.delimiter,
+  };
+}
+
 /**
  * Locate every `name = value` field inside ONE entry block, with its span.
  *
@@ -332,7 +456,10 @@ export function scanBibSource(text: string): BibSourceBlock[] {
  * used to corrupt the NAME of everything after it and drop the entry's later
  * fields.
  */
-export function scanBibFields(block: string): BibFieldSpan[] {
+export function scanBibFields(source: string): BibFieldSpan[] {
+  // The comment-masked view (task 1519): a `%` line between fields is blank
+  // here, so its commas and braces cannot hide or truncate the next field.
+  const block = maskBibComments(source);
   const blocks = scanBibSource(block);
   const head = blocks.find((b) => b.start === 0 && b.kind === "entry");
   if (!head) return [];
@@ -348,39 +475,27 @@ export function scanBibFields(block: string): BibFieldSpan[] {
     while (i < bodyEnd && /\s/.test(block[i])) i++;
     if (!name || block[i] !== "=") {
       // Not a field — skip to the next comma at this level so one oddity does
-      // not swallow the entry's remaining fields.
-      while (i < bodyEnd && block[i] !== ",") i++;
+      // not swallow the entry's remaining fields. A braced group is stepped
+      // over whole, so a comma inside it is not "the next comma".
+      while (i < bodyEnd && block[i] !== ",") {
+        const close = block[i] === "{" ? walkBlockBody(block, i, bodyEnd + 1, "value") : -1;
+        i = close === -1 ? i + 1 : close;
+      }
       continue;
     }
     i++; // past '='
     while (i < bodyEnd && /\s/.test(block[i])) i++;
-    let delimiter: BibFieldSpan["delimiter"];
-    let valueStart: number;
-    let valueEnd: number;
-    if (block[i] === "{") {
-      const close = walkBlockBody(block, i, bodyEnd + 1, "value");
-      if (close === -1) break;
-      delimiter = "brace";
-      valueStart = i + 1;
-      valueEnd = close - 1;
-      i = close;
-    } else if (block[i] === '"') {
-      const j = walkQuotedValue(block, i, bodyEnd);
-      if (j === -1) break;
-      delimiter = "quote";
-      valueStart = i + 1;
-      valueEnd = j;
-      i = j + 1;
-    } else {
-      let j = i;
-      while (j < bodyEnd && block[j] !== "," && block[j] !== "\n") j++;
-      delimiter = "bare";
-      valueStart = i;
-      valueEnd = j;
-      while (valueEnd > valueStart && /\s/.test(block[valueEnd - 1])) valueEnd--;
-      i = j;
-    }
-    fields.push({ name, start: nameStart, end: i, valueStart, valueEnd, delimiter });
+    const value = readValueExpression(block, i, bodyEnd);
+    if (!value) break;
+    i = value.end;
+    fields.push({
+      name,
+      start: nameStart,
+      end: i,
+      valueStart: value.valueStart,
+      valueEnd: value.valueEnd,
+      delimiter: value.delimiter,
+    });
     // An empty bare value (`title = ,`) leaves the cursor where the name
     // started, and the loop would spin on it forever. Progress is a property
     // of the scanner, not of the input.
@@ -494,8 +609,13 @@ export function applyPatches(source: string, patches: Patch[]): string {
   return out;
 }
 
-/** Does every brace in `text` balance (treating `\{` / `\}` as literal)? */
-export function bracesBalance(text: string): boolean {
+/**
+ * Does every brace in `text` balance (treating `\{` / `\}` as literal)?
+ * `%` comment lines are masked first (task 1519), the same model the scanner
+ * reads with — a `% checked {against print` note is not a brace of the block.
+ */
+export function bracesBalance(source: string): boolean {
+  const text = maskBibComments(source);
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -512,8 +632,20 @@ export function bracesBalance(text: string): boolean {
   return depth === 0;
 }
 
+/** What {@link spliceBibBlockResult} answers: the new block, or WHY not. */
+export type BibSpliceResult = { ok: true; text: string } | { ok: false; reason: string };
+
 /**
- * Splice `edit` into ONE entry block, returning the new block text.
+ * Splice `edit` into ONE entry block, returning the new block text — or `null`
+ * when it cannot be done safely. {@link spliceBibBlockResult} says why.
+ */
+export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null {
+  const r = spliceBibBlockResult(block, edit);
+  return r.ok ? r.text : null;
+}
+
+/**
+ * Splice `edit` into ONE entry block.
  *
  * **Every byte the edit does not name survives** — field order, spacing,
  * hand-formatting, `%` notes, and above all the fields Virgil's model does not
@@ -521,15 +653,24 @@ export function bracesBalance(text: string): boolean {
  * custom field). That is the whole point: the model is a projection, so a
  * rebuild FROM the projection deletes whatever the projection omits.
  *
- * Returns `null` when the block cannot be spliced safely — it has no entry
- * head at offset 0, or its braces do not balance so its extent is a guess.
- * The caller then falls back to its own emit, or refuses.
+ * REFUSES (with a reason a person can read) when the block cannot be spliced
+ * safely — it has no entry head at offset 0, its braces do not balance so its
+ * extent is a guess, or the edit SETS a field whose value is a `#`-joined
+ * expression (task 1519: the user's macro reference is meaningful, and there
+ * is no one term to put the new text in). The caller must then refuse too —
+ * never fall back to a rebuild from the projection, which is the loss this
+ * function exists to prevent.
  */
-export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null {
-  const blocks = scanBibSource(block);
+export function spliceBibBlockResult(block: string, edit: BibBlockEdit): BibSpliceResult {
+  const refuse = (reason: string): BibSpliceResult => ({ ok: false, reason });
+  const masked = maskBibComments(block);
+  const blocks = scanBibSource(masked);
   const head = blocks.find((b) => b.start === 0 && b.kind === "entry");
-  if (!head || !head.balanced || head.end !== block.length) return null;
-  const fields = scanBibFields(block);
+  if (!head) return refuse("its block in references.bib has no readable @type{key, … head");
+  if (!head.balanced || head.end !== block.length) {
+    return refuse("its block in references.bib has unbalanced braces, so its extent is a guess");
+  }
+  const fields = scanBibFields(masked);
   const patches: Patch[] = [];
 
   // The scanner lower-cases `head.type`; a type that differs only in CASE is
@@ -538,8 +679,8 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
     patches.push({ start: 1, end: 1 + head.type.length, text: edit.type });
   }
   if (edit.key !== undefined && edit.key !== head.key) {
-    const keyStart = block.indexOf(head.key, head.open + 1);
-    if (keyStart === -1) return null;
+    const keyStart = masked.indexOf(head.key, head.open + 1);
+    if (keyStart === -1) return refuse("its citekey could not be located in its block");
     patches.push({ start: keyStart, end: keyStart + head.key.length, text: edit.key });
   }
 
@@ -566,6 +707,12 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
       continue;
     }
     if (block.slice(hit.valueStart, hit.valueEnd) === value) continue; // byte-identical
+    if (hit.delimiter === "concat") {
+      return refuse(
+        `its "${hit.name}" field is several parts joined with # (a @string macro reference), ` +
+          "which an edit here would flatten — change it in references.bib directly",
+      );
+    }
     if (hit.delimiter === "bare") {
       // A bare value is a `@string` macro reference or a number. Replacing its
       // TOKEN with a literal is the only representable move, so wrap it.
@@ -576,21 +723,39 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
   }
 
   // Deletions take the field's own span plus the separator that joined it to
-  // its neighbour, so the block does not end up with a dangling comma.
+  // its neighbour, so the block does not end up with a dangling comma. The
+  // separator is looked for in the MASKED text, so a `%` line between two
+  // fields is whitespace to it rather than a wall.
   for (const hit of removed) {
     let start = hit.start;
     let end = hit.end;
     let k = end;
-    while (k < block.length && /[ \t]/.test(block[k])) k++;
-    if (block[k] === ",") {
+    while (k < masked.length && /[ \t]/.test(masked[k])) k++;
+    // The field's own line, when it stands alone on one: taking the line's
+    // indentation with it keeps the next line's indentation from doubling.
+    const lineStart = masked.lastIndexOf("\n", start - 1) + 1;
+    const ownLine = lineStart > 0 && /^[ \t]*$/.test(masked.slice(lineStart, start));
+    if (masked[k] === ",") {
       end = k + 1;
-      while (end < block.length && /[ \t]/.test(block[end])) end++;
-      if (block[end] === "\n") end++;
+      while (end < masked.length && /[ \t]/.test(masked[end])) end++;
+      if (masked[end] === "\n") {
+        end++;
+        if (ownLine) start = lineStart;
+      }
     } else {
       // Last field: take the comma BEFORE it instead.
       let p = start - 1;
-      while (p >= 0 && /\s/.test(block[p])) p--;
-      if (block[p] === ",") start = p;
+      while (p >= 0 && /\s/.test(masked[p])) p--;
+      if (masked[p] === ",") {
+        if (/^\s*$/.test(block.slice(p + 1, start))) {
+          start = p;
+        } else {
+          // A `%` line sits between the comma and the field: remove the comma
+          // and the field's own line, and leave the user's note where it was.
+          patches.push({ start: p, end: p + 1, text: "" });
+          if (ownLine) start = lineStart - 1;
+        }
+      }
     }
     patches.push({ start, end, text: "" });
   }
@@ -599,7 +764,7 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
 
   if (additions.length > 0) {
     const close = out.lastIndexOf(block[head.open] === "(" ? ")" : "}");
-    if (close === -1) return null;
+    if (close === -1) return refuse("its block lost its closing brace");
     // Match the indentation the block's own fields use, so an inserted field
     // looks like the ones around it rather than like a different writer. Read
     // it from the ORIGINAL block's last field (the spliced copy may have just
@@ -608,19 +773,29 @@ export function spliceBibBlock(block: string, edit: BibBlockEdit): string | null
     const lineStart = last ? block.lastIndexOf("\n", last.start) + 1 : -1;
     const lead = lineStart > 0 ? block.slice(lineStart, last!.start) : "";
     const indent = /^[ \t]+$/.test(lead) ? lead : "  ";
-    const before = out.slice(0, close);
-    const trimmedEnd = before.replace(/\s+$/, "");
-    const sep = trimmedEnd.endsWith(",") ? "" : ",";
+    // The insertion point is just past the last real CONTENT, read in the
+    // masked view: a trailing `% note` line must not receive the separator
+    // comma (it would be commented out, joining two fields with none). Any
+    // such trailing note is kept, after the new fields.
+    const maskedOut = maskBibComments(out);
+    let at = close;
+    while (at > 0 && /\s/.test(maskedOut[at - 1])) at--;
+    const sep = maskedOut[at - 1] === "," ? "" : ",";
+    const trailing = out.slice(at, close);
+    const note = /\S/.test(trailing) ? trailing.replace(/\s+$/, "") : "";
     out =
-      trimmedEnd +
+      out.slice(0, at) +
       sep +
       "\n" +
       additions.map((a) => `${indent}${a}`).join(",\n") +
+      note +
       "\n" +
       out.slice(close);
   }
 
   // Refusal 3 (ported): never hand back a block whose braces do not balance —
   // it would corrupt the file and make the NEXT splice refuse under refusal 1.
-  return bracesBalance(out) ? out : null;
+  return bracesBalance(out)
+    ? { ok: true, text: out }
+    : refuse("the edited value would leave its block with unbalanced braces");
 }

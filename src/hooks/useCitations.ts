@@ -8,6 +8,8 @@ import {
   didBibWriteLand,
   mutateProjectBib,
   type BibMutator,
+  type BibRefusal,
+  bibRefusal,
   type BibWriteResult,
   type BibSaveResult,
   type DocBibChangedDetail,
@@ -29,7 +31,7 @@ import {
 } from "@/lib/identity/identity-cascade";
 import { citesRenamedEntry, rewriteCiteCommandString } from "@/lib/identity/bib-cite-rewrite";
 import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
-import { spliceBibBlock } from "@/lib/bib-source";
+import { spliceBibBlockResult } from "@/lib/bib-source";
 import {
   bibAddressOf,
   bibKeyIndex,
@@ -150,10 +152,14 @@ export const CITATIONS_INERT: CitationsHook = {
  * `replaceBibEntry`'s set-all semantics, now scoped to the fields the editor
  * could actually see rather than to everything the projection omitted.
  *
- * Falls back to the from-scratch emit when there is no block to splice (an
- * entry assembled in memory) or when the block cannot be spliced safely.
+ * The from-scratch emit is ONLY for an entry with no source block at all (one
+ * assembled in memory). An entry that HAS a block the splice door refuses is
+ * REFUSED here too (task 1519), returning a {@link BibRefusal} the caller hands
+ * back from its mutator: falling back to the emit there rebuilt the block from
+ * the projection — deleting `isbn`, `abstract`, every `%` note and custom
+ * field — which is the exact loss the splice exists to prevent.
  */
-function rebuildRaw(prev: BibEntry, next: BibEntry): string {
+function rebuildRaw(prev: BibEntry, next: BibEntry): string | BibRefusal {
   // bib-display-exempt: non-display — a DIFF between two field maps on the way
   // to the `.bib`, the WRITE direction. Nothing here reaches a pixel, and
   // projecting a value would write the projection into the user's own file.
@@ -167,13 +173,13 @@ function rebuildRaw(prev: BibEntry, next: BibEntry): string {
     // user actually changed is written, so no projection of the head can
     // reach the disk on an edit to something else.
     const typeChanged = next.type.toLowerCase() !== prev.type.toLowerCase();
-    const spliced = spliceBibBlock(prev.raw, {
+    const spliced = spliceBibBlockResult(prev.raw, {
       key: next.key,
       ...(typeChanged ? { type: next.type } : {}),
       set,
       remove,
     });
-    if (spliced !== null) return spliced;
+    return spliced.ok ? spliced.text : bibRefusal(`"${prev.key}" — ${spliced.reason}`);
   }
   return emitBibBlock(next);
 }
@@ -544,13 +550,22 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   const updateBibEntry = useCallback(
     (entry: BibEntry, fields: Record<string, string>) => {
       const address = bibAddressOf(bibEntriesRef.current, entry);
-      runBibMutation((prev) =>
-        mapAddressedBibEntry(prev, address, (e) => {
+      runBibMutation((prev) => {
+        // A splice the door refuses is the mutator's answer (task 1519) — not
+        // a rebuild from the projection.
+        let refused: BibRefusal | null = null;
+        const next = mapAddressedBibEntry(prev, address, (e) => {
           const updated = { ...e, fields: { ...e.fields, ...fields } };
-          updated.raw = rebuildRaw(e, updated);
+          const raw = rebuildRaw(e, updated);
+          if (typeof raw !== "string") {
+            refused = raw;
+            return e;
+          }
+          updated.raw = raw;
           return updated;
-        }),
-      );
+        });
+        return refused ?? next;
+      });
     },
     [runBibMutation],
   );
@@ -682,6 +697,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       let bibKeys: readonly string[] = [];
       return runBibMutation((prev) => {
         conflict = null;
+        let refused: BibRefusal | null = null;
         bibKeys = prev.map((e) => e.key);
         const next = mapAddressedBibEntry(prev, address, (e) => {
           // A delta save rebases onto THIS run's entry; an absolute save is
@@ -700,11 +716,17 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
             type: base ? merged.type : newType,
             ...(base || patch.fields ? { fields: { ...merged.fields } } : {}),
           };
-          updated.raw = rebuildRaw(e, updated);
+          const raw = rebuildRaw(e, updated);
+          if (typeof raw !== "string") {
+            refused = raw; // the splice door refused the block (task 1519)
+            return e;
+          }
+          updated.raw = raw;
           return updated;
         });
         // Nothing to change on a conflict — and nothing written.
-        return conflict ? null : next;
+        if (conflict) return null;
+        return refused ?? next;
       }).then((result): BibSaveResult => {
         if (conflict) {
           // The view may have taken the edit optimistically (it had not yet
