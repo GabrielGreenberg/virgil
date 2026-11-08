@@ -240,3 +240,26 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
 
   return { active, disabled, getItemProps };
 }
+
+/**
+ * The props a COMPOUND cell's wrapper spreads — a row that registers the menu
+ * node but hosts its own interactive control (`MarkerMenuRow`'s `MarkerButton`,
+ * `BlockTypeGridCell`'s dropdown trigger), whose `run` clicks that control.
+ *
+ * Everything `getItemProps()` returns EXCEPT `onClick` (the inner control owns
+ * the click; a wrapper `onClick` would run it a second time) and `style` (the
+ * cell merges its own). The wrapper composes `ref` with its own.
+ *
+ * One door instead of hand-picking (task 1529): both compound cells forwarded
+ * a hand-chosen subset, so `aria-keyshortcuts` (task 1362) and `aria-disabled`
+ * — added to `MenuItemProps` after they were written — silently never reached
+ * the DOM, and a row's announced verbs went unsaid.
+ */
+export function compoundCellProps(
+  props: MenuItemProps,
+): Omit<MenuItemProps, "onClick" | "style"> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { onClick, style, ...rest } = props;
+  return rest;
+}
+

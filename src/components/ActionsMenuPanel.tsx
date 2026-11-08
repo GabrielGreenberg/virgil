@@ -74,7 +74,7 @@ import {
   MenuItemsFromRegistry,
   type DecoratedMenuRow,
 } from "./menu/MenuItemsFromRegistry";
-import { useMenuItem } from "./menu/useMenuItem";
+import { compoundCellProps, useMenuItem } from "./menu/useMenuItem";
 import { MenuSeparator } from "./menu/MenuChrome";
 import { menuCellToneStyle, menuRowRovingStyle } from "./menu/row-tone";
 import { actionHint } from "@/components/action-hint";
@@ -1070,18 +1070,14 @@ function BlockTypeGridCell({
       wrapRef.current?.querySelector("button")?.click();
     },
   });
-  const itemProps = getItemProps();
+  const cell = compoundCellProps(getItemProps());
   return (
     <div
+      {...cell}
       ref={(el) => {
         wrapRef.current = el;
-        itemProps.ref(el);
+        cell.ref(el);
       }}
-      role={itemProps.role}
-      id={itemProps.id}
-      data-active={itemProps["data-active"]}
-      onMouseEnter={itemProps.onMouseEnter}
-      onMouseMove={itemProps.onMouseMove}
       className="flex items-center justify-center"
       style={{
         height: FORMATTING_ROW_H,

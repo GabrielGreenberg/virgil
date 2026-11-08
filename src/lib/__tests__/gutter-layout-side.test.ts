@@ -10,12 +10,13 @@ import { panelSidesFromPlacements, resolvePanelSide } from "@/lib/panel-side";
 import { resolveMarginSide } from "@/lib/margin-side";
 import { appliedPendingSide, deriveCategorySides } from "@/panels/Omni/omni-categories";
 import { omniSideToReveal, panelSideOf } from "@/hooks/view-prefs-derived";
+import type { PanelPlacement } from "@/hooks/useViewPrefs";
 
 afterEach(() => setFlagOverride("virgil:gutter-layout", false));
 
-const placements = [
-  { id: "footnotes", side: "left" as const },
-  { id: "notes", side: "left" as const },
+const placements: PanelPlacement[] = [
+  { id: "footnotes", side: "left" },
+  { id: "notes", side: "left" },
 ];
 
 describe("gutter layout — every card on the right", () => {
