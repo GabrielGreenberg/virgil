@@ -439,8 +439,7 @@ export function FieldBlock({
           onKeyDown={readOnly ? undefined : onTextareaKeyDown}
           placeholder={readOnly ? "" : FIELD_PLACEHOLDER[field]}
           style={textareaStyle}
-          className={`${FIELD_TEXTAREA_CLASS[field]}${readOnly ? " cursor-default" : ""}`}
-          rows={2}
+          className={`card-textarea ${FIELD_TEXTAREA_CLASS[field]}${readOnly ? " cursor-default" : ""}`}
         />
       )}
     </div>

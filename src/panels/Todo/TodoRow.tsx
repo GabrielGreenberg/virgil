@@ -194,8 +194,7 @@ export function TodoRow({
               placeholder={cardBodyPlaceholder("todo")}
               data-panel-kind="todo"
               style={todoBodyStyle}
-              className={`w-full bg-transparent placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed mt-1${isPoppedOut ? " flex-1 min-h-0" : ""}`}
-              rows={isPoppedOut ? undefined : 2}
+              className={`card-textarea w-full bg-transparent placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed mt-1${isPoppedOut ? " flex-1 min-h-0" : ""}`}
             />
           </>
         )}
