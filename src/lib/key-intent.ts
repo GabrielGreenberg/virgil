@@ -72,6 +72,22 @@ export function isCommitEnter(e: ImeProbe & { key: string }): boolean {
   return e.key === "Enter" && !isImeComposing(e);
 }
 
+type ModifierProbe = Pick<KeyboardEvent, "shiftKey" | "metaKey" | "ctrlKey" | "altKey">;
+
+/**
+ * No modifier held (task 1544) — the ONE spelling of "plain". A key that DRIVES
+ * a transient surface over a text caret (a roving row cursor, a commit) answers
+ * only its unmodified press: Shift/Alt/Cmd/Ctrl+Arrow extend the selection or
+ * jump by word/line/doc, Shift+Tab outdents a list item or promotes an example,
+ * and a surface that answered those would swallow the editor's own meaning.
+ * Readers: `isPlainCommitEnter`, the menu keyboard controller
+ * (`useMenuKeyboard`), the combobox nav gate (`useMenuCombobox`), the slash
+ * popup's arrow + Tab doors.
+ */
+export function hasNoModifiers(e: ModifierProbe): boolean {
+  return !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+}
+
 /**
  * A commit Enter with NO modifier held (task 1496) — the second spelling, for a
  * door whose Enter CONVERTS something (a typed `\command`, a popup row) rather
@@ -79,12 +95,12 @@ export function isCommitEnter(e: ImeProbe & { key: string }): boolean {
  * their own meanings (a hard break, an app command); a converting door that
  * answered them would swallow those meanings. Repeat stays the caller's
  * question. Readers: the slash surface's two Enter doors, `isPlainEnter`
- * (dialogs), the menu keyboard controller.
+ * (dialogs).
  */
 export function isPlainCommitEnter(
-  e: ImeProbe & { key: string } & Pick<KeyboardEvent, "shiftKey" | "metaKey" | "ctrlKey" | "altKey">,
+  e: ImeProbe & { key: string } & ModifierProbe,
 ): boolean {
-  return isCommitEnter(e) && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+  return isCommitEnter(e) && hasNoModifiers(e);
 }
 
 /**

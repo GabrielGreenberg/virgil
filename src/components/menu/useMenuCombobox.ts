@@ -35,6 +35,7 @@ import { useMenuContext } from "./context";
 import {
   isCancelEscape,
   isCommitEnter,
+  hasNoModifiers,
   isImeComposing,
   swallowRepeatsUntilKeyup,
 } from "@/lib/key-intent";
@@ -144,7 +145,7 @@ export function useMenuCombobox(): UseMenuComboboxResult {
           e.preventDefault();
           return;
         }
-        const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+        const plain = hasNoModifiers(e);
         // Horizontal-arrow override (BibPicker expand/collapse). Intercept a
         // PLAIN Left/Right BEFORE the controller so the row-detail binding wins
         // — the controller would otherwise swallow it inertly in a list layout.

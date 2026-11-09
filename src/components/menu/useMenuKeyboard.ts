@@ -37,6 +37,7 @@ import {
   isCancelEscape,
   isCommitEnter,
   editsDocument,
+  hasNoModifiers,
   isImeComposing,
   swallowRepeatsUntilKeyup,
 } from "@/lib/key-intent";
@@ -197,7 +198,7 @@ export function useMenuKeyboard(
     // Cmd+Enter, …) passes THROUGH to the editor untouched, matching the
     // bare-letter fast-path's modifier guard and the old menus' pass-through of
     // editor selection gestures.
-    const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+    const plain = hasNoModifiers(e);
 
     // Keys an IME is composing with are the IME's (task 994): the Enter that
     // COMMITS a candidate in a combobox query — or in the editor behind an

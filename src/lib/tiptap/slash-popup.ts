@@ -13,7 +13,12 @@ import {
   slashDisabledNames,
   stepEnabledIndex,
 } from "./slash-applicability";
-import { isCancelEscape, isPlainCommitEnter } from "@/lib/key-intent";
+import {
+  hasNoModifiers,
+  isCancelEscape,
+  isPlainCommitEnter,
+  swallowRepeatsUntilKeyup,
+} from "@/lib/key-intent";
 import { claimGestureKey } from "@/lib/pane-resize/pointer-invariants";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 
@@ -294,10 +299,19 @@ export const SlashPopupExtension = Extension.create({
             const cur = slashPopupKey.getState(view.state);
             if (!cur || !cur.open) return false;
 
+            // Only a PLAIN key drives the popup (task 1544) — the same
+            // `hasNoModifiers` gate the menu controller and the combobox ask.
+            // Shift/Alt/Cmd/Ctrl+Arrow extend the selection or jump the caret
+            // (and the selection change closes the popup, task 1196);
+            // Shift+Tab lifts a list item or promotes an example. Those are
+            // the editor's keys, so a modified press falls through untouched.
+            // Escape is the exception: any Escape cancels the popup.
+            const plain = hasNoModifiers(event);
+
             // Arrow navigation SKIPS greyed rows — the same visible-disabled
             // idiom `MenuActionRow` / the lightning grid already use, so the
             // roving selection can only ever sit on a command Enter can run.
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if (plain && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
               event.preventDefault();
               const n = cur.filtered.length;
               if (n === 0) return true;
@@ -319,10 +333,17 @@ export const SlashPopupExtension = Extension.create({
             }
 
             // PLAIN Enter only (task 1496) — a modified Enter is a hard break or
-            // an app command, not "run the highlighted row".
-            if (isPlainCommitEnter(event) || event.key === "Tab") {
+            // an app command, not "run the highlighted row". PLAIN Tab likewise
+            // (task 1544).
+            if (isPlainCommitEnter(event) || (plain && event.key === "Tab")) {
               if (cur.filtered.length === 0) return false;
               event.preventDefault();
+              // A commit answers the FIRST press only (the combobox doctrine,
+              // `useMenuCombobox`): a held key's repeat is consumed, never
+              // re-run, and once the commit has closed the popup the repeats
+              // are swallowed until keyup so they cannot split the block the
+              // command just converted.
+              if (event.repeat) return true;
               // The key is CONSUMED either way, and that is a decision rather
               // than an accident: activating a disabled control does nothing —
               // the idiom both menus already use — so a refusal leaves the
@@ -331,6 +352,7 @@ export const SlashPopupExtension = Extension.create({
               // The popup closes on the refusal, so the user's NEXT Enter is
               // an ordinary one.
               executeSelection(view, cur);
+              swallowRepeatsUntilKeyup(event);
               return true;
             }
 
@@ -338,9 +360,13 @@ export const SlashPopupExtension = Extension.create({
               // CLAIMED (task 1441): the open popup is the innermost transient
               // thing on screen, so this Escape closes it and nothing behind
               // it — not `useMarginEdit`'s window cancel, not a scrimless
-              // window's Escape.
+              // window's Escape. And like every closing Escape door it answers
+              // the first press only and swallows the held key's repeats, so
+              // one held Escape cannot also cancel the surface behind it.
               claimGestureKey(event);
+              if (event.repeat) return true;
               view.dispatch(view.state.tr.setMeta(META_KEY, CLOSED));
+              swallowRepeatsUntilKeyup(event);
               return true;
             }
 

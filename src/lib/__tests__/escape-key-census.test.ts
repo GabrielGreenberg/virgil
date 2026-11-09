@@ -33,8 +33,6 @@ const FIELD =
   "inline-field cancel: the first press reverts and leaves edit mode; a repeat falls to the enclosing door (dialog / margin edit / menu), which gates it";
 const GESTURE =
   "pointer-gesture cancel: the first press ends the gesture and removes this listener";
-const POPUP =
-  "claimed popup close: the first press closes it; a repeat falls to the enclosing door, which gates it";
 const MENU = "menu-door population: repeat is answered by useMenuDismiss (task 1188)";
 
 /**
@@ -68,7 +66,6 @@ const REPEAT_LEDGER: Record<string, string> = {
   "src/text-objects/TextObjectGrabHandle.tsx": GESTURE,
   "src/components/drop-mode/pending-session.ts": GESTURE,
   "src/components/drop-mode/controller.ts": GESTURE,
-  "src/lib/tiptap/slash-popup.ts": POPUP,
   "src/components/HintLayer.tsx": "idempotent hide: a repeat hides an already-hidden hint",
   "src/components/library/BibEntryPickerMenu.tsx": MENU,
 };
