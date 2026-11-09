@@ -20,7 +20,11 @@
  *  - `no-source` — the source no longer resolves. NOT a refusal to report:
  *                  `SourceMissingBanner` already owns that fact.
  *  - `refused`   — the edit could not be written (wrong root shape, a node
- *                  that fails the schema). The surface must SHOW `reason`.
+ *                  that fails the schema), OR main did not ADMIT the dispatch
+ *                  (task 1546 — its `readOnlyEnforcer` drops every doc change
+ *                  on a read-only paper, silently). The surface must SHOW
+ *                  `reason`. "Landed" is MEASURED after the dispatch, never
+ *                  assumed from having dispatched.
  *
  * The plan builder may throw (a `nodeFromJSON` schema failure) or return
  * `refuseWrite(reason)`; both become `refused`. Nothing here walks the doc —
@@ -30,6 +34,7 @@
 import type { Editor } from "@tiptap/react";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
+import { dispatchLanded } from "@/components/drop-mode/commit-seam";
 import type { SourceRange } from "@/lib/float-source-range";
 
 export interface FloatWritePlan {
@@ -54,6 +59,12 @@ export type FloatWriteOutcome =
 export function refuseWrite(reason: string): FloatWriteRefusal {
   return { refused: reason };
 }
+
+/** The reason a write main did not admit is reported under (task 1546). Its
+ *  one filter that drops a float's write is the read-only enforcer, so say
+ *  that — shared with every door that measures a float write. */
+export const MAIN_REFUSED_WRITE_REASON =
+  "This edit wasn't saved — the paper is read-only right now.";
 
 /** The reason a root-shape mismatch is reported under. Shared so every
  *  surface words the same failure the same way. */
@@ -137,7 +148,9 @@ export function landFloatWrite(
     if (!tr.docChanged) return { status: "unchanged" };
     tr.setMeta("addToHistory", false);
     tr.setMeta(FLOAT_WRITE_META, floatId);
-    main.view.dispatch(tr);
+    if (!dispatchLanded(main, tr)) {
+      return { status: "refused", reason: MAIN_REFUSED_WRITE_REASON };
+    }
     return { status: "landed", from: p.from, to: p.from + contentSize(p.content) };
   } catch (err) {
     return {

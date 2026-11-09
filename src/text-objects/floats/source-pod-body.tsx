@@ -40,6 +40,7 @@ import {
 } from "@/lib/float-source-range";
 import { useMainTransactionSync } from "@/lib/float-sync";
 import { writeSourcePodAttrs } from "@/lib/tiptap/source-pod-write";
+import { MAIN_REFUSED_WRITE_REASON } from "@/lib/float-write-back";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 import type { FloatSourceKind } from "@/lib/float-sync";
 import { FloatTitleField } from "./float-title-field";
@@ -112,8 +113,16 @@ export function SourcePodFloatBody({
   // (see `SourcePodFloatConfig.derive`), so a refusal travels with the block.
   const banner = useMemo(() => (derive ? derive(code).banner : null), [derive, code]);
 
+  // The float's last REFUSED write, rendered through `FloatBodyFrame`'s
+  // `WriteRefusedBanner` like every other float (task 1546).
+  const [writeRefusal, setWriteRefusal] = useState<string | null>(null);
+
+  // The ONE write path for both of this float's fields (code and title), so
+  // they report the same outcomes the same way (task 1546 — the title used to
+  // return without a word on a missing source while the code raised the
+  // banner, and neither noticed main refusing the write).
   const writeBackToMain = useCallback(
-    (next: string) => {
+    (attrs: Record<string, unknown>) => {
       if (!mainEditable) return;
       const ed = ref.current?.getEditor();
       if (!ed) return;
@@ -130,53 +139,36 @@ export function SourcePodFloatBody({
       // The ONE source-pod door (task 1533): unrecorded whole-node replace,
       // which also ENDS main's history for this pod, so a main undo cannot
       // replay an older snapshot over what is typed here.
-      writeSourcePodAttrs(ed.view, src.start, src.node, { [sourceAttr]: next }, {
+      const result = writeSourcePodAttrs(ed.view, src.start, src.node, attrs, {
         kind: "float",
         floatId: `${kind}:${uuid}`,
       });
+      // A refusal raises the banner; a landed or no-op write means the float
+      // equals what main holds, so it clears (`nextWriteRefusal`'s rule).
+      setWriteRefusal(result === "refused" ? MAIN_REFUSED_WRITE_REASON : null);
     },
-    [ref, uuid, kind, sourceAttr, mainEditable],
+    [ref, uuid, kind, mainEditable],
   );
 
   const handleChange = useCallback(
     (val: string) => {
       if (val === code) return;
       setCode(val);
-      writeBackToMain(val);
+      writeBackToMain({ [sourceAttr]: val });
     },
-    [code, writeBackToMain],
-  );
-
-  const writeTitleBackToMain = useCallback(
-    (next: string | null) => {
-      if (!mainEditable) return;
-      const ed = ref.current?.getEditor();
-      if (!ed) return;
-      const src = findSourceNodeByUuid(
-        ed.state.doc,
-        uuid,
-        kind,
-        sourceRangeRef.current,
-      );
-      if (!src) return;
-      // Same door as the code write — so the title, too, is unrecorded like
-      // every float write (it alone used to be history-recorded, and its
-      // whole-node inverse reverted the float's code on a main Cmd-Z).
-      writeSourcePodAttrs(ed.view, src.start, src.node, { parTitle: next }, {
-        kind: "float",
-        floatId: `${kind}:${uuid}`,
-      });
-    },
-    [ref, uuid, kind, sourceAttr, mainEditable],
+    [code, writeBackToMain, sourceAttr],
   );
 
   const commitTitle = useCallback(
     (next: string | null) => {
       setTitle(next);
       setEditingTitle(false);
-      writeTitleBackToMain(next);
+      // Same door as the code write — so the title, too, is unrecorded like
+      // every float write (it alone used to be history-recorded, and its
+      // whole-node inverse reverted the float's code on a main Cmd-Z).
+      writeBackToMain({ parTitle: next });
     },
-    [writeTitleBackToMain],
+    [writeBackToMain],
   );
 
   // main → float: re-read the node's attrs into local state. Same-value
@@ -216,6 +208,7 @@ export function SourcePodFloatBody({
       cardKey={cardKey}
       sourceKind={kind}
       sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
     >
       {/* Body mirrors paragraph-body.tsx's chrome contract so the float
           honors the lifted-overlay spawn geometry exactly (L3e.2):

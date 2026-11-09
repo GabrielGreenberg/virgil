@@ -57,6 +57,7 @@ import { useReportFloatSourceMissing } from "@/floats/float-source-report";
 import { trackSourceRange, type SourceRange } from "@/lib/float-source-range";
 import { nextWriteRefusal, type FloatWriteOutcome } from "@/lib/float-write-back";
 import { InlineError } from "@/components/InlineError";
+import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 
 export type { SourceRange };
 
@@ -365,9 +366,38 @@ export interface ReadSourceResult {
   range?: SourceRange | null;
 }
 
+/**
+ * THE float editability gate (task 1546) — the ONE answer every float body
+ * mounts its editor with and `useFloatMainSync` keeps it at.
+ *
+ * A float's edits land in MAIN, and main refuses every doc-changing write
+ * while it is read-only (`readOnlyEnforcer.filterTransaction` — silently: main
+ * pins `view.editable` true so the grab handle can still LIFT text out of a
+ * Reader). So a float that accepted typing on a read-only paper accepted text
+ * that could never land, and the next main→float re-read wiped it. The live
+ * half is `useMainEditable` (main's declarative `data-editable`, which follows
+ * a mid-session flip — pen handed to a partner, file turned read-only); the
+ * static half is the body's own reason to be read-only (a Reader chrome
+ * preset, a display-math float, a linked range the popout cannot represent).
+ *
+ * Which modules must take it is `float-editable-gate-census.test.ts`.
+ */
+export function useFloatEditable(
+  mainEditor: Editor | null | undefined,
+  staticAllow: boolean = true,
+): boolean {
+  const mainEditable = useMainEditable(mainEditor);
+  return staticAllow && mainEditable;
+}
+
 export interface UseFloatMainSyncArgs {
   mainEditor: Editor | null;
   floatEditor: Editor | null;
+  /** The float's editability — `useFloatEditable`'s value, the same one the
+   *  body mounts its editor with. The hook keeps the live editor at it, so a
+   *  read-only flip after mount reaches the float (task 1546). Required: a
+   *  body cannot join the sync and forget the gate. */
+  editable: boolean;
   /** Stable id used to tag transactions the caller dispatches into main,
    *  so this hook's listener can skip its own echoes. */
   floatId: string;
@@ -394,6 +424,7 @@ export interface UseFloatMainSyncArgs {
 export function useFloatMainSync({
   mainEditor,
   floatEditor,
+  editable,
   floatId,
   readSource,
 }: UseFloatMainSyncArgs): {
@@ -444,6 +475,16 @@ export function useFloatMainSync({
       onConverged,
     );
   }, [mainEditor, floatEditor, readSource, onConverged]);
+
+  // Keep the live float at the gate's answer: the mount took its value then,
+  // and this follows every later flip (task 1546). Identity-bailed, and no
+  // `update` emitted — the content did not change, so there is nothing for the
+  // body's write-back to send.
+  useEffect(() => {
+    if (floatEditor && !floatEditor.isDestroyed && floatEditor.isEditable !== editable) {
+      floatEditor.setEditable(editable, false);
+    }
+  }, [floatEditor, editable]);
 
   useMainTransactionSync({
     // Subscribe (and seed) only once both editors exist — the seed call

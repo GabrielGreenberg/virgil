@@ -152,6 +152,7 @@ function mountParagraphFloat(main: Editor, uuid: string) {
     useFloatMainSync({
       mainEditor: main,
       floatEditor: float,
+      editable: true,
       floatId: `par:${uuid}`,
       readSource,
     }),
@@ -693,6 +694,7 @@ describe("float source-touch gate — a nested item watches its container", () =
       useFloatMainSync({
         mainEditor: main,
         floatEditor: float,
+        editable: true,
         floatId: `listItem:${uuid}`,
         readSource,
       }),
@@ -797,6 +799,7 @@ describe("float source-touch gate — a heading float tracks its whole section",
       useFloatMainSync({
         mainEditor: main,
         floatEditor: float,
+        editable: true,
         floatId: `heading:${uuid}`,
         readSource,
       }),

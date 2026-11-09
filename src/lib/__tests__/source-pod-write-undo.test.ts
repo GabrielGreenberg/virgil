@@ -194,8 +194,8 @@ describe("source-pod write door — main undo never reverts float-typed code", (
   it("an unchanged write dispatches nothing", () => {
     const e = mount("A");
     const before = e.state;
-    expect(write(e, { code: "A" }, IN_PLACE)).toBe(false);
-    expect(write(e, { code: "A" }, FLOAT)).toBe(false);
+    expect(write(e, { code: "A" }, IN_PLACE)).toBe("unchanged");
+    expect(write(e, { code: "A" }, FLOAT)).toBe("unchanged");
     expect(e.state).toBe(before);
   });
 });

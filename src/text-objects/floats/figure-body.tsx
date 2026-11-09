@@ -45,6 +45,7 @@ import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { parseAnyKey } from "@/floats/float-key";
 import {
+  useFloatEditable,
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
@@ -125,6 +126,8 @@ export function FigureBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  // THE float editability gate (task 1546): main's live read-only state.
+  const floatEditable = useFloatEditable(mainEditor);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
@@ -134,7 +137,7 @@ export function FigureBody({
       // Task 1170: the doc is exactly one kind node — no edit can leave
       // the float without it.
       boundRoot: soleRoot(kind),
-      editable: true,
+      editable: floatEditable,
       cardContext: false,
       // The figure NodeView's third mode: editable caption + read-only image,
       // no chrome. Click-to-edit DOES fire and routes the save back into THIS
@@ -151,7 +154,7 @@ export function FigureBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: true,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -234,6 +237,7 @@ export function FigureBody({
     reportWrite,
   } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,

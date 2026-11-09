@@ -45,6 +45,7 @@ import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import {
+  useFloatEditable,
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
@@ -296,13 +297,15 @@ export function ListItemBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  // THE float editability gate (task 1546): main's live read-only state.
+  const floatEditable = useFloatEditable(mainEditor);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
-      editable: true,
+      editable: floatEditable,
       cardContext: true,
       // Task 1170: the float doc is exactly one bulletList wrapper — Cmd-A
       // selects its content, and no edit can leave the float without it.
@@ -315,7 +318,7 @@ export function ListItemBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: true,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -398,6 +401,7 @@ export function ListItemBody({
     reportWrite,
   } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,

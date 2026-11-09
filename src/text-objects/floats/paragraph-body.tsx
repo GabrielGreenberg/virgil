@@ -43,6 +43,7 @@ import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import {
+  useFloatEditable,
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
@@ -100,13 +101,15 @@ export function ParagraphBody({
   onConfirmHeadingDeleteRef.current = (typeName) =>
     ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
+  // THE float editability gate (task 1546): main's live read-only state ∧ this body's own static reason.
+  const floatEditable = useFloatEditable(mainEditor, chrome.showParagraphFloatTitleEdit);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
-      editable: chrome.showParagraphFloatTitleEdit,
+      editable: floatEditable,
       cardContext: true,
       // Task 1170: the doc is exactly one paragraph — an Enter that would
       // split it (whose second half the write-back could never carry) is
@@ -126,7 +129,7 @@ export function ParagraphBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: chrome.showParagraphFloatTitleEdit,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -207,6 +210,7 @@ export function ParagraphBody({
     reportWrite,
   } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,

@@ -122,6 +122,7 @@ function mountFloat(
     useFloatMainSync({
       mainEditor: main as unknown as ReactEditor,
       floatEditor: float as unknown as ReactEditor,
+      editable: true,
       floatId,
       readSource,
     }),
