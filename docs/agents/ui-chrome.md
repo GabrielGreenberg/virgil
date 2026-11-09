@@ -114,12 +114,20 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      [gutter-lists.ts](../../src/components/editor-layout/tool-gutter/gutter-lists.ts),
      wired in [ReadingLists.tsx](../../src/components/editor-layout/tool-gutter/ReadingLists.tsx)).
      One row model: a click selects (no scroll); hover/focus shows ↗ jump and ⌄
-     open (a bib entry cited more than once shows ‹ › instead, stepping through
-     its citations); open turns the row IN PLACE into the kind's own card
+     open; open turns the row IN PLACE into the kind's own card
      ([GutterCardBody.tsx](../../src/components/editor-layout/tool-gutter/GutterCardBody.tsx):
-     FootnoteCard and its orphan/unanchored twins, BibEntryCard plus a "Cited
-     in" list, ExampleCard) — one open per list, closed by ⌃ or Escape (a card
-     field that handled Escape keeps it); ↑/↓ move between rows; a 2px accent bar
+     FootnoteCard and its orphan/unanchored twins, ExampleCard) — one open per
+     list, closed by ⌃ or Escape (a card field that handled Escape keeps it).
+     Bibliography rows instead open from a ⌄ at their LEFT edge
+     (`leadingToggle`, no hover buttons) into a compact view
+     ([BibOpenView.tsx](../../src/components/editor-layout/tool-gutter/BibOpenView.tsx)):
+     the reference; PDF ↗ when the library holds the paper
+     (`@/lib/library/open-library-pdf` — the window opens inside the click, a
+     missing file closes it and shows an inline message), the citekey, the
+     status word; "Cited in" with ‹ n / N › and one 2-line sentence per
+     citation (the cite bold, the current one tinted; a click jumps there); the
+     annotation as one line; and a foot — Edit entry · Note · Check with
+     Claude — each opening ONE part of BibEntryCard (`section`); ↑/↓ move between rows; a 2px accent bar
      marks rows whose anchor is on screen (an IntersectionObserver over the
      anchors' own nodes, re-synced on structural revisions only). Footnotes group
      under their top-level sections, numbered as the paper does, with orphaned

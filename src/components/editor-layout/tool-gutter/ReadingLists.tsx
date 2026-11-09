@@ -9,7 +9,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Node as PMNode } from "@tiptap/pm/model";
 import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
 import type { BibEntry, BibEntryRequest, FootnoteRef, OrphanedFootnote } from "@/lib/types";
 import type { SaveBibEntry } from "@/hooks/useCitations";
@@ -30,7 +29,6 @@ import { readDocStructure } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { countLabelRefs } from "@/lib/tiptap/label-rename";
-import { richJsonToPlainText } from "@/lib/footnote-content";
 import { downloadCitedBib } from "@/lib/bib-export-cited";
 import { startBibEntryDrag } from "@/components/bib-entry-drag";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
@@ -43,16 +41,14 @@ import { useCardArchiveView } from "@/panels/_shared/card-archive-view";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
-import { useCitationDisplayContextOrNull } from "../contexts/citation-display";
 import { GutterList } from "./GutterList";
-import { readableInline } from "./gutter-rows";
+import { BibOpenView } from "./BibOpenView";
 import {
   bibliographyGroups,
   citationsByKey,
   exampleGroups,
   footnoteGroups,
   referenceParts,
-  sectionIndexAt,
   topSections,
   type GutterCardRef,
   type GutterCitation,
@@ -92,6 +88,8 @@ export interface ReadingListsData {
     entryRequests: readonly BibEntryRequest[];
     addEntryRequest: (description: string) => void;
     removeEntryRequest: (id: string) => void;
+    /** The entry's annotation, shown as one line in its open view. */
+    getAnnotation?: (key: string) => string;
   };
 }
 
@@ -248,20 +246,17 @@ export function ReadingList({
     [editorRef, sel, data],
   );
 
-  const onStep = useCallback(
-    (row: GutterListRow, delta: 1 | -1, el: HTMLElement | null) => {
-      const key = row.bibKey;
-      if (!key) return;
-      const ids = byKey.get(key) ?? [];
-      if (ids.length === 0) return;
-      const cur = occurrence[key] ?? -1;
-      const next = (((cur + delta) % ids.length) + ids.length) % ids.length;
-      setOccurrence((o) => ({ ...o, [key]: next }));
+  /** Jump to the `i`th citation of `key` and make it the current one. */
+  const goTo = useCallback(
+    (key: string, i: number, el: HTMLElement | null) => {
+      const id = (byKey.get(key) ?? [])[i];
+      if (!id) return;
+      setOccurrence((o) => ({ ...o, [key]: i }));
       sel.setSelectedBibKey(key);
-      editorRef.current?.scrollToCitation(ids[next], el);
-      data.onActiveCitation?.(ids[next]);
+      editorRef.current?.scrollToCitation(id, el);
+      data.onActiveCitation?.(id);
     },
-    [byKey, occurrence, sel, editorRef, data],
+    [byKey, sel, editorRef, data],
   );
 
   const onOpenChange = useCallback(
@@ -279,25 +274,26 @@ export function ReadingList({
   );
 
   const renderCard = useCallback(
-    (card: GutterCardRef) => (
-      <>
-        {data.renderCard(card)}
-        {card.kind === "bib" && (
-          <CitedIn
-            citationIds={byKey.get(card.key) ?? []}
-            cites={data.editorCitations}
-            bibEntries={data.bibEntries}
-            sections={sections}
-            doc={editorInstance && !editorInstance.isDestroyed ? editorInstance.state.doc : null}
-            onJump={(citationId, el) => {
-              editorRef.current?.scrollToCitation(citationId, el);
-              data.onActiveCitation?.(citationId);
-            }}
-          />
-        )}
-      </>
-    ),
-    [data, byKey, sections, editorInstance, editorRef],
+    (card: GutterCardRef, row: GutterListRow, close: () => void) =>
+      card.kind === "bib" ? (
+        <BibOpenView
+          row={row}
+          bibKey={card.key}
+          close={close}
+          citationIds={byKey.get(card.key) ?? []}
+          current={occurrence[card.key] ?? -1}
+          goTo={(i, el) => goTo(card.key, i, el)}
+          cites={data.editorCitations}
+          bibEntries={data.bibEntries}
+          sections={sections}
+          doc={editorInstance && !editorInstance.isDestroyed ? editorInstance.state.doc : null}
+          annotation={data.bibActions?.getAnnotation?.(card.key)}
+          renderSection={data.renderCard}
+        />
+      ) : (
+        data.renderCard(card)
+      ),
+    [data, byKey, occurrence, goTo, sections, editorInstance],
   );
 
   return (
@@ -386,8 +382,8 @@ export function ReadingList({
         hereIds={hereIds}
         onSelect={onSelect}
         onJump={onJump}
-        onStep={kind === "bibliography" ? onStep : undefined}
         renderCard={renderCard}
+        leadingToggle={kind === "bibliography" ? (row) => !!row.bibKey : undefined}
         onOpenChange={onOpenChange}
         canDrag={kind === "bibliography" ? (row) => !!rowEntry(row) : undefined}
         onRowDragStart={(row, e) => {
@@ -643,81 +639,4 @@ function filterBib(groups: GutterListGroup[], query: string | null): GutterListG
   return groups
     .map((g) => ({ ...g, rows: g.rows.filter((r) => words.every((w) => text(r).includes(w))) }))
     .filter((g) => g.rows.length > 0);
-}
-
-/**
- * "Cited in" — each citation of an open bibliography entry, as the sentence it
- * sits in, with its section. Read from the live doc when the card opens;
- * nothing here runs per keystroke.
- */
-function CitedIn({
-  citationIds,
-  cites,
-  bibEntries,
-  sections,
-  doc,
-  onJump,
-}: {
-  citationIds: readonly string[];
-  cites: readonly GutterCitation[];
-  bibEntries: readonly BibEntry[];
-  sections: readonly GutterSectionHead[];
-  doc: PMNode | null;
-  onJump: (citationId: string, el: HTMLElement | null) => void;
-}) {
-  const display = useCitationDisplayContextOrNull();
-  const items = useMemo(() => {
-    if (!doc) return [];
-    const posOf = new Map(cites.map((c) => [c.citationId, c.pos]));
-    return citationIds.flatMap((id) => {
-      const pos = posOf.get(id);
-      if (pos == null) return [];
-      const i = sectionIndexAt(sections, pos);
-      const where = i < 0 ? "" : sections[i].number ? `§${sections[i].number}` : sections[i].text;
-      return [{ id, where, text: sentenceAt(doc, pos, bibEntries, display?.getCitationDisplayText) }];
-    });
-  }, [citationIds, cites, bibEntries, sections, doc, display]);
-  if (items.length === 0) return null;
-  return (
-    <div className="gutter-cited-in">
-      <div className="gutter-cited-in-head">Cited in</div>
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          className="gutter-cited-in-row"
-          onClick={(e) => onJump(it.id, e.currentTarget)}
-          {...iconHint({ label: "Jump to this citation" })}
-        >
-          {it.where && <b>{it.where}</b>} {it.text}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** The sentence around `pos`, with citations shown as they read in the text.
- *  A citation inside a footnote reads as the footnote's opening words. */
-function sentenceAt(
-  doc: PMNode,
-  pos: number,
-  bibEntries: readonly BibEntry[],
-  citeText?: (command: string) => string,
-): string {
-  const at = doc.nodeAt(pos);
-  if (at?.type.name === "footnote") {
-    const t = readableInline(richJsonToPlainText(at.attrs.content), bibEntries).replace(/\s+/g, " ").trim();
-    return `Footnote: “${t.length > 140 ? `${t.slice(0, 140)}…` : t}”`;
-  }
-  const $pos = doc.resolve(pos);
-  const block = $pos.parent;
-  const start = $pos.start();
-  const leaf = (n: PMNode) =>
-    n.type.name === "citation" ? (citeText?.(n.attrs.command as string) || (n.attrs.displayText as string) || "[cite]") : "";
-  const before = doc.textBetween(start, pos, " ", leaf);
-  const after = doc.textBetween(pos, start + block.content.size, " ", leaf);
-  const head = before.split(/(?<=[.!?])\s+/).pop() ?? before;
-  const tail = after.split(/(?<=[.!?])\s+/)[0] ?? after;
-  const s = `${head}${tail}`.replace(/\s+/g, " ").trim();
-  return `“${s.length > 220 ? `${s.slice(0, 220)}…` : s}”`;
 }

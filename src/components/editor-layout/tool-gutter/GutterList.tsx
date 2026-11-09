@@ -20,7 +20,7 @@
  * The groups and rows are `gutter-lists.ts`'s pure projection.
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { StaticBorrowedText } from "@/components/StaticBorrowedText";
 import { iconHint } from "@/components/Hint";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
@@ -47,8 +47,12 @@ export interface GutterListProps {
   onJump: (row: GutterListRow, el: HTMLElement | null) => void;
   /** ‹ › on a bibliography row: step to its previous / next citation. */
   onStep?: (row: GutterListRow, delta: 1 | -1, el: HTMLElement | null) => void;
-  /** The kind's own card, for an open row. */
-  renderCard: (card: GutterCardRef, row: GutterListRow) => ReactNode;
+  /** The kind's own card, for an open row; `close` closes it (a view that
+   *  carries its own close button uses it). */
+  renderCard: (card: GutterCardRef, row: GutterListRow, close: () => void) => ReactNode;
+  /** Rows that open from a ⌄ at their LEFT edge and show no hover buttons —
+   *  their open view carries the jump and its own close (the bibliography). */
+  leadingToggle?: (row: GutterListRow) => boolean;
   /** Opening / closing a row also expands / collapses its card. */
   onOpenChange?: (card: GutterCardRef, open: boolean) => void;
   /** A row that can be dragged into the text (a bibliography entry, as a
@@ -66,10 +70,8 @@ export function GutterList(p: GutterListProps) {
   const rows = p.groups.flatMap((g) => g.rows);
   const openRow = openKey ? rows.find((r) => r.key === openKey) ?? null : null;
 
-  // An open row whose item went away (deleted, archived, filtered out) closes.
-  useEffect(() => {
-    if (openKey && !openRow) setOpenKey(null);
-  }, [openKey, openRow]);
+  // An open row whose item went away (deleted, archived, filtered out) is
+  // simply not open: `openRow` is null, so nothing below renders it open.
 
   const setOpen = useCallback(
     (row: GutterListRow | null) => {
@@ -120,7 +122,7 @@ export function GutterList(p: GutterListProps) {
           )}
           <ul className="gutter-list-rows">
             {g.rows.map((r) =>
-              r.key === openKey && r.card ? (
+              r.key === openRow?.key && r.card ? (
                 <li key={r.key} className="gutter-list-open" data-gutter-list-open={r.key}>
                   <div
                     className="gutter-list-card"
@@ -134,7 +136,8 @@ export function GutterList(p: GutterListProps) {
                       }
                     }}
                   >
-                    {p.renderCard(r.card, r)}
+                    <OpenCard render={p.renderCard} card={r.card} row={r} close={() => close(r)} />
+                    {!p.leadingToggle?.(r) && (
                     <div className="gutter-list-card-foot">
                       <button
                         type="button"
@@ -147,6 +150,7 @@ export function GutterList(p: GutterListProps) {
                         <Chevron up />
                       </button>
                     </div>
+                    )}
                   </div>
                 </li>
               ) : (
@@ -161,6 +165,7 @@ export function GutterList(p: GutterListProps) {
                   onOpen={r.card ? () => setOpen(r) : undefined}
                   onDragStart={p.onRowDragStart && p.canDrag?.(r) ? (e) => p.onRowDragStart!(r, e) : undefined}
                   onToggleTodo={p.onToggleTodo}
+                  leadingToggle={!!p.leadingToggle?.(r)}
                 />
               ),
             )}
@@ -181,6 +186,7 @@ function Row({
   onOpen,
   onDragStart,
   onToggleTodo,
+  leadingToggle = false,
 }: {
   row: GutterListRow;
   selected: boolean;
@@ -191,6 +197,7 @@ function Row({
   onOpen?: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   onToggleTodo?: (id: string) => void;
+  leadingToggle?: boolean;
 }) {
   const stepping = !!onStep && !!r.bibKey && (r.count ?? 0) > 1;
   return (
@@ -201,9 +208,22 @@ function Row({
       data-here={here ? "" : undefined}
       data-muted={r.muted ? "" : undefined}
       data-missing={r.missing ? "" : undefined}
+      data-leading-toggle={leadingToggle ? "" : undefined}
       draggable={onDragStart ? true : undefined}
       onDragStart={onDragStart}
     >
+      {leadingToggle && onOpen && (
+        <button
+          type="button"
+          className="iconbtn-sm gutter-list-toggle"
+          data-gutter-act="open"
+          aria-expanded={false}
+          onClick={onOpen}
+          {...iconHint({ label: "Open" })}
+        >
+          <Chevron right />
+        </button>
+      )}
       {r.todo && (
         <input
           type="checkbox"
@@ -228,6 +248,7 @@ function Row({
         </span>
         {r.count ? <span className="gutter-list-count">{r.count}×</span> : null}
       </button>
+      {!leadingToggle && (
       <span className="gutter-list-actions">
         {stepping ? (
           <>
@@ -274,12 +295,29 @@ function Row({
           </button>
         )}
       </span>
+      )}
     </li>
   );
 }
 
+/** An open row's card. Its own component so `close` (which focuses the row
+ *  again through the list's ref) reaches `renderCard` as a plain prop. */
+function OpenCard({
+  render,
+  card,
+  row,
+  close,
+}: {
+  render: GutterListProps["renderCard"];
+  card: GutterCardRef;
+  row: GutterListRow;
+  close: () => void;
+}) {
+  return <>{render(card, row, close)}</>;
+}
+
 /** A row's snippet: rendered, never raw `\commands`. */
-function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
+export function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
   switch (s.kind) {
     case "rich":
       return (
@@ -378,13 +416,30 @@ function safeParts(entry: BibEntry): ReturnType<typeof referenceParts> | null {
   }
 }
 
-function Chevron({ up = false }: { up?: boolean }) {
-  // 14px on the card's small close button, 16px on a row's buttons.
-  const size = up ? 14 : 16;
+function Chevron({ up = false, right = false, down = false }: { up?: boolean; right?: boolean; down?: boolean }) {
+  // 14px on the card's close button and the leading toggle, 16px on a row's buttons.
+  const size = up || right || down ? 14 : 16;
+  const d = up ? "M6 15l6-6 6 6" : right ? "M9 6l6 6-6 6" : "M6 9l6 6 6-6";
   return (
     <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d={up ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+      <path d={d} />
     </svg>
+  );
+}
+
+/** The ⌄ an open view puts where its row's toggle was, closing it. */
+export function LeadingClose({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      className="iconbtn-sm gutter-list-toggle"
+      data-gutter-list-close=""
+      aria-expanded={true}
+      onClick={onClose}
+      {...iconHint({ label: "Close", hint: "Close (Escape)" })}
+    >
+      <Chevron down />
+    </button>
   );
 }
 

@@ -6805,6 +6805,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         entryRequests: bibSettingsHook.entryRequests,
         addEntryRequest: bibSettingsHook.addEntryRequest,
         removeEntryRequest: bibSettingsHook.removeEntryRequest,
+        getAnnotation: annotationsHook.getAnnotation,
       },
       renderCard: (card) => (
         <GutterCardBody

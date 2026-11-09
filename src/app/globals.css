@@ -7241,31 +7241,163 @@ body.perf-contain .static-borrowed-text {
   column-gap: 8px;
   padding: 4px 6px;
 }
-.gutter-cited-in {
-  padding: 4px 10px 8px;
+/* A bibliography row opens from a ⌄ at its left edge (no hover buttons):
+   the toggle sits in the row's indent, the reference hangs after it. */
+.gutter-list-row[data-leading-toggle] .gutter-list-body {
+  grid-template-columns: 0 minmax(0, 1fr) auto;
+  padding-left: 24px; /* aligns: the 20px toggle + its 4px inset */
+}
+.gutter-list-row[data-leading-toggle] .gutter-list-marker:empty {
+  visibility: hidden;
+}
+.gutter-list-toggle {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  color: var(--muted-light);
+}
+.gutter-list-row:hover .gutter-list-toggle,
+.gutter-list-row[data-selected] .gutter-list-toggle {
+  color: var(--ink-body);
+}
+/* A bibliography row, open: compact, in the gutter's sans. */
+.gutter-bib-open {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 4px 8px 8px 0;
+  font-size: 13px;
+  line-height: 1.4;
 }
-.gutter-cited-in-head {
+.gutter-bib-open-head {
+  position: relative;
+  padding-left: 24px; /* aligns: with the closed row's reference */
+}
+.gutter-bib-open-head .gutter-list-toggle {
+  color: var(--ink-body);
+}
+.gutter-bib-open-head .gutter-snippet {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+.gutter-bib-open-meta,
+.gutter-bib-cited,
+.gutter-bib-note,
+.gutter-bib-foot,
+.gutter-bib-problem,
+.gutter-bib-section {
+  margin-left: 24px; /* aligns: under the reference */
+}
+.gutter-bib-open-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.gutter-bib-pdf {
+  margin-right: 4px;
+}
+.gutter-bib-key {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--muted);
 }
-.gutter-cited-in-row {
-  text-align: left;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--background);
+.gutter-bib-status {
+  margin-left: auto;
   font-size: 12px;
-  line-height: 1.4;
+  white-space: nowrap;
+}
+.gutter-bib-problem {
+  font-size: 12px;
+  color: var(--danger-strong);
+}
+.gutter-bib-cited {
+  border-top: 1px solid var(--border-light);
+  padding-top: 4px;
+}
+.gutter-bib-cited-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.gutter-bib-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 400;
+}
+.gutter-bib-stepper-count {
+  min-width: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.gutter-bib-cited-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.gutter-bib-cited-line {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 4px;
+  width: 100%;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: 12px;
   color: var(--ink-body);
+  cursor: pointer;
 }
-.gutter-cited-in-row:hover {
-  color: var(--foreground);
+.gutter-bib-cited-line[data-current] {
+  background: var(--accent-light);
 }
-.gutter-cited-in-row b {
+.gutter-bib-cited-where {
+  color: var(--muted-light);
+  font-variant-numeric: tabular-nums;
+}
+.gutter-bib-cited-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+}
+.gutter-bib-cited-text b {
   font-weight: 600;
   color: var(--foreground);
+}
+.gutter-bib-note {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.gutter-bib-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 16px; /* aligns: the ghost buttons' 8px text inset under the reference */
+}
+.gutter-bib-foot [aria-pressed="true"] {
+  color: var(--control-selected-ink);
+  background: var(--control-selected-tint);
+}
+.gutter-bib-section {
+  border-top: 1px solid var(--border-light);
+  padding-top: 4px;
 }
 /* The sand above that lozenge: a card disappears at the lozenge's top edge,
    and reaches behind it as far as the top corners' curve, so nothing shows

@@ -142,6 +142,7 @@ export function GutterCardBody(p: GutterCardBodyProps) {
       const cited = p.citedKeys.has(entry.key);
       return (
         <BibEntryCard
+          section={c.section}
           entry={entry}
           // Open = expanded: a bibliography card shows its body while selected.
           isSelected

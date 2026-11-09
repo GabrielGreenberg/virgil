@@ -184,6 +184,26 @@ describe("GutterList — the row model", () => {
     expect(rowEl(container, "2")).not.toBeNull();
   });
 
+  it("a leading-toggle row opens from a ⌄ at its left, with no hover buttons, and its view closes itself", () => {
+    const { container } = mount({
+      leadingToggle: () => true,
+      renderCard: (_card, _row, close) => (
+        <button data-testid="card" onClick={close}>
+          view
+        </button>
+      ),
+    });
+    const r = rowEl(container, "1");
+    expect(r.hasAttribute("data-leading-toggle")).toBe(true);
+    expect(r.querySelector(".gutter-list-actions")).toBeNull();
+    fireEvent.click(r.querySelector(".gutter-list-toggle")!);
+    expect(screen.getByTestId("card")).not.toBeNull();
+    // No foot ⌃: the view carries its own close.
+    expect(container.querySelector(".gutter-list-card-foot")).toBeNull();
+    fireEvent.click(screen.getByTestId("card"));
+    expect(screen.queryByTestId("card")).toBeNull();
+  });
+
   it("marks the rows whose anchor is on screen", () => {
     const { container } = mount({ hereIds: new Set(["2"]) });
     expect(rowEl(container, "2").hasAttribute("data-here")).toBe(true);

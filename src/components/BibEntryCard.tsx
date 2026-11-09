@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import type { BibEntry } from "@/lib/types";
 import type { SaveBibEntry } from "@/hooks/useCitations";
 import type { RequestBibReview } from "@/hooks/useBibReview";
@@ -83,6 +83,11 @@ export interface BibEntryCardProps {
   onJump?: (sourceEl: HTMLElement | null) => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
+  /** Render ONE part of the card inline, without its chrome — the tool
+   *  gutter's compact bibliography view opens them one at a time: "fields"
+   *  (the entry editor, already editing), "notes" (the annotation) or
+   *  "review" (Check with Claude, for the fields and the note). */
+  section?: "fields" | "notes" | "review";
   /** Meta block stacked BELOW the title line (layers 2 + 3 of the card:
    *  library membership chips, then the verification / processing-tier
    *  status row). Supplied by the Bibliography panel so this component stays
@@ -231,7 +236,7 @@ export default function BibEntryCard({
   entry, isSelected, onClick, onSelect, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, getReviewNotes, onSaveBibEntry,
   occurrenceInfo, bibEntries, isCited = true, onJump,
-  isPoppedOut, headerMeta, addAction, readOnly,
+  isPoppedOut, headerMeta, addAction, readOnly, section,
 }: BibEntryCardProps) {
   /**
    * THE gate (task 692). Every write callback this card holds is reachable
@@ -431,91 +436,10 @@ export default function BibEntryCard({
   // Header: author · year · title (single line, truncates).
   const headerText = [author, year, title].filter(Boolean).join(" · ");
 
-  const bodyContent = (
-    <>
-      {/* Remaining publication details (excludes author/year/title already shown in header) */}
-      {(() => {
-        // SECURITY (backlog #28): build the publication-details row as JSX
-        // nodes, never an HTML string. A `.bib` field may carry markup/script
-        // (fetched by find-citation from an external source, or a shared
-        // paper's references.bib); routing it through `dangerouslySetInnerHTML`
-        // would inject it live. Italic emphasis lives in known-safe <i>
-        // wrappers; the raw field text is rendered as a JSX child (React
-        // escapes it), so the sink is gone entirely.
-        const parts: React.ReactNode[] = [];
-        // DISPLAY — every field read through the bib-row door (task 409).
-        const f = (name: string) => bibFieldDisplay(entry, name) || "";
-        const journal = f("journal"), booktitle = f("booktitle"), editor = f("editor");
-        const volume = f("volume"), number = f("number"), pages = f("pages");
-        const publisher = f("publisher"), institution = f("institution");
-        const school = f("school"), edition = f("edition");
-        const doi = f("doi"), url = f("url");
-        if (journal) parts.push(<i>{journal}</i>);
-        if (booktitle) parts.push(<>In <i>{booktitle}</i></>);
-        if (editor) parts.push(`Ed. ${editor}`);
-        if (volume) parts.push(number ? `${volume}(${number})` : `vol. ${volume}`);
-        if (pages) parts.push(`pp. ${pages}`);
-        if (publisher) parts.push(publisher);
-        if (institution) parts.push(institution);
-        if (school) parts.push(school);
-        if (edition) parts.push(`${edition} ed.`);
-        if (doi) parts.push(`doi: ${doi}`);
-        if (url && !doi) parts.push(url);
-        if (parts.length === 0) return null;
-        return (
-          // BODY CONTENT — the per-panel font picker applies here (the
-          // header line above stays in the fixed TITLE dialect).
-          <div
-            data-panel-kind="bib"
-            className="leading-relaxed break-words overflow-hidden"
-            style={{ ...bibBodyStyle, overflowWrap: "anywhere" }}
-          >
-            {parts.map((part, i) => (
-              <React.Fragment key={i}>
-                {i > 0 ? ". " : null}
-                {part}
-              </React.Fragment>
-            ))}
-            {"."}
-          </div>
-        );
-      })()}
-
-      {/* Cite key + copy */}
-      <div className="mt-1.5 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <span className="text-xs card-mono text-ink-muted break-all">{entry.key}</span>
-        <button
-          type="button"
-          onClick={handleCopyKey}
-          className="iconbtn-xs iconbtn-meta"
-          {...iconHint({ label: "Copy cite key" })}
-        >
-          {copied ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="2" width="13" height="13" rx="2" />
-              <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
-            </svg>
-          )}
-        </button>
-      </div>
-
-      {/* ── Pod: BibTeX Fields ──────────────────────────── */}
-      <div className="mt-3">
-        <div className="flex items-center gap-1.5">
-          <PodDisclosure expanded={fieldsOpen} onToggle={() => setFieldsOpen((p) => !p)}
-            className="text-xs text-ink-subtle hover:text-ink-body transition-colors">
-            BibTeX Fields
-          </PodDisclosure>
-          {writes?.requestReview && (
-          <ReviewRequestChip type="fields" status={fieldsReviewStatus} composer={reviewComposer} />
-          )}
-        </div>
-
-        {fieldsOpen && (
+  // A pod's open content, shared by the card's disclosures and by the
+  // `section` mode (the tool gutter's compact bibliography view opens one
+  // part at a time: Edit entry, Note, Check with Claude).
+  const fieldsInner = (
           <div className="mt-1.5 space-y-1.5">
             {writes?.requestReview && (
               <ReviewRequestStrip
@@ -634,7 +558,143 @@ export default function BibEntryCard({
               )}
             </div>
           </div>
-        )}
+  );
+  const notesInner = (
+          <div className="mt-1.5 space-y-1.5">
+            {writes?.requestReview && (
+            <ReviewRequestStrip
+              type="notes"
+              status={notesReviewStatus}
+              sentNote={getReviewNotes?.(entry.key, "notes")}
+              composer={reviewComposer}
+            />
+            )}
+            <div className={PANEL.subpodWhite}>
+              <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={writes?.setAnnotation ?? null} />
+            </div>
+            {!writes?.setAnnotation && (
+              <div className="text-xs text-ink-muted italic">{BIB_ANNOTATION_READ_ONLY_REASON}</div>
+            )}
+          </div>
+  );
+
+  // "Edit entry" in the compact view opens straight into the editor.
+  const editOnOpen = section === "fields" && !!writes?.save;
+  useEffect(() => {
+    if (editOnOpen) startEditBib();
+    // Once, when the section opens: re-seeding mid-edit would drop the user's changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOnOpen]);
+  const reviewInner = writes?.requestReview ? (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-ink-subtle">
+        <span>Fields</span>
+        <ReviewRequestChip type="fields" status={fieldsReviewStatus} composer={reviewComposer} />
+        <span>Note</span>
+        <ReviewRequestChip type="notes" status={notesReviewStatus} composer={reviewComposer} />
+      </div>
+      <ReviewRequestStrip
+        type="fields"
+        status={fieldsReviewStatus}
+        sentNote={getReviewNotes?.(entry.key, "fields")}
+        composer={reviewComposer}
+      />
+      <ReviewRequestStrip
+        type="notes"
+        status={notesReviewStatus}
+        sentNote={getReviewNotes?.(entry.key, "notes")}
+        composer={reviewComposer}
+      />
+    </div>
+  ) : (
+    <div className="text-xs text-ink-muted italic">{readOnly?.reason ?? BIB_HOST_READ_ONLY_REASON}</div>
+  );
+
+  const bodyContent = (
+    <>
+      {/* Remaining publication details (excludes author/year/title already shown in header) */}
+      {(() => {
+        // SECURITY (backlog #28): build the publication-details row as JSX
+        // nodes, never an HTML string. A `.bib` field may carry markup/script
+        // (fetched by find-citation from an external source, or a shared
+        // paper's references.bib); routing it through `dangerouslySetInnerHTML`
+        // would inject it live. Italic emphasis lives in known-safe <i>
+        // wrappers; the raw field text is rendered as a JSX child (React
+        // escapes it), so the sink is gone entirely.
+        const parts: React.ReactNode[] = [];
+        // DISPLAY — every field read through the bib-row door (task 409).
+        const f = (name: string) => bibFieldDisplay(entry, name) || "";
+        const journal = f("journal"), booktitle = f("booktitle"), editor = f("editor");
+        const volume = f("volume"), number = f("number"), pages = f("pages");
+        const publisher = f("publisher"), institution = f("institution");
+        const school = f("school"), edition = f("edition");
+        const doi = f("doi"), url = f("url");
+        if (journal) parts.push(<i>{journal}</i>);
+        if (booktitle) parts.push(<>In <i>{booktitle}</i></>);
+        if (editor) parts.push(`Ed. ${editor}`);
+        if (volume) parts.push(number ? `${volume}(${number})` : `vol. ${volume}`);
+        if (pages) parts.push(`pp. ${pages}`);
+        if (publisher) parts.push(publisher);
+        if (institution) parts.push(institution);
+        if (school) parts.push(school);
+        if (edition) parts.push(`${edition} ed.`);
+        if (doi) parts.push(`doi: ${doi}`);
+        if (url && !doi) parts.push(url);
+        if (parts.length === 0) return null;
+        return (
+          // BODY CONTENT — the per-panel font picker applies here (the
+          // header line above stays in the fixed TITLE dialect).
+          <div
+            data-panel-kind="bib"
+            className="leading-relaxed break-words overflow-hidden"
+            style={{ ...bibBodyStyle, overflowWrap: "anywhere" }}
+          >
+            {parts.map((part, i) => (
+              <React.Fragment key={i}>
+                {i > 0 ? ". " : null}
+                {part}
+              </React.Fragment>
+            ))}
+            {"."}
+          </div>
+        );
+      })()}
+
+      {/* Cite key + copy */}
+      <div className="mt-1.5 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <span className="text-xs card-mono text-ink-muted break-all">{entry.key}</span>
+        <button
+          type="button"
+          onClick={handleCopyKey}
+          className="iconbtn-xs iconbtn-meta"
+          {...iconHint({ label: "Copy cite key" })}
+        >
+          {copied ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="13" height="13" rx="2" />
+              <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* ── Pod: BibTeX Fields ──────────────────────────── */}
+      <div className="mt-3">
+        <div className="flex items-center gap-1.5">
+          <PodDisclosure expanded={fieldsOpen} onToggle={() => setFieldsOpen((p) => !p)}
+            className="text-xs text-ink-subtle hover:text-ink-body transition-colors">
+            BibTeX Fields
+          </PodDisclosure>
+          {writes?.requestReview && (
+          <ReviewRequestChip type="fields" status={fieldsReviewStatus} composer={reviewComposer} />
+          )}
+        </div>
+
+        {fieldsOpen && fieldsInner}
       </div>
 
       {/* ── Pod: Annotations ──────────────────────────── */}
@@ -662,24 +722,7 @@ export default function BibEntryCard({
           )}
         </div>
 
-        {annotationOpen && (
-          <div className="mt-1.5 space-y-1.5">
-            {writes.requestReview && (
-            <ReviewRequestStrip
-              type="notes"
-              status={notesReviewStatus}
-              sentNote={getReviewNotes?.(entry.key, "notes")}
-              composer={reviewComposer}
-            />
-            )}
-            <div className={PANEL.subpodWhite}>
-              <AnnotationEditor bibKey={entry.key} content={annotation} onUpdate={writes.setAnnotation} />
-            </div>
-            {!writes.setAnnotation && (
-              <div className="text-xs text-ink-muted italic">{BIB_ANNOTATION_READ_ONLY_REASON}</div>
-            )}
-          </div>
-        )}
+        {annotationOpen && notesInner}
       </div>
       )}
     </>
@@ -775,6 +818,14 @@ export default function BibEntryCard({
       )}
     </>
   );
+
+  if (section) {
+    return (
+      <div className="bib-entry-section" data-bib-section={section} onClick={(e) => e.stopPropagation()}>
+        {section === "fields" ? fieldsInner : section === "notes" ? notesInner : reviewInner}
+      </div>
+    );
+  }
 
   const card = (
     <PanelCard

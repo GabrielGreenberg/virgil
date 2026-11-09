@@ -23,7 +23,8 @@ export type GutterCardRef =
   | { kind: "footnote"; id: string }
   | { kind: "orphan"; id: string }
   | { kind: "footnote-ref"; id: string }
-  | { kind: "bib"; key: string }
+  /** `section`: one part of the bib card inline (the compact view's foot). */
+  | { kind: "bib"; key: string; section?: "fields" | "notes" | "review" }
   | { kind: "example"; id: string }
   /** Any other kind: the card OmniHost built for this entity id. */
   | { kind: "omni"; id: string };
