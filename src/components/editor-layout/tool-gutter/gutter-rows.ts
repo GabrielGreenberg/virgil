@@ -237,7 +237,9 @@ export function noteRows(
 /** A field as DISPLAY text (`bibFieldDisplay`, the one door — task 409),
  *  with BibTeX's grouping braces dropped for a one-line label. */
 function field(entry: BibEntry, name: string): string {
-  return (bibFieldDisplay(entry, name) ?? "").replace(/[{}]/g, "").trim();
+  // Coerced: a record can carry a bare number (`year = 2001`).
+  const v: unknown = bibFieldDisplay(entry, name);
+  return (v == null ? "" : String(v)).replace(/[{}]/g, "").trim();
 }
 
 /** "Derrida 1967" from a bib entry, falling back to the citekey. */

@@ -413,6 +413,16 @@ function anchorOf(el: HTMLElement | null): DOMRect | null {
   return el ? el.getBoundingClientRect() : null;
 }
 
+/** `referenceParts`, or null for an entry that can't be read (it then shows
+ *  by its key, or not at all, rather than taking the list down). */
+function safeReference(entry: BibEntry): ReturnType<typeof referenceParts> | null {
+  try {
+    return referenceParts(entry);
+  } catch {
+    return null;
+  }
+}
+
 /** The bib entry a bibliography row stands for (none for a missing key). */
 function rowEntry(row: GutterListRow): BibEntry | undefined {
   const s = row.snippet;
@@ -436,7 +446,8 @@ function LibraryResults({
     <ul className="gutter-library-results">
       {results.map((e) => {
         const state = flow.libraryRowState(e);
-        const p = referenceParts(e);
+        const p = safeReference(e);
+        if (!p) return null;
         return (
           <li key={`${e.key}:${e.uid}`} className="gutter-library-result">
             <span className="gutter-snippet gutter-reference" data-lines="3">
@@ -626,8 +637,8 @@ function filterBib(groups: GutterListGroup[], query: string | null): GutterListG
     const s = r.snippet;
     const entry = s.kind === "reference" || s.kind === "short" ? s.entry : undefined;
     if (!entry) return (r.bibKey ?? "").toLowerCase();
-    const p = referenceParts(entry);
-    return `${entry.key} ${p.surname} ${p.rest} ${p.year} ${p.title} ${p.venue}`.toLowerCase();
+    const p = safeReference(entry);
+    return p ? `${entry.key} ${p.surname} ${p.rest} ${p.year} ${p.title} ${p.venue}`.toLowerCase() : entry.key.toLowerCase();
   };
   return groups
     .map((g) => ({ ...g, rows: g.rows.filter((r) => words.every((w) => text(r).includes(w))) }))

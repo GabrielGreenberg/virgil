@@ -112,6 +112,17 @@ describe("bibliography", () => {
     expect(referenceParts(entries[1])).toMatchObject({ surname: "Bolter", rest: "J. D.", titleStyle: "italic", venue: "Erlbaum" });
   });
 
+  it("reads a record whose fields are not strings (a numeric year, an array of authors)", () => {
+    // A library or citation-js record can carry these; the list must not throw.
+    const odd = bib("odd2001", "book", {}) as unknown as { fields: Record<string, unknown> };
+    odd.fields = { author: ["Jackson, H. J.", "Smith, T."], year: 2001, title: "Marginalia", publisher: null };
+    const e = odd as unknown as BibEntry;
+    expect(() => referenceParts(e)).not.toThrow();
+    expect(referenceParts(e)).toMatchObject({ surname: "Jackson", year: "2001", title: "Marginalia" });
+    const groups = bibliographyGroups([e], [{ citationId: "c9", keys: ["odd2001"], pos: 5 }], sections, "az");
+    expect(groups[0].rows[0].entityId).toBe("odd2001");
+  });
+
   it("A–Z: letter dividers, a count for repeat citations, then Needs attention", () => {
     const groups = bibliographyGroups(entries, cites, sections, "az");
     expect(groups.map((g) => g.label)).toEqual(["B", "G", "Needs attention"]);

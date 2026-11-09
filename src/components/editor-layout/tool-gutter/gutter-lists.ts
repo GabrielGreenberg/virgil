@@ -226,7 +226,10 @@ export interface GutterCitation {
   pos: number;
 }
 
-const clean = (s: string | undefined | null) => (s ?? "").replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
+// A field value is typed as a string, but a .bib or library record can carry
+// a bare number (`year = 2001`) or another non-string, so it is coerced first.
+const clean = (s: unknown) =>
+  (s == null ? "" : String(s)).replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
 const fieldOf = (e: BibEntry, name: string) => clean(bibFieldDisplay(e, name));
 
 /** Each citekey's citation ids in document order. */
@@ -373,10 +376,16 @@ function attentionGroup(
   return rows.length ? { key: "bib:attention", label: "Needs attention", style: "attention", rows } : null;
 }
 
+function filingKey(e: BibEntry): string {
+  try {
+    return `${filingName(e)} ${fieldOf(e, "year")}`.toLowerCase();
+  } catch {
+    return e.key.toLowerCase();
+  }
+}
+
 function byFiling(a: BibEntry, b: BibEntry): number {
-  const ka = `${filingName(a)} ${fieldOf(a, "year")}`.toLowerCase();
-  const kb = `${filingName(b)} ${fieldOf(b, "year")}`.toLowerCase();
-  return ka.localeCompare(kb);
+  return filingKey(a).localeCompare(filingKey(b));
 }
 
 /**
@@ -408,7 +417,7 @@ export function bibliographyGroups(
     let letter = "";
     for (const e of rows) {
       if (!byKey.has(e.key)) continue; // uncited ones read under "Needs attention"
-      const L = (filingName(e)[0] ?? "#").toUpperCase();
+      const L = (filingKey(e)[0] ?? "#").toUpperCase();
       if (L !== letter) {
         letter = L;
         groups.push({ key: `bib:letter:${L}`, label: L, style: "letter", rows: [] });

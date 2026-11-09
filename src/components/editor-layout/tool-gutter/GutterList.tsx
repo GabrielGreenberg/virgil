@@ -33,6 +33,7 @@ import {
   type GutterSnippet,
 } from "./gutter-lists";
 import { exampleBodyText, oneLine } from "./gutter-rows";
+import type { BibEntry } from "@/lib/types";
 
 export interface GutterListProps {
   /** Names the list for its rows' data attributes and the empty state. */
@@ -287,7 +288,9 @@ function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
         </span>
       );
     case "reference": {
-      const r = referenceParts(s.entry);
+      // One malformed entry must never take the list down: it shows its key.
+      const r = safeParts(s.entry);
+      if (!r) return <span className="gutter-snippet" data-lines="1">{s.entry.key}</span>;
       return (
         <span className="gutter-snippet gutter-reference" data-lines="4">
           <b>{r.surname}</b>
@@ -307,7 +310,7 @@ function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
       );
     }
     case "short": {
-      const title = s.entry ? referenceParts(s.entry).title.split(/[:.]/)[0] : "";
+      const title = s.entry ? (safeParts(s.entry)?.title ?? "").split(/[:.]/)[0] : "";
       return (
         <span className="gutter-snippet" data-lines="1">
           <b>{shortLabel(s.entry, s.key)}</b>
@@ -363,6 +366,15 @@ function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
         </span>
       );
     }
+  }
+}
+
+/** `referenceParts`, or null when an entry can't be read. */
+function safeParts(entry: BibEntry): ReturnType<typeof referenceParts> | null {
+  try {
+    return referenceParts(entry);
+  } catch {
+    return null;
   }
 }
 

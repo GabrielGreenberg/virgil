@@ -216,7 +216,9 @@ export function useBibLibraryFlow(o: BibLibraryFlowOptions): BibLibraryFlow {
   const requestMerge = useCallback(() => {
     if (!conflictDecision) return;
     const { libraryEntry, localEntry } = conflictDecision;
-    const libRaw = libraryEntry.raw?.trim() || formatBibEntryForNote(libraryEntry);
+    const libRaw =
+      (typeof libraryEntry.raw === "string" ? libraryEntry.raw.trim() : "") ||
+      formatBibEntryForNote(libraryEntry);
     const notes =
       `Merge with library entry ${libraryEntry.key}. The user's Virgil Library has an alternate version of this entry — please reconcile the two and verify against authoritative sources. ` +
       `\n\nLibrary version:\n${libRaw}`;

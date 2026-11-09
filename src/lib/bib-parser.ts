@@ -733,9 +733,18 @@ export function bibFieldDisplay(
   entry: { fields?: Record<string, string> } | null | undefined,
   name: string,
 ): string | undefined {
-  const raw = entry?.fields?.[name];
-  if (raw === undefined) return undefined;
-  return latexToDisplayText(raw);
+  // Typed as a string, but a library or citation-js record can carry a bare
+  // number (`year = 2001`), a name list as an array, or null — so the value is
+  // made a string before it is decoded, and every caller gets a string.
+  const raw: unknown = entry?.fields?.[name];
+  if (raw === undefined || raw === null) return undefined;
+  const text =
+    typeof raw === "string"
+      ? raw
+      : Array.isArray(raw)
+        ? raw.map((v) => (v == null ? "" : String(v))).filter(Boolean).join(" and ")
+        : String(raw);
+  return latexToDisplayText(text);
 }
 
 /**

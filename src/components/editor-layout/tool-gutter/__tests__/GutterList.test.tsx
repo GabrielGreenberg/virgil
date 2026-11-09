@@ -167,6 +167,23 @@ describe("GutterList — the row model", () => {
     expect(onRowDragStart).toHaveBeenCalledWith(expect.objectContaining({ entityId: "2" }), expect.anything());
   });
 
+  it("a bibliography entry that can't be read shows its key, and the list still renders", () => {
+    const broken = { uid: "x", key: "broken2020", type: "book", raw: "" } as never; // no `fields` at all
+    const groups: GutterListGroup[] = [
+      {
+        key: "b",
+        label: "B",
+        rows: [
+          { key: "bib:x", entityId: "broken2020", marker: "", snippet: { kind: "reference", entry: broken }, pos: null, jump: null, card: null },
+          row("2", para(text("Second note"))),
+        ],
+      },
+    ];
+    const { container } = mount({ groups });
+    expect(container.querySelector('[data-gutter-list-row="bib:x"]')!.textContent).toContain("broken2020");
+    expect(rowEl(container, "2")).not.toBeNull();
+  });
+
   it("marks the rows whose anchor is on screen", () => {
     const { container } = mount({ hereIds: new Set(["2"]) });
     expect(rowEl(container, "2").hasAttribute("data-here")).toBe(true);
