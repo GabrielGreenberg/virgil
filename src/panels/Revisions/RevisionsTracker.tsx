@@ -2,6 +2,7 @@
 
 import type { RevisionsTracker } from "@/lib/types";
 import { PanelGoalStrip } from "@/panels/_shared/PanelGoalStrip";
+import { countNoun } from "@/lib/count-noun";
 
 interface RevisionsTrackerStripProps {
   tracker: RevisionsTracker | null;
@@ -39,7 +40,7 @@ export function RevisionsTrackerStrip({
       statusLabel={
         reached
           ? "goal reached"
-          : `${fmt(remaining)} ${remaining === 1 ? "revision" : "revisions"} to go`
+          : `${countNoun(remaining, "revision")} to go`
       }
       footer={
         target == null

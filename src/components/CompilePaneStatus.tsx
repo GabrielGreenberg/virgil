@@ -8,6 +8,7 @@ import {
   type CompileProgress,
 } from "@/lib/compile/compile-progress";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
+import { countNoun } from "@/lib/count-noun";
 
 /**
  * THE PDF PANE'S VOICE (task 454).
@@ -113,10 +114,6 @@ function useCompileView(docId: string | null, hasPdf: boolean): CompileView {
   return { progress, fetchQuiet, hasPdf };
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 function typesettingLine(p: CompileProgress): string {
   return p.totalPasses > 1 ? `Typesetting (pass ${p.pass} of ${p.totalPasses})` : "Typesetting";
 }
@@ -132,7 +129,7 @@ function phaseLine({ progress: p, fetchQuiet }: CompileView): string {
     case "fetching":
       if (fetchQuiet) {
         // The burst is over and pdfTeX is working through the pass.
-        return `${typesettingLine(p)} — downloaded ${plural(p.assetsFetched, "package", "packages")}…`;
+        return `${typesettingLine(p)} — downloaded ${countNoun(p.assetsFetched, "package")}…`;
       }
       return p.currentAsset
         ? `Downloading LaTeX packages — ${p.assetsFetched} so far`
