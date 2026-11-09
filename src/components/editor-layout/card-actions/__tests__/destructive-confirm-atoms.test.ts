@@ -52,6 +52,7 @@ import {
 } from "@/lib/editor-extensions";
 import {
   resolveDestructiveConfirm,
+  resolveDuplicateConfirm,
   type DragHandleRef,
 } from "../drag-handle-actions";
 
@@ -231,5 +232,37 @@ describe("no over-broadening — trivial content still deletes silently", () => 
     const c = confirmsFor(editor, { kind: "paragraph", id: "para-A" });
     expect(c.delete).toBe(false);
     expect(c.archive).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Duplicate — the registry's `confirmDuplicate` slot (task 1547). Heading's
+// section copy warns with the same copy the retired drag-handle-private
+// `confirmHeadingLifecycle` produced; every other kind proceeds silently.
+// ---------------------------------------------------------------------------
+
+describe("Duplicate confirm routes through the registry slot", () => {
+  it("heading × Duplicate warns with the section summary", () => {
+    const editor = mountDoc([
+      {
+        type: "heading",
+        attrs: { uuid: "h-1", level: 1 },
+        content: [{ type: "text", text: "Intro" }],
+      },
+      { type: "paragraph", attrs: { uuid: "p-1" }, content: [{ type: "text", text: "a" }] },
+      { type: "paragraph", attrs: { uuid: "p-2" }, content: [{ type: "text", text: "b" }] },
+    ]);
+    expect(resolveDuplicateConfirm(editor, { kind: "heading", id: "h-1" })).toEqual({
+      title: "Duplicate the entire section?",
+      message: 'This will duplicate the entire section "Intro" — 2 paragraphs.',
+      confirmLabel: "Duplicate section",
+    });
+  });
+
+  it("a paragraph × Duplicate needs no confirm", () => {
+    const editor = mountDoc([
+      { type: "paragraph", attrs: { uuid: "p-1" }, content: [{ type: "text", text: "a" }] },
+    ]);
+    expect(resolveDuplicateConfirm(editor, { kind: "paragraph", id: "p-1" })).toBeNull();
   });
 });

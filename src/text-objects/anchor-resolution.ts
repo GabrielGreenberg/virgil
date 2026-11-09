@@ -19,10 +19,7 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
-import {
-  TEXT_OBJECT_REGISTRY,
-  isTextObjectKind,
-} from "./text-object-registry";
+import { isNodeTextObjectKind } from "./text-object-registry";
 import type { TextObjectKind } from "./types";
 
 /** Container-kind type names whose "previous block" is best expressed
@@ -326,8 +323,8 @@ export function isAnchorableBlock(
   return (
     typeof uuid === "string" &&
     uuid.length > 0 &&
-    isTextObjectKind(kind) &&
-    // linkedRange isn't a node — exclude even though the registry has it.
-    !TEXT_OBJECT_REGISTRY[kind as TextObjectKind].isRange
+    // A range kind (linkedRange) isn't a node — exclude even though the
+    // registry has it.
+    isNodeTextObjectKind(kind)
   );
 }
