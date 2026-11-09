@@ -51,6 +51,8 @@ import {
 import { useDocSettledRevision } from "@/hooks/useDocSettledRevision";
 import { SCOPE_DISPATCH } from "@/panels/Search/scope-dispatch";
 import {
+  liveAtomPositions,
+  resolveLiveAtomPos,
   resolveLiveBlockRange,
   type BlockRangeId,
 } from "@/hooks/useLivePosResolver";
@@ -469,6 +471,34 @@ export function resolveAnchoredHighlight(
   return revalidateInBlock(editor, blockId, live, expect);
 }
 
+/**
+ * The ONE click-time door from a Search hit to the range it navigates to
+ * (task 1534) — every hit identity resolves LIVE, under one contract:
+ * - unanchored → `null` (nothing in the document to go to);
+ * - `blockId` (main-text + anchored card hits) → `resolveAnchoredHighlight`;
+ * - `atomRef` (footnote/citation hits) → the atom's live position
+ *   (`resolveLiveAtomPos`); an atom the snapshot no longer carries → `null`,
+ *   never the baked position (it would now name unrelated text);
+ * - no snapshot at all, or a hit with no identity → the baked range.
+ *
+ * Exported for tests.
+ */
+export function resolveHitRange(
+  editor: Editor | null,
+  hit: Pick<SearchHit, "from" | "to" | "unanchored" | "blockId" | "atomRef">,
+  expect?: MatchExpectation,
+): { from: number; to: number } | null {
+  if (hit.unanchored) return null;
+  const baked = { from: hit.from, to: hit.to };
+  if (hit.blockId) return resolveAnchoredHighlight(editor, hit.blockId, baked, expect);
+  if (hit.atomRef) {
+    const pos = resolveLiveAtomPos(editor, hit.atomRef);
+    if (pos === undefined) return baked;
+    return pos === null ? null : { from: pos, to: pos };
+  }
+  return baked;
+}
+
 /** What a main-text hit MATCHED — the query that found it and the exact
  *  characters it found. Card hits carry no expectation (their `blockId` names
  *  the card's paragraph, not a run of its text). */
@@ -745,6 +775,10 @@ function SearchPanel({
       re,
       resolveCardAnchor,
       footnotes,
+      // The item arrays are rev-gated (they move only on a footnote/citation
+      // change), so their `pos` goes stale under a plain edit above the atom;
+      // the snapshot is current. One read per run — off the keystroke path.
+      liveAtomPos: liveAtomPositions(editor),
       orphanedFootnotes,
       notes,
       citations,
@@ -819,32 +853,19 @@ function SearchPanel({
     (result: SearchResult, idx: number) => {
       if (!editor) return;
 
-      if (result.unanchored) {
-        onHighlightRange(null);
-      } else if (result.blockId) {
-        // Live re-resolution + the deleted-block no-op — the full policy
-        // (including why the baked fallback is reserved for the no-snapshot
-        // case) lives on `resolveAnchoredHighlight`. Main-text hits AND
-        // anchored card hits (their resolved paragraph, task 758) take this
-        // door, so neither scrolls to a position baked before an edit.
-        onHighlightRange(
-          resolveAnchoredHighlight(
-            editor,
-            result.blockId,
-            { from: result.from, to: result.to },
-            // A main-text hit names characters, so the click checks the live
-            // range still holds them (task 759); a card hit names a paragraph.
-            result.scope === "mainText" && deferredRe
-              ? { re: deferredRe, match: result.match }
-              : undefined,
-          ),
-        );
-      } else {
-        // Footnote/citation hits carry their atom's search-time position (no
-        // block identity to re-resolve). They scroll-to + open their native
-        // panel; the editor highlight is best-effort.
-        onHighlightRange({ from: result.from, to: result.to });
-      }
+      // Every identity re-resolves against the LIVE doc — the policy lives on
+      // `resolveHitRange`. A main-text hit names characters, so the click
+      // checks the live range still holds them (task 759); card and atom hits
+      // name a paragraph / an atom.
+      onHighlightRange(
+        resolveHitRange(
+          editor,
+          result,
+          result.scope === "mainText" && deferredRe
+            ? { re: deferredRe, match: result.match }
+            : undefined,
+        ),
+      );
 
       const targetPanel = SCOPE_PANEL[result.scope];
       if (targetPanel && result.itemId) {
