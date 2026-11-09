@@ -118,6 +118,16 @@ describe('"+K" overflow pill — Delete on an arrowed-to row (task 1529)', () =>
     expect(deletes[nextIdx]).toHaveBeenCalledTimes(1);
   });
 
+  it("Delete on the LAST row leaves the cursor on the row above, not the first (task 1543)", async () => {
+    const { getByText } = renderPill(4, (m) => ({ ...m, onDelete: vi.fn() }));
+    const active = await openAndArrowTo(getByText, "+4", 4);
+    expect(active!.textContent).toBe("hidden 3");
+    fireEvent.keyDown(window, { key: "Delete" });
+    await settle();
+    const next = document.body.querySelector('[role="menuitem"][data-active]');
+    expect(next!.textContent).toBe("hidden 2");
+  });
+
   it("announces the verb only on a row whose marker carries onDelete", async () => {
     const { getByText } = renderPill(2, (m, i) => (i === 0 ? { ...m, onDelete: vi.fn() } : m));
     fireEvent.click(getByText("+2").closest("button")!);

@@ -9,6 +9,7 @@ import {
   buildLetterMap,
   initialActiveId,
   freshNavMemory,
+  nearestEnabledNeighbour,
   type NavMemory,
 } from "../nav-core";
 import type { MenuNode } from "../types";
@@ -322,4 +323,44 @@ describe("buildLetterMap", () => {
     expect(map.get("DELETE")).toBe("delete");
     expect(map.get("C")).toBeUndefined(); // disabled → inert
   });
+});
+
+// ── task 1543: edge steps never wrap or stall ───────────────────────────────
+
+describe("nearestEnabledNeighbour — where the cursor lands when its row is removed (task 1543)", () => {
+  const nodes = ["a", "b", "c", "d"].map((id) => listNode(id));
+  it("removing the LAST of N lands on N-1 (no wrap to the first)", () => {
+    expect(nearestEnabledNeighbour(nodes, "d")).toBe("c");
+  });
+  it("removing a middle row lands on the next", () => {
+    expect(nearestEnabledNeighbour(nodes, "b")).toBe("c");
+  });
+  it("removing the sole row lands nowhere", () => {
+    expect(nearestEnabledNeighbour([listNode("a")], "a")).toBeNull();
+  });
+  it("skips disabled rows, and never crosses into another region", () => {
+    const mixed = [gridNode("g", 0, 0), listNode("x"), listNode("y"), listNode("z", { disabled: true })];
+    expect(nearestEnabledNeighbour(mixed, "y")).toBe("x");
+    expect(nearestEnabledNeighbour(mixed, "x")).toBe("y");
+    expect(nearestEnabledNeighbour([gridNode("g", 0, 0), listNode("x")], "x")).toBeNull();
+  });
+});
+
+describe("grid Home/End walk past a fully-disabled edge row (task 1543)", () => {
+  const cells = [
+    gridNode("r0a", 0, 0, { disabled: true }),
+    gridNode("r0b", 0, 1, { disabled: true }),
+    gridNode("r1a", 1, 0),
+    gridNode("r1b", 1, 1),
+    gridNode("r2a", 2, 0, { disabled: true }),
+    gridNode("r2b", 2, 1, { disabled: true }),
+  ];
+  for (const layout of ["grid", "composite"] as const) {
+    it(`${layout}: Home with row 0 all disabled lands on the first enabled cell of the next row`, () => {
+      expect(computeNextActive(layout, cells, "r1b", "home", freshNavMemory())).toBe("r1a");
+    });
+    it(`${layout}: End with the last row all disabled lands on the last enabled cell above it`, () => {
+      expect(computeNextActive(layout, cells, "r1a", "end", freshNavMemory())).toBe("r1b");
+    });
+  }
 });
