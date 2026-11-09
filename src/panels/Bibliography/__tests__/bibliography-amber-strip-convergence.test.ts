@@ -98,4 +98,20 @@ describe("Bibliography amber attention-strip convergence (tasks 280, 305)", () =
       expect(src, name).not.toMatch(rawAmberStrip);
     }
   });
+
+  it("no consumer spells amber-attention chrome raw — it comes only from the shared module (task 1535)", () => {
+    // The edit warning in BibEntryCard spelled its own FULL-opacity
+    // `bg-[var(--amber-50)]` + `--amber-600` ink, which the `/N`-keyed wash
+    // test above could not see. Consumers may not name the attention family's
+    // wash or ink tokens at all; the SSOT module is their only spelling.
+    const rawFamilyToken = /var\(--amber-(?:50|600|700|attention-ink(?:-hover)?)\)/g;
+    for (const [name, src] of Object.entries({ cardSource, ...consumerSources })) {
+      expect([...src.matchAll(rawFamilyToken)].map((m) => m[0]), name).toEqual([]);
+    }
+  });
+
+  it("the bib edit warning renders from AMBER_ATTENTION_CALLOUT (task 1535)", () => {
+    expect(sharedSource).toMatch(/export const AMBER_ATTENTION_CALLOUT\s*=/);
+    expect(cardSource).toMatch(/\$\{AMBER_ATTENTION_CALLOUT\}/);
+  });
 });

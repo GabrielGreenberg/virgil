@@ -13,7 +13,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
-import { AMBER_ATTENTION_INK } from "@/panels/_shared/amber-attention";
+import { AMBER_ATTENTION_CALLOUT, AMBER_ATTENTION_INK } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 import { annotationHtmlToRich, richToAnnotationHtml } from "@/lib/annotation-html";
 import RichTextField from "@/components/RichTextField";
@@ -604,7 +604,7 @@ export default function BibEntryCard({
                   onKeyDown={onEditBibKeyDown}
                 >
                   {showBibWarning && (
-                    <div className="text-[var(--amber-600)] bg-[var(--amber-50)] border border-[var(--amber-200)] rounded px-2 py-1 mb-1 text-xs">
+                    <div className={`${AMBER_ATTENTION_CALLOUT} mb-1`}>
                       Warning: editing will modify the .bib file. Changing the
                       key also rewrites every <code>\cite</code> of it in the
                       document, and moves this entry&rsquo;s annotation and

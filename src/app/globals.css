@@ -433,7 +433,19 @@
      byte-neutral; before this each site spelled `text-amber-600` raw,
      outside the scale. */
   --amber-600: oklch(66.6% 0.179 58.318);
-  --amber-700: oklch(55.5% 0.163 48.998);
+  /* 700/800 are Tailwind's amber-700/800 oklch values spelled in hex
+     (byte-neutral) so the AA leg in amber-attention-tokens.test.ts can
+     measure them. */
+  --amber-700: #bb4d00;
+  --amber-800: #973c00;
+  /* The attention family's TEXT ink, named by role (task 1535). 600 measured
+     3.03:1 on --amber-50 — under WCAG AA for the reading text it carried (the
+     bib edit warning, the "Requested" chip, the Annotations label). 700 is a
+     hue-preserving darken that clears 4.5:1 on --amber-50 AND on the chip's
+     --amber-100 hover wash; the hover rung steps to 800. --amber-600 now
+     survives only as a stroke/tint source (the CodeMirror palette). */
+  --amber-attention-ink: var(--amber-700);
+  --amber-attention-ink-hover: var(--amber-800);
 
   /* ── Amber highlight (the "lit inline atom" role-set) ──────────────
      The two-state wash every inline atom shares when it lights up:

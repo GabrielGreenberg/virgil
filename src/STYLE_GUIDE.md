@@ -555,6 +555,15 @@ The token scales:
   `bg-blue-*`.
 - **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
 - **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
+- **Amber attention** (pending request, edit warning — `@/panels/_shared/amber-attention`):
+  wash `--amber-50` (chip/callout, full) or `/40` (strip behind body ink),
+  hairline `--amber-200`, TEXT ink `--amber-attention-ink` (hover rung
+  `--amber-attention-ink-hover`). **The ink clears WCAG AA (4.5:1) on
+  `--amber-50` and on the chip's `--amber-100` hover** — `--amber-600` (3.03:1)
+  failed it and is now a stroke/tint source only (task 1535;
+  `amber-attention-tokens.test.ts`). Consumers spell none of these tokens: the
+  chrome comes from the module's exports (`AMBER_ATTENTION_STRIP`,
+  `AMBER_PENDING_CHIP`, `AMBER_ATTENTION_INK`, `AMBER_ATTENTION_CALLOUT`).
 - **Amber highlight** (the "lit inline atom" role-set): `--amber-highlight-wash`
   (hover), `--amber-highlight-wash-active` (active/selected),
   `--amber-highlight-edge` (border + ring, derived from `--amber-500`),

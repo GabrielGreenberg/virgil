@@ -25,9 +25,23 @@ export const AMBER_ATTENTION_STRIP =
  *  Tailwind palette classes), so the chip and the request-note strip it opens
  *  read as one state. */
 export const AMBER_PENDING_CHIP =
-  "text-[var(--amber-600)] bg-[var(--amber-50)] hover:bg-[var(--amber-100)]";
+  "text-[var(--amber-attention-ink)] bg-[var(--amber-50)] hover:bg-[var(--amber-100)]";
 
 /** Amber ink for a label whose content is present (the bib "Annotations"
  *  disclosure when an annotation exists). */
 export const AMBER_ATTENTION_INK =
-  "text-[var(--amber-600)] hover:text-[var(--amber-700)]";
+  "text-[var(--amber-attention-ink)] hover:text-[var(--amber-attention-ink-hover)]";
+
+/** The amber WARNING CALLOUT (task 1535): a standalone block of reading text
+ *  that warns before a consequential edit — `BibEntryCard`'s "editing will
+ *  modify the .bib file" notice. Unlike {@link AMBER_ATTENTION_STRIP} (a
+ *  `/40` wash behind body-ink content) the callout's TEXT is amber, so it
+ *  takes the chip's FULL `--amber-50` wash: that is the ground the ink's AA
+ *  ratio is measured on, and the `/40` strip over a darker card ground would
+ *  not be. Callers add only layout (margins).
+ *
+ *  Every amber-family TEXT reads `--amber-attention-ink`, which clears WCAG AA
+ *  (4.5:1) on `--amber-50` and on the chip's `--amber-100` hover —
+ *  `amber-attention-tokens.test.ts` pins it. */
+export const AMBER_ATTENTION_CALLOUT =
+  "text-xs px-2 py-1 rounded-md border border-[var(--amber-200)] bg-[var(--amber-50)] text-[var(--amber-attention-ink)]";
