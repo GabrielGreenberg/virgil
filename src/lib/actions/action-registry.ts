@@ -836,6 +836,12 @@ export interface ActionSpec {
    *  grab-bar / lightning letter hints: H/N/F/C/T/E/X/R/D/A/⌫). Menu-scoped,
    *  NOT a global keybinding — that is `keybinding`. */
   letter?: string;
+  /** Named keys that ALSO activate this row while its menu is open — the row's
+   *  key verb when its `letter` is a glyph rather than a typeable key (Delete:
+   *  "⌫" → Backspace / Delete). The ROW states it, so every menu that renders
+   *  the row binds it through `decorateCardRow` and no view keys a one-off on
+   *  the row's id (task 1538). Menu-scoped, like `letter`. */
+  keyAliases?: readonly string[];
   /** Draw a divider line ABOVE this entry in the menu list. Menu-chrome
    *  only (the former `MenuEntry.separator`); the grab-bar / lightning menus
    *  render the rule when set (above Duplicate + Archive). */
@@ -4078,6 +4084,7 @@ function cardRow(id: CardActionId): ActionSpec {
     id,
     label: p.label,
     letter: p.letter,
+    keyAliases: p.keyAliases,
     icon: p.icon,
     separator: p.separator,
     destructive: p.destructive,

@@ -72,6 +72,7 @@ import { useCloseOnDisabledEdge } from "./menu/menu-trigger";
 import { MenuGrid, MenuList } from "./menu/regions";
 import {
   MenuItemsFromRegistry,
+  decorateCardRow,
   type DecoratedMenuRow,
 } from "./menu/MenuItemsFromRegistry";
 import { compoundCellProps, useMenuItem } from "./menu/useMenuItem";
@@ -672,25 +673,14 @@ export function ActionsMenuPanel({
     // Task 968: `verdictOf` — the row's own `applies()` state plus WHY.
     return verdictOf(entry, { ref: applyRef, canEdit, view: editor.view } as ActionContext);
   };
-  const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) => {
-    const verdict = cardRowVerdict(entry);
-    const disabled = verdict.state === "disabled";
-    return {
-      id: entry.id,
-      label: entry.label,
-      // The lightning panel's letter fast-path is preserved (H/N/F/C/T/E/X/R/D/A).
-      // The delete row's display glyph "⌫" is NOT a typeable key, so — matching
-      // the pre-migration behavior — delete has no working letter shortcut here
-      // (no Backspace/Delete alias, unlike the grab menu which adds one).
-      letter: entry.letter,
-      icon: entry.icon,
-      separator: entry.separator,
-      destructive: entry.destructive,
-      disabled,
-      disabledReason: verdict.reason,
-      run: () => runAction(entry.id as DragHandleAction),
-    };
-  });
+  // Task 1538: the SAME decorator the grab menu uses — so the delete row's
+  // painted "⌫" carries the registry's Backspace/Delete aliases here too, and
+  // the hint names a key this panel honours.
+  const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) =>
+    decorateCardRow(entry, cardRowVerdict(entry), () =>
+      runAction(entry.id as DragHandleAction),
+    ),
+  );
 
   // Task 738 — the painted state FOLLOWS the live editor while the panel is
   // open. A format click deliberately keeps the menu open (see `runGridAction`)

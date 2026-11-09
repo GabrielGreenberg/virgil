@@ -3464,6 +3464,12 @@ Enter/click commit refuses on.
   attribute itself. The VISIBLE hint (the registry list's letter, `<Kbd
   decorative>`) is `aria-hidden`, so it stays out of the row's name ("Archive",
   not "Archive A"). CI: `menu-key-shortcuts-announced.test.tsx`.
+  **A registry row's key verbs belong to the ROW** (task 1538): a card row
+  whose painted `letter` is a glyph rather than a typeable key (Delete's "⌫")
+  declares the keys it answers to as `keyAliases` on its registry row, and
+  every surface builds rows through the one `decorateCardRow`, so the grab
+  menu and the ⚡ panel bind the same keys their shared hint paints. No view
+  keys behaviour on a row id. CI: `card-row-key-verb-census.test.ts`.
 - **One grey, one red — stated once** (task 967). Every `<Menu>` row
   (`MenuActionRow`, `MenuToggleRow`, the grab/lightning `MenuItemsFromRegistry`
   list) takes its disabled ink, destructive tone (`text-danger` +

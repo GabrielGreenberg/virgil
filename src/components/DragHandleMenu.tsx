@@ -20,8 +20,8 @@
  * (`useFloatingMenuPosition`), click-outside dismissal, the Escape handler, and
  * the keyboard controller. The menu GAINS Up/Down/Home/End/Enter arrow nav with
  * a visible active highlight, and KEEPS the letter fast-path + the
- * Backspace/Delete → delete alias (registered on the delete row's
- * `letterAliases`). Behavior is otherwise identical to before the migration.
+ * Backspace/Delete → delete alias (the registry row's `keyAliases`,
+ * bound by `decorateCardRow`). Behavior is otherwise identical to before the migration.
  */
 
 import { useMemo } from "react";
@@ -44,6 +44,7 @@ import { MenuProvider } from "./menu/MenuProvider";
 import { caretEditableHost } from "./menu/caret-host";
 import {
   MenuItemsFromRegistry,
+  decorateCardRow,
   type DecoratedMenuRow,
 } from "./menu/MenuItemsFromRegistry";
 
@@ -181,34 +182,23 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, triggerEl = null
       // Task 968: the verdict WITH its reason — the same `applies()` state,
       // plus which gate refused, so a greyed row says why.
       const verdict = verdictOf(row, ctx);
-      return {
-        id: row.id,
-        label: row.label,
-        letter: row.letter,
-        // The destructive `delete` row also activates on Backspace / Delete —
-        // preserved from the bespoke keydown listener as a letter-alias.
-        letterAliases: row.id === "delete" ? ["Backspace", "Delete"] : undefined,
-        icon: row.icon,
-        separator: row.separator,
-        destructive: row.destructive,
-        disabled: verdict.state === "disabled",
-        disabledReason: verdict.reason,
-        run: () => {
-          if (!live) {
-            onSelect(row.id as DragHandleAction);
-            return;
-          }
-          // Asked at CLICK time, not render time: a transaction that landed
-          // since the last frame is already folded in. Null = the target went
-          // stale in that gap — refuse by closing, never act on shifted text.
-          const now = live.current();
-          if (!now) {
-            onClose();
-            return;
-          }
-          onSelect(row.id as DragHandleAction, now);
-        },
-      };
+      // Task 1538: the row's key verb (Delete's Backspace/Delete) is the
+      // registry's `keyAliases`, copied by the shared decorator — not decided here.
+      return decorateCardRow(row, verdict, () => {
+        if (!live) {
+          onSelect(row.id as DragHandleAction);
+          return;
+        }
+        // Asked at CLICK time, not render time: a transaction that landed
+        // since the last frame is already folded in. Null = the target went
+        // stale in that gap — refuse by closing, never act on shifted text.
+        const now = live.current();
+        if (!now) {
+          onClose();
+          return;
+        }
+        onSelect(row.id as DragHandleAction, now);
+      });
     });
   }, [target, kind, editor, canEdit, onSelect, onClose, live]);
 

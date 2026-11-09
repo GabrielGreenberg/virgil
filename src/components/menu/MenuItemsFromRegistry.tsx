@@ -18,6 +18,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { MenuSeparator } from "./MenuChrome";
 import { menuRowReasonProps, menuRowRovingStyle, menuRowToneClass } from "./row-tone";
 import { useMenuItem } from "./useMenuItem";
+import type { ActionSpec, ActionVerdict } from "@/lib/actions/action-registry";
 
 /** A row decorated with its per-open disabled state — what a caller passes
  *  after resolving the registry `applies()` for this menu's kind/context. */
@@ -34,6 +35,39 @@ export interface DecoratedMenuRow {
    *  the row's hint and announced as its description; ignored when enabled. */
   disabledReason?: string | null;
   run: () => void;
+}
+
+/**
+ * The ONE registry-row → menu-row decorator (task 1538). Both card-action
+ * surfaces (grab `DragHandleMenu`, ⚡ `ActionsMenuPanel`) build their rows here,
+ * so every presentation facet the registry states — label, letter AND its key
+ * aliases, icon, separator, destructive — reaches both surfaces identically.
+ * A view supplies only what is genuinely its own: the verdict for its context
+ * and the `run` that dispatches with its ref. Before this, each view hand-copied
+ * the mapping, and the copies drifted (the grab menu bound Backspace/Delete to
+ * Delete by an `id === "delete"` one-off; the ⚡ panel painted "⌫" over a key
+ * that did nothing).
+ */
+export function decorateCardRow(
+  row: Pick<
+    ActionSpec,
+    "id" | "label" | "letter" | "keyAliases" | "icon" | "separator" | "destructive"
+  >,
+  verdict: ActionVerdict,
+  run: () => void,
+): DecoratedMenuRow {
+  return {
+    id: row.id,
+    label: row.label,
+    letter: row.letter,
+    letterAliases: row.keyAliases ? [...row.keyAliases] : undefined,
+    icon: row.icon,
+    separator: row.separator,
+    destructive: row.destructive,
+    disabled: verdict.state === "disabled",
+    disabledReason: verdict.reason,
+    run,
+  };
 }
 
 const ITEM_H = 30;

@@ -335,6 +335,43 @@ describe("ActionsMenuPanel — letter fast-path", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Task 1538 — the Delete row's key verb is the REGISTRY's, so the ⚡ panel's
+// painted "⌫" names keys this panel honours (it used to bind nothing).
+// ---------------------------------------------------------------------------
+describe("ActionsMenuPanel — Delete row answers to Backspace / Delete", () => {
+  it.each(["Backspace", "Delete"])("%s runs Delete in selection mode", (k) => {
+    const { dispatch } = renderPanel({ mode: "selection" });
+    key(k);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith("delete", {
+      kind: "selection",
+      paragraphId: "p7",
+      from: 3,
+      to: 9,
+    });
+  });
+
+  it("Backspace runs Delete in cursor mode, on the caret's block", () => {
+    const { dispatch } = renderPanel({ mode: "cursor" });
+    key("Backspace");
+    expect(dispatch).toHaveBeenCalledWith("delete", { kind: "paragraph", id: "p7" });
+  });
+
+  it("a greyed Delete row's Backspace is inert (read-only)", () => {
+    const { dispatch } = renderPanel({ editable: false, mode: "selection" });
+    key("Backspace");
+    key("Delete");
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("the Delete row announces the keys its hint paints", () => {
+    const { getByText } = renderPanel({ mode: "selection" });
+    const row = getByText("Delete").closest("button")!;
+    expect(row.getAttribute("aria-keyshortcuts")).toBe("Backspace Delete");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Disabled-skip (collab read-only greys EVERY grid cell + card row).
 // ---------------------------------------------------------------------------
 describe("ActionsMenuPanel — disabled-skip", () => {
