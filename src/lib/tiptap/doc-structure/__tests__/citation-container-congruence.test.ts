@@ -236,4 +236,34 @@ describe("a citation's container tag is derived on the incremental path too", ()
     expect(after?.nestedInFootnoteId).toBe(before!.nestedInFootnoteId);
     expect(after?.nestedInContainerId).toEqual(before!.nestedInContainerId);
   });
+
+  it("a cite re-collected under a RE-MINTED example follows the new id (task 1495)", () => {
+    // The uuid backfill and the paste dedupe re-mint an example in place
+    // (`setNodeMarkup`). The cite is re-collected on both sides at the same
+    // mapped pos with the same command/text, so a "changed" test that compared
+    // only those left the folded container at the DEAD id — the card nested
+    // under nothing until reload.
+    const ed = mount(DOC);
+    const at = posAfterText(ed.state.doc, "Inside the example.");
+    ed.view.dispatch(ed.state.tr.insert(at, makeCite(ed, "c-remint", "smith2020")));
+    const oldUuid = exampleUuid(ed.state.doc);
+
+    let exPos = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (exPos < 0 && n.type.name === "exampleBlock") exPos = pos;
+      return exPos < 0;
+    });
+    const fresh = "ex-reminted-1495";
+    ed.view.dispatch(
+      ed.state.tr.setNodeMarkup(exPos, undefined, {
+        ...ed.state.doc.nodeAt(exPos)!.attrs,
+        uuid: fresh,
+      }),
+    );
+
+    expect(exampleUuid(ed.state.doc)).toBe(fresh);
+    expect(fresh).not.toBe(oldUuid);
+    expect(liveEntry(ed, "c-remint")?.nestedInContainerId).toEqual({ kind: "example", id: fresh });
+    expectCongruent(ed);
+  });
 });

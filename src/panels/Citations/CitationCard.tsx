@@ -60,7 +60,8 @@ import { describedHint, iconHint } from "@/components/Hint";
 import { NEVER_SPELLCHECK_PROPS } from "@/lib/spellcheck-policy";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
-import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
+import { useWriteCoalescer } from "@/hooks/useWriteCoalescer";
+import { CONTENT_WRITE_MAX_WAIT_MS } from "@/lib/sidecar-value";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
@@ -844,20 +845,49 @@ export function CitationCard({
   /* ── Code line (raw LaTeX editor) ────────────────────────────────── */
 
   const [codeDraft, setCodeDraft] = useState<string | null>(null);
-  // Armed through the card's lifetime (task 686), so the unmount that ends the
-  // session is also the timer's outer bound — there is no window in which a
-  // debounce can land after the component that would have to take it back.
-  const codeDebounceRef = useRef<ViewTimer | null>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
   // 529's door. The Code input is one of TWO fields on this card that end a
   // session; the other is the per-key `+range` postnote in `CitationKeyRow`,
   // which has its own instance because it is its own component.
   const codeSession = useFieldEditSession();
 
+  // The live preview is a WRITE of the user's content (`citations.json` and
+  // the in-text `\cite` atom), so it coalesces through the ONE write coalescer
+  // (task 1327 → 1502): a 250 ms trailing window capped at the content-write
+  // maxWait, so an unbroken burst in this field still hands its edit on rather
+  // than waiting for the typist to pause. Armed through the card's lifetime
+  // (task 686): the unmount that ends the session is also the timer's outer
+  // bound. The fire reads the draft at FIRE time, never an arm-time capture.
+  const codeWrite = useWriteCoalescer({
+    delayMs: 250,
+    maxWaitMs: CONTENT_WRITE_MAX_WAIT_MS,
+    scheduler: lifetime,
+    fire: () => {
+      const v = codeDraftRef.current;
+      if (v === null) return;
+      // A DRAFT HAS NOTHING TO PREVIEW INTO (task 1512). Its write is not a
+      // preview but a PROMOTION — the panel turns the draft's first command
+      // into a real citation and plants its atom in the prose, unmounting this
+      // card mid-session. So a draft becomes a citation only at the session's
+      // ENDING (`commitCodeDraft`), never on a timer behind a half-typed `\ci`.
+      if (isDraft) return;
+      // THIS DOOR CANNOT EMPTY THE PROSE, by construction (task 683). A
+      // mid-session keystroke that clears the field would otherwise blank the
+      // in-text `\cite{}` 250 ms later — no gesture, no dialog, the session
+      // not even over. The live preview simply holds the last non-emptying
+      // value; the emptying transition waits for the session's END
+      // (`commitCodeDraft`), which crosses the guarded door. An unparseable
+      // half-typed value is unfinished rather than empty (`commandKeys` →
+      // null), so the preview still follows it.
+      if (inDocument && cit.keys.length > 0 && commandKeys(v)?.length === 0) return;
+      lastWrittenRef.current = v;
+      onUpdateCitation(cit.id, v);
+    },
+  });
+
   const commitCodeDraft = useCallback(() => {
     const v = codeDraftRef.current;
-    lifetime.clear(codeDebounceRef.current);
-    codeDebounceRef.current = null;
+    codeWrite.cancel();
     if (v !== null) {
       // The Code input bypasses the row mutators, so on commit it must resync
       // the local rows/type/flags from the committed command (task 078).
@@ -881,7 +911,7 @@ export function CitationCard({
     codeDraftRef.current = null;
     codeOriginalRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, emitCommand, syncLocalFromCommand, lifetime]);
+  }, [cit.command, emitCommand, syncLocalFromCommand, codeWrite]);
 
   /** ESCAPE MEANS CANCEL (task 555). Pre-555 this field's keydown aliased
    *  Escape to Enter and ran `commitCodeDraft` — so the key the user presses
@@ -900,8 +930,7 @@ export function CitationCard({
    *  does; without that the body state would keep the cancelled parse and the
    *  next control's `persist()` would re-serialize the abandoned edit. */
   const cancelCodeDraft = useCallback(() => {
-    lifetime.clear(codeDebounceRef.current);
-    codeDebounceRef.current = null;
+    codeWrite.cancel();
     const original = codeOriginalRef.current;
     if (original !== null && original !== cit.command) {
       // A cancel is measured against the session's OWN baseline (task 683): it
@@ -917,29 +946,15 @@ export function CitationCard({
     codeOriginalRef.current = null;
     codeDraftRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, emitCommand, syncLocalFromCommand, lifetime]);
+  }, [cit.command, emitCommand, syncLocalFromCommand, codeWrite]);
 
   const updateCodeDraft = useCallback(
     (v: string) => {
       codeDraftRef.current = v;
       setCodeDraft(v);
-      lifetime.clear(codeDebounceRef.current);
-      codeDebounceRef.current = lifetime.setTimeout(() => {
-        codeDebounceRef.current = null;
-        // THIS DOOR CANNOT EMPTY THE PROSE, by construction (task 683). A
-        // mid-session keystroke that clears the field would otherwise blank the
-        // in-text `\cite{}` 250 ms later — no gesture, no dialog, the session
-        // not even over. The live preview simply holds the last non-emptying
-        // value; the emptying transition waits for the session's END
-        // (`commitCodeDraft`), which crosses the guarded door. An unparseable
-        // half-typed value is unfinished rather than empty (`commandKeys` →
-        // null), so the preview still follows it.
-        if (inDocument && cit.keys.length > 0 && commandKeys(v)?.length === 0) return;
-        lastWrittenRef.current = v;
-        onUpdateCitation(cit.id, v);
-      }, 250);
+      codeWrite.arm();
     },
-    [cit.id, cit.keys.length, inDocument, onUpdateCitation, lifetime],
+    [codeWrite],
   );
 
   /** UNMOUNT IS AN ENDING (task 686). React dispatches no `blur` when a
@@ -1507,16 +1522,28 @@ function CitationKeyRow({
   // copy flash, which `useCopyFlash` arms through the row's own scope.
   const { copied, copy } = useCopyFlash();
 
+  // Focus belongs to the user's OPEN gesture (`+range`), never to a data echo
+  // (task 1513). Pre-1513 the autofocus effect was keyed on
+  // `[pgOpen, row.postnote]`, and the echo below never closed the box when the
+  // postnote emptied — so ANY clear (an emptied range committed by Enter or
+  // click-away, a Code-field edit dropping `[12]`, an editor undo, a natbib
+  // flip) re-ran it and yanked the caret out of wherever the user was into
+  // this card. The click arms a one-shot; the open transition consumes it.
+  const focusOnOpenRef = useRef(false);
+
   useEffect(() => {
     setPgDraft(row.postnote || "");
     if (row.postnote) setPgOpen(true);
+    // An emptied range returns the row to its empty state (`+range`) — unless
+    // the user is in the box right now, where closing would eat their field.
+    else if (document.activeElement !== pgInputRef.current) setPgOpen(false);
   }, [row.postnote]);
 
   useEffect(() => {
-    if (pgOpen && !row.postnote) {
-      pgInputRef.current?.focus();
-    }
-  }, [pgOpen, row.postnote]);
+    if (!pgOpen || !focusOnOpenRef.current) return;
+    focusOnOpenRef.current = false;
+    pgInputRef.current?.focus();
+  }, [pgOpen]);
 
   // Commits on blur, cancels on Escape — and `.blur()` inside a keydown fires
   // `focusout` SYNCHRONOUSLY, so the revert `setPgDraft` in that branch is
@@ -1604,6 +1631,7 @@ function CitationKeyRow({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            focusOnOpenRef.current = true;
             setPgOpen(true);
           }}
           data-button-exempt="10px hover-revealed row chip, below Button's sm scale"

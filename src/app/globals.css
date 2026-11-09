@@ -450,7 +450,19 @@
      byte-neutral; before this each site spelled `text-amber-600` raw,
      outside the scale. */
   --amber-600: oklch(66.6% 0.179 58.318);
-  --amber-700: oklch(55.5% 0.163 48.998);
+  /* 700/800 are Tailwind's amber-700/800 oklch values spelled in hex
+     (byte-neutral) so the AA leg in amber-attention-tokens.test.ts can
+     measure them. */
+  --amber-700: #bb4d00;
+  --amber-800: #973c00;
+  /* The attention family's TEXT ink, named by role (task 1535). 600 measured
+     3.03:1 on --amber-50 — under WCAG AA for the reading text it carried (the
+     bib edit warning, the "Requested" chip, the Annotations label). 700 is a
+     hue-preserving darken that clears 4.5:1 on --amber-50 AND on the chip's
+     --amber-100 hover wash; the hover rung steps to 800. --amber-600 now
+     survives only as a stroke/tint source (the CodeMirror palette). */
+  --amber-attention-ink: var(--amber-700);
+  --amber-attention-ink-hover: var(--amber-800);
 
   /* ── Amber highlight (the "lit inline atom" role-set) ──────────────
      The two-state wash every inline atom shares when it lights up:
@@ -5848,6 +5860,22 @@ body.perf-contain .static-borrowed-text {
   overflow-y: auto;
   overscroll-behavior: contain;
   max-height: min(50vh, calc(var(--scroll-viewport-h, 100dvh) * 0.5));
+}
+
+/* The ONE card-textarea sizing rule (task 1524). A plain `<textarea>` card
+   body (a todo's notes, an editable suggestion field) GROWS with its content
+   so the enclosing `.card-body-scroll` above is the one bounded scroller — a
+   fixed `rows={2}` box made the textarea a two-line inner scroller nested in
+   the capped body, and the half-pane cap never engaged. `field-sizing:
+   content` (Chrome 123+; Virgil ships as a Chrome PWA) costs no per-keystroke
+   layout read, unlike a scrollHeight sizer. The two-line floor replaces
+   `rows` (which content sizing ignores). Unlayered, so it outranks a call
+   site's `min-h-*` utility. A popped-out todo's `flex-1 min-h-0` still fills
+   its window: flex growth is unaffected by content sizing.
+   card-body-scroll-census.test.ts fails on a card textarea without it. */
+.card-textarea {
+  field-sizing: content;
+  min-height: 2lh;
 }
 
 /* RETIRED (task 525): `.toolbar-scroll` and `.hide-scrollbar` — two

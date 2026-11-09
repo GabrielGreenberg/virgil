@@ -157,3 +157,21 @@ export interface DocWriteOptions {
    */
   acknowledgePreservation?: boolean;
 }
+
+/**
+ * What `rewriteTex` did (task 1501). The rewrite is a transform applied to the
+ * `.tex` as it stands INSIDE the doc's serialized write queue — so a write that
+ * landed between a caller's decision and its write is the base it transforms,
+ * never something it overwrites.
+ *
+ *  - `written`     — the transform returned new text and it landed.
+ *  - `unchanged`   — the transform declined (returned `null` or the same text),
+ *                    or the bytes were already on disk; nothing written.
+ *  - `undecodable` — the file on disk is not valid UTF-8; rewriting a lossy
+ *                    decode would persist U+FFFD over the user's bytes, so
+ *                    nothing is written.
+ */
+export type TexRewriteResult = "written" | "unchanged" | "undecodable";
+
+/** The pure transform `rewriteTex` applies. `null` = leave the file alone. */
+export type TexTransform = (current: string) => string | null;

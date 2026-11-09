@@ -549,26 +549,29 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
   const hoverFills = (css: string): string[] => {
     const out: string[] = [];
     const RULE = /([^{}]+)\{([^{}]*)\}/g;
+    // Strip ONCE: the loop condition re-runs per match, and re-stripping the
+    // whole stylesheet there made this O(rules × file) (task 1537).
+    const src = cssCommentsStripped(css);
     let m: RegExpExecArray | null;
-    // Strip ONCE: re-stripping per match made the scan quadratic in the sheet.
-    const stripped = cssCommentsStripped(css);
-    while ((m = RULE.exec(stripped))) {
+    while ((m = RULE.exec(src))) {
       const sel = m[1].trim().replace(/\s+/g, " ");
       if (/:hover/.test(sel) && /(?:^|[;\s])background(?:-color)?\s*:/.test(m[2])) out.push(sel);
     }
     return out;
   };
+  // The three globals checks share one pass.
+  const globalHoverFills = hoverFills(globals);
 
   it("sees the population (self-check)", () => {
-    expect(hoverFills(globals).length).toBeGreaterThan(30);
+    expect(globalHoverFills.length).toBeGreaterThan(30);
   });
 
   it("states every one — a new stylesheet hover fill is a control (take the utility) or a named role", () => {
-    expect(hoverFills(globals).filter((sel) => !(sel in STATED))).toEqual([]);
+    expect(globalHoverFills.filter((sel) => !(sel in STATED))).toEqual([]);
   });
 
   it("keeps no stale row (an entry whose rule is gone excuses the next one)", () => {
-    const live = new Set(hoverFills(globals));
+    const live = new Set(globalHoverFills);
     expect(Object.keys(STATED).filter((sel) => !live.has(sel))).toEqual([]);
   });
 
@@ -743,21 +746,27 @@ describe("an icon button states its ink through an iconbtn- VARIANT", () => {
    *  the line its opening quote sits on. A className is routinely a template
    *  literal split across lines, so a LINE grep sees `iconbtn-sm` and the
    *  `text-*` beside it as unrelated. */
+  let classStringsMemo: { at: string; s: string }[] | null = null;
   const classStrings = (): { at: string; s: string }[] => {
+    // Swept once per file run: every leg reads the same tracked tree. The line
+    // number is counted INCREMENTALLY from the previous match — re-splitting
+    // the prefix per string was O(strings × file) (task 1537).
+    if (classStringsMemo) return classStringsMemo;
     const out: { at: string; s: string }[] = [];
     for (const abs of productionTsx()) {
       const rel = path.relative(REPO_ROOT, abs);
       const src = scan(readFileSync(abs, "utf8"));
       const re = /(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
       let m: RegExpExecArray | null;
+      let line = 1;
+      let counted = 0;
       while ((m = re.exec(src))) {
-        out.push({
-          at: `${rel}:${src.slice(0, m.index).split("\n").length}`,
-          s: m[2].replace(/\s+/g, " ").trim(),
-        });
+        for (let i = counted; i < m.index; i++) if (src.charCodeAt(i) === 10) line++;
+        counted = m.index;
+        out.push({ at: `${rel}:${line}`, s: m[2].replace(/\s+/g, " ").trim() });
       }
     }
-    return out;
+    return (classStringsMemo = out);
   };
 
   const ICONBTN = /\biconbtn-(?:xs|sm|md|lg)\b/;

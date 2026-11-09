@@ -154,7 +154,7 @@ vi.mock("@/lib/doc-index", () => ({
 
 import {
   readDocBundle,
-  writeTex,
+  rewriteTex,
   statFiles,
   readTextFile,
   invalidateSidecarBundle,
@@ -263,7 +263,7 @@ describe("save · a post-write stamp cannot adopt a foreign revision's stat", ()
     const w = await primedWatcher();
     const edited = BASE_TEX.replace("Original", "Edited");
     afterTexWrite = () => foreignWrite(FOREIGN_TEX);
-    await writeTex(beginDocPipeline(DOC_ID), edited);
+    await rewriteTex(beginDocPipeline(DOC_ID), () => edited);
 
     const fp = getDiskFingerprint(DOC_ID, TEX)!;
     expect(fp.hash).toBe(hashContent(edited));
@@ -277,7 +277,7 @@ describe("save · a post-write stamp cannot adopt a foreign revision's stat", ()
     await readDocBundle(DOC_ID);
     const w = await primedWatcher();
     const edited = BASE_TEX.replace("Original", "Edited");
-    await writeTex(beginDocPipeline(DOC_ID), edited);
+    await rewriteTex(beginDocPipeline(DOC_ID), () => edited);
     const live = docHandle.files.get(TEX)!;
     expect(getDiskFingerprint(DOC_ID, TEX)).toEqual({
       hash: hashContent(edited),

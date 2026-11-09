@@ -16,7 +16,10 @@ import {
   type SuggestionField,
 } from "@/panels/_shared/suggestion-field-vocabulary";
 import { compileLiteral } from "@/lib/whole-word";
+import { bibMatchText } from "@/lib/bib-searcher";
 import type { CardWithLinks } from "@/links/links";
+import type { AtomRef } from "@/hooks/useLivePosResolver";
+import type { CardAtomKind } from "@/lib/tiptap/atom-registry";
 import { rowAnchorPos, type CardAnchorResolver } from "@/links/card-anchor-rows";
 import type {
   ArchivedSnippet,
@@ -85,6 +88,36 @@ export interface SearchHit {
    *  click is live by the same door rather than scrolling to the baked `from`
    *  (task 758). Absent for footnote/citation/bibliography hits. */
   blockId?: { blockUuid: string; offset: number; length: number };
+  /** Keystroke-durable identity for an ANCHORED footnote/citation hit: the
+   *  atom's kind + canonical id. `navigateToResult` re-resolves it to the
+   *  atom's LIVE position (`resolveLiveAtomPos`) — the atom sibling of
+   *  `blockId` (task 1534) — so a click never lands the caret on a position
+   *  baked before an edit elsewhere. Absent for orphaned (unanchored) hits. */
+  atomRef?: AtomRef;
+}
+
+/** Optional live position lookup for atom-anchored scopes (task 1534): the
+ *  DocStructure snapshot's id → pos, read once per search run so ORDER and the
+ *  render-time `from` are current even when the caller's item arrays were
+ *  built before the last edit. `undefined` from it keeps the item's own pos. */
+export type LiveAtomPos = (kind: CardAtomKind, id: string) => number | undefined;
+
+/** An anchored atom hit: `hitFromMatch` at the atom's (live, when known)
+ *  position, stamped with its atom identity. */
+function atomHit(
+  kind: CardAtomKind,
+  scope: SearchScope,
+  id: string,
+  pos: number,
+  live: LiveAtomPos | null | undefined,
+  field: SearchHit["field"],
+  m: ScanMatch,
+  archived?: boolean,
+): SearchHit {
+  return {
+    ...hitFromMatch(scope, id, live?.(kind, id) ?? pos, field, m, archived),
+    atomRef: { kind, id },
+  };
 }
 
 /** Editor-position panel used by FootnoteInfo objects. */
@@ -404,18 +437,17 @@ export function searchFootnotes(
   footnotes: FootnoteSearchItem[],
   orphans: OrphanedFootnote[],
   re: RegExp,
+  live?: LiveAtomPos | null,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const f of footnotes) {
+    const hit = (field: SearchHit["field"], m: ScanMatch) =>
+      atomHit("footnote", "footnotes", f.footnoteId, f.pos, live, field, m);
     if (f.title) {
-      for (const m of scanText(f.title, re)) {
-        out.push(hitFromMatch("footnotes", f.footnoteId, f.pos, "title", m));
-      }
+      for (const m of scanText(f.title, re)) out.push(hit("title", m));
     }
     const body = richJsonToPlainText(f.content);
-    for (const m of scanText(body, re)) {
-      out.push(hitFromMatch("footnotes", f.footnoteId, f.pos, "body", m));
-    }
+    for (const m of scanText(body, re)) out.push(hit("body", m));
   }
   for (const o of orphans) {
     if (o.title) {
@@ -461,36 +493,42 @@ export function searchCitations(
   editorCitations: EditorCitationItem[],
   getDisplayText: (command: string) => string,
   re: RegExp,
+  live?: LiveAtomPos | null,
 ): SearchHit[] {
   const out: SearchHit[] = [];
   const posById = new Map(editorCitations.map((c) => [c.citationId, c.pos]));
 
+  // One citation's hits: anchored (it has a live atom) → an atom hit that
+  // re-resolves at click time; otherwise unanchored.
+  const push = (
+    id: string,
+    pos: number | null,
+    command: string,
+    archived?: boolean,
+  ) => {
+    const hit = (field: SearchHit["field"], m: ScanMatch) =>
+      pos == null
+        ? hitFromMatch("citations", id, null, field, m, archived)
+        : atomHit("citation", "citations", id, pos, live, field, m, archived);
+    for (const m of scanText(command, re)) out.push(hit("body", m));
+    const display = getDisplayText(command);
+    if (display && display !== command) {
+      for (const m of scanText(display, re)) out.push(hit("text", m));
+    }
+  };
+
   for (const c of persisted) {
-    const pos = posById.get(c.id) ?? null;
-    for (const m of scanText(c.command, re)) {
-      out.push(hitFromMatch("citations", c.id, pos, "body", m, c.archived));
-    }
-    const display = getDisplayText(c.command);
-    if (display && display !== c.command) {
-      for (const m of scanText(display, re)) {
-        out.push(hitFromMatch("citations", c.id, pos, "text", m, c.archived));
-      }
-    }
+    // A citation the rev-gated `editorCitations` prop hasn't caught up with
+    // yet is still anchored when the live snapshot carries its atom.
+    const pos = posById.get(c.id) ?? live?.("citation", c.id) ?? null;
+    push(c.id, pos, c.command, c.archived);
   }
 
   // Anchored-only citations that haven't been synced into `persisted` yet:
   const persistedIds = new Set(persisted.map((c) => c.id));
   for (const ec of editorCitations) {
     if (persistedIds.has(ec.citationId)) continue;
-    for (const m of scanText(ec.command, re)) {
-      out.push(hitFromMatch("citations", ec.citationId, ec.pos, "body", m));
-    }
-    const display = getDisplayText(ec.command);
-    if (display && display !== ec.command) {
-      for (const m of scanText(display, re)) {
-        out.push(hitFromMatch("citations", ec.citationId, ec.pos, "text", m));
-      }
-    }
+    push(ec.citationId, ec.pos, ec.command);
   }
 
   return out;
@@ -649,8 +687,14 @@ export function searchBibliography(
         unanchored: true,
       });
     }
-    for (const [fieldName, value] of Object.entries(e.fields)) {
-      if (!value) continue;
+    for (const [fieldName, raw] of Object.entries(e.fields)) {
+      if (!raw) continue;
+      // Match what the card SHOWS, not the `.bib` bytes (task 1521): a field
+      // holds `G{\"o}del`, the card shows `G{ö}del`, and this matches
+      // `Gödel` (`bibMatchText` also drops the grouping braces). A bib hit is
+      // UNANCHORED and carries no offsets — only the snippet — so the snippet
+      // is that text too, and nothing here can be written back.
+      const value = bibMatchText(raw);
       for (const m of scanText(value, re)) {
         out.push({
           scope: "bibliography",

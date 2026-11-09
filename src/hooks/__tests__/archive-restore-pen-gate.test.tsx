@@ -112,7 +112,7 @@ function pressRestore(
   act(() => {
     restored = hooks.archive.result.current.restoreSnippet(id, land, (_panel, card) =>
       hooks.notes.result.current.reinstate(card),
-    );
+    ).ok;
   });
   return { notified: null, restored };
 }
@@ -193,7 +193,11 @@ describe("CENSUS — EditorPane's Restore door asks the gate before either route
     const handler = src.slice(start, end);
     const gate = handler.indexOf("archiveRestoreRefusal(innerRef.current?.getEditor())");
     expect(gate, "the handler asks the gate on its own editor").toBeGreaterThan(-1);
-    expect(gate).toBeLessThan(handler.indexOf("archiveHook.snippetOrigin("));
     expect(gate).toBeLessThan(handler.indexOf("archiveHook.restoreSnippet("));
+    // Task 1525: the refusal's cause is the VALUE restoreSnippet returns,
+    // worded by the one table — the handler no longer re-guesses it from the
+    // origin record it read before the call.
+    expect(handler).not.toMatch(/archiveHook\.snippetOrigin\(/);
+    expect(handler).toMatch(/restoreRefusalMessage\(restored,/);
   });
 });

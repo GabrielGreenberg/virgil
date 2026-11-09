@@ -12,15 +12,19 @@ import {
   PRINT_ELEMENTS,
   PRINT_ELEMENT_ORDER,
   PRINT_PANEL_ORDER,
+  PRINT_REQUIREMENTS,
   runPrint,
+  type PrintElementSpec,
   type PrintElementKey,
   type PrintOptions,
   type PrintPanelKey,
+  type PrintRequirement,
 } from "@/lib/print";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { Checkbox } from "./CheckSquare";
 import { SegmentedToggle } from "./SegmentedToggle";
 import { describedHint } from "@/components/Hint";
+import { Fieldset } from "./field-primitives";
 
 interface PrintDialogProps {
   open: boolean;
@@ -37,12 +41,17 @@ interface PrintDialogProps {
 // first-appearance order, rows in registry order — the same registry the
 // globals.css print rules are census-held to, so a row's label and the
 // element its toggle hides cannot drift apart.
-const ELEMENT_GROUPS: { legend: string; rows: { key: PrintElementKey; label: string }[] }[] = [];
+// A row's availability rides the registry too (`requires`), so the dialog
+// never names an element key.
+const ELEMENT_GROUPS: {
+  legend: string;
+  rows: { key: PrintElementKey; label: string; requires?: PrintRequirement }[];
+}[] = [];
 for (const key of PRINT_ELEMENT_ORDER) {
-  const { group, label } = PRINT_ELEMENTS[key];
+  const { group, label, requires }: PrintElementSpec = PRINT_ELEMENTS[key];
   let g = ELEMENT_GROUPS.find((x) => x.legend === group);
   if (!g) ELEMENT_GROUPS.push((g = { legend: group, rows: [] }));
-  g.rows.push({ key, label });
+  g.rows.push({ key, label, requires });
 }
 
 // Derived from the printable-panel SSOT (PRINT_PANEL_ORDER); labels come from
@@ -69,6 +78,10 @@ export default function PrintDialog({
       ...options,
       panels: { ...options.panels, [key]: value },
     });
+  // Which registry requirements the live editor meets right now.
+  const met: Record<PrintRequirement, boolean> = {
+    "live-marginalia": marginaliaLive,
+  };
   const setFontSize = (rem: number) =>
     onOptionsChange({ ...options, fontSizeRem: rem });
 
@@ -92,37 +105,29 @@ export default function PrintDialog({
       />
       <SystemDialogBody className="space-y-3">
         {ELEMENT_GROUPS.map((group) => (
-          <fieldset key={group.legend}>
-            <legend className="text-xs text-ink-subtle mb-1">
-              {group.legend}
-            </legend>
+          <Fieldset key={group.legend} legend={group.legend}>
             <div className="space-y-1">
               {group.rows.map((row) => {
-                const isMarginalia = row.key === "marginalia";
-                const disabled = isMarginalia && !marginaliaLive;
+                const unmetHint =
+                  row.requires && !met[row.requires]
+                    ? PRINT_REQUIREMENTS[row.requires].unmetHint
+                    : undefined;
                 return (
                   <PrintCheckbox
                     key={row.key}
                     label={row.label}
                     checked={options.elements[row.key]}
                     onChange={(v) => setElement(row.key, v)}
-                    disabled={disabled}
-                    hint={
-                      disabled
-                        ? "Enable marginalia in the editor first."
-                        : undefined
-                    }
+                    disabled={unmetHint !== undefined}
+                    hint={unmetHint}
                   />
                 );
               })}
             </div>
-          </fieldset>
+          </Fieldset>
         ))}
 
-        <fieldset>
-          <legend className="text-xs text-ink-subtle mb-1">
-            Include panels as appendices
-          </legend>
+        <Fieldset legend="Include panels as appendices">
           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             {PANEL_ROWS.map((row) => (
               <PrintCheckbox
@@ -133,10 +138,9 @@ export default function PrintDialog({
               />
             ))}
           </div>
-        </fieldset>
+        </Fieldset>
 
-        <fieldset>
-          <legend className="text-xs text-ink-subtle mb-1">Font size</legend>
+        <Fieldset legend="Font size">
           <div className="flex items-center gap-1">
             <SegmentedToggle
               ariaLabel="Font size"
@@ -156,7 +160,7 @@ export default function PrintDialog({
               {options.fontSizeRem.toFixed(2)}rem
             </span>
           </div>
-        </fieldset>
+        </Fieldset>
       </SystemDialogBody>
       <SystemDialogFooter>
         <SystemDialogButton variant="secondary" onClick={onClose}>

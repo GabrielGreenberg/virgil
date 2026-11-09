@@ -356,9 +356,8 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   //
   // So `jump.anchored === false` means the four-rung ladder (live uuid → surviving
   // `linkedAnchor` mark → RC1 self-heal → text-snapshot relocation) found
-  // NOTHING, which strictly implies `resolveLink` finds nothing, which means
-  // `jumpToCard` iterates the links, resolves none, and returns `false` having
-  // done nothing. A chevron on an orphaned clip was a control that could not
+  // NOTHING, which means `jumpToCard` — which lands on that same pass's rows —
+  // returns `false` having done nothing. A chevron on an orphaned clip was a control that could not
   // work — the shape task 136 fixed for `citation` and task 277 for
   // `footnote`, on the one kind whose other three renderers all gate correctly.
   //

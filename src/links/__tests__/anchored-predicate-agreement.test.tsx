@@ -40,8 +40,8 @@ import {
   buildCardAnchorPass,
   sortCardsByResolvedAnchor,
 } from "@/links/card-anchor-rows";
-import { resolveLink, type CardWithLinks } from "@/links/links";
-import { jumpToCard } from "@/links/jump-to-card";
+import type { CardWithLinks } from "@/links/links";
+import { jumpToCard, resolveCardJumpTarget } from "@/links/jump-to-card";
 import type { Link } from "@/links/_shared/types";
 import type { ArchivedSnippet } from "@/lib/types";
 
@@ -209,13 +209,15 @@ describe("task 665 M2 — a recovered clip sorts where its badge says it is", ()
 // ── M3 — the act has the gate's rungs ───────────────────────────────────────
 
 describe("task 665 M3 — whatever the gate calls anchored, jumpToCard reaches", () => {
-  it("resolveLink recovers a link whose uuid is dead but whose snapshot matches", () => {
+  // The act asks the authority itself since task 1505 (`resolveLink`'s own
+  // paragraph ladder is gone), so these legs read the act's TARGET.
+  const targetOf = (editor: Editor, link: Link) =>
+    resolveCardJumpTarget(editor, clip("t", link) as unknown as CardWithLinks);
+
+  it("the act recovers a link whose uuid is dead but whose snapshot matches", () => {
     const editor = mountDoc();
-    const link = paraLink("DEAD", P2_TEXT);
-    const res = resolveLink(editor, link);
-    expect(res).not.toBeNull();
-    expect(res!.kind).toBe("paragraph");
-    expect((res as { paragraphId: string }).paragraphId).toBe("P2");
+    const res = targetOf(editor, paraLink("DEAD", P2_TEXT));
+    expect(res).toMatchObject({ kind: "paragraph", paragraphId: "P2" });
   });
 
   it("the act's snapshot rung matches on the AUTHORITY's normalization, not raw text", () => {
@@ -223,9 +225,8 @@ describe("task 665 M3 — whatever the gate calls anchored, jumpToCard reaches",
     // Same paragraph, stored with the whitespace drift `normalizeParagraphText`
     // exists to absorb. A raw `textContent ===` compare (the pre-665 helper)
     // misses it, so gate and act would disagree by one space.
-    const link = paraLink("DEAD", `  The   second\n paragraph.  `);
-    const res = resolveLink(editor, link);
-    expect((res as { paragraphId?: string } | null)?.paragraphId).toBe("P2");
+    const res = targetOf(editor, paraLink("DEAD", `  The   second\n paragraph.  `));
+    expect(res).toMatchObject({ paragraphId: "P2" });
   });
 
   it("a card anchored ONLY by its snapshot is reachable — the gate and the act agree", () => {
@@ -251,7 +252,7 @@ describe("task 665 M3 — whatever the gate calls anchored, jumpToCard reaches",
     const editor = mountDoc();
     // Stored on P3, but carrying P1's text as its snapshot. The ladder is
     // uuid-STRICTLY-before-snapshot; the act must not reorder it.
-    const res = resolveLink(editor, paraLink("P3", P1_TEXT));
-    expect((res as { paragraphId?: string } | null)?.paragraphId).toBe("P3");
+    const res = targetOf(editor, paraLink("P3", P1_TEXT));
+    expect(res).toMatchObject({ paragraphId: "P3" });
   });
 });

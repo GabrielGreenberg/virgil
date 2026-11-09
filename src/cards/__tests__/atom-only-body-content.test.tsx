@@ -326,6 +326,7 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
   it("an atom-only body reaches the confirm, and Cancel preserves the card", async () => {
     const { del, confirm, handlers } = run(MATH_BODY, false);
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "note",
       cardId: "c1",
       paragraphId: "P1",
@@ -343,6 +344,7 @@ describe("401 · door 3 — deleteMarginItem confirms", () => {
   it("an empty body deletes with no confirm (the control)", async () => {
     const { del, confirm, handlers } = run({ type: "doc", content: [{ type: "paragraph" }] }, true);
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "note",
       cardId: "c1",
       paragraphId: "P1",

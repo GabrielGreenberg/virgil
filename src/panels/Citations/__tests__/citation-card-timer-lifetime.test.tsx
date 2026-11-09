@@ -262,3 +262,25 @@ describe("census — the card arms no timer outside its lifetime", () => {
     ).toEqual([]);
   });
 });
+
+describe("Code field — continuous typing still writes (task 1502: the ONE write coalescer)", () => {
+  it("an unbroken burst hands its edit on at least every CONTENT_WRITE_MAX_WAIT_MS", async () => {
+    const { CONTENT_WRITE_MAX_WAIT_MS } = await import("@/lib/sidecar-value");
+    vi.useFakeTimers();
+    const { onWrite, input } = openCode();
+
+    // A keystroke every 100 ms — never the 250 ms pause a pure trailing
+    // debounce waits for — for well past the cap.
+    let value = "\\citet{xenakis2020";
+    const stepMs = 100;
+    const steps = Math.ceil((CONTENT_WRITE_MAX_WAIT_MS * 2.5) / stepMs);
+    for (let i = 0; i < steps; i++) {
+      value = i % 2 === 0 ? "\\citet{xenakis2020}" : "\\citealp{xenakis2020}";
+      fireEvent.change(input, { target: { value } });
+      act(() => void vi.advanceTimersByTime(stepMs));
+    }
+
+    // Pre-1502 this burst wrote NOTHING until the typist paused.
+    expect(onWrite.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});

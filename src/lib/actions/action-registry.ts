@@ -1665,7 +1665,7 @@ function cardRun(id: CardActionId, ctx: ActionContext): void {
  * Which side, if any, is `omniSideToReveal`'s single answer.
  */
 function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
-  revealOmniFor(routing, "citations", "right");
+  revealOmniFor(routing, "citations");
 }
 
 /** Expand the side `omniSideToReveal` names for `id`, if any. Shared by the
@@ -1673,9 +1673,8 @@ function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRoutin
 function revealOmniFor(
   routing: NonNullable<ActionContext["panelRouting"]>,
   id: PanelId,
-  fallback: "left" | "right",
 ): void {
-  const side = omniSideToReveal(routing.prefs, id, fallback);
+  const side = omniSideToReveal(routing.prefs, id);
   if (side === "left") routing.expandLeft?.();
   else if (side === "right") routing.expandRight?.();
   // null: the side is shown and omni is already visible behind any bands.
@@ -1786,7 +1785,7 @@ function citationRun(ctx: ActionContext): void {
  * Footnotes panel).
  */
 function softRouteFootnoteToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
-  revealOmniFor(routing, "footnotes", "left");
+  revealOmniFor(routing, "footnotes");
 }
 
 /**
@@ -2043,7 +2042,11 @@ function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
     if (field === "date") {
       // The `\today` chip — what the parser reads `\date{\today}` into, so a
       // fresh field and a parsed one are the same model (task 1335). Falls back
-      // to an empty field on a schema without the atom.
+      // to an empty field on a schema without the atom. The term stays BARE
+      // (`""`) so the fresh field writes the canonical `\date{\today}` and
+      // equals its own re-parse; anything typed after the chip is safe because
+      // `emitDynamicCommand` re-adds the `{}` break before a letter OR a space
+      // (task 1492 — TeX gobbles the space after a bare control word).
       const dynamicType = state.schema.nodes[LATEX_DYNAMIC_NODE];
       if (dynamicType) nodeContent = dynamicType.create({ command: "today", term: "" });
     }

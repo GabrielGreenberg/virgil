@@ -17,23 +17,25 @@
  * Multi-anchor cards: every anchor of the same card stays highlighted by
  * `useAnchorHighlightReconciler`; the placement just chooses *which* of
  * those anchors the document scroll aligns to (closest to viewport center;
- * fallback: first in source order).
+ * fallback: the authority's seed row).
+ *
+ * The anchors are the anchor AUTHORITY's rows (task 1505) — each landed where
+ * a Jump from that row lands (`resolveCardRowTargets`) — so selecting a card
+ * can only align the document to a paragraph the margin marks.
  */
 
 import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { paneRootOf, resolvePaneMarker } from "@/components/editor-layout/pane-dom";
-import { resolveLink } from "../links";
+import { jumpTargetElement, resolveCardRowTargets } from "../jump-to-card";
 import { alignEntryToYIfNeeded } from "@/components/editor-layout/layout-scroll";
-import { cardPopKey } from "@/panels/panel-registry";
-import type { CardKind } from "@/panels/_shared/types";
 import {
   useStoreSelection,
   type AnchoredCardRef,
   type CardStore,
 } from "./anchored-card-store";
 import { cardKeyForEntity } from "./entity-hover";
-import { linksForCardRef } from "./card-anchor-links";
+import { anchorCardOfRef } from "./card-anchor-links";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 
 export interface UsePlacementArgs {
@@ -95,25 +97,23 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     if (!cardEl) return;
     const cardY = cardEl.getBoundingClientRect().top;
 
-    // Find every in-editor anchor for this card.
-    const links = linksForCardRef(selection, collections);
-    if (links.length === 0) return;
+    // Every place the card is drawn, per the anchor authority.
+    const card = anchorCardOfRef(selection, collections);
+    if (!card) return;
+    const els: HTMLElement[] = [];
+    for (const target of resolveCardRowTargets(editor, card)) {
+      const el = jumpTargetElement(editor, target);
+      if (el) els.push(el);
+    }
+    if (els.length === 0) return;
 
+    // The row nearest mid-viewport; ties keep the authority's order, so a
+    // card none of whose rows is measurable still aligns to its seed row.
     const viewportMid = window.innerHeight / 2;
     let best: { el: HTMLElement; dist: number } | null = null;
-    for (const link of links) {
-      const r = resolveLink(editor, link);
-      if (!r?.domEl) continue;
-      const dist = Math.abs(r.domEl.getBoundingClientRect().top - viewportMid);
-      if (!best || dist < best.dist) best = { el: r.domEl, dist };
-    }
-    // Fallback: first in source order, even if not currently rendered
-    // in viewport — still better than no scroll.
-    if (!best) {
-      for (const link of links) {
-        const r = resolveLink(editor, link);
-        if (r?.domEl) { best = { el: r.domEl, dist: 0 }; break; }
-      }
+    for (const el of els) {
+      const dist = Math.abs(el.getBoundingClientRect().top - viewportMid);
+      if (!best || dist < best.dist) best = { el, dist };
     }
     if (!best) return;
 
@@ -128,10 +128,3 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     alignEntryToYIfNeeded(best.el, cardY);
   }, [selection, editor, collections, store]);
 }
-
-// Helper to keep type-checker happy with CardKind import (used implicitly
-// via cardKeyForEntity / cardPopKey internal types).
-export type { CardKind };
-// cardPopKey re-exported as a convenience for callers that build keys
-// from the entity ref shape.
-export { cardPopKey };

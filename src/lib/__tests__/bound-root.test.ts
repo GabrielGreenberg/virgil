@@ -245,9 +245,11 @@ describe("landFloatWrite — the one whole-block write door", () => {
 const OWN_DOOR: Record<string, string> = {
   "linked-range-body.tsx":
     "own planner (`planLinkedRangeWriteBack`) with its own LinkedRangeRefusal report channel",
-  "source-pod-body.tsx":
-    "attr-only setNodeMarkup of a string attr — no content rebuild that can be refused",
 };
+// (`source-pod-body.tsx` left this list in task 1533: its attr-only writes —
+// no content rebuild that can be refused — now go through the source pods'
+// own door, `writeSourcePodAttrs`, which `source-pod-write-door-census`
+// holds to `addToHistory:false`.)
 
 describe("whole-block write-back CENSUS (task 1170)", () => {
   const dir = join(process.cwd(), "src/text-objects/floats");

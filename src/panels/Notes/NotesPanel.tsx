@@ -17,7 +17,7 @@ import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
-import { cardTypeLabel } from "@/panels/panel-registry";
+import { cardTypeLabel, panelEmptySentence } from "@/panels/panel-registry";
 import { byCreatedAt, withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
@@ -112,7 +112,7 @@ export default function NotesPanel({
       onActivateItem={keyboardJump}
       emptyState={
         <div className={PANEL.empty}>
-          No notes or highlights yet.
+          {panelEmptySentence("notes")}
           <CreationHint action="note" />
         </div>
       }

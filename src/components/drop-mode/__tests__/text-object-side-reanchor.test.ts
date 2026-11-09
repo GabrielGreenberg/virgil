@@ -15,7 +15,7 @@
  * `ParagraphAnchorApi` that records its calls. It proves:
  *
  *   classifyDrop:
- *     (a) unanchored card (getAnchorTextObjectIds → [])        → { kind: "apply" }
+ *     (a) unanchored card (getCard → no links)          → { kind: "apply" }
  *     (b) already on the target paragraph                       → { kind: "no-op" }
  *     (c) anchored to a DIFFERENT paragraph                     → { kind: "apply" }
  *         (task 1423: a reversible move asks nothing — no confirm)
@@ -40,7 +40,7 @@ import { buildFloatKey } from "@/floats/float-key";
 import type { DropCtx, ParagraphAnchorApi, Placement } from "../types";
 
 /** A recording `ParagraphAnchorApi` whose anchor set is seeded per-test. The
- *  add/remove handlers mutate the live set so a follow-up `getAnchorTextObjectIds`
+ *  add/remove handlers mutate the live set so a follow-up `getCard`
  *  reads the post-mutation state (matches the real hook). */
 function makeApi(
   initial: string[],
@@ -58,7 +58,7 @@ function makeApi(
   const clearModeBCalls: string[] = [];
   const api: ParagraphAnchorApi = {
     exists: () => true,
-    getAnchorTextObjectIds: () => [...set],
+    getCard: (id) => ({ id, links: [...set].map((p) => ({ id: `${id}@${p}`, kind: "anchor", anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: [p] } })) }) as never,
     addTextObjectLink: (_id, pid, _targetKind, _snapshot) => {
       added.push(pid);
       set.add(pid);
@@ -125,7 +125,7 @@ function makeSpec() {
 describe("textObjectSideReanchorSpec — classifyDrop", () => {
   it("(a) unanchored card → { kind: 'apply' }", () => {
     const spec = makeSpec();
-    const { api } = makeApi([]); // getAnchorTextObjectIds → []
+    const { api } = makeApi([]); // getCard → no links
     const decision = spec.classifyDrop(paragraphSide("P3"), CARD_KEY, ctxWith(api));
     expect(decision).toEqual({ kind: "apply" });
   });

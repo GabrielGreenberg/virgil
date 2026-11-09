@@ -25,6 +25,7 @@ import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { archiveOriginOf, type ArchiveOrigin, type ArchiveOriginPanel } from "@/lib/archive-origin";
+import type { ReinstateOutcome, RestoreOutcome } from "@/lib/archive-restore-outcome";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import {
@@ -368,31 +369,38 @@ export function useArchive(docId: string | null) {
    * `reinstate` door, or an origin record too broken to honour, it refuses:
    * pasting the body into the prose is the one outcome that is always wrong.
    *
-   * Returns true iff the content landed and the card was retired.
+   * Returns WHAT HAPPENED as a value (task 1525) — `{ ok: true, route }`, or
+   * `{ ok: false, cause }` naming the refusal where it was decided (see
+   * `src/lib/archive-restore-outcome.ts`; `restoreRefusalMessage` is the one
+   * table that words it). `gone` / `already-restored` are a repeat press after
+   * a restore that already happened, not failures.
    */
   const restoreSnippet = useCallback(
     (
       id: string,
       land: (content: JSONContent) => boolean,
-      reinstate?: (panel: ArchiveOriginPanel, card: Record<string, unknown>) => boolean,
-    ): boolean => {
+      reinstate?: (panel: ArchiveOriginPanel, card: Record<string, unknown>) => ReinstateOutcome,
+    ): RestoreOutcome => {
       // The ref, not `state`, so a caller that fires before React re-renders
       // still reads the live collection. `update` below is functional, so the
       // write itself is never based on this read.
       const found = stateRef.current.snippets.find((s) => s.id === id);
-      if (!found) return false;
-      if (found.archived) return false; // already retired — don't land it twice
+      if (!found) return { ok: false, cause: "gone" };
+      // already retired — don't land it twice
+      if (found.archived) return { ok: false, cause: "already-restored" };
       const origin = archiveOriginOf(found);
-      if (origin.kind === "unknown-card") return false;
+      if (origin.kind === "unknown-card") return { ok: false, cause: "unreadable-origin" };
       if (origin.kind === "card") {
-        if (!reinstate || !reinstate(origin.panel, origin.card)) return false;
+        const reinstated = reinstate ? reinstate(origin.panel, origin.card) : "rejected";
+        if (reinstated === "rejected") return { ok: false, cause: "card-rejected", panel: origin.panel };
+        if (reinstated === "duplicate") return { ok: false, cause: "card-duplicate", panel: origin.panel };
         const remove = (prev: ArchiveState): ArchiveState => ({
           snippets: prev.snippets.filter((s) => s.id !== id),
         });
         update(remove);
-        return true;
+        return { ok: true, route: "card" };
       }
-      if (!land(found.content)) return false;
+      if (!land(found.content)) return { ok: false, cause: "land-refused" };
       const retire = (prev: ArchiveState): ArchiveState => ({
         snippets: prev.snippets.map((s) =>
           s.id === id ? { ...s, archived: true } : s,
@@ -402,7 +410,7 @@ export function useArchive(docId: string | null) {
       // a second call for the same id sees the retired flag and refuses
       // instead of landing the excerpt a second time.
       update(retire);
-      return true;
+      return { ok: true, route: "excerpt" };
     },
     [update, stateRef],
   );

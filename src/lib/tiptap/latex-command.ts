@@ -24,7 +24,7 @@ import {
 } from "./changed-ranges";
 import { forEachBareCommand } from "./cmd-only-paragraph";
 import { blockCarriesProse, inlineIsProse } from "@/lib/prose-index";
-import { isCommitEnter } from "@/lib/key-intent";
+import { isPlainCommitEnter } from "@/lib/key-intent";
 
 /**
  * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
@@ -996,7 +996,10 @@ export const LatexCommandMark = Mark.create({
         key: new PluginKey("virgilCommands"),
         props: {
           handleKeyDown(view, event) {
-            if (!isCommitEnter(event)) return false;
+            // PLAIN Enter only (task 1496): Shift/Ctrl/Cmd/Alt+Enter after a
+            // typed `\name` must do exactly what they do after ordinary text
+            // (a hard break, an app command), never convert the block.
+            if (!isPlainCommitEnter(event)) return false;
             const { state } = view;
             const { from } = state.selection;
             if (from !== state.selection.to) return false; // collapsed cursor only
@@ -1009,14 +1012,18 @@ export const LatexCommandMark = Mark.create({
               "\ufffc",
             );
 
-            // Match \commandname at end of text before cursor
-            const cmdMatch = textBefore.match(/\\([a-zA-Z]+)$/);
-            if (!cmdMatch) return false;
+            // Match \commandname at end of text before cursor — with an
+            // UNESCAPED backslash (task 1496): in `\\section` the `\\` is a
+            // literal backslash pair and `section` is prose, so an odd run of
+            // backslashes is a command and an even run is not.
+            const cmdMatch = textBefore.match(/(\\+)([a-zA-Z]+)$/);
+            if (!cmdMatch || cmdMatch[1]!.length % 2 === 0) return false;
+            const typedLength = 1 + cmdMatch[2]!.length;
 
             return commitSlashCommand(
               view,
-              cmdMatch[1]!,
-              from - cmdMatch[0].length,
+              cmdMatch[2]!,
+              from - typedLength,
               from,
             );
           },

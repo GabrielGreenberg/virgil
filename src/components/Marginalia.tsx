@@ -60,7 +60,7 @@ import {
 } from "@/links/_shared/anchored-card-store";
 import { iconHint } from "@/components/Hint";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
-import { useMenuItem } from "@/components/menu/useMenuItem";
+import { compoundCellProps, useMenuItem } from "@/components/menu/useMenuItem";
 import { menuRowRovingStyle } from "@/components/menu/row-tone";
 
 interface MarginaliaProps {
@@ -307,8 +307,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   const rightOverflow = overflowGroups.filter((g) => g.side === "right");
 
   // When the surface is read-only — the host (Library Reader) OR the pen
-  // (collab) — suppress drag-to-rebind on every marker. Click + Delete still
-  // work. The ONE gate (task 1338): a live predicate each button re-asks at
+  // (collab) — suppress drag-to-rebind on every marker. Click still works;
+  // Delete works only where the host permits mutating that card's kind (the
+  // builder withholds `onDelete` otherwise — task 1527). The ONE gate (task 1338): a live predicate each button re-asks at
   // press time, so it needs no editor subscription of its own.
   const dragEnabled = repinGate;
 
@@ -591,8 +592,10 @@ function OverflowPill({
  * SHARED with the marginalia lane, where there is no provider at all and
  * `useMenuItem` would throw — and its own gesture surface (a click that opens
  * the card's panel, a press-drag that starts the drop-mode re-anchor) is what
- * must keep working. So the ROW carries the ARIA and the roving cursor, and its
- * `run` clicks the button the user would have clicked. A bare `MarkerButton`
+ * must keep working. So the ROW carries the ARIA and the roving cursor, its
+ * `run` clicks the button the user would have clicked, and its `remove` is the
+ * button's own `m.onDelete` — each keyboard verb the button has standalone, the
+ * row re-exposes to the menu controller. A bare `MarkerButton`
  * list would leave the registry EMPTY — worse than no controller at all, since
  * the window-capture keydown still consumes Enter/Space/every arrow.
  */
@@ -615,20 +618,23 @@ export function MarkerMenuRow({
     run: useCallback(() => {
       wrapRef.current?.querySelector("button")?.click();
     }, []),
+    // Keyboard removal (task 1529): the menu controller consumes
+    // Delete/Backspace and acts only through the ACTIVE row's remove verb, and
+    // arrowing never moves DOM focus into `MarkerButton` — so without this the
+    // button's own Delete handler is unreachable from inside a menu. The verb
+    // is the SAME `m.onDelete` the button calls, and it is absent exactly when
+    // `onDelete` is (a host's card-mutation permit withholds it — task 1527),
+    // so a refused kind gets no verb and Delete stays a no-op.
+    remove: m.onDelete,
   });
-  const itemProps = getItemProps();
+  const cell = compoundCellProps(getItemProps());
   return (
     <div
+      {...cell}
       ref={(el) => {
         wrapRef.current = el;
-        itemProps.ref(el);
+        cell.ref(el);
       }}
-      role={itemProps.role}
-      id={itemProps.id}
-      tabIndex={itemProps.tabIndex}
-      data-active={itemProps["data-active"]}
-      onMouseEnter={itemProps.onMouseEnter}
-      onMouseMove={itemProps.onMouseMove}
       className="flex items-center gap-2 rounded px-1"
       style={menuRowRovingStyle(active, false)}
     >

@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/react";
 import type { Link } from "@/links/_shared/types";
 import type { FootnoteMarkupAttrs } from "@/lib/footnote-source-attrs";
+import type { SuggestionStatus } from "@/cards/suggestion-status";
 
 export interface ParagraphMeta {
   title?: string;
@@ -115,7 +116,7 @@ export interface RevisionSuggestionCard {
    *  the suggestion was drafted, so the blue range can no longer be resolved.
    *  Both are reachable only via the flag-ON apply path (pending-changes-flag).
    */
-  status: "pending" | "applied" | "stale" | "accepted" | "rejected";
+  status: SuggestionStatus;
   /** The card→Task back-pointer an L3 responder stamps on a proposal
    *  (`apply_response.py complete-task --propose`): the `ai-requests.json` row
    *  this card answers. When `status` reaches a terminal `accepted`/`rejected`
@@ -795,7 +796,7 @@ export interface CutterSuggestionCard {
    *  drifted since the suggestion was drafted, so the blue range can no longer
    *  be resolved. Both are reachable only via the flag-ON apply path
    *  (pending-changes-flag). */
-  status: "pending" | "applied" | "stale" | "accepted" | "rejected";
+  status: SuggestionStatus;
   /** The card→Task back-pointer an L3 responder stamps on a proposal
    *  (`apply_response.py complete-task --propose`): the `ai-requests.json` row
    *  this card answers. When `status` reaches a terminal `accepted`/`rejected`

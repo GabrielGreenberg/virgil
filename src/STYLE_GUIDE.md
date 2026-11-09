@@ -555,6 +555,15 @@ The token scales:
   `bg-blue-*`.
 - **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
 - **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
+- **Amber attention** (pending request, edit warning — `@/panels/_shared/amber-attention`):
+  wash `--amber-50` (chip/callout, full) or `/40` (strip behind body ink),
+  hairline `--amber-200`, TEXT ink `--amber-attention-ink` (hover rung
+  `--amber-attention-ink-hover`). **The ink clears WCAG AA (4.5:1) on
+  `--amber-50` and on the chip's `--amber-100` hover** — `--amber-600` (3.03:1)
+  failed it and is now a stroke/tint source only (task 1535;
+  `amber-attention-tokens.test.ts`). Consumers spell none of these tokens: the
+  chrome comes from the module's exports (`AMBER_ATTENTION_STRIP`,
+  `AMBER_PENDING_CHIP`, `AMBER_ATTENTION_INK`, `AMBER_ATTENTION_CALLOUT`).
 - **Amber highlight** (the "lit inline atom" role-set): `--amber-highlight-wash`
   (hover), `--amber-highlight-wash-active` (active/selected),
   `--amber-highlight-edge` (border + ring, derived from `--amber-500`),
@@ -2184,12 +2193,17 @@ bare *"No items yet"* fails it: it names the absence and teaches nothing. A
 found."*) — nothing is missing, and the way forward is the query the user
 already has.
 
-**The panel writes the NOUN; the registry owns the ROUTE; the host owns the
-"+".** The teaching half is not copy at all — it is a projection of
+**The card registry owns the NOUN; the action registry owns the ROUTE; the
+host owns the "+".** The noun is `panelEmptySentence(panelKind)`
+([panel-registry.ts](panels/panel-registry.ts)), built from the labels of the
+kinds the panel hosts — the same labels its "+" menu offers — so Cutter reads
+*"No requests or revisions yet."*, never a pair of nouns its menu does not
+know (task 1526). Archive, Errors and Bibliography keep hand copy, named in
+the contract's exemptions with the reason. The teaching half is not copy at all — it is a projection of
 `VIRGIL_ACTION_REGISTRY`, painted by
 [`<CreationHint action="…" />`](panels/_shared/CreationHint.tsx) off
 [`creation-routes.ts`](lib/actions/creation-routes.ts), so a panel supplies
-*"No examples yet."* and nothing more. This paragraph itself used to model the
+`{panelEmptySentence("examples")}` and nothing more. This paragraph itself used to model the
 contract with *"No examples. Click the (1) glyph in the formatting toolbar to
 insert one."* — a control retired with the MenuBar's example buttons, quoted
 here and shipped in the panel long after it stopped existing, which is the
@@ -2597,6 +2611,13 @@ dialogs had done exactly that, in four class strings. `<Field label="Name">
 | `register` | `section` (default: 11px medium, `text-ink-subtle`) · `row` (11px sentence-case `text-ink-subtle`) | `section` for a dialog field label; `row` for a label LEFT of its control in a dense form. |
 | `layout` | `stack` (default for `section`) · `inline` (default for `row`) | Label above vs. beside the control. |
 | `control` | `native` (default) · `group` | `group` when the control is not a labelable element (CodeMirror, `FontPicker`, `SizeStepper`): the label renders as text and the widget names itself with `aria-labelledby={labelId}`. |
+
+A **group of checkboxes or radios** (the Print dialog's element and panel
+sets) is named by a `<legend>`, not a `<label>`: use `<Fieldset legend="…">`
+from the same file. It renders `<fieldset>` + `<legend>` in the same
+`register` map (default `section`), so a group's caption cannot drift off the
+field-label register — `section-caption-census` fails any other `<legend>` in
+`src/` (task 1498).
 
 A **dropdown is `Select`**, a real `<select>` whose list is drawn as a Virgil
 menu (`.field-select`, `appearance: base-select`). The browser keeps the keyboard
@@ -4711,7 +4732,8 @@ for the pill) and spell that class at each button, since the a11y census reads
 the literal `className`. Its progress track/fill is a 3px `--edge-subtle` /
 `--accent` pair, flipping to `--positive` on completion, with **no motion** — a
 pulse on the app's top bar outstays its welcome. Completion is SAID, not only
-shown: "Done" is the pill's `label`, so the live region reads it out.
+shown: the pill passes `announce="Writing timer done"` (task 1390), which the
+bar's one announcer speaks once on the completion edge.
 
 Two rules generalize past the timer. **A resident is PROP-LESS**: `TopBar` /
 `TabStrip` / `StatusCluster` are memoized precisely so background ticks don't
@@ -4719,11 +4741,14 @@ repaint the bar, so a widget with its own clock or feed reads a module store
 through `useSyncExternalStore` (`src/lib/pomodoro-timer.ts` is the reference) and
 keeps its per-second state in its own leaf. A value threaded through
 `StatusClusterProps` type-checks perfectly and repaints the whole bar on every
-tick. **And a widget's placement is an affordance, not a slot**: the timer's ICON
-lives inside the `topbarRightCollapsed` group and inside the zen gate like every
-other tool, while the WIDGET renders before both — a thing is STARTED from a
-normal bar and stays VISIBLE in a stripped one. State the asymmetry at the site;
-don't let a new resident mint a gating exception for itself.
+tick. **And a widget's placement is an affordance, not a slot**: the timer is
+STARTED from a menu and stays VISIBLE on a stripped bar. Its Timer row lives in
+the ⋯ menu (protected tier, not zen-gated — reachable from a collapsed strip and
+in zen), its status dot rides the ⋯ trigger, and the WIDGET renders before the
+`topbarRightCollapsed` group. A menu row closes its menu like every sibling —
+the one prop a resident's menu row may take is the menu's `close`, never its own
+state. State the placement at the site; don't let a new resident mint a gating
+exception for itself.
 
 **Window insets / WCO title bar.** The bar's geometry is inset-aware. One
 variable family — `--window-inset-{top,right,bottom,left}` (globals.css,

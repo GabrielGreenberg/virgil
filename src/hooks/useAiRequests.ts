@@ -14,10 +14,12 @@ import {
   isAiRequestsWriteRefused,
   mutateAiRequests,
   readAiRequests,
+  reportAiRequestsReadFailure,
+  reportAiRequestsWriteRefusal,
   type AiRequestsMutator,
 } from "@/lib/ai-requests-store";
-import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import { closeRequestRow, isTerminalStatus } from "@/lib/ai-request-open";
+import { markReadStart } from "@/lib/sidecar-merged-write";
 import {
   SIDECAR_CHANGED_EVENT,
   type SidecarChangedDetail,
@@ -63,6 +65,16 @@ export function useAiRequests(docId: string | null) {
   // the mutation drain can replay a deferred signal and `refresh()` can retry a
   // failed read. Null while no doc is open.
   const readRef = useRef<(() => void) | null>(null);
+  // THE WRITE GENERATION (task 1504) — the stale-read guard `useSidecarReread`
+  // states, in this hook's shape. Bumped when a mutation STARTS and whenever an
+  // authoritative list is ADOPTED from the bus (our own landed write, or the
+  // card-flag bridge's). `inFlight` cannot see a write that starts and lands
+  // inside one read: by the time the read resolves the counter is back to 0, and
+  // adopting that pre-write list made the just-filed request vanish from the
+  // inbox — with nothing to bring it back, since the watcher re-baselined to our
+  // write and never re-emits. A read the generation moved under is discarded
+  // and re-issued (`markReadStart`).
+  const writeGen = useRef({ submits: 0 });
 
   // Stay in sync with the OTHER in-window writer of `ai-requests.json`. The
   // card-flag bridge (`bridgeCardAiRequestFlag`) mutates the file through the
@@ -81,6 +93,7 @@ export function useAiRequests(docId: string | null) {
   useEffect(() => {
     if (!docId) return;
     return subscribeAiRequests(docId, (requests) => {
+      writeGen.current.submits += 1;
       setState({ requests });
       setLoadErrorDocId(null);
     });
@@ -132,6 +145,7 @@ export function useAiRequests(docId: string | null) {
 
     const readAuthoritative = () => {
       rehydratePending.current = false;
+      const overtaken = markReadStart(writeGen.current);
       readAiRequests(docId)
         .then((requests) => {
           if (cancelled) return;
@@ -142,6 +156,12 @@ export function useAiRequests(docId: string | null) {
           // is what flips it, over a list nothing is about to supersede.)
           if (inFlight.current > 0) {
             rehydratePending.current = true;
+            return;
+          }
+          // A mutation started AND landed (or a bridge write was adopted) while
+          // the read was in flight: this list predates it. Re-issue.
+          if (overtaken()) {
+            readAuthoritative();
             return;
           }
           setState({ requests });
@@ -164,12 +184,7 @@ export function useAiRequests(docId: string | null) {
           rehydratePending.current = true;
           setLoadErrorDocId(docId);
           setLoadedDocId(docId);
-          recordSidecarRefusal({
-            docId,
-            what: "AI request list",
-            reason: "unreadable",
-            detail: err instanceof Error ? err.message : undefined,
-          });
+          reportAiRequestsReadFailure(docId, err);
         });
     };
     readRef.current = readAuthoritative;
@@ -275,18 +290,11 @@ export function useAiRequests(docId: string | null) {
         return next === null ? prev : { requests: next };
       });
       inFlight.current += 1;
+      writeGen.current.submits += 1;
       void mutateAiRequests(docId, mutate)
         .then((result) => {
           if (!isAiRequestsWriteRefused(result)) return;
-          recordSidecarRefusal({
-            docId,
-            what: "AI request",
-            reason: result.kind === "failed" ? "failed" : result.kind,
-            detail:
-              result.kind === "failed" && result.error instanceof Error
-                ? result.error.message
-                : undefined,
-          });
+          reportAiRequestsWriteRefusal(docId, result);
           // ROLL BACK by reconciling, not by inverting: arm the same deferral
           // the external-change guard uses, and let the drain below re-read the
           // file once every in-flight mutation has settled.

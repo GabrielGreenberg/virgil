@@ -9,6 +9,7 @@ import {
 import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
+import { panelEmptySentence } from "@/panels/panel-registry";
 import { ExampleCard } from "./ExampleCard";
 
 interface ExamplesPanelProps {
@@ -51,7 +52,7 @@ function ExamplesPanel(props: ExamplesPanelProps) {
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No examples yet.
+          {panelEmptySentence("examples")}
           <CreationHint action="example" />
         </div>
       }

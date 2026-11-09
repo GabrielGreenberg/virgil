@@ -599,8 +599,13 @@ describe("CENSUS — the unmount-on-cancel family is unchanged", () => {
     // row's card (`GutterList`) and the bibliography's search box
     // (`ReadingLists`) — both by unmounting, neither with a blur commit, and
     // the card yields to any field inside it that already handled the Escape.
+    // BibEntryCard JOINED (task 1522): its "Edit entry" editor's container
+    // keydown — Escape unmounts the editor (`cancelEditBib`), ⌘Enter commits
+    // through the same Save as the button, and no field has a blur commit, so
+    // there is no second ending for the door to suppress. A member.
     expect(unmountingCancelFields()).toEqual([
       "library/components/BibCard.tsx",
+      "src/components/BibEntryCard.tsx",
       "src/components/ManageStylesModal.tsx",
       "src/components/PreferencesModal.tsx",
       "src/components/bib-review-request.tsx",

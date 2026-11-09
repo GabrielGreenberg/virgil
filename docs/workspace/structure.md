@@ -1,4 +1,4 @@
-<!-- last-verified: 3010f199 2026-11-06 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -205,7 +205,7 @@ either destroys content with **zero user edits**, so both are gated (tasks 350-D
   `PreservationNoticeBadge` in the status cluster.
 
 **Stated scope** — the gate covers those two paths only. The code-pane re-parse,
-the schema-mount probe, `writeTex`'s snapshot and **`apply_response.py`'s
+the schema-mount probe, `rewriteTex`'s snapshot and **`apply_response.py`'s
 region-replace are NOT covered.** A skill's own `.tex` splice has no such net, so
 splice narrowly and never rewrite the whole file.
 

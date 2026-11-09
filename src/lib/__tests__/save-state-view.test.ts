@@ -29,6 +29,7 @@ function state(over: Partial<UnsavedWorkState> = {}): UnsavedWorkState {
     lastLandedAt: null,
     reason: null,
     lastAttemptAt: null,
+    sidecarDirtySince: null,
     ...over,
   };
 }

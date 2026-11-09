@@ -37,7 +37,11 @@ import {
   subscribeBlockingFlow,
 } from "@/lib/save-request";
 import type { BlockingFlow } from "@/lib/save-state";
-import { getUnsavedWork, subscribeUnsavedWork } from "@/lib/unsaved-work";
+import {
+  getUnsavedWork,
+  subscribeUnsavedWork,
+  unlandedSince,
+} from "@/lib/unsaved-work";
 
 /** ms until the next moment at which {@link deriveSaveState} could answer
  *  differently — a tier boundary, or the next whole minute of the label. */
@@ -62,7 +66,7 @@ export function useSaveState(docId: string | null | undefined): SaveStateView {
     () => null,
   );
   const [, bump] = useState(0);
-  const dirtySince = state?.dirtySince ?? null;
+  const dirtySince = unlandedSince(state);
   useEffect(() => {
     if (dirtySince === null) return; // clean: nothing ages
     let id: ReturnType<typeof setTimeout>;

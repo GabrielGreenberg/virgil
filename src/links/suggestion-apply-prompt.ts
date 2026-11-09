@@ -1,4 +1,5 @@
 import type { Link } from "@/links/_shared/types";
+import { cardAnchorPassOrIndexless, type CardAnchorPass } from "./card-anchor-rows";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { suggestionReplacement } from "@/panels/_shared/suggestion-field-vocabulary";
 
@@ -46,18 +47,17 @@ const LEAD_IN: Record<PendingChangeFamily, string> = {
 export function buildSuggestionApplyPrompt(
   family: PendingChangeFamily,
   s: SuggestionPromptSource,
+  /** The pane's card-anchor pass. The prompt names the blocks the card is
+   *  anchored on NOW (`anchorBlocksOf`, task 1506) — never its raw stored
+   *  pids, which can name an archived (dormant) passage or a Mode-B
+   *  highlight's birth block. Null/omitted → the indexless pass (stored
+   *  pids of the card's live links, unverified). */
+  anchorPass?: CardAnchorPass | null,
 ): string {
   const anchorBits: string[] = [];
   if (s.selectedText) anchorBits.push(`captured text: "${s.selectedText}"`);
-  if (s.links.length > 0) {
-    const pids = new Set<string>();
-    for (const l of s.links) {
-      if (l.anchor.type === "textObject") {
-        for (const p of l.anchor.textObjectIds) pids.add(p);
-      }
-    }
-    if (pids.size > 0) anchorBits.push(`paragraphs: ${[...pids].join(", ")}`);
-  }
+  const pids = [...new Set(cardAnchorPassOrIndexless(anchorPass).anchorBlocksOf({ id: "", ...s }))];
+  if (pids.length > 0) anchorBits.push(`paragraphs: ${pids.join(", ")}`);
   const anchor = anchorBits.length > 0 ? anchorBits.join("; ") : "(none)";
   return [
     LEAD_IN[family],

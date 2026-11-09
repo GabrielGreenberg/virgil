@@ -11,6 +11,7 @@ import {
 } from "@/lib/sidecar-merged-write";
 import { useSidecarReread } from "./useSidecarReread";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { createSidecarWorkPublisher } from "@/lib/unsaved-work";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import {
@@ -181,6 +182,11 @@ export function useFootnotes(
   // nothing is ever ARMED).
   const inFlightRef = useRef(0);
   const hasPendingWrite = useCallback(() => inFlightRef.current > 0, []);
+  // Published to the document's unsaved-work channel (task 1503) — the same
+  // member `usePersistentState` publishes: a write in flight, or one that
+  // FAILED and has not since landed (a footnote body in memory only).
+  const lastWriteFailedRef = useRef(false);
+  const [workPublisher] = useState(createSidecarWorkPublisher);
   // Every apply keeps `stateRef` current synchronously: the setters below read
   // it, not React state, and a re-read merged in between their reads must not
   // be overwritten by a stale snapshot.
@@ -214,6 +220,7 @@ export function useFootnotes(
       // this doc's.
       const base = baselineRef.current;
       inFlightRef.current += 1;
+      workPublisher.sync(handle.docId, true);
       try {
         const { wrote, ticket } = await writeSidecarMerged(
           handle,
@@ -225,15 +232,33 @@ export function useFootnotes(
         if (baselineRef.current === base) {
           convergeOnWrite("footnotes.json", base, ticket, s, wrote, apply);
         }
+        lastWriteFailedRef.current = false;
       } catch (err) {
-        if (isStalePipelineError(err)) return;
+        if (isStalePipelineError(err)) {
+          lastWriteFailedRef.current = false;
+          return;
+        }
+        lastWriteFailedRef.current = true;
         console.error("Failed to save footnotes:", err);
+        // … and SAY so (task 1516), on the channel `usePersistentState`'s
+        // failed writes already speak from (task 637): a footnote body that
+        // did not land is in memory only, and the panel still shows it.
+        recordSidecarRefusal({
+          docId: handle.docId,
+          what: "footnotes",
+          reason: "failed",
+          detail: err instanceof Error ? err.message : undefined,
+        });
       } finally {
         inFlightRef.current -= 1;
+        workPublisher.sync(
+          handle.docId,
+          inFlightRef.current > 0 || lastWriteFailedRef.current,
+        );
         replayDeferredRead();
       }
     },
-    [handle, apply, replayDeferredRead],
+    [handle, apply, replayDeferredRead, workPublisher],
   );
 
   /** THE mirror's upsert door (task 703). Returns the collection with a ref

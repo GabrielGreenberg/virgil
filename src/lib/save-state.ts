@@ -57,7 +57,11 @@
  * nobody saw, so past two minutes the surface stops being a pill.
  */
 
-import type { UnsavedBlockReason, UnsavedWorkState } from "./unsaved-work";
+import {
+  unlandedSince,
+  type UnsavedBlockReason,
+  type UnsavedWorkState,
+} from "./unsaved-work";
 import {
   toneForInterruptionKind,
   type InterruptionKind,
@@ -97,10 +101,13 @@ export function deriveSaveState(
   now: number = Date.now(),
 ): SaveStateView {
   const lastLandedAt = state?.lastLandedAt ?? null;
-  if (!state || state.dirtySince === null) {
+  // Either kind of writer's dirt (task 1503): a card edit not yet on disk is
+  // work not yet on disk. The blocking `reason` below stays the model's.
+  const since = unlandedSince(state);
+  if (!state || since === null) {
     return { tier: "clean", ageMs: 0, reason: null, lastLandedAt, escalated: false };
   }
-  const ageMs = Math.max(0, now - state.dirtySince);
+  const ageMs = Math.max(0, now - since);
   const escalated = ageMs >= UNSAVED_ESCALATE_MS;
   if (state.reason !== null) {
     return { tier: "blocked", ageMs, reason: state.reason, lastLandedAt, escalated };

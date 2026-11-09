@@ -59,7 +59,7 @@ const ROWS: FocusBandRow[] = [
   { uuid: "ccc9", index: 9, top: 200, mid: 250, bottom: 300 },
 ];
 
-function setup() {
+function setup(opts: { endBlockIndex?: number; frameTop?: number } = {}) {
   const onSnapBoundary = vi.fn<(edge: "top" | "bottom", target: BlockAddress) => void>();
   const setBand = vi.fn();
   const setAnimated = vi.fn();
@@ -83,7 +83,8 @@ function setup() {
       measureRows: () => ROWS,
       // Committed band = rows 0..5, i.e. top edge at 0px, bottom edge at 200px.
       getBand: () => ({ top: 0, height: 200 }),
-      getRange: () => ({ startBlockIndex: 0, endBlockIndex: 5 }),
+      getRange: () => ({ startBlockIndex: 0, endBlockIndex: opts.endBlockIndex ?? 5 }),
+      getRowFrameTop: opts.frameTop === undefined ? undefined : () => opts.frameTop!,
       minPx: 12,
       setBand,
       setAnimated,
@@ -118,6 +119,40 @@ function setup() {
 
   return { rendered, press, move, release, onSnapBoundary, setBand, restore, setAnimated, rect };
 }
+
+describe("useFocusBandEdgeDrag — the painted row is the baseline (task 1530)", () => {
+  it("a release on the row the bottom edge is PAINTED on writes nothing, even when end is a body block", () => {
+    // Committed end = 7: a body block owned by row 5 (rows are 0, 5, 9), so
+    // the bottom handle is painted on row 5. Wiggle and release there.
+    const { press, move, release, onSnapBoundary, restore } = setup({ endBlockIndex: 7 });
+    press("bottom");
+    move(160);
+    move(150);
+    release();
+    expect(onSnapBoundary).not.toHaveBeenCalled();
+    expect(restore).toHaveBeenCalled();
+  });
+
+  it("still commits a real move off the painted row", () => {
+    const { press, move, release, onSnapBoundary } = setup({ endBlockIndex: 7 });
+    press("bottom");
+    move(250);
+    release();
+    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", { uuid: "ccc9", index: 9 });
+  });
+
+  it("measures the cursor in the ROWS' frame, not the scroll container's", () => {
+    // The rows sit 40px down inside the container (its padding + wrapper).
+    // Cursor at 230 in the container = 190 in the row frame → nearest mid is
+    // row 5 (150), the painted row: nothing to commit. Read in the container's
+    // frame it would be nearest row 9 (250) and commit early.
+    const { press, move, release, onSnapBoundary } = setup({ frameTop: 40 });
+    press("bottom");
+    move(230);
+    release();
+    expect(onSnapBoundary).not.toHaveBeenCalled();
+  });
+});
 
 describe("useFocusBandEdgeDrag — pointer invariants (task 185)", () => {
   it("ends the gesture on a mousemove with the primary button up", () => {

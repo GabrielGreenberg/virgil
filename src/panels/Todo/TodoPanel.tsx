@@ -9,6 +9,7 @@ import { IconArchive } from "@/components/editor-layout/panel-icons";
 import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CreationHint } from "@/panels/_shared/CreationHint";
+import { panelEmptySentence } from "@/panels/panel-registry";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
@@ -108,7 +109,7 @@ export default function TodoPanel({
       onActivateItem={keyboardJump}
       emptyState={
         <div className={PANEL.empty}>
-          No tasks yet.
+          {panelEmptySentence("todo")}
           <CreationHint action="todo" />
         </div>
       }

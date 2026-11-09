@@ -105,9 +105,9 @@ const CENSUS: Record<string, Disposition> = {
   // routes the transition through `emitCommand`, which is guarded. So a
   // mid-typing keystroke can never blank the in-text `\cite{}` behind a dialog
   // the user was never shown.
-  "citation#updateCodeDraft#onUpdateCitation": {
+  "citation#codeWrite#onUpdateCitation": {
     cannotEmpty:
-      "the debounce holds the last non-emptying value; the emptying transition waits for the session end, which crosses emitCommand",
+      "the coalesced live preview (task 1502) holds the last non-emptying value; the emptying transition waits for the session end, which crosses emitCommand",
     via: "commandKeys(v)?.length === 0",
   },
 

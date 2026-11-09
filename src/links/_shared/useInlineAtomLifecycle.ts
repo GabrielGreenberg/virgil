@@ -54,6 +54,7 @@ import {
   type RemovedFootnoteContent,
 } from "./inline-atom-lifecycle-policy";
 import type { CardStore } from "./anchored-card-store";
+import { forEachCardAtom, liveCardAtomIds } from "./live-card-atoms";
 
 /** The orphan-store surface the hook re-targets onto the durable sidecar
  *  (`useOrphanedFootnotes`) in the cutover. */
@@ -111,28 +112,18 @@ interface AtomSnapshot {
 function snapshotAtoms(editor: Editor): AtomSnapshot {
   const footnotes = new Map<string, RemovedFootnoteContent>();
   const liveIds = new Set<string>();
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "footnote") {
-      const id = (node.attrs.footnoteId as string) || (node.attrs.linkId as string) || "";
-      if (id) {
-        const content = node.attrs.content ?? null;
-        const title = typeof node.attrs.title === "string" ? node.attrs.title : undefined;
-        footnotes.set(id, {
-          content,
-          plainText: content ? richJsonToPlainText(content) : "",
-          title,
-          ...pickFootnoteMarkupAttrs(node.attrs),
-        });
-        liveIds.add(id);
-      }
-      return false; // don't descend into the footnote body (nested atoms are
-      // tracked out-of-band; their liveness isn't pruned here)
-    }
-    if (node.type.name === "citation") {
-      const id = (node.attrs.citationId as string) || "";
-      if (id) liveIds.add(id);
-    }
-    return true;
+  forEachCardAtom(editor.state.doc, ({ kind, id, node }) => {
+    liveIds.add(id);
+    // Only a footnote has a dying-body model (citations carry no orphan).
+    if (kind !== "footnote") return;
+    const content = node.attrs.content ?? null;
+    const title = typeof node.attrs.title === "string" ? node.attrs.title : undefined;
+    footnotes.set(id, {
+      content,
+      plainText: content ? richJsonToPlainText(content) : "",
+      title,
+      ...pickFootnoteMarkupAttrs(node.attrs),
+    });
   });
   return { footnotes, liveIds };
 }
@@ -267,18 +258,5 @@ export function useInlineAtomLifecycle({
 
 /** Cheap liveness-only walk (no body flatten) for the `isAtomLive` re-check. */
 function snapshotAtomsLiveIds(editor: Editor): Set<string> {
-  const live = new Set<string>();
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "footnote") {
-      const id = (node.attrs.footnoteId as string) || (node.attrs.linkId as string) || "";
-      if (id) live.add(id);
-      return false;
-    }
-    if (node.type.name === "citation") {
-      const id = (node.attrs.citationId as string) || "";
-      if (id) live.add(id);
-    }
-    return true;
-  });
-  return live;
+  return liveCardAtomIds(editor.state.doc);
 }

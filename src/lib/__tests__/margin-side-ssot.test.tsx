@@ -438,8 +438,8 @@ describe("margin side — no second speller", () => {
       "src/hooks/useViewPrefs.ts",
       // STRIP placement: which side a jump-to-card target docks on.
       "src/components/editor-layout/jump-docks.ts",
-      // STRIP placement: the open-for-card bridge's home-side fallback.
-      "src/components/editor-layout/event-bridges/open-for-card.ts",
+      // (The open-for-card bridge's home-side fallback LEFT this list in task
+      // 1528: its home side is the card's omni column, so it asks the ladder.)
     ]);
     const hits = codeHits(PROD_FILES, /\bdefaultStripSide\b/);
     expect(hits.filter((h) => !PERMITTED.has(h))).toEqual([]);

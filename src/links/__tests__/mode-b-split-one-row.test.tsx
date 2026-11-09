@@ -144,6 +144,7 @@ describe("Mode-B card after an Enter split (task 934)", () => {
       delete: del,
     };
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "note",
       cardId: "c1",
       paragraphId: rows[0].pid,

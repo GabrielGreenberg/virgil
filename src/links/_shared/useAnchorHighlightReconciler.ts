@@ -88,8 +88,11 @@ import {
   findEntity,
 } from "./entity-hover";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
-import { resolveLink } from "../links";
-import { linksForCardRef } from "./card-anchor-links";
+import { resolveInlineAtomLink } from "../links";
+import { buildCardAnchorPass, type CardAnchorPass } from "../card-anchor-rows";
+import { linkIdSelector } from "../link-dom-contract";
+import { anchorCardOfRef } from "./card-anchor-links";
+import { liveCardAtomIds } from "./live-card-atoms";
 import {
   selectedAttrs,
   hoveredAttrs,
@@ -199,20 +202,7 @@ export interface UseAnchorHighlightReconcilerArgs {
  *  the inline structural counter), never per keystroke. */
 function liveAtomIdSet(editor: Editor | null): ReadonlySet<string> | null {
   if (!editor || editor.isDestroyed || !editor.isInitialized) return null;
-  const ids = new Set<string>();
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "footnote") {
-      const id = (node.attrs.footnoteId as string) || (node.attrs.linkId as string) || "";
-      if (id) ids.add(id);
-      return false;
-    }
-    if (node.type.name === "citation") {
-      const id = (node.attrs.citationId as string) || "";
-      if (id) ids.add(id);
-    }
-    return true;
-  });
-  return ids;
+  return liveCardAtomIds(editor.state.doc);
 }
 
 export function useAnchorHighlightReconciler({
@@ -340,6 +330,7 @@ export function useAnchorHighlightReconciler({
 
     const editorReady =
       editor != null && !editor.isDestroyed && editor.isInitialized;
+    let pass: CardAnchorPass | undefined;
 
     const collectTargets = (
       ref: AnchoredCardRef,
@@ -352,54 +343,66 @@ export function useAnchorHighlightReconciler({
       // Mode-B washes in one place — and deliberately NOT in `collectCardKey`,
       // because the card's own row in the Archives list must still highlight.
       if (archivedCardIds.has(ref.id)) return;
-      const links = linksForCardRef(ref, stableCollections);
-      for (const link of links) {
-        const resolved = resolveLink(editor, link);
-        if (!resolved) continue;
-        if (resolved.kind === "text-range") {
-          // ── Mode-B (text-range): paint RAW onto the `.linked-anchor` span
-          // so the attr lands on the SAME element the CSS selects. A
-          // `Decoration.inline` would wrap the text in a fresh child span and
-          // miss `.linked-anchor[data-card-hovered]`. (value "true", no
-          // kind/side — same as the legacy raw path.) ───────────────────────
-          if (!resolved.domEl) continue;
-          if (intoRange.has(resolved.domEl)) continue;
-          intoRange.set(resolved.domEl, { value: "true", kind: null, side: null });
-          continue;
+      const card = anchorCardOfRef(ref, stableCollections);
+      if (!card) return;
+      const ed = editor!;
+      // ── Paragraph anchors paint the anchor AUTHORITY's rows (task 1505) —
+      // the rows the margin markers are drawn from — never a per-link ladder
+      // of their own: the old `resolveLink` walked stored pids (a Mode-B link's birth
+      // record), had no dormant rung, and re-found snapshots anywhere, so
+      // hover lit paragraphs that carried no marker. Built lazily (fresh, so
+      // its positions are live): once per reconcile, on a hover / selection /
+      // collection change — never on a keystroke. ───────────────────────────
+      pass ??= buildCardAnchorPass(ed);
+      // The rail's edge comes from the ONE margin-side authority, resolved
+      // against the LIVE dock — the same call `computeMarkerPositions` makes
+      // for the marker itself. It used to read `link.anchor.margin.side`, a
+      // dock-blind value frozen into the sidecar when the anchor was created;
+      // that field is gone (task 205) precisely because a stored copy of a
+      // live answer can only drift from it. The kind is the AnchoredCardRef's
+      // spine `kind` (a real CardKind), NOT `link.target.ref.kind` — the
+      // on-disk token can be an un-normalized raw kind the crosswalk rejects.
+      const railAttrs: AnchorHighlightAttrs = {
+        value: "paragraph",
+        kind: paragraphKindFor(ref.kind),
+        side: marginSideForCardKind(ref.kind, panelSides),
+      };
+      for (const row of pass.paintRows(card)) {
+        // ── Mode-B (text-range): paint RAW onto the `.linked-anchor` span
+        // so the attr lands on the SAME element the CSS selects. A
+        // `Decoration.inline` would wrap the text in a fresh child span and
+        // miss `.linked-anchor[data-card-hovered]`. (value "true", no
+        // kind/side — same as the legacy raw path.) ─────────────────────────
+        for (const anchorId of row.marks) {
+          const el = ed.view.dom.querySelector(
+            linkIdSelector(anchorId),
+          ) as HTMLElement | null;
+          if (!el || intoRange.has(el)) continue;
+          intoRange.set(el, { value: "true", kind: null, side: null });
         }
-        // ── Node / inline-atom (Mode-A blocks + footnote/citation atoms):
-        // route through the `Decoration.node` plugin so PM owns the attrs and
-        // never redraws the block. ────────────────────────────────────────
-        const node = editor.state.doc.nodeAt(resolved.pos);
-        if (!node) continue;
-        const from = resolved.pos;
-        const to = resolved.pos + node.nodeSize;
-        if (intoNode.has(from)) continue;
-        const valueAttr: "paragraph" | "true" =
-          resolved.kind === "paragraph" ? "paragraph" : "true";
-        // Use the AnchoredCardRef's spine `kind` (guaranteed a real CardKind by
-        // findEntity), NOT `link.target.ref.kind` — the on-disk link token can
-        // be an un-normalized raw kind like "suggestion" (legacy/stale live
-        // data), which the crosswalk rejects with a console error.
-        const kind =
-          resolved.kind === "paragraph" ? paragraphKindFor(ref.kind) : null;
-        // The rail's edge comes from the ONE margin-side authority, resolved
-        // against the LIVE dock — the same call `computeMarkerPositions` makes
-        // for the marker itself. It used to read `link.anchor.margin.side`, a
-        // dock-blind value frozen into the sidecar when the anchor was created;
-        // that field is gone (task 205) precisely because a stored copy of a
-        // live answer can only drift from it.
-        const side =
-          resolved.kind === "paragraph"
-            ? marginSideForCardKind(ref.kind, panelSides)
-            : null;
-        intoNode.set(from, {
-          shape: "node",
-          from,
-          to,
-          attrs: { value: valueAttr, kind, side },
-        });
+        // ── Mode-A rail: route through the `Decoration.node` plugin so PM
+        // owns the attrs and never redraws the block. ────────────────────────
+        if (row.rail && row.pos != null) addNode(intoNode, row.pos, railAttrs);
       }
+      // ── Inline atoms (footnote / citation) are not paragraph anchors, so
+      // the authority never binds them; `resolveInlineAtomLink` does. ─────────────────
+      for (const link of card.links ?? []) {
+        if (link.anchor.type !== "inline-atom") continue;
+        const resolved = resolveInlineAtomLink(ed, link);
+        if (resolved) {
+          addNode(intoNode, resolved.pos, { value: "true", kind: null, side: null });
+        }
+      }
+    };
+
+    const addNode = (
+      into: Map<number, AnchorHighlightResolved>,
+      from: number,
+      attrs: AnchorHighlightAttrs,
+    ): void => {
+      const node = editor!.state.doc.nodeAt(from);
+      if (!node || into.has(from)) return;
+      into.set(from, { shape: "node", from, to: from + node.nodeSize, attrs });
     };
 
     const collectCardKey = (ref: AnchoredCardRef, into: Set<string>): void => {

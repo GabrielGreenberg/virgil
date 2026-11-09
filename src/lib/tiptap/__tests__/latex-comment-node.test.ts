@@ -25,7 +25,7 @@ vi.mock("@/lib/storage", () => {
     readSidecarIfExists: noop,
     writeSidecar: noop,
     readTex: noop,
-    writeTex: noop,
+    rewriteTex: noop,
   };
 });
 

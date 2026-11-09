@@ -136,7 +136,7 @@ import {
 import {
   statFiles,
   readDocBundle,
-  writeTex,
+  rewriteTex,
   readBib,
   mutateBib,
   getBibFilename,
@@ -245,10 +245,10 @@ describe("storage-fsa statFiles", () => {
 // ---------------------------------------------------------------------------
 
 describe("disk-ledger false-positive guarantee (FSA)", () => {
-  it("a Virgil writeTex stamps the ledger so a re-stat of the SAME bytes matches", async () => {
+  it("a Virgil rewriteTex stamps the ledger so a re-stat of the SAME bytes matches", async () => {
     const h = beginDocPipeline(DOC_ID);
     const WRITTEN = `${PREAMBLE}\n\n\\begin{document}\n\nVirgil wrote this.\n\n\\end{document}\n`;
-    await writeTex(h, WRITTEN);
+    await rewriteTex(h, () => WRITTEN);
     await settle();
     endDocPipeline(h);
 
@@ -265,7 +265,7 @@ describe("disk-ledger false-positive guarantee (FSA)", () => {
   it("an EXTERNAL edit (different bytes) differs from the ledger → real change", async () => {
     const h = beginDocPipeline(DOC_ID);
     const WRITTEN = `${PREAMBLE}\n\n\\begin{document}\n\nVirgil wrote this.\n\n\\end{document}\n`;
-    await writeTex(h, WRITTEN);
+    await rewriteTex(h, () => WRITTEN);
     await settle();
     endDocPipeline(h);
     const ledger = getDiskFingerprint(DOC_ID, TEX)!;

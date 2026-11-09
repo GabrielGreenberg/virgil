@@ -45,6 +45,7 @@ import { cardHasContent } from "@/cards/has-content";
 import type { PullSeed } from "@/lib/stack/pull-seed";
 import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { reinstateCard } from "./reinstate-card";
+import type { ReinstateOutcome } from "@/lib/archive-restore-outcome";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -532,7 +533,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
 
   // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
   const reinstate = useCallback(
-    (raw: unknown): boolean =>
+    (raw: unknown): ReinstateOutcome =>
       reinstateCard<NotesState, NoteCardItem>(
         stateRef.current,
         update,

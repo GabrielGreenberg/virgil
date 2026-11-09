@@ -5,7 +5,7 @@
 // `notes.json`, the user's annotations — and NOTHING else. The Reader mounts a
 // full EditorPane whose derive-on-mount effects (citations, footnotes, …) arm
 // a debounced `writeSidecar(...)`, AND the load path fires a minted-UUID
-// writeback (`writeTex` + `writeDocBundle`). For a library-paper docId there is
+// writeback (`rewriteTex` + `writeDocBundle`). For a library-paper docId there is
 // no registered folder handle, so in production FSA each of those
 // `requireDocHandle` calls throws a wave of "No folder handle stored for doc
 // library-paper:<citekey>", and in dev each silently PUTs to the read-only
@@ -21,10 +21,10 @@
 // lives in `reader-writability.test.ts`, beside the ONE derivation both the
 // UI permit and the funnels now read (`@/lib/host-writability`).
 //   - storage-fsa: EVERY write funnels through `enqueueDocWrite`, so ONE guard
-//     at that funnel covers writeSidecar / writeTex / writeDocBundle / mutateBib
+//     at that funnel covers writeSidecar / rewriteTex / writeDocBundle / mutateBib
 //     / writePdf / the figure writers + the load-writeback.
 //   - storage-dev: no common funnel, so each write entry point that takes a
-//     `DocWriteHandle` guards directly (writeSidecar / writeTex /
+//     `DocWriteHandle` guards directly (writeSidecar / rewriteTex /
 //     writeDocBundle / mutateBib / writePdf / figure writers + the inline
 //     load-writeback in readDocBundle).
 //
@@ -39,7 +39,7 @@
 //      the guard is specific to `library-paper:` and the funnel guard did NOT
 //      swallow real writes.
 //
-// We exercise writeSidecar AND writeTex AND writeDocBundle (the three writes
+// We exercise writeSidecar AND rewriteTex AND writeDocBundle (the three writes
 // the live smoke observed fire on a Reader open). Both backends are covered.
 // The `@/lib/storage` barrel does `require("@/lib/storage-{fsa,dev}")` at
 // module top-level, which vitest's resolver can't alias (it isn't a real ESM
@@ -93,7 +93,7 @@ const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
 
 import {
   writeSidecar as writeSidecarFsa,
-  writeTex as writeTexFsa,
+  rewriteTex as rewriteTexFsa,
   writeDocBundle as writeDocBundleFsa,
 } from "@/lib/storage-fsa";
 import { flushWrites } from "@/lib/write-queue";
@@ -122,9 +122,9 @@ describe("storage-fsa — library-paper write guard (enqueueDocWrite funnel)", (
     ).resolves.toBeUndefined();
   });
 
-  it("library-paper writeTex → no-op that resolves (never reaches requireDocHandle, no No-folder-handle throw)", async () => {
+  it("library-paper rewriteTex → no-op that resolves (never reaches requireDocHandle, no No-folder-handle throw)", async () => {
     const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
-    await expect(writeTexFsa(h, "\\documentclass{article}")).resolves.toBeUndefined();
+    await expect(rewriteTexFsa(h, () => "\\documentclass{article}")).resolves.toBe("unchanged");
   });
 
   it("library-paper writeDocBundle → reports `read-only` (never reaches requireDocHandle, no No-folder-handle throw)", async () => {
@@ -158,16 +158,16 @@ describe("storage-fsa — library-paper write guard (enqueueDocWrite funnel)", (
     endDocPipeline(h);
   });
 
-  it("normal writeTex is UNAFFECTED — still reaches the real write path and rejects", async () => {
-    // writeTex → getTexFileHandle → getDocMetaOrThrow runs first and throws
+  it("normal rewriteTex is UNAFFECTED — still reaches the real write path and rejects", async () => {
+    // rewriteTex → getTexFileHandle → getDocMetaOrThrow runs first and throws
     // "Doc … not in index" (readIndex is mocked empty) BEFORE requireDocHandle.
     // The exact message differs from the sidecar/bundle writers; what matters
     // for zero-blast-radius is that the funnel guard did NOT make it a no-op —
     // it proceeded into the real write path and rejected. (Either the index
     // error or the folder-handle error proves the write was attempted.)
     const h = beginDocPipeline(NORMAL_DOC);
-    const writePromise = writeTexFsa(h, "\\documentclass{article}");
-    // writeTex shares the "bundle" queue subkey with writeDocBundle (total
+    const writePromise = rewriteTexFsa(h, () => "\\documentclass{article}");
+    // rewriteTex shares the "bundle" queue subkey with writeDocBundle (total
     // .tex-write ordering), so the drain targets that key.
     const drained = flushWrites(`${NORMAL_DOC}/bundle`);
     await expect(writePromise).rejects.toThrow(/not in index|No folder handle/);
@@ -195,7 +195,7 @@ describe("storage-fsa — library-paper write guard (enqueueDocWrite funnel)", (
 
 import {
   writeSidecar as writeSidecarDev,
-  writeTex as writeTexDev,
+  rewriteTex as rewriteTexDev,
   writeDocBundle as writeDocBundleDev,
 } from "@/lib/storage-dev";
 
@@ -226,9 +226,9 @@ describe("storage-dev — library-paper write guard (per-entry-point)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("library-paper writeTex → no-op that resolves and NEVER calls fetch", async () => {
+  it("library-paper rewriteTex → no-op that resolves and NEVER calls fetch", async () => {
     const h: DocWriteHandle = { docId: LIBRARY_DOC, pipelineId: "reader-pipe" };
-    await expect(writeTexDev(h, "\\documentclass{article}")).resolves.toBeUndefined();
+    await expect(rewriteTexDev(h, () => "\\documentclass{article}")).resolves.toBe("unchanged");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -254,7 +254,7 @@ describe("storage-dev — library-paper write guard (per-entry-point)", () => {
     // fetch now follows — the disk-ledger stamp's post-write re-stat, the
     // own-write guard for the live-sidecar-reactivity SidecarWatcher — so we
     // filter for the PUT rather than asserting a total fetch count, mirroring the
-    // `writeTex` case below.)
+    // `rewriteTex` case below.)
     const putCalls = fetchSpy.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
     );
@@ -264,9 +264,9 @@ describe("storage-dev — library-paper write guard (per-entry-point)", () => {
     expect((init as RequestInit).method).toBe("PUT");
   });
 
-  it("normal writeTex is UNAFFECTED — still issues the PUT via fetch", async () => {
+  it("normal rewriteTex is UNAFFECTED — still issues the PUT via fetch", async () => {
     const h = beginDocPipeline(NORMAL_DOC);
-    await writeTexDev(h, "\\documentclass{article}");
+    await rewriteTexDev(h, () => "\\documentclass{article}");
     endDocPipeline(h);
     // The guard did NOT swallow a normal write: it proceeded into putText.
     const putCalls = fetchSpy.mock.calls.filter(

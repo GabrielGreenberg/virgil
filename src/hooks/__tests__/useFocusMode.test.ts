@@ -64,20 +64,32 @@ describe("regionForNode (a click selects the clicked node's OWN extent)", () => 
     expect(regionForNode(4, HEADINGS, TOTAL)).toEqual([4, 6]);
   });
 
-  it("(a) clicking a PARAGRAPH / parTitle index selects JUST that one block", () => {
-    // index 2 and 3 are non-heading blocks inside §1 — must NOT grab all of §1.
+  it("(a) a row-less PARAGRAPH index selects JUST that one block", () => {
+    // index 2 and 3 are untitled blocks inside §1 — must NOT grab all of §1.
     expect(regionForNode(2, HEADINGS, TOTAL)).toEqual([2, 2]);
     expect(regionForNode(3, HEADINGS, TOTAL)).toEqual([3, 3]);
     // index 5/6 inside §2.
     expect(regionForNode(5, HEADINGS, TOTAL)).toEqual([5, 5]);
   });
 
-  it("doc-start (index 0, before any heading) selects just that row, not the pre-heading region", () => {
-    expect(regionForNode(0, HEADINGS, TOTAL)).toEqual([0, 0]);
+  it("(task 1530) a PAR-TITLE row owns its title block plus the untitled blocks under it", () => {
+    // Titled block 2 inside §1 (1..3): its row stands for 2 and untitled 3.
+    expect(regionForNode(2, HEADINGS, TOTAL, [2])).toEqual([2, 3]);
+    // …up to (not including) the NEXT row — another titled block…
+    expect(regionForNode(2, HEADINGS, TOTAL, [2, 3])).toEqual([2, 2]);
+    // …or the next heading of any level.
+    expect(regionForNode(5, HEADINGS, TOTAL, [5])).toEqual([5, 6]);
+    expect(regionForNode(2, [...HEADINGS, { index: 3, level: 3 }].sort((a, b) => a.index - b.index), TOTAL, [2])).toEqual([2, 2]);
   });
 
-  it("with no headings at all, any click is a single-block region", () => {
-    expect(regionForNode(0, [], TOTAL)).toEqual([0, 0]);
+  it("(task 1530) doc-start (index 0) owns the untitled blocks before the first row", () => {
+    expect(regionForNode(0, HEADINGS, TOTAL)).toEqual([0, 0]);
+    expect(regionForNode(0, [{ index: 3, level: 1 }], TOTAL)).toEqual([0, 2]);
+    expect(regionForNode(0, [{ index: 3, level: 1 }], TOTAL, [1])).toEqual([0, 0]);
+  });
+
+  it("with no headings and no titles, doc-start owns the doc and any other block itself", () => {
+    expect(regionForNode(0, [], TOTAL)).toEqual([0, TOTAL - 1]);
     expect(regionForNode(3, [], TOTAL)).toEqual([3, 3]);
   });
 });
@@ -102,6 +114,10 @@ function snapBottom(
   total = TOTAL,
 ): number {
   return Math.max(regionForNode(blockIndex, headings, total)[1], curStart);
+}
+
+function snapBottomTitled(blockIndex: number, curStart: number, titled: number[]): number {
+  return Math.max(regionForNode(blockIndex, HEADINGS, TOTAL, titled)[1], curStart);
 }
 
 /**
@@ -156,6 +172,13 @@ describe("activate seed resolution (seed the CURRENT section, not the first)", (
 });
 
 describe("snapBoundary drag edges (section-aware + edge-asymmetric + clamping)", () => {
+  it("(task 1530) bottom-edge drag onto a PAR-TITLE row keeps the untitled blocks it owns", () => {
+    // Band [1, 6]; drag the bottom handle up to titled row 2 in §1 (1..3).
+    // The old resolver ended the band at 2, silently dropping block 3 while
+    // the painted band (bottom row = row 2 either way) looked unchanged.
+    expect(snapBottomTitled(2, /* curStart */ 1, [2])).toBe(3);
+  });
+
   it("(c) bottom-edge drag to a paragraph row sets end = that exact row (precision kept)", () => {
     // Band currently [1, 6]; drag the bottom handle up to paragraph row 2 / 5.
     // Non-heading rows resolve to themselves, so end = the exact row.

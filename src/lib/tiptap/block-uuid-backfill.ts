@@ -5,6 +5,7 @@ import { ReplaceAroundStep, ReplaceStep } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode, mayCarryBlockUuid } from "@/lib/marginalia";
 import { readDocStructure } from "@/lib/tiptap/doc-structure";
+import { nodesBetweenLocal } from "@/lib/tiptap/changed-ranges";
 import { generateShortId } from "@/lib/uuid";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -626,7 +627,9 @@ export function classifyBlockDepartures(
  * `[from, to)` of `doc`. Mirrors the step-inspector's `collectRange`: a node is
  * counted iff its start is inside the range, so ancestor blocks that merely
  * overlap (e.g. the enclosing paragraph while typing) are excluded. Cost is
- * proportional to the range, never the document.
+ * proportional to the range, never the document: a range inside one textblock
+ * (every keystroke) takes `nodesBetweenLocal`'s fast path instead of walking
+ * the top level from index 0 to the caret's block (task 1497).
  */
 function forEachAnchorableStart(
   doc: PMNode,
@@ -637,7 +640,7 @@ function forEachAnchorableStart(
   const lo = Math.max(0, from);
   const hi = Math.min(to, doc.content.size);
   if (hi <= lo) return;
-  doc.nodesBetween(lo, hi, (node, pos, parent) => {
+  nodesBetweenLocal(doc, lo, hi, (node, pos, parent) => {
     if (pos >= lo && pos < hi && isAnchorableNode(node.type)) {
       visit(node, pos, parent ?? null);
     }

@@ -39,7 +39,24 @@ export interface WriteCoalescerOptions {
   maxWaitMs?: number;
   /** The write. Runs with the coalescer already disarmed. */
   fire: () => void;
+  /** Where the window's timer is armed. Defaults to the global clock. An owner
+   *  bound by the timer-lifetime law (a NodeView / React component's ONE
+   *  `ViewLifetime`) passes its scope, so its teardown disarms the window and
+   *  an arm after disposal arms nothing — the coalescer owns WHEN, the scope
+   *  owns how long it may live. */
+  scheduler?: CoalescerScheduler;
 }
+
+/** The two timer verbs a coalescer needs. `ViewLifetime` satisfies it. */
+export interface CoalescerScheduler {
+  setTimeout(cb: () => void, ms: number): unknown;
+  clear(handle: never): void;
+}
+
+const GLOBAL_SCHEDULER = {
+  setTimeout: (cb: () => void, ms: number) => setTimeout(cb, ms),
+  clear: (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle),
+};
 
 export interface WriteCoalescer {
   arm(): void;
@@ -52,13 +69,18 @@ export function createWriteCoalescer({
   delayMs,
   maxWaitMs = Infinity,
   fire,
+  scheduler = GLOBAL_SCHEDULER as CoalescerScheduler,
 }: WriteCoalescerOptions): WriteCoalescer {
   const cap = Math.max(maxWaitMs, delayMs);
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  const clock = scheduler as {
+    setTimeout(cb: () => void, ms: number): unknown;
+    clear(handle: unknown): void;
+  };
+  let timer: unknown = null;
   let burstStart: number | null = null;
 
   const disarm = (): void => {
-    if (timer !== null) clearTimeout(timer);
+    if (timer !== null) clock.clear(timer);
     timer = null;
     burstStart = null;
   };
@@ -71,15 +93,15 @@ export function createWriteCoalescer({
 
   return {
     arm() {
-      if (timer !== null) clearTimeout(timer);
+      if (timer !== null) clock.clear(timer);
       const now = Date.now();
       if (burstStart === null) burstStart = now;
       const delay = Math.max(0, Math.min(delayMs, burstStart + cap - now));
-      timer = setTimeout(run, delay);
+      timer = clock.setTimeout(run, delay);
     },
     flush() {
       if (timer === null) return false;
-      clearTimeout(timer);
+      clock.clear(timer);
       run();
       return true;
     },

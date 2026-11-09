@@ -104,7 +104,28 @@ export interface DocBibChangedDetail {
  * must close over everything it needs (a pre-built entry, a pre-minted uid)
  * and must not read the clock or touch storage itself.
  */
-export type BibMutator = (entries: BibEntry[]) => BibEntry[] | null | BibNoMatch;
+export type BibMutator = (entries: BibEntry[]) => BibEntry[] | null | BibNoMatch | BibRefusal;
+
+/**
+ * A mutator's "this edit cannot be written SAFELY" (task 1519) — the splice
+ * door refused the entry's block (`spliceBibBlockResult`), and the only other
+ * way to produce bytes would be a rebuild from the 16-field projection, which
+ * deletes every field and note the projection omits. Not `null` ("nothing to
+ * change") and not `BIB_NO_MATCH` ("no such entry"): the edit was real, the
+ * entry is there, and the door says so on the refusal channel with `reason`.
+ */
+export interface BibRefusal {
+  readonly bibRefusal: string;
+}
+
+/** Build a {@link BibRefusal}. */
+export function bibRefusal(reason: string): BibRefusal {
+  return { bibRefusal: reason };
+}
+
+function isBibRefusal(x: unknown): x is BibRefusal {
+  return typeof x === "object" && x !== null && !Array.isArray(x) && "bibRefusal" in x;
+}
 
 export interface BibMutationResult {
   entries: BibEntry[];
@@ -323,6 +344,7 @@ export async function mutateProjectBib(
   let produced: BibEntry[] | null = null;
   let unspliceable = false;
   let noMatch = false;
+  let refusal: string | null = null;
   let bibText: string | null;
   try {
     bibText =
@@ -338,6 +360,10 @@ export async function mutateProjectBib(
           return null;
         }
         if (next === null) return null;
+        if (isBibRefusal(next)) {
+          refusal = next.bibRefusal;
+          return null;
+        }
         // THE SPLICE (task 688). The next file is `current` with the changed
         // entries' own spans rewritten — not a whole-file re-emit from the
         // model, which deleted every byte the model cannot represent (a
@@ -365,6 +391,12 @@ export async function mutateProjectBib(
         "That bibliography entry is no longer in references.bib — it was removed " +
           "or renamed outside this window, so the edit could not be applied.",
       ),
+    );
+  }
+  if (refusal !== null) {
+    return refusedWrite(
+      docId,
+      new Error(`This entry could not be saved safely: ${refusal}. references.bib was left unchanged.`),
     );
   }
   if (unspliceable) {

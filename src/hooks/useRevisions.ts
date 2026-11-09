@@ -42,6 +42,7 @@ import type { PullSeed } from "@/lib/stack/pull-seed";
 import { carryUnknownKeys, loadedCreatedAt, withSidecarEnvelope } from "@/lib/sidecar-migrate";
 import { byCreatedAt } from "./useRecentlyAddedTracker";
 import { reinstateCard } from "./reinstate-card";
+import type { ReinstateOutcome } from "@/lib/archive-restore-outcome";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -684,7 +685,7 @@ export function useRevisions(
 
   // Archive-origin restore door (task 712) — see hooks/reinstate-card.ts.
   const reinstate = useCallback(
-    (raw: unknown): boolean =>
+    (raw: unknown): ReinstateOutcome =>
       reinstateCard<RevisionsState, RevisionCard>(
         stateRef.current,
         update,

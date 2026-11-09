@@ -1,4 +1,4 @@
-<!-- last-verified: 3010f199 2026-11-06 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -32,7 +32,9 @@ footnote counter). That numbering rule (a `\thanks` takes number 0 and renders `
 since task 725, [footnote-numbering.ts](../../src/lib/footnote-numbering.ts):
 `footnoteNumbersFor` (the pure rule, called by the parser at load) and
 `writeFootnoteNumbers` (equality-bailed, size-preserving; called by the extension's
-numberer and the typed-`\footnote{}` input rule). `EditorHandle.renumberFootnotes` is
+numberer and the typed-`\footnote{}` input rule). A `\footnote[n]{}` override prints `n` and does
+NOT step the counter; every surface (atom, card, gutter, nested-cite label) prints through the ONE
+`footnoteLabel` (task 1517). `EditorHandle.renumberFootnotes` is
 deleted. CI: `footnote-number-authority.test.ts`. The Atom carries `footnoteId` ← `\vfid`. The trigger vocabulary
 is the SSOT `FOOTNOTE_RE_FULL` in `src/lib/footnote-commands.ts` (the footnote
 analog of `cite-commands.ts`), shared by the typed-`\footnote{}` input rule and the

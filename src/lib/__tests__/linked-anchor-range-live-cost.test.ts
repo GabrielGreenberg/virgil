@@ -172,7 +172,7 @@ describe("getAnchorSummary — paragraph words via the snapshot", () => {
     const costs = [4, 400].map((n) => {
       const editor = mount(n);
       typeInsideMark(editor);
-      const { result, count } = visits(() => getAnchorSummary(card, editor as never));
+      const { result, count } = visits(() => getAnchorSummary(card, editor as never, ["p1", "p3"]));
       expect(result).toEqual({ kind: "paragraph", words: 10 });
       return count;
     });

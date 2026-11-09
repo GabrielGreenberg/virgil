@@ -43,6 +43,28 @@
  * transition, never one per character. The AGE that surfaces display is
  * derived from `dirtySince` at render time by a per-minute ticker in the
  * component, never by a store write.
+ *
+ * ## Two kinds of writer, one fact — task 1503
+ *
+ * A document's content is written by more than the bundle autosave: every card
+ * sidecar (`usePersistentState` — notes, todos, reports, cutter, revisions… —
+ * plus the bespoke `useFootnotes` / `useBibReview` writers) holds the user's
+ * card edits in its own debounce and its own in-flight write. Until 1503 only
+ * `useDocument` published here, so a card body typed in the last 300 ms, or a
+ * sidecar write still in flight, was invisible to the leave prompt, the save
+ * badge and the reload door — "this document holds work not yet on disk" was
+ * published by one of its writers.
+ *
+ * The two kinds stay DISTINGUISHABLE, because some readers are model-scoped:
+ * `dirtySince` / `reason` are the MODEL's (the `.tex` bundle — what the
+ * emergency mirror can store, what the clobber guard pauses, what a refusal
+ * gate measures), and `sidecarDirtySince` is the earliest still-pending SIDECAR
+ * writer's. Each sidecar writer is a member of a per-document SET
+ * ({@link noteSidecarWork}), so a bundle landing (`noteSaveLanded`) cannot
+ * clear a card's dirt, and one card's landing cannot clear another's. The
+ * door predicates — {@link hasUnlandedWork}, {@link docsWithUnlandedWork} —
+ * ask about EITHER kind; {@link hasUnlandedModelWork} is the model-only read
+ * for the bundle writer's own flush/receipt paths and the mirror.
  */
 
 /** Why a write did not land. Ordered loosely by how much the user must do. */
@@ -75,6 +97,12 @@ export interface UnsavedWorkState {
   reason: UnsavedBlockReason | null;
   /** ms epoch of the last attempt that was declined or failed. */
   lastAttemptAt: number | null;
+  /** Task 1503 — ms epoch at which the EARLIEST still-pending card-sidecar
+   *  writer of this document went dirty (an armed debounce, a write in
+   *  flight, or a write that failed and has not since landed), or `null` when
+   *  every sidecar write has settled onto disk. Never touched by the bundle's
+   *  `noteSaveLanded`. */
+  sidecarDirtySince: number | null;
 }
 
 const byDoc = new Map<string, UnsavedWorkState>();
@@ -92,9 +120,15 @@ function current(docId: string): UnsavedWorkState {
       lastLandedAt: null,
       reason: null,
       lastAttemptAt: null,
+      sidecarDirtySince: null,
     }
   );
 }
+
+/** Per document: each pending sidecar writer (an opaque token one writer
+ *  instance owns) → when it went dirty. A SET, so no writer's landing can
+ *  clear another's dirt (task 1503). */
+const sidecarWriters = new Map<string, Map<object, number>>();
 
 function commit(next: UnsavedWorkState): void {
   byDoc.set(next.docId, Object.freeze(next));
@@ -178,10 +212,120 @@ export function noteSaveBlocked(
 }
 
 /**
- * Does this document hold work that has not reached disk? The ONE predicate;
- * every door that could drop memory asks it rather than keeping its own.
+ * Task 1503 — one card-sidecar WRITER's pending state, published. `writer` is
+ * an opaque token the writer instance owns for its life (identity is the
+ * key); `pending` is that writer's own dirty predicate, re-stated after every
+ * transition (armed, in flight, settled). **Typing path — O(1), and it emits
+ * only when the document's `sidecarDirtySince` actually changes**: a writer
+ * already in the set returns on one lookup, so the second keystroke of a
+ * burst notifies nobody. Settling a writer that is not in the set (never
+ * dirty, or its document already cleared) is a no-op and creates no entry.
+ */
+export function noteSidecarWork(
+  docId: string,
+  writer: object,
+  pending: boolean,
+  now = Date.now(),
+): void {
+  let set = sidecarWriters.get(docId);
+  if (pending) {
+    if (set?.has(writer)) return; // already dirty — nothing to say
+    if (!set) {
+      set = new Map();
+      sidecarWriters.set(docId, set);
+    }
+    set.set(writer, now);
+    const prev = current(docId);
+    // An earlier writer still pending keeps the document's (older) clock.
+    if (prev.sidecarDirtySince !== null && byDoc.has(docId)) return;
+    commit({ ...prev, sidecarDirtySince: now });
+    return;
+  }
+  if (!set || !set.delete(writer)) return;
+  let earliest: number | null = null;
+  for (const since of set.values()) {
+    if (earliest === null || since < earliest) earliest = since;
+  }
+  if (set.size === 0) sidecarWriters.delete(docId);
+  const prev = byDoc.get(docId);
+  if (!prev || prev.sidecarDirtySince === earliest) return;
+  commit({ ...prev, sidecarDirtySince: earliest });
+}
+
+/**
+ * One sidecar writer instance's door onto {@link noteSidecarWork} — the
+ * bookkeeping every writer would otherwise repeat (task 1503): it owns the
+ * token, and remembers WHICH document it last published dirt under, so a
+ * write still in flight for document A when the instance moves to B settles
+ * A's entry rather than leaving it dirty forever. `sync` is the writer's
+ * dirty predicate restated after every transition; it is O(1).
+ *
+ * **The channel is the publisher's only memory of "am I registered?"** (task
+ * 1516). `publishedFor` answers one question only — which document to RELEASE
+ * when the target moves — and never short-circuits a registration: a
+ * `pending` sync always reaches {@link noteSidecarWork}, whose own
+ * `set.has(writer)` bail keeps the repeat O(1) and silent. A private "already
+ * published" cache would desync the moment {@link clearUnsavedWork} forgets
+ * the document (an external-change Reload keeps the doc open and the writer
+ * mounted), and the next failed write would then be invisible to every door
+ * that asks {@link hasUnlandedWork}.
+ */
+export interface SidecarWorkPublisher {
+  sync(docId: string | null | undefined, pending: boolean): void;
+}
+
+export function createSidecarWorkPublisher(): SidecarWorkPublisher {
+  const token = {};
+  let publishedFor: string | null = null;
+  return {
+    sync(docId, pending) {
+      const target = pending && docId ? docId : null;
+      if (publishedFor !== null && publishedFor !== target) {
+        noteSidecarWork(publishedFor, token, false);
+      }
+      publishedFor = target;
+      // Unconditional: the channel decides whether this is news.
+      if (target !== null) noteSidecarWork(target, token, true);
+    },
+  };
+}
+
+/** Does the document's state hold work of EITHER kind? */
+function isDirty(s: UnsavedWorkState): boolean {
+  return s.dirtySince !== null || s.sidecarDirtySince !== null;
+}
+
+/**
+ * When this document's oldest unlanded work of EITHER kind began, or `null`
+ * when everything is on disk. What a surface answering "is my work on disk?"
+ * ages from (the save badge, the reload door's report).
+ */
+export function unlandedSince(state: UnsavedWorkState | null): number | null {
+  if (!state) return null;
+  const a = state.dirtySince;
+  const b = state.sidecarDirtySince;
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.min(a, b);
+}
+
+/**
+ * Does this document hold work that has not reached disk — the MODEL's or any
+ * card sidecar's? The ONE predicate; every door that could drop memory (the
+ * leave prompt, the reload door, the update banner) asks it rather than
+ * keeping its own.
  */
 export function hasUnlandedWork(docId: string | null | undefined): boolean {
+  const s = getUnsavedWork(docId);
+  return s !== null && isDirty(s);
+}
+
+/**
+ * The MODEL-scoped half (task 1503): does the `.tex` bundle hold edits not on
+ * disk? For the bundle writer's own questions — "is there a bundle write to
+ * make?", "did my write land?" — which a pending card write must not answer.
+ */
+export function hasUnlandedModelWork(docId: string | null | undefined): boolean {
   const s = getUnsavedWork(docId);
   return s !== null && s.dirtySince !== null;
 }
@@ -191,9 +335,9 @@ export function unsavedAgeMs(
   docId: string | null | undefined,
   now = Date.now(),
 ): number {
-  const s = getUnsavedWork(docId);
-  if (!s || s.dirtySince === null) return 0;
-  return Math.max(0, now - s.dirtySince);
+  const since = unlandedSince(getUnsavedWork(docId));
+  if (since === null) return 0;
+  return Math.max(0, now - since);
 }
 
 /**
@@ -205,7 +349,7 @@ export function unsavedAgeMs(
  */
 export function docsWithUnlandedWork(): UnsavedWorkState[] {
   const out: UnsavedWorkState[] = [];
-  for (const s of byDoc.values()) if (s.dirtySince !== null) out.push(s);
+  for (const s of byDoc.values()) if (isDirty(s)) out.push(s);
   return out;
 }
 
@@ -216,10 +360,12 @@ export function docsWithUnlandedWork(): UnsavedWorkState[] {
  */
 export function clearUnsavedWork(docId?: string): void {
   if (docId === undefined) {
+    sidecarWriters.clear();
     if (byDoc.size === 0) return;
     byDoc.clear();
-  } else if (!byDoc.delete(docId)) {
-    return;
+  } else {
+    sidecarWriters.delete(docId);
+    if (!byDoc.delete(docId)) return;
   }
   emit();
 }

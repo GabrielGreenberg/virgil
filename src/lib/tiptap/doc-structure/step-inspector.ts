@@ -29,6 +29,7 @@ import {
   type StepMap,
 } from "@tiptap/pm/transform";
 import { mayCarryBlockUuid } from "@/lib/marginalia";
+import { nodesBetweenLocal } from "@/lib/tiptap/changed-ranges";
 import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 import {
   cardAtomIdOf,
@@ -37,6 +38,7 @@ import {
   extractEntitiesAt,
   figureEntryAt,
 } from "./entity-extractor";
+import { collectStructure, mapAnchorSpan, type StructureTables } from "./structure-index";
 import {
   type AnchorEntry,
   type BlockEntry,
@@ -67,10 +69,13 @@ interface EntityBundle {
   examples: Map<string, ExampleEntry>;
   figures: Map<string, FigureEntry>;
   labels: Map<string, LabelEntry>;
+  /** The REMOVED side's rule — see `bundleSink`. */
+  readonly keepFirst: boolean;
 }
 
-function emptyBundle(): EntityBundle {
+function emptyBundle(keepFirst = false): EntityBundle {
   return {
+    keepFirst,
     blocks: new Map(),
     headings: new Map(),
     footnotes: new Map(),
@@ -194,6 +199,16 @@ function inspectNodeAt(
    *  inner paragraph carries no live block identity). */
   parent: PMNode | null,
 ): void {
+  // BORN IN THIS TRANSACTION (task 1493). `record` is the back mapping of a
+  // step past the first; a node whose start it DELETES did not exist in
+  // `oldDoc` — an earlier step inserted it (the footnote input rule inserts F,
+  // then `writeFootnoteNumbers` re-marks it in the same transaction). It has no
+  // "before" for the removed side to record: recording it made a brand-new
+  // entity look like a CHANGED one, which `applyDiff` folds only into ids the
+  // snapshot already holds, so it vanished. Text nodes are exempt: PM merges a
+  // born run into an old neighbour, so a text node's start can be new while
+  // its marks are not — anchors are settled against the live doc instead.
+  if (record && !n.isText && record.mapResult(pos, 1).deletedAfter) return;
   extractEntitiesAt(n, pos, parent, {
     sink: bundleSink(out),
     place: record ? (p, assoc) => record.map(p, assoc) : undefined,
@@ -201,16 +216,27 @@ function inspectNodeAt(
   });
 }
 
-/** Adapt a keyed `EntityBundle` to the extractor's sink. */
+/**
+ * Adapt a keyed `EntityBundle` to the extractor's sink.
+ *
+ * `out.keepFirst` is the REMOVED side's rule (task 1493): the first step that saw
+ * an entity saw it as `oldDoc` held it; a later step re-touching it sees a
+ * state this transaction already produced, and its back-mapped position can
+ * be an insertion point rather than where the entity was. The added side is
+ * recorded in `newDoc` with no mapping, where every sighting agrees.
+ */
 function bundleSink(out: EntityBundle): EntitySink {
+  const put = <E>(m: Map<string, E>, k: string, e: E): void => {
+    if (!out.keepFirst || !m.has(k)) m.set(k, e);
+  };
   return {
-    block: (e) => void out.blocks.set(e.uuid, e),
-    heading: (e) => void out.headings.set(e.uuid, e),
-    figure: (e) => void out.figures.set(e.uuid, e),
-    example: (e) => void out.examples.set(e.id, e),
-    footnote: (e) => void out.footnotes.set(e.id, e),
-    citation: (e) => void out.citations.set(e.id, e),
-    label: (e) => void out.labels.set(e.id, e),
+    block: (e) => put(out.blocks, e.uuid, e),
+    heading: (e) => put(out.headings, e.uuid, e),
+    figure: (e) => put(out.figures, e.uuid, e),
+    example: (e) => put(out.examples, e.id, e),
+    footnote: (e) => put(out.footnotes, e.id, e),
+    citation: (e) => put(out.citations, e.id, e),
+    label: (e) => put(out.labels, e.id, e),
     anchor: (id, kind, from, to) => noteAnchorRange(out, id, kind, from, to),
   };
 }
@@ -227,6 +253,10 @@ function bundleSink(out: EntityBundle): EntitySink {
  * Text nodes are special: their start may fall outside the range but
  * the touched portion (and its marks) still matters for linkedAnchor
  * tracking. For text, count any node whose extent overlaps the range.
+ *
+ * Neither rule ever wants an ancestor that merely contains the range, so the
+ * walk is `nodesBetweenLocal`: a keystroke's range visits only its own
+ * textblock's inline children, never the top-level blocks above it (task 1497).
  */
 function collectRange(
   doc: PMNode,
@@ -239,7 +269,7 @@ function collectRange(
   const clampedTo = Math.min(to, doc.content.size);
   const clampedFrom = Math.max(from, 0);
   if (clampedTo <= clampedFrom) return;
-  doc.nodesBetween(clampedFrom, clampedTo, (n, pos, parent) => {
+  nodesBetweenLocal(doc, clampedFrom, clampedTo, (n, pos, parent) => {
     if (n.isText) {
       inspectNodeAt(n, pos, out, doc, record, parent);
     } else if (pos >= clampedFrom && pos < clampedTo) {
@@ -253,104 +283,89 @@ function collectRange(
 }
 
 // ---------------------------------------------------------------------------
-// Heading structural-attr comparison.
+// "Changed": EVERY field the snapshot holds, by one declared table.
 // ---------------------------------------------------------------------------
 
 /**
- * A NUMBERING input is anything that can change a counter's value — and
- * DOCUMENT ORDER is one (task 892). A section's number, a figure's number and
- * every `\ref` to either are functions of where the entity sits among its
- * siblings, so a same-uuid entity that SURVIVES at a different position (a
- * delete+insert MOVE: an Outline reorder, a block drag, the undo of either)
- * is a numbering change exactly as much as a level or label edit is. Until
- * 892 these two predicates compared attrs only, a moved heading reconciled to
- * nothing, and the numberer — whose gate reads `changedHeadings` /
- * `changedFigures` — never woke: the Outline showed "3, 1, 2" until some
- * unrelated edit happened to wake it. Examples (`exampleChanged`, task 101),
- * footnotes and citations already carried the position test; this is the
- * same rule, so all the numbered kinds now share one definition of "moved".
+ * How each field of a keyed entry takes part in "did this re-collected entity
+ * CHANGE?" (task 1495):
+ *   - `key`      — the entity's address; equal by construction on both sides.
+ *   - `pos`      — compared in ONE space (see below).
+ *   - `compared` — any difference is a change.
+ *   - `removal`  — attached only to a REMOVED entry on its way out; never on
+ *                  a snapshot row, so there is nothing to compare.
+ *
+ * There is no "ignored" rule, on purpose. Until 1495 each kind had a
+ * hand-written predicate over a hand-picked subset, and a field it forgot went
+ * stale in the snapshot with no test noticing: a cite's container
+ * (`nestedInContainerId`) re-collected in place under a re-minted example, or
+ * a paragraph joined into one, kept its old container, and the Citations panel
+ * showed the card un-nested until reload. Each table below is
+ * `satisfies Record<keyof Required<E>, …>`, so a new snapshot field is a
+ * compile error here until its rule is stated. A field that must NOT wake
+ * watchers (a heading's title text — keystroke sanctity; a figure's
+ * `figureNumber` — the numberer's own output) is not in the snapshot at all:
+ * readers take it off the live node.
  *
  * Position is compared in ONE space: `aPosInNewDoc` is the removed side mapped
  * through the transaction (`removedPosInNewDoc`), so an edit EARLIER in the
- * document — which shifts every later heading's raw position — maps the old
- * position onto the new one and reports nothing. Typing inside a heading is a
- * same-pos re-scan → false, so heading text edits stay on
- * `contentChangedUuids` and off the numberer's wake path (keystroke sanctity).
+ * document maps the old position onto the new one and reports nothing. A
+ * same-uuid entity that survives at a different position (a delete+insert
+ * MOVE: an Outline reorder, a block drag, the undo of either) IS a change —
+ * document order is a numbering input (task 892).
  */
-function headingStructurallyChanged(
-  aPosInNewDoc: number,
-  a: HeadingEntry,
-  b: HeadingEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.level !== b.level ||
-    a.label !== b.label ||
-    a.numbered !== b.numbered
-  );
-}
+type FieldRule = "key" | "pos" | "compared" | "removal";
+type FieldRules<E> = { readonly [K in keyof Required<E>]: FieldRule };
 
-/** The figure twin of `headingStructurallyChanged` — same order rule. */
-function figureStructurallyChanged(
-  aPosInNewDoc: number,
-  a: FigureEntry,
-  b: FigureEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.label !== b.label ||
-    a.numbered !== b.numbered ||
+const ENTRY_FIELDS = {
+  headings: {
+    uuid: "key", pos: "pos", level: "compared", label: "compared", numbered: "compared",
+  } satisfies FieldRules<HeadingEntry>,
+  footnotes: {
+    id: "key", pos: "pos", thanks: "compared", number: "compared",
+    numberOverride: "compared", title: "compared", removedCarried: "removal",
+  } satisfies FieldRules<FootnoteEntry>,
+  citations: {
+    id: "key", pos: "pos", command: "compared", displayText: "compared",
+    nestedInFootnoteId: "compared", nestedInContainerId: "compared",
+  } satisfies FieldRules<CitationEntry>,
+  examples: {
+    id: "key", uuid: "compared", pos: "pos", tag: "compared", label: "compared",
+    number: "compared",
+  } satisfies FieldRules<ExampleEntry>,
+  figures: {
+    uuid: "key", pos: "pos", label: "compared", numbered: "compared",
     // A NUMBERING input since tasks 318/319 — see `FigureEntry.emitsCaption`.
-    a.emitsCaption !== b.emitsCaption
+    emitsCaption: "compared",
+  } satisfies FieldRules<FigureEntry>,
+} as const;
+
+/** Value equality for snapshot fields: primitives by `Object.is`, a plain
+ *  record (a `CitationContainer`) one level deep. */
+function sameField(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const ak = Object.keys(a);
+  if (ak.length !== Object.keys(b).length) return false;
+  return ak.every((k) =>
+    Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
   );
 }
 
-/**
- * Returns true iff two citation entries differ in a way the cards show —
- * the LaTeX command (which `keys` are parsed from) or the rendered text.
- */
-function citationChanged(a: CitationEntry, b: CitationEntry): boolean {
-  return a.command !== b.command || a.displayText !== b.displayText;
+/** The "differs" rule `reconcileKeyed` takes, derived from a field table. */
+function differsBy<E extends { pos: number }>(rules: FieldRules<E>) {
+  const compared = (Object.keys(rules) as (keyof E)[]).filter((k) => rules[k] === "compared");
+  return (aPosInNewDoc: number, a: E, b: E): boolean =>
+    aPosInNewDoc !== b.pos || compared.some((k) => !sameField(a[k], b[k]));
 }
 
-/** A footnote that survived (same id) but whose position or attrs changed
- *  — the signature of an atom MOVE (delete+insert). `pos` is the load-
- *  bearing field for the structure index + renumber; thanks/number/title
- *  folded in so the snapshot stays exact (a title rename re-derives the card
- *  rows, task 705). */
-function footnoteChanged(
-  aPosInNewDoc: number,
-  a: FootnoteEntry,
-  b: FootnoteEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.thanks !== b.thanks ||
-    a.number !== b.number ||
-    (a.title ?? "") !== (b.title ?? "")
-  );
-}
-
-/** An example that survived (same id) but whose position or displayed attrs
- *  changed — the signature of a same-uuid drag-reorder MOVE (delete+insert,
- *  uuid preserved) or an in-place `setNodeMarkup` renumber. `pos` is load-
- *  bearing for the structure index; `number`/`tag`/`label` are what the
- *  ExampleCard renders, so a renumber `(9)`→`(10)` must count as changed and
- *  re-seed the card. Mirrors `footnoteChanged`. A same-id re-scan with every
- *  field equal (an edit at the block boundary that touched nothing) returns
- *  false, so it never fires spuriously. */
-function exampleChanged(
-  aPosInNewDoc: number,
-  a: ExampleEntry,
-  b: ExampleEntry,
-): boolean {
-  return (
-    aPosInNewDoc !== b.pos ||
-    a.number !== b.number ||
-    a.tag !== b.tag ||
-    a.label !== b.label
-  );
-}
+const DIFFERS = {
+  headings: differsBy<HeadingEntry>(ENTRY_FIELDS.headings),
+  footnotes: differsBy<FootnoteEntry>(ENTRY_FIELDS.footnotes),
+  citations: differsBy<CitationEntry>(ENTRY_FIELDS.citations),
+  examples: differsBy<ExampleEntry>(ENTRY_FIELDS.examples),
+  figures: differsBy<FigureEntry>(ENTRY_FIELDS.figures),
+};
 
 // ---------------------------------------------------------------------------
 // Anchorable-ancestor finder for content-change attribution.
@@ -472,7 +487,7 @@ interface BodyDerivedFactKind {
 const BODY_DERIVED_FACT_KINDS: readonly BodyDerivedFactKind[] = [
   {
     // `FigureEntry.emitsCaption` = `hasCaption || captionNodeHasContent(caption)`.
-    // The second disjunct is the body-derived half; `figureStructurallyChanged`
+    // The second disjunct is the body-derived half; `ENTRY_FIELDS.figures`
     // already compares it, so a filled-in pair reconciles to `changedFigures`
     // with no new branch downstream.
     typeName: "figureBlock",
@@ -569,13 +584,14 @@ const EXAMPLE_SHAPE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Shape-kind nodes whose OPENING token lies in `[from, to)` of `doc`. Never
- *  descends into a textblock (no shape kind lives in inline content), so a
- *  keystroke's range costs O(1). */
+ *  descends into a textblock (no shape kind lives in inline content), and a
+ *  range inside one textblock — a keystroke — takes `nodesBetweenLocal`'s fast
+ *  path, so it costs O(depth) rather than the caret block's index. */
 function shapeNodesStartingIn(doc: PMNode, from: number, to: number, out: string[]): void {
   const lo = Math.max(from, 0);
   const hi = Math.min(to, doc.content.size);
   if (hi <= lo) return;
-  doc.nodesBetween(lo, hi, (n, pos) => {
+  nodesBetweenLocal(doc, lo, hi, (n, pos) => {
     if (pos >= lo && EXAMPLE_SHAPE_TYPES.has(n.type.name)) out.push(n.type.name);
     return !n.isTextblock;
   });
@@ -689,17 +705,52 @@ function markStepSpan(step: Step, doc: PMNode): { from: number; to: number } {
   return { from: pos, to: pos + (doc.nodeAt(pos)?.nodeSize ?? 1) };
 }
 
+/**
+ * Record a content edit over `[from, to)` (in `c.newDoc`) the way a text
+ * replace records one: every block the span touches goes into
+ * `contentChangedUuids`, and every enclosing example into
+ * `exampleContentChangedUuids`. A mark step changes a block's CONTENT (its
+ * formatting) without moving any boundary, so without this the per-block /
+ * per-example content channels never heard about a bold or an italic — an open
+ * Example card kept the un-formatted text and its next whole-block write-back
+ * reverted the formatting (task 1494). O(span): the walk stops at each
+ * textblock, so it never descends into inline content — and a span inside ONE
+ * textblock (the common mark step) is wholly answered by `attribute(from)`,
+ * whose nearest anchorable / example ancestors are that textblock's, so
+ * `nodesBetweenLocal` skips the top-level scan entirely (task 1497).
+ */
+function noteContentSpan(c: StepCoords, from: number, to: number, sink: DiffSink): void {
+  const attribute = (pos: number) => {
+    const uuid = nearestAnchorableUuid(c.newDoc, pos);
+    if (uuid) sink.contentChangedUuids.add(uuid);
+    const exUuid = nearestExampleBlockUuid(c.newDoc, pos);
+    if (exUuid) sink.exampleContentChangedUuids.add(exUuid);
+  };
+  attribute(from);
+  if (to <= from) return;
+  nodesBetweenLocal(c.newDoc, from, Math.min(to, c.newDoc.content.size), (node, pos) => {
+    if (!node.isTextblock) return true;
+    attribute(pos + 1);
+    return false;
+  });
+}
+
 function inspectMarkStep(
   step: AddMarkStep | AddNodeMarkStep | RemoveMarkStep | RemoveNodeMarkStep,
   c: StepCoords,
   sink: DiffSink,
   adding: boolean,
 ): void {
+  const { from, to } = markStepSpan(step, c.stepDoc);
+  // Every mark — formatting and linkedAnchor alike — is content of the blocks
+  // it spans. Recorded in `newDoc` space (inner-biased, so the span never
+  // widens onto a neighbour inserted by a later step).
+  const fromInNew = c.forward.map(from, 1);
+  noteContentSpan(c, fromInNew, Math.max(fromInNew, c.forward.map(to, -1)), sink);
   if (step.mark.type.name !== "linkedAnchor") return;
   const attrs = step.mark.attrs as { anchorId?: string; kind?: string };
   const id = attrs.anchorId ?? "";
   if (!id) return;
-  const { from, to } = markStepSpan(step, c.stepDoc);
   // The span is in `c.stepDoc`; record it in the side's contract space. Stored
   // raw, an added anchor whose transaction went on to edit EARLIER in the
   // document landed in the canonical anchor index off by the later steps'
@@ -729,11 +780,12 @@ function inspectMarkStep(
  *     display resolves against), because `inspectNodeAt` emits the label entry.
  *     The hand-rolled branch synthesised headings and figures and forgot it.
  *
- * Nothing in `src` emits a raw `AttrStep` today — every writer goes through
- * `setNodeMarkup`, which on a non-leaf node produces a `ReplaceAroundStep` and
- * on a leaf a `ReplaceStep` (task 247). This branch is the defensive fallback
- * that must be right on the day one finally fires; congruence with the live
- * range path is what makes that checkable.
+ * Most writers go through `setNodeMarkup`, which on a non-leaf node produces a
+ * `ReplaceAroundStep` and on a leaf a `ReplaceStep` (task 247). Since task 1533
+ * the RECORDED attr writes to a leaf — the source pods' in-place door
+ * (`writeSourcePodAttrs`) and a leaf's structural attr edit — emit raw
+ * `AttrStep`s, so this branch is live; congruence with the range path is what
+ * makes it checkable.
  */
 function inspectAttrStep(step: AttrStep, c: StepCoords, sink: DiffSink): void {
   // `step.pos` is in `c.stepDoc` — NOT in `oldDoc`. Reading `oldDoc.nodeAt` /
@@ -751,7 +803,7 @@ function inspectAttrStep(step: AttrStep, c: StepCoords, sink: DiffSink): void {
   const afterNode = res.deleted ? null : c.newDoc.nodeAt(res.pos);
   if (!afterNode || afterNode.type !== beforeNode.type) return;
   // An AttrStep moves nothing, so both sides share one parent shape; the
-  // O(depth) resolve runs only on this never-emitted defensive branch.
+  // O(depth) resolve is per attr write, never per main-text keystroke.
   inspectNodeAt(beforeNode, step.pos, sink.removed, c.stepDoc, c.back, c.stepDoc.resolve(step.pos).parent);
   inspectNodeAt(afterNode, res.pos, sink.added, c.newDoc, null, c.newDoc.resolve(res.pos).parent);
   noteOrderFlags(sink);
@@ -785,6 +837,101 @@ function inspectUnrecognisedStep(oldDoc: PMNode, newDoc: PMNode, sink: DiffSink)
   }
   sink.exampleShapeChanged = true;
   noteOrderFlags(sink);
+}
+
+// ---------------------------------------------------------------------------
+// The keyed reconcile (task 1493).
+// ---------------------------------------------------------------------------
+
+function groupBy<E>(xs: readonly E[], keyOf: (e: E) => string): Map<string, E[]> {
+  const m = new Map<string, E[]>();
+  for (const x of xs) {
+    const k = keyOf(x);
+    const list = m.get(k);
+    if (list) list.push(x);
+    else m.set(k, [x]);
+  }
+  return m;
+}
+
+interface KeyedReconcileInput<E extends { pos: number }> {
+  /** Entities the touched ranges hold in `newDoc` (newDoc space). */
+  readonly added: ReadonlyMap<string, E>;
+  /** Entities the touched ranges held before the transaction (oldDoc space),
+   *  first sighting per key, newborns excluded (`inspectNodeAt`). */
+  readonly removed: ReadonlyMap<string, E>;
+  /** The prior snapshot's entries for a key (`undefined` = not indexed), or
+   *  `null` when no snapshot was handed in — then bundle membership stands in
+   *  for it, the pre-1493 behaviour, so a caller without a snapshot is
+   *  unchanged. */
+  readonly prior: ((id: string) => E[] | undefined) | null;
+  /** Every live `newDoc` entry for a key — the lazy O(doc) rebuild walk. */
+  readonly live: (id: string) => E[];
+  /** The kind's "differs" rule; `aPosInNewDoc` is `a`'s position already
+   *  carried into `newDoc` space. */
+  readonly differs: (aPosInNewDoc: number, a: E, b: E) => boolean;
+  readonly removedPosInNewDoc: (pos: number) => number;
+  readonly mapPrior: (pos: number) => number;
+}
+
+/**
+ * Classify one keyed table's touched entities against the PRIOR SNAPSHOT's
+ * membership and the LIVE document — never against the step bundles alone.
+ * Bundle membership is a fact about the touched RANGE; whether an entity is
+ * new, changed or gone is a fact about the snapshot. Where the two came apart
+ * the old per-kind loops lost entities (a footnote inserted and re-numbered in
+ * one transaction was reported "changed" for an id the index never held, and
+ * `applyDiff` dropped it) or invented them (an entity born and deleted in one
+ * transaction was reported removed).
+ *
+ *   - ADDED: in `newDoc`'s touched range and not in the snapshot — or a second
+ *     carrier of a key the snapshot holds, which the rebuild also lists twice
+ *     (a pasted duplicate, a split clone before its re-mint).
+ *   - CHANGED: in the snapshot and in both bundles, and it differs after
+ *     mapping (an attr edit in place, or a MOVE).
+ *   - REMOVED: in the snapshot and gone from `newDoc`. When another carrier of
+ *     the key survives (a split re-mint's kept half, the other copy of a
+ *     duplicated cite), the key's live set is emitted as CHANGED instead —
+ *     `applyDiff` replaces every entry of a changed key with it — and only
+ *     when that set differs from the prior one.
+ *
+ * Cost: O(touched keys). The live walk is reached only from a removed-side key
+ * that is not re-collected on the added side — a removal, never typing.
+ */
+function reconcileKeyed<E extends { pos: number }>(
+  r: KeyedReconcileInput<E>,
+): { added: E[]; removed: E[]; changed: E[] } {
+  const added: E[] = [];
+  const removed: E[] = [];
+  const changed: E[] = [];
+  for (const [id, after] of r.added) {
+    const before = r.removed.get(id);
+    const indexed = r.prior ? r.prior(id) !== undefined : before !== undefined;
+    if (!indexed || !before) {
+      added.push(after);
+    } else if (r.differs(r.removedPosInNewDoc(before.pos), before, after)) {
+      changed.push(after);
+    }
+  }
+  for (const [id, before] of r.removed) {
+    if (r.added.has(id)) continue;
+    const prior = r.prior ? r.prior(id) : undefined;
+    // Never indexed: born and gone inside this transaction — no event.
+    if (r.prior && !prior) continue;
+    const survivors = r.live(id);
+    if (survivors.length === 0) {
+      removed.push(before);
+      continue;
+    }
+    // Another carrier of this key survives. Without a snapshot there is
+    // nothing to compare against: report nothing, as before.
+    if (!prior) continue;
+    const same =
+      prior.length === survivors.length &&
+      prior.every((p, i) => !r.differs(r.mapPrior(p.pos), p, survivors[i]));
+    if (!same) changed.push(...survivors);
+  }
+  return { added, removed, changed };
 }
 
 // ---------------------------------------------------------------------------
@@ -825,196 +972,94 @@ export function inspectSteps(
 ): StructureDiff {
   if (!tr.docChanged) return EMPTY_DIFF;
 
-  const removed = emptyBundle();
+  const removed = emptyBundle(true);
   const added = emptyBundle();
   const contentChangedUuids = new Set<string>();
   const exampleContentChangedUuids = new Set<string>();
   let blockOrderChanged = false;
   let blockParTitleChanged = false;
 
-  // Lazily-built set of every uuid live in `newDoc`. The ONE block-survivor
-  // guard — consulted by BOTH the uuid-AttrStep branch AND the reachable
-  // ReplaceStep|ReplaceAroundStep block reconciler below — to avoid claiming a
-  // block "removed" when its uuid in fact still survives elsewhere in the doc.
-  // The canonical trigger: a mid-paragraph Enter split clones a block (both
-  // halves transiently share one uuid), then BlockUuidBackfill re-mints the
-  // CLONE (oldUuid → fresh) via `setNodeMarkup` — but the ORIGINAL (kept) half
-  // still carries `oldUuid`. Naively emitting `removed.blocks[oldUuid]` desyncs
-  // `structure.blocks` (drops a still-live uuid) and makes UuidAttrDecorator
-  // strip the original's `data-uuid`. NOTE the re-mint's REAL step type: a
-  // paragraph is a non-leaf node, so `setNodeMarkup` emits a ReplaceAroundStep,
-  // NOT an AttrStep (task 247) — the Replace* reconciler is the live path; the
-  // AttrStep branch is a defensive fallback sharing this same guard. Built at
-  // most once per transaction, and ONLY when some uuid entered `removed.blocks`
-  // — never on a plain keystroke (no block-start touched → `removed.blocks`
-  // empty), so keystroke sanctity is preserved (the O(doc) walk is off the
-  // typing path).
+  // THE LIVE SIDE (task 1493) — what `newDoc` actually holds, collected by the
+  // SAME walk a rebuild runs (`collectStructure`), lazily and at most once per
+  // transaction. It answers every "does this entity survive, and as what?"
+  // question the step bundles cannot settle alone:
   //
-  // The cache records, per live uuid, the node TYPE(S) carrying it (task 921):
-  // identity and kind are two questions. "Does this uuid survive?" is the
-  // block table's question; "does a HEADING with this uuid survive?" is the
-  // headings table's. A heading demoted to a paragraph (`setNode` copies the
-  // uuid) survives as a block but NOT as a heading — the old boolean set
-  // answered the block question for every table and left a ghost heading in
-  // `structure.headings`. A set per uuid, because a split clone transiently
-  // puts one uuid on two nodes.
+  //   - a block/heading/figure/example uuid swept into the removed bundle by a
+  //     split clone's re-mint while the KEPT half still carries it (tasks
+  //     247/265). Identity and kind are separate questions (task 921): a
+  //     heading demoted in place survives as a block but not as a heading, and
+  //     the block table's eligibility rule (`mayCarryBlockUuid`, task 1128)
+  //     is the rebuild's own, so a list-wrapped inner paragraph does not count;
+  //   - an anchor whose run was touched — its EXACT live extent (first run's
+  //     start → last run's end), so a moved or shrunk run is reconciled against
+  //     it (task 1128);
+  //   - a label's live DEFINING entry (the last definition in document order);
+  //   - a cite or footnote id with a second, surviving carrier (a pasted
+  //     duplicate): deleting one must leave the other indexed.
   //
-  // And identity is the BLOCK table's question asked with the block table's
-  // own eligibility rule (task 1128): `mayCarryBlockUuid(node, parent)`, the
-  // predicate the extractor gates `BlockEntry` on. Wrapping a paragraph in a
-  // list leaves its uuid on the now-INELIGIBLE inner paragraph; counting that
-  // as "survives" kept a ghost `paragraph` block a rebuild does not have. The
-  // kind sub-views are not gated on eligibility (the extractor emits a
-  // heading/figure/example entry whatever its parent), so their kinds are
-  // recorded for every carrier and only `blockLive` asks eligibility.
-  let newDocUuidKindsCache: Map<string, { kinds: Set<string>; blockLive: boolean }> | null =
-    null;
-  const survivingKindsOf = (
-    uuid: string,
-  ): { kinds: Set<string>; blockLive: boolean } | undefined => {
-    if (!newDocUuidKindsCache) {
-      const map = new Map<string, { kinds: Set<string>; blockLive: boolean }>();
-      newDoc.descendants((node, _pos, parent) => {
-        const u = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
-        if (u) {
-          const eligible = mayCarryBlockUuid(node, parent);
-          const rec = map.get(u);
-          if (rec) {
-            rec.kinds.add(node.type.name);
-            rec.blockLive ||= eligible;
-          } else {
-            map.set(u, { kinds: new Set([node.type.name]), blockLive: eligible });
-          }
-        }
-        return true;
-      });
-      newDocUuidKindsCache = map;
-    }
-    return newDocUuidKindsCache.get(uuid);
+  // It used to be three hand-rolled walks (`survivingKindsOf`, `liveAnchorIn`,
+  // `liveLabelIn`), each restating part of the rebuild. O(doc), so it is reached
+  // ONLY from a removal, a both-sides re-scan, or a duplicate — never from a
+  // keystroke (typing touches no node start, and an anchor touched only on the
+  // added side is settled against the PRIOR snapshot, below, without it).
+  let liveCache: StructureTables | null = null;
+  let liveByKey: {
+    headings: Map<string, HeadingEntry[]>;
+    footnotes: Map<string, FootnoteEntry[]>;
+    citations: Map<string, CitationEntry[]>;
+    examples: Map<string, ExampleEntry[]>;
+    figures: Map<string, FigureEntry[]>;
+  } | null = null;
+  const live = (): StructureTables => (liveCache ??= collectStructure(newDoc));
+  const liveKeyed = () =>
+    (liveByKey ??= {
+      headings: groupBy(live().headings, (h) => h.uuid),
+      footnotes: groupBy(live().footnotes, (f) => f.id),
+      citations: groupBy(live().citations, (c) => c.id),
+      examples: groupBy(live().examples, (e) => e.id),
+      figures: groupBy(live().figures, (f) => f.uuid),
+    });
+
+  // The snapshot as it stood before this transaction, keyed — the MEMBERSHIP
+  // every reconcile below classifies against (task 1493). Membership is a fact
+  // about the prior snapshot; which bundle an id landed in is a fact about the
+  // touched RANGE, and the two come apart (a re-marked newborn is in both
+  // bundles yet new; an entity born and deleted in one transaction is in the
+  // removed bundle yet was never indexed). Grouped lazily per table, only when
+  // that table's bundles are non-empty.
+  const priorKeyed = new Map<string, Map<string, unknown[]>>();
+  const priorOf = <E>(
+    table: "headings" | "footnotes" | "citations" | "examples" | "figures",
+    keyOf: (e: E) => string,
+  ): ((id: string) => E[] | undefined) | null => {
+    if (!prevStructure) return null;
+    return (id) => {
+      let m = priorKeyed.get(table);
+      if (!m) {
+        m = groupBy(prevStructure[table] as readonly E[], keyOf) as Map<string, unknown[]>;
+        priorKeyed.set(table, m);
+      }
+      return m.get(id) as E[] | undefined;
+    };
   };
 
-  // The ONE survivor guard shared by every anchorable-block removed-reconciler
-  // (blocks + the three sub-views headings/figures/examples), so no sub-view can
-  // drift out of guard again (task 265 — the sub-view twin of task 247). A split
-  // clone transiently shares a uuid across two nodes; `BlockUuidBackfill` re-mints
-  // the CLONE (`setNodeMarkup` → ReplaceAroundStep on a non-leaf), whose range
-  // walk sweeps the KEPT half's still-live uuid into `removed.*`. `removedBlocks`
-  // was guarded (247) but the sub-views were not: `headingStructurallyChanged`
-  // only covers the same-key CHANGED case, and a re-mint has DIFFERENT keys on
-  // each side (removed=oldUuid, added=newUuid), so it flowed through the unguarded
-  // `removed<Kind>.push` loops and `applyDiff` spliced the kept heading/figure/
-  // example out of the canonical index. Report a removal only when the uuid is
-  // truly gone from `newDoc`. A `null`/empty key (a tag/label-only example, never
-  // a backfill re-mint candidate) can't hit this path → treated as NOT surviving,
-  // so a genuine removal still fires. Same lazy O(doc)-once cost as the block
-  // path (`survivingKindsOf` builds its map at most once per tx); every
-  // call site is gated behind its `!added.<kind>.has(key)` short-circuit so the
-  // walk stays off the re-collected-add and plain-keystroke paths (a keystroke
-  // touches no block start → `removed.<kind>` empty → these loops never execute).
-  //
-  // `kind` is the node type the TABLE is keyed on (task 921): omitted for the
-  // block table (any node carrying the uuid keeps the block alive), the entity
-  // type for every sub-view — so a uuid that survives as a DIFFERENT kind is
-  // reported removed from the old kind's table. Every table's guard goes
-  // through this one door, so the next kind cannot regress it.
-  const survivesAs = (uuid: string | null | undefined, kind?: string): boolean => {
-    if (!uuid) return false;
-    const rec = survivingKindsOf(uuid);
-    if (!rec) return false;
-    return kind === undefined ? rec.blockLive : rec.kinds.has(kind);
+  // Where an index entry would land if this transaction were only MAPPED over
+  // it — the plugin's `mapStructurePositions` over the deferred maps, then this
+  // tx. A live answer equal to it needs no diff entry; a different one is a
+  // `changed*` entry. One mapping object, so the anchor span goes through the
+  // plugin's own `mapAnchorSpan` and cannot disagree with it about assoc.
+  const priorMapping = {
+    map(pos: number, assoc = 1): number {
+      let p = pos;
+      for (const m of prevPendingMaps) p = m.map(p, assoc);
+      return tr.mapping.map(p, assoc);
+    },
   };
-
-  // Anchor-id survivor guard — the mark-level twin of `survivingKindsOf`.
-  // `collectRange` registers a `linkedAnchor` by WHOLE text node (`inspectNodeAt`),
-  // so deleting one char strictly INSIDE a marked run puts the anchor id into
-  // `removed.anchors` even though the mark still rides the untouched remainder in
-  // `newDoc` (the added side collapses — nothing was inserted — so `added.anchors`
-  // stays empty and the naive reconciler false-reports it removed). That false
-  // positive makes `LinkedAnchorGuard` orphan the card and the feature hooks
-  // persist the anchor loss — silent detachment on an ordinary interior Backspace.
-  // Consult this before pushing an anchor to `removedAnchors`: it's truly removed
-  // only if its id is absent from every `linkedAnchor` mark in `newDoc`. A genuine
-  // mark removal (RemoveMarkStep) or a full-run deletion leaves the id nowhere →
-  // removal still fires. Built at most once per tx, and ONLY when some anchor
-  // entered `removed.anchors` (never on plain typing — no anchor removal, no walk),
-  // so keystroke sanctity holds (the O(doc) walk is off the typing path).
-  //
-  // The walk records each id's EXACT extent (first run's start → last run's
-  // end, what `buildInitial` computes), not just its presence (task 1128): a
-  // surviving anchor whose run was touched is reconciled against it below.
-  let newDocAnchorCache: Map<string, AnchorEntry> | null = null;
-  const liveAnchorIn = (anchorId: string): AnchorEntry | undefined => {
-    if (!newDocAnchorCache) {
-      const map = new Map<string, AnchorEntry>();
-      newDoc.descendants((node, pos) => {
-        if (node.isText && node.marks.length > 0) {
-          for (const mark of node.marks) {
-            if (mark.type.name !== "linkedAnchor") continue;
-            const attrs = mark.attrs as { anchorId?: string; kind?: string };
-            const aid = attrs.anchorId ?? "";
-            if (!aid) continue;
-            const end = pos + node.nodeSize;
-            const prev = map.get(aid);
-            if (prev) prev.to = end;
-            else map.set(aid, { id: aid, from: pos, to: end, kind: attrs.kind ?? "note" });
-          }
-        }
-        return true;
-      });
-      newDocAnchorCache = map;
-    }
-    return newDocAnchorCache.get(anchorId);
-  };
-
-  // Label twin (task 1128): the live DEFINING entry per label id in `newDoc` —
-  // the LAST definition in document order, `buildInitial`'s `labels.set`
-  // winner — through the ONE extractor so the two paths cannot disagree about
-  // what a label entry is. Built at most once per tx, and only when a label
-  // was touched in a way the per-step entries cannot settle alone (a label in
-  // both bundles, a removal, a duplicate definition) — never on typing, which
-  // touches no labelled node's opening token.
-  let newDocLabelCache: Map<string, LabelEntry> | null = null;
-  const liveLabelIn = (id: string): LabelEntry | undefined => {
-    if (!newDocLabelCache) {
-      const map = new Map<string, LabelEntry>();
-      const noop = () => {};
-      const ctx = {
-        sink: {
-          block: noop,
-          heading: noop,
-          figure: noop,
-          example: noop,
-          footnote: noop,
-          citation: noop,
-          anchor: noop,
-          label: (e: LabelEntry) => void map.set(e.id, e),
-        },
-        citationContainer: () => null,
-      };
-      newDoc.descendants((node, pos, parent) => {
-        extractEntitiesAt(node, pos, parent, ctx);
-        return true;
-      });
-      newDocLabelCache = map;
-    }
-    return newDocLabelCache.get(id);
-  };
-
-  // Where the index entry for a keyed table would land if this transaction
-  // were only MAPPED over it — the plugin's `mapStructurePositions` (default
-  // assoc) over the deferred maps, then this tx. A live answer equal to it
-  // needs no diff entry; a different one is a `changed*` entry. Without a
-  // `prevStructure` there is nothing to compare, so the live answer is
-  // always reported.
-  const mapPrior = (pos: number): number => {
-    let p = pos;
-    for (const m of prevPendingMaps) p = m.map(p);
-    return tr.mapping.map(p);
-  };
-  const labelDiffersFromPrior = (prior: LabelEntry, live: LabelEntry): boolean =>
-    mapPrior(prior.pos) !== live.pos ||
-    prior.owner !== live.owner ||
-    prior.ownerUuid !== live.ownerUuid;
+  const mapPrior = (pos: number): number => priorMapping.map(pos);
+  const labelDiffersFromPrior = (prior: LabelEntry, liveLabel: LabelEntry): boolean =>
+    mapPrior(prior.pos) !== liveLabel.pos ||
+    prior.owner !== liveLabel.owner ||
+    prior.ownerUuid !== liveLabel.ownerUuid;
 
   const sink: DiffSink = {
     removed,
@@ -1085,35 +1130,22 @@ export function inspectSteps(
   // what was missing.
   const removedPosInNewDoc = (pos: number): number => tr.mapping.map(pos, 1);
 
-  // Blocks. Filter out duplicate-UUID adds: if a UUID is in added but
-  // also already in prevStructure.blocks (and not in removed), it's a
-  // lazy-hydration clone — drop the add and route it through
-  // `contentChangedUuids` instead so consumers don't overwrite the
-  // original block's position.
+  // Blocks. The block table is a uuid-keyed MAP, so a duplicate carrier is
+  // not a second entry: an added uuid the snapshot already holds (a split
+  // clone, before the backfill re-mints it) is routed through
+  // `contentChangedUuids` rather than overwriting the original's position.
   const addedBlocks: BlockEntry[] = [];
   const removedBlocks: BlockEntry[] = [];
   const changedBlocks: BlockEntry[] = [];
   const prevBlocks = prevStructure?.blocks;
   for (const [uuid, entry] of added.blocks) {
     const wasRemoved = removed.blocks.get(uuid);
-    if (wasRemoved) {
-      // Same UUID in both added + removed = a top-level block MOVE
-      // (delete+insert, uuid preserved by block-uuid-backfill). The
-      // identity didn't change, so it must NOT appear in addedBlocks/
-      // removedBlocks — but its mapped position is stale (the old pos was
-      // deleted), so emit it as `changedBlocks` carrying the NEW pos (so the
-      // structure index folds it in) and flag the reorder for position-keyed
-      // consumers. Same pos + same parTitled = a no-op/round-trip, so
-      // neither. A same-pos `parTitled` FLIP (title added/removed in place)
-      // rides `changedBlocks` too — the index must fold the new flag — but
-      // wakes `blockParTitleChanged` instead of `blockOrderChanged`, since
-      // nothing moved and position-keyed consumers must stay asleep.
-      // A same-pos TYPE change (heading → paragraph via `setNode`, which keeps
-      // the uuid — task 921) rides `changedBlocks` as well so the index's
-      // `typeName` is refreshed, and wakes neither flag: nothing moved and no
-      // title flipped. The kind-keyed sub-views report the change themselves.
-      // The rule is `compareReturnedBlock` — shared with `mergeStructureDiffs`
-      // so the cross-transaction twin cannot drift (task 1129).
+    if (wasRemoved && (!prevBlocks || prevBlocks.has(uuid))) {
+      // Same uuid on both sides of an indexed block = a MOVE (delete+insert,
+      // uuid preserved), an in-place `parTitled` flip, or a same-pos TYPE change
+      // (`setNode`, task 921) — `compareReturnedBlock` decides which, shared
+      // with `mergeStructureDiffs` so the cross-transaction twin cannot drift
+      // (task 1129).
       const verdict = compareReturnedBlock(
         wasRemoved,
         entry,
@@ -1124,9 +1156,7 @@ export function inspectSteps(
       blockParTitleChanged ||= verdict.blockParTitleChanged;
       continue;
     }
-    if (prevBlocks?.has(uuid)) {
-      // Duplicate-UUID transient state from split/clone. Mark the
-      // existing UUID's content as changed instead of adding a phantom.
+    if (!wasRemoved && prevBlocks?.has(uuid)) {
       contentChangedUuids.add(uuid);
       continue;
     }
@@ -1134,223 +1164,150 @@ export function inspectSteps(
   }
   for (const [uuid, entry] of removed.blocks) {
     if (added.blocks.has(uuid)) continue;
-    // Block-survivor guard (task 247) — the block twin of the anchor-survivor
-    // check `liveAnchorIn`. The REAL post-split re-mint lands HERE,
-    // not in the AttrStep branch: `setNodeMarkup` on a non-leaf paragraph emits
-    // a ReplaceAroundStep, whose `collectRange` sweeps the CLONE's old
-    // (duplicate) uuid into `removed.blocks` even though the KEPT half still
-    // carries it live in `newDoc`. Emitting the removal would drop a still-live
-    // block from `structure.blocks` (`applyDiff` does `blocks.delete(uuid)`) and
-    // fire a spurious `onBlocksRemoved` — silently detaching every card anchored
-    // to the kept paragraph. Skip when the uuid still survives. This is the same
-    // lazy O(doc)-once guard the AttrStep branch uses, gated behind the
-    // `added.blocks.has` short-circuit so it never runs for a re-collected add;
-    // off the plain-keystroke path (a keystroke touches no block-start, so
-    // `removed.blocks` stays empty and this loop body never executes).
-    if (survivesAs(uuid)) continue;
-    if (prevBlocks && !prevBlocks.has(uuid)) {
-      // UUID was never in oldDoc's structure index — likely a stale
-      // partial slice extraction. Skip.
-      continue;
-    }
+    // Never indexed: born and gone inside this transaction (or a stale slice).
+    if (prevBlocks && !prevBlocks.has(uuid)) continue;
+    // Block-survivor guard (task 247): a split clone's re-mint sweeps the
+    // KEPT half's still-live uuid into the removed bundle; emitting it would
+    // drop a live block and detach every card anchored to it.
+    if (live().blocks.has(uuid)) continue;
     removedBlocks.push(entry);
   }
 
-  // Headings: separate added / removed / structurally-changed.
-  const addedHeadings: HeadingEntry[] = [];
-  const removedHeadings: HeadingEntry[] = [];
-  const changedHeadings: HeadingEntry[] = [];
-  for (const [uuid, entry] of added.headings) {
-    const wasRemoved = removed.headings.get(uuid);
-    if (!wasRemoved) {
-      addedHeadings.push(entry);
-    } else if (headingStructurallyChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
-      // An attr edit in place OR a MOVE (task 892) — either way the entry
-      // carries the NEW pos, so the structure index re-sorts the outline and
-      // the numberer's gate wakes.
-      changedHeadings.push(entry);
-    }
-    // else: same-UUID, same place, no structural change → don't emit; text
-    // changes flow through contentChangedUuids if anywhere.
-  }
-  for (const [uuid, entry] of removed.headings) {
-    // Survivor guard (task 265) — the heading twin of the block guard above. A
-    // mid-heading Enter split re-mints the clone; its old (duplicate) uuid gets
-    // swept into `removed.headings` while the KEPT heading still carries it in
-    // `newDoc`. `headingStructurallyChanged` (the added-side reconciler) only
-    // catches the same-KEY changed case — a re-mint has different keys on each
-    // side, so it lands here. Skip when the uuid still survives, or `applyDiff`
-    // splices the kept heading out of `structure.headings` (a spurious
-    // `onHeadingsRemoved` desyncs Focus-mode boundaries + the fold mirror).
-    // Kind-aware (task 921): a heading demoted in place survives as a
-    // PARAGRAPH, which keeps the block but not the heading.
-    if (!added.headings.has(uuid) && !survivesAs(uuid, "heading")) removedHeadings.push(entry);
-  }
-  // Mark contentChangedUuids for surviving headings — text may have
-  // changed via the ReplaceStep that triggered the attribute step.
+  // The keyed, document-ordered tables — ONE reconcile, parameterized by kind
+  // (task 1493; it was five hand-written copies, and only the block table
+  // consulted the snapshot). Each kind supplies its key and its "differs" rule.
+  const headings = reconcileKeyed({
+    added: added.headings,
+    removed: removed.headings,
+    prior: priorOf<HeadingEntry>("headings", (h) => h.uuid),
+    live: (id) => liveKeyed().headings.get(id) ?? [],
+    differs: DIFFERS.headings,
+    removedPosInNewDoc,
+    mapPrior,
+  });
+  // Surviving headings re-scanned on both sides: their text may have changed
+  // via the step that touched them.
   for (const [uuid] of added.headings) {
     if (removed.headings.has(uuid)) contentChangedUuids.add(uuid);
   }
 
-  // Footnotes: separate added / removed / changed, mirroring citations.
-  // A same-id in both added+removed is a MOVE (delete+insert) — emit it as
-  // `changedFootnotes` (carrying the NEW pos) so the structure index folds
-  // the new position in. It is NOT in added/removed, so no spurious orphan.
-  const addedFootnotes: FootnoteEntry[] = [];
-  const removedFootnotes: FootnoteEntry[] = [];
-  const changedFootnotes: FootnoteEntry[] = [];
-  for (const [id, entry] of added.footnotes) {
-    const wasRemoved = removed.footnotes.get(id);
-    if (!wasRemoved) addedFootnotes.push(entry);
-    else if (footnoteChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
-      changedFootnotes.push(entry);
-    }
-  }
-  for (const [id, entry] of removed.footnotes) {
-    if (added.footnotes.has(id)) continue;
-    // Carry the body — and every other carried attr (task 1073) — OUT with
-    // the removal (task 1072): `oldDoc` is the one doc
-    // this entry's `pos` addresses, and it is in scope only HERE. A consumer
-    // handed several transactions cannot know which one's before-doc a removed
-    // pos belongs to, so it must never re-resolve it. O(depth), removals only.
+  const footnotes = reconcileKeyed({
+    added: added.footnotes,
+    removed: removed.footnotes,
+    prior: priorOf<FootnoteEntry>("footnotes", (f) => f.id),
+    live: (id) => liveKeyed().footnotes.get(id) ?? [],
+    differs: DIFFERS.footnotes,
+    removedPosInNewDoc,
+    mapPrior,
+  });
+  // Carry the body — and every other carried attr (task 1073) — OUT with the
+  // removal (task 1072): `oldDoc` is the one doc this entry's `pos` addresses,
+  // and it is in scope only HERE. A consumer handed several transactions
+  // cannot know which one's before-doc a removed pos belongs to, so it must
+  // never re-resolve it. O(depth), removals only.
+  const removedFootnotes = footnotes.removed.map((entry) => {
     const node = oldDoc.nodeAt(entry.pos);
     const atom = node && cardAtomIdOf(node);
-    removedFootnotes.push(
-      node && atom?.kind === "footnote" && atom.id === id
-        ? { ...entry, removedCarried: pickFootnoteCarriedAttrs(node.attrs) }
-        : entry,
-    );
-  }
+    return node && atom?.kind === "footnote" && atom.id === entry.id
+      ? { ...entry, removedCarried: pickFootnoteCarriedAttrs(node.attrs) }
+      : entry;
+  });
 
-  // Citations: separate added / removed / changed. An in-place
-  // `setNodeMarkup` (citation is a leaf atom) shows up as same-id in both
-  // added + removed — collapse to `changedCitations` when attrs differ,
-  // mirroring the heading reconciler.
-  const addedCitations: CitationEntry[] = [];
-  const removedCitations: CitationEntry[] = [];
-  const changedCitations: CitationEntry[] = [];
-  for (const [id, entry] of added.citations) {
-    const wasRemoved = removed.citations.get(id);
-    if (!wasRemoved) {
-      addedCitations.push(entry);
-    } else if (
-      citationChanged(wasRemoved, entry) ||
-      removedPosInNewDoc(wasRemoved.pos) !== entry.pos
-    ) {
-      // attr edit in place OR an atom MOVE (delete+insert) — both must
-      // refresh the structure entry's pos/attrs (an atom move's mapped
-      // old position is stale; only the NEW entry carries the right pos).
-      changedCitations.push(entry);
-    }
-  }
-  for (const [id, entry] of removed.citations) {
-    if (!added.citations.has(id)) removedCitations.push(entry);
-  }
+  const citations = reconcileKeyed({
+    added: added.citations,
+    removed: removed.citations,
+    prior: priorOf<CitationEntry>("citations", (c) => c.id),
+    live: (id) => liveKeyed().citations.get(id) ?? [],
+    differs: DIFFERS.citations,
+    removedPosInNewDoc,
+    mapPrior,
+  });
 
-  // Anchors.
+  // Anchors. The index entry for an id is one span (first run → last run), and
+  // the step bundles see whole TEXT NODES, so neither side's entry is the
+  // answer by itself — the prior span (mapped) and, where needed, the live
+  // extent are.
   const addedAnchors: AnchorEntry[] = [];
   const removedAnchors: AnchorEntry[] = [];
   const changedAnchors: AnchorEntry[] = [];
   for (const [id, entry] of added.anchors) {
-    // A new run of an id the touched range did not also remove: the index
-    // WIDENS the entry to the union (`applyDiff`), which is the rebuild's
-    // first-run → last-run extent.
-    if (!removed.anchors.has(id)) addedAnchors.push(entry);
+    if (removed.anchors.has(id)) continue; // settled below, against the live extent
+    // Seen ONLY on the added side. For an id the snapshot already holds this
+    // is a WIDEN candidate, and it widens only if the run reaches past the
+    // prior span mapped through this transaction. Typing at a collapsed caret
+    // INSIDE a highlight is the common case (task 1493): the walk reports the
+    // whole marked text node, yet mapping the prior span already covers it —
+    // nothing to report, so the keystroke wakes no structural watcher. O(1):
+    // a map lookup and two mapped positions, no live walk.
+    const prior = prevStructure?.anchors.get(id);
+    if (prior && prior.kind === entry.kind) {
+      const mapped = mapAnchorSpan(prior, priorMapping);
+      if (entry.from >= mapped.from && entry.to <= mapped.to) continue;
+    }
+    // A new id, or a real widening: `applyDiff` unions it with the prior span.
+    addedAnchors.push(entry);
   }
   for (const [id, entry] of removed.anchors) {
-    // A run of this anchor was touched on the removed side. Three outcomes,
-    // all decided against the LIVE extent (task 1128):
-    //  - gone from `newDoc` → removed;
-    //  - still there, and mapping the index entry already lands on the live
-    //    extent (an interior Backspace, a replace inside the run) → nothing;
-    //  - still there but mapping does NOT land on it → `changed`, carrying the
-    //    live extent. A MOVED run is this case: the id is in both bundles, the
-    //    two used to cancel, and the entry kept its mapped — collapsed — old
-    //    span, so the card's text snapshot read nothing (or a truncated
-    //    passage for one moved run of several).
-    // The survivor walk is the one this guard always paid when a removal
-    // could be false (an interior char-delete reports the whole run), now
-    // also paid for a run in both bundles — a structural edit, never typing.
-    const live = liveAnchorIn(id);
-    if (!live) {
-      removedAnchors.push(entry);
+    // A run of this anchor was touched on the removed side. Decided against
+    // the LIVE extent (task 1128) and the PRIOR membership (task 1493):
+    //  - gone from `newDoc`: removed — unless the snapshot never held it (born
+    //    and deleted in this transaction), which is no event at all;
+    //  - live, never indexed: added;
+    //  - live, and mapping the index entry already lands on the live extent
+    //    (an interior Backspace, a replace inside the run): nothing;
+    //  - live, but mapping does NOT land on it (a MOVED run, a shrunk run):
+    //    `changed`, carrying the live extent.
+    const liveAnchor = live().anchors.get(id);
+    const prior = prevStructure?.anchors.get(id);
+    if (!liveAnchor) {
+      if (!prevStructure || prior) removedAnchors.push(entry);
       continue;
     }
-    const prior = prevStructure?.anchors.get(id);
+    if (!prior) {
+      if (prevStructure) addedAnchors.push(liveAnchor);
+      else changedAnchors.push(liveAnchor);
+      continue;
+    }
+    const mapped = mapAnchorSpan(prior, priorMapping);
     if (
-      !prior ||
-      prior.kind !== live.kind ||
-      mapPrior(prior.from) !== live.from ||
-      mapPrior(prior.to) !== live.to
+      prior.kind !== liveAnchor.kind ||
+      mapped.from !== liveAnchor.from ||
+      mapped.to !== liveAnchor.to
     ) {
-      changedAnchors.push(live);
+      changedAnchors.push(liveAnchor);
     }
   }
 
-  // Examples: separate added / removed / changed, mirroring footnotes &
-  // figures. A same-id in BOTH added+removed is an identity-preserving MOVE
-  // (a drag-reorder is `tr.delete(old)+tr.insert(node)` with the uuid kept by
-  // block-uuid-backfill) — or a same-tx re-scan. It must NOT land in
-  // added/removed (that would orphan/duplicate the card), but its mapped entry
-  // is stale, so emit it as `changedExamples` carrying the NEW pos/number when
-  // any displayed field differs. This is the hole that left docked/Omni
-  // ExampleCards showing a stale `(N)` after a reorder: with no changed bucket,
-  // a moved example fired NEITHER `rev.examples` nor per-uuid `contentRev`, so
-  // the card never re-seeded. A same-id with every field equal (a boundary
-  // re-scan) is a no-op → neither, so keystroke sanctity holds.
-  const addedExamples: ExampleEntry[] = [];
-  const removedExamples: ExampleEntry[] = [];
-  const changedExamples: ExampleEntry[] = [];
-  let exampleStructureChanged = false;
-  for (const [id, entry] of added.examples) {
-    const wasRemoved = removed.examples.get(id);
-    if (!wasRemoved) {
-      addedExamples.push(entry);
-      exampleStructureChanged = true;
-    } else if (exampleChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
-      changedExamples.push(entry);
-      exampleStructureChanged = true;
-    }
-  }
-  for (const [id, entry] of removed.examples) {
-    if (!added.examples.has(id)) {
-      // Survivor guard (task 265) — same class as headings/figures. `exampleBlock`
-      // is anchorable, so a duplicate-uuid re-mint sweeps its old uuid here. The
-      // example key is `id = uuid || tag || label`, so guard on `entry.uuid` only
-      // when it's non-null: a tag/label-only example (null uuid) is never a
-      // backfill re-mint candidate, so it can't false-report and must fall through
-      // to a genuine removal.
-      if (survivesAs(entry.uuid, "exampleBlock")) continue;
-      removedExamples.push(entry);
-      exampleStructureChanged = true;
-    }
-  }
+  // Examples — a drag-reorder MOVE (delete+insert, uuid kept) or a renumber
+  // reconciles to `changedExamples` so docked/Omni ExampleCards re-seed; a
+  // same-id boundary re-scan with every field equal reports nothing.
+  const examples = reconcileKeyed({
+    added: added.examples,
+    removed: removed.examples,
+    prior: priorOf<ExampleEntry>("examples", (e) => e.id),
+    live: (id) => liveKeyed().examples.get(id) ?? [],
+    differs: DIFFERS.examples,
+    removedPosInNewDoc,
+    mapPrior,
+  });
+  const exampleStructureChanged =
+    examples.added.length > 0 || examples.removed.length > 0 || examples.changed.length > 0;
 
-  // Figures.
-  const addedFigures: FigureEntry[] = [];
-  const removedFigures: FigureEntry[] = [];
-  const changedFigures: FigureEntry[] = [];
-  for (const [uuid, entry] of added.figures) {
-    const wasRemoved = removed.figures.get(uuid);
-    if (!wasRemoved) {
-      addedFigures.push(entry);
-    } else if (figureStructurallyChanged(removedPosInNewDoc(wasRemoved.pos), wasRemoved, entry)) {
-      changedFigures.push(entry);
-    }
-  }
-  for (const [uuid, entry] of removed.figures) {
-    // Survivor guard (task 265) — same class as headings/examples. `figureBlock`
-    // is anchorable, so a duplicate-uuid re-mint (paste-duplication, drag-copy)
-    // sweeps its old uuid here while the kept figure still carries it in `newDoc`.
-    if (!added.figures.has(uuid) && !survivesAs(uuid, "figureBlock")) removedFigures.push(entry);
-  }
+  const figures = reconcileKeyed({
+    added: added.figures,
+    removed: removed.figures,
+    prior: priorOf<FigureEntry>("figures", (f) => f.uuid),
+    live: (id) => liveKeyed().figures.get(id) ?? [],
+    differs: DIFFERS.figures,
+    removedPosInNewDoc,
+    mapPrior,
+  });
 
   // Labels. A fresh id on the added side only is an addition. Everything else
-  // — an id in both bundles (a MOVED labelled heading/figure, whose two
-  // entries used to cancel and leave the mapped, stale pos), a removal (which
-  // another definition of the same id may outlive), a definition added for an
-  // id the index already holds (a pasted duplicate) — is settled against the
-  // live winner, the LAST definition in document order (task 1128).
+  // — an id in both bundles (a MOVED labelled heading/figure), a removal
+  // (which another definition of the same id may outlive), a definition added
+  // for an id the index already holds (a pasted duplicate) — is settled against
+  // the live winner, the LAST definition in document order (task 1128).
   const addedLabels: LabelEntry[] = [];
   const removedLabels: LabelEntry[] = [];
   const changedLabels: LabelEntry[] = [];
@@ -1361,23 +1318,26 @@ export function inspectSteps(
       addedLabels.push(entry);
       continue;
     }
-    const live = liveLabelIn(id);
-    if (live && labelDiffersFromPrior(prevLabels.get(id)!, live)) changedLabels.push(live);
+    const liveLabel = live().labels.get(id);
+    if (liveLabel && labelDiffersFromPrior(prevLabels.get(id)!, liveLabel)) {
+      changedLabels.push(liveLabel);
+    }
   }
   for (const [id, entry] of removed.labels) {
-    const live = liveLabelIn(id);
-    if (!live) {
-      removedLabels.push(entry);
+    const liveLabel = live().labels.get(id);
+    const prior = prevLabels?.get(id);
+    if (!liveLabel) {
+      // Never indexed and gone again: born and deleted in this transaction.
+      if (!prevLabels || prior) removedLabels.push(entry);
       continue;
     }
-    const prior = prevLabels?.get(id);
     if (!prior) {
-      // Not indexed before (a partial-slice artifact, or no prior snapshot
+      // Not indexed before (born in this transaction, or no prior snapshot
       // handed in): report the live definition as what it is to the caller.
-      if (prevLabels) addedLabels.push(live);
-      else changedLabels.push(live);
-    } else if (labelDiffersFromPrior(prior, live)) {
-      changedLabels.push(live);
+      if (prevLabels) addedLabels.push(liveLabel);
+      else changedLabels.push(liveLabel);
+    } else if (labelDiffersFromPrior(prior, liveLabel)) {
+      changedLabels.push(liveLabel);
     }
   }
 
@@ -1387,27 +1347,27 @@ export function inspectSteps(
     changedBlocks,
     blockOrderChanged,
     blockParTitleChanged,
-    addedHeadings,
-    removedHeadings,
-    changedHeadings,
-    addedFootnotes,
+    addedHeadings: headings.added,
+    removedHeadings: headings.removed,
+    changedHeadings: headings.changed,
+    addedFootnotes: footnotes.added,
     removedFootnotes,
-    changedFootnotes,
+    changedFootnotes: footnotes.changed,
     footnoteOrderChanged,
-    addedCitations,
-    removedCitations,
-    changedCitations,
+    addedCitations: citations.added,
+    removedCitations: citations.removed,
+    changedCitations: citations.changed,
     citationOrderChanged,
     addedAnchors,
     removedAnchors,
     changedAnchors,
-    addedExamples,
-    removedExamples,
-    changedExamples,
+    addedExamples: examples.added,
+    removedExamples: examples.removed,
+    changedExamples: examples.changed,
     exampleStructureChanged,
-    addedFigures,
-    removedFigures,
-    changedFigures,
+    addedFigures: figures.added,
+    removedFigures: figures.removed,
+    changedFigures: figures.changed,
     addedLabels,
     removedLabels,
     changedLabels,

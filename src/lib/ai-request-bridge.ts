@@ -23,11 +23,9 @@
 import { generateEntityId } from "@/lib/uuid";
 import type { AiRequest, AiRequestLink, AiRequestResult } from "@/lib/types";
 import {
-  isAiRequestsWriteRefused,
   mutateAiRequests,
-  type AiRequestsWriteResult,
+  reportAiRequestsWriteRefusal,
 } from "@/lib/ai-requests-store";
-import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
 import {
   CLOSED_BY_LEAVE,
   closeRequestRow,
@@ -249,25 +247,7 @@ export async function bridgeCardAiRequestFlag(
   // reached the inbox is the same silent loss the inbox's own writer had
   // (task 630): the user ticks "ask Virgil" on a note, the tick sticks, and no
   // skill will ever serve it. One channel, one voice.
-  reportBridgeRefusal(docId, result);
-}
-
-/**
- * A bridged write that never reached the inbox is the same silent loss the
- * inbox's own writer had (task 630) — published to the ONE refusal channel.
- * Shared by every bridge door so the voice cannot fork.
- */
-function reportBridgeRefusal(docId: string, result: AiRequestsWriteResult): void {
-  if (!isAiRequestsWriteRefused(result)) return;
-  recordSidecarRefusal({
-    docId,
-    what: "request for Virgil",
-    reason: result.kind === "failed" ? "failed" : result.kind,
-    detail:
-      result.kind === "failed" && result.error instanceof Error
-        ? result.error.message
-        : undefined,
-  });
+  reportAiRequestsWriteRefusal(docId, result);
 }
 
 /** The two terminal outcomes a user gives an AI proposal. */
@@ -328,7 +308,7 @@ export async function finalizeProposalRequest(
     const closedBy = cause === "left" ? CLOSED_BY_LEAVE : undefined;
     return requests.map((r, i) => (i === idx ? closeRequestRow(r, result, closedBy) : r));
   });
-  reportBridgeRefusal(docId, write);
+  reportAiRequestsWriteRefusal(docId, write);
   return write.kind === "written" ? linked : null;
 }
 
@@ -390,7 +370,7 @@ export async function rederiveAiRequestForMorph(
     });
     return matched ? next : null;
   });
-  reportBridgeRefusal(docId, result);
+  reportAiRequestsWriteRefusal(docId, result);
 }
 
 /**

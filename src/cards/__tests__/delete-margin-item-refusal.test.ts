@@ -76,6 +76,7 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
     const del = vi.fn(async () => false);
 
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "revision",
       cardId: "c1",
       paragraphId: "P1",
@@ -99,6 +100,7 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
     const del = vi.fn(async () => true);
 
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "revision",
       cardId: "c1",
       paragraphId: "P1",
@@ -134,6 +136,7 @@ describe("deleteMarginItem — a refused delete leaves the document untouched", 
     const del = vi.fn(async () => true);
 
     await deleteMarginItem({
+      mayMutate: () => true,
       kind: "revision",
       cardId: "c1",
       paragraphId: "P1",

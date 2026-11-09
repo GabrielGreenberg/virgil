@@ -46,7 +46,7 @@
  *
  * ## What a publisher supplies, and what it does not
  *
- * It supplies the NOUN (`what`: "AI request", "bibliography review") and the
+ * It supplies the NOUN (`what`: "AI requests", "bibliography") and the
  * REASON, because only the writer knows those. It does not supply SENTENCES:
  * the copy is composed once, in `document-interruption.ts`, beside every other
  * interruption's copy — the same split `describePreservation` makes, where the

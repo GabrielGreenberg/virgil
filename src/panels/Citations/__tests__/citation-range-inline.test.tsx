@@ -189,3 +189,82 @@ describe("+range — an edit session ends exactly once (task 529)", () => {
     expect(onUpdateCitation.mock.calls[0][1]).toContain("p. 30");
   });
 });
+
+/**
+ * TASK 1513 — focus belongs to the `+range` OPEN gesture, never to a data
+ * echo. Pre-1513 the autofocus effect re-ran on every postnote change and the
+ * echo never closed the box when the postnote emptied, so any clear — the
+ * user's own emptied-range commit, a Code-field edit, an editor undo — pulled
+ * the caret out of wherever it was and into this card.
+ */
+describe("+range — focus follows the open gesture only (task 1513)", () => {
+  const RANGED: CitationRef = { ...CIT, command: "\\citep[12]{xenakis2020}" };
+
+  function cardProps(citation: CitationRef, onUpdateCitation = vi.fn()): CitationCardProps {
+    return {
+      citation,
+      isSelected: false,
+      bibEntries: [ENTRY],
+      bibPackage: "natbib",
+      getDisplayText: () => "Xenakis 2020",
+      onSelect: vi.fn(),
+      onJump: vi.fn(),
+      onUpdateCitation,
+      onAddBibEntry: null,
+    };
+  }
+
+  function outsideField() {
+    const outside = document.createElement("textarea");
+    document.body.appendChild(outside);
+    return outside;
+  }
+
+  it("clicking +range focuses the box", () => {
+    renderExpandedCard();
+    fireEvent.click(screen.getByText("+range"));
+    expect(document.activeElement).toBe(screen.getByPlaceholderText("range"));
+  });
+
+  it("an external postnote clear does not move focus, and the row returns to +range", () => {
+    const { rerender } = renderExpandedCard({ citation: RANGED });
+    expect((screen.getByPlaceholderText("range") as HTMLInputElement).value).toBe("12");
+
+    const outside = outsideField();
+    outside.focus();
+    rerender(<CitationCard {...cardProps(CIT)} />);
+
+    expect(document.activeElement).toBe(outside);
+    expect(screen.queryByPlaceholderText("range")).toBeNull();
+    expect(screen.getByText("+range")).toBeTruthy();
+    outside.remove();
+  });
+
+  it("committing an emptied range leaves focus where the gesture put it", () => {
+    const onUpdateCitation = vi.fn();
+    const { rerender } = renderExpandedCard({ citation: RANGED, onUpdateCitation });
+    const input = screen.getByPlaceholderText("range") as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onUpdateCitation).toHaveBeenCalledTimes(1);
+    const [, command] = onUpdateCitation.mock.calls[0];
+
+    // The click-away target the user moved on to, then the write's echo.
+    const outside = outsideField();
+    outside.focus();
+    rerender(<CitationCard {...cardProps({ ...CIT, command }, onUpdateCitation)} />);
+
+    expect(document.activeElement).toBe(outside);
+    expect(screen.queryByPlaceholderText("range")).toBeNull();
+    outside.remove();
+  });
+
+  it("a clear landing while the user is IN the box keeps the box open", () => {
+    const { rerender } = renderExpandedCard({ citation: RANGED });
+    const input = screen.getByPlaceholderText("range") as HTMLInputElement;
+    input.focus();
+    rerender(<CitationCard {...cardProps(CIT)} />);
+    expect(document.activeElement).toBe(screen.getByPlaceholderText("range"));
+  });
+});

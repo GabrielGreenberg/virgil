@@ -1,4 +1,4 @@
-<!-- last-verified: 3010f199 2026-11-06 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 <!-- type-externals: JSONContent (TipTap's editor-document type — the one name below that no registry covers-code source exports) -->
@@ -210,6 +210,8 @@ revertable mark; `appliedChange.originalText` is the pre-splice revert source.
 The `pending-changes-flag` gates PRODUCTION only (`canProducePendingChanges()`,
 task 716) — an already-`applied` card's Keep / Revert is gated on its STATUS and
 resolves flag-OFF, so turning the flag off never strands a spliced change.
+The status union and "is this an applied pending change?" have
+one owner, `isAppliedPendingSuggestion` (task 1499, [src/cards/suggestion-status.ts](../../src/cards/suggestion-status.ts)).
 `accepted`/`rejected` remain the terminal propose→review states.
 (`CutItemLegacy { id; title; content; createdAt; links }` is the pre-refactor cut
 shape, kept only for the `useCutter` migration.)

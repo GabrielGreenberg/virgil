@@ -38,16 +38,20 @@
  * The duration is a BUTTON that cycles the presets while the clock is stopped
  * and plain text while it runs — what the surface offers is what the click
  * does, so there is no control that would silently discard a live run. The ×
- * closes AND stops; clicking the bar icon closes but keeps counting (the
- * icon's status dot says so). No plain "hide while running" ambiguity: the two
- * gestures mean two different things and each says which.
+ * closes AND stops; unticking the ⋯ menu's Timer row closes but keeps
+ * counting (the status dot on the ⋯ trigger says so). No plain "hide while
+ * running" ambiguity: the two gestures mean two different things and each
+ * says which.
  *
- * Where each resident sits on the bar is the other half of the affordance, and
- * the two answers differ deliberately: the ICON takes the ordinary tool rules
- * (inside the collapsible group, inside the zen gate) while the WIDGET is
- * rendered before both. A timer is STARTED from a normal bar and stays VISIBLE
- * in a stripped one — which is what the request asked for, and it costs no
- * exception in `StatusCluster`'s gating.
+ * Where each resident sits on the bar is the other half of the affordance. The
+ * Timer ROW lives in the bar's ⋯ menu, which is protected tier and not
+ * zen-gated, so a timer can be started from a collapsed strip or in zen; its
+ * status DOT rides the ⋯ trigger for the same reason; and the WIDGET is
+ * rendered before the collapsible group. A timer is STARTED from a menu and
+ * stays VISIBLE on a stripped bar — which costs no exception in
+ * `StatusCluster`'s gating. The row closes the menu like every sibling row,
+ * through the menu's own `close` (its one prop: a menu callback, never timer
+ * state — `pomodoro-bar-residency.test.tsx`).
  *
  * The done treatment is colour + label (`--positive`, the goal-reached family)
  * with deliberately NO motion: the completion already announces itself with a
@@ -93,21 +97,22 @@ function PauseIcon() {
   );
 }
 
-/**
- * The bar icon. Lives INSIDE the collapsible group (an ordinary tool), and
- * carries a status dot so a timer left running behind a closed widget — or a
- * collapsed strip — is still visible as a state of the app.
- */
-/** The timer's row in the bar's ⋯ menu. A prop-less leaf, like the widget, so
- *  the timer never reaches the cluster's props. */
-function PomodoroMenuRowImpl() {
+/** The timer's row in the bar's ⋯ menu. A leaf that reads its own state, like
+ *  the widget, so the timer never reaches the cluster's props. Its one prop is
+ *  the menu's dismissal: picking the row closes the ⋯ menu exactly as its
+ *  siblings' `pick(...)` does (task 1514) — on click and on Enter alike, since
+ *  both reach `onToggle`. */
+function PomodoroMenuRowImpl({ onPicked }: { onPicked?: () => void }) {
   const { open } = usePomodoro();
   return (
     <MenuToggleRow
       id="more-timer"
       label="Timer"
       checked={open}
-      onToggle={() => togglePomodoroOpen()}
+      onToggle={() => {
+        onPicked?.();
+        togglePomodoroOpen();
+      }}
     />
   );
 }

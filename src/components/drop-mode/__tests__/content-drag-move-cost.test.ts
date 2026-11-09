@@ -137,7 +137,7 @@ function setup() {
     confirm: async () => true,
     notes: {
       exists: () => true,
-      getAnchorTextObjectIds: () => [],
+      getCard: () => undefined,
       addTextObjectLink: () => {},
       removeTextObjectLink: () => {},
       preserveModeBAnchor: () => null,

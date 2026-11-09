@@ -17,6 +17,7 @@
  */
 
 import type { RevisionCard, CutterCard } from "@/lib/types";
+import { isAppliedPendingSuggestion } from "@/cards/suggestion-status";
 
 /** The fields the applied-pending predicate reads. `status` / `appliedChange`
  *  are optional so the COMMENT half of each polymorphic union (which carries
@@ -41,8 +42,7 @@ export interface AppliedPendingCard {
 export function isAppliedPending(
   card: RevisionCard | CutterCard | AppliedPendingCard,
 ): boolean {
-  const c = card as AppliedPendingCard;
-  return c.kind === "suggestion" && c.status === "applied" && !!c.appliedChange;
+  return isAppliedPendingSuggestion(card as AppliedPendingCard);
 }
 
 /** Collect the applied-pending suggestion ids from one card array (revision OR

@@ -89,6 +89,7 @@ import {
 import {
   FULL_CHROME,
   filterPanelKinds,
+  isCardMutationAllowed,
   viewPrefProjection,
   viewToggleClasses,
   type EditorChromeConfig,
@@ -323,6 +324,7 @@ import {
   type LabelRenameConfirm,
 } from "@/lib/tiptap/label-rename";
 import { archiveRestoreRefusal } from "@/lib/archive-restore-gate";
+import { restoreRefusalMessage } from "@/lib/archive-restore-outcome";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import {
   buildMarginItemHandlers,
@@ -397,7 +399,6 @@ import {
 } from "@/panels/Omni/OmniViewPanel";
 import MenuBar from "./MenuBar";
 import {
-  getLinkedTextObjectIds,
   getTextAnchor,
   restampLinkedAnchorForKind,
   paragraphUuidAt,
@@ -712,8 +713,8 @@ export interface EditorPaneViewPrefs {
     target: BlockSpanAddress,
     side: "above" | "below",
   ) => void;
-  onRenameHeading: (uuid: string, newText: string) => void;
-  onRenameParTitle: (uuid: string, newTitle: string) => void;
+  onRenameHeading: (uuid: string, newText: string, seed: string) => void;
+  onRenameParTitle: (uuid: string, newTitle: string, seed: string) => void;
   onUpdateLabel: (uuid: string, newLabel: string | null) => void;
   isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   onFocusActivate: () => void;
@@ -1342,11 +1343,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   useEffect(() => {
     const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
       if (!isRenameCitekey(change)) return;
-      const { oldKey, newKey } = change.renameCitekey;
+      const { oldKey, newKey, bibKeys } = change.renameCitekey;
       if (oldKey === newKey) return;
       const ed = innerRef.current?.getEditor();
       if (!ed) return;
-      rewriteCiteKeyInDoc(ed, oldKey, newKey);
+      rewriteCiteKeyInDoc(ed, oldKey, newKey, bibKeys);
     });
     return unregister;
   }, [identityCascade]);
@@ -1602,7 +1603,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // further down AND the lifecycle SETTLE obligation declared just below — one
   // definition, no second copy to drift (task 238).
   const revisionPendingDeps = useCallback(
-    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
+    (): PendingChangeCardDeps => ({
       getAppliedChange: (cid) =>
         revisionsHookRaw.getCards().find(
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -1611,13 +1612,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setArchived: revisionsHookRaw.setArchived,
       setAppliedChange: revisionsHookRaw.setAppliedChange,
       family: "revision-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
     }),
     [revisionsHookRaw],
   );
   const cutterPendingDeps = useCallback(
-    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
+    (): PendingChangeCardDeps => ({
       getAppliedChange: (cid) =>
         cutterHookRaw.getCards().find(
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -1626,8 +1625,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setArchived: cutterHookRaw.setArchived,
       setAppliedChange: cutterHookRaw.setAppliedChange,
       family: "cutter-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
     }),
     [cutterHookRaw],
   );
@@ -2968,10 +2965,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropNotesApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.notes.some((n) => n.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const n = notesHook.notes.find((nn) => nn.id === id);
-        return n ? getLinkedTextObjectIds(n) : [];
-      },
+      getCard: (id: string) => notesHook.notes.find((nn) => nn.id === id),
       addTextObjectLink: notesHook.addCardParagraphId,
       removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
@@ -2986,10 +2980,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropHighlightsApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.highlights.some((h) => h.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const h = notesHook.highlights.find((hh) => hh.id === id);
-        return h ? getLinkedTextObjectIds(h) : [];
-      },
+      getCard: (id: string) => notesHook.highlights.find((hh) => hh.id === id),
       addTextObjectLink: notesHook.addCardParagraphId,
       removeTextObjectLink: notesHook.removeCardParagraphId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
@@ -3003,10 +2994,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropTodosApi = useMemo(
     () => ({
       exists: (id: string) => todosHook.items.some((t) => t.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const t = todosHook.items.find((tt) => tt.id === id);
-        return t ? getLinkedTextObjectIds(t) : [];
-      },
+      getCard: (id: string) => todosHook.items.find((tt) => tt.id === id),
       addTextObjectLink: todosHook.addParagraphId,
       removeTextObjectLink: todosHook.removeParagraphId,
       modeB: releaseModeB(
@@ -3019,10 +3007,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropArchiveApi = useMemo(
     () => ({
       exists: (id: string) => archiveHook.snippets.some((s) => s.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const s = archiveHook.snippets.find((ss) => ss.id === id);
-        return s ? getLinkedTextObjectIds(s) : [];
-      },
+      getCard: (id: string) => archiveHook.snippets.find((ss) => ss.id === id),
       addTextObjectLink: archiveHook.addParagraphId,
       removeTextObjectLink: archiveHook.removeParagraphId,
       modeB: releaseModeB(
@@ -3035,10 +3020,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropCutterApi = useMemo(
     () => ({
       exists: (id: string) => cutterHook.cards.some((c) => c.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const c = cutterHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedTextObjectIds(c) : [];
-      },
+      getCard: (id: string) => cutterHook.cards.find((cc) => cc.id === id),
       addTextObjectLink: cutterHook.addCardParagraphId,
       removeTextObjectLink: cutterHook.removeCardParagraphId,
       modeB: releaseModeB(
@@ -3051,10 +3033,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropRevisionsApi = useMemo(
     () => ({
       exists: (id: string) => revisionsHook.cards.some((c) => c.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const c = revisionsHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedTextObjectIds(c) : [];
-      },
+      getCard: (id: string) => revisionsHook.cards.find((cc) => cc.id === id),
       addTextObjectLink: revisionsHook.addCardParagraphId,
       removeTextObjectLink: revisionsHook.removeCardParagraphId,
       modeB: releaseModeB(
@@ -3067,10 +3046,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const dropReportsApi = useMemo(
     () => ({
       exists: (id: string) => reportsHook.cards.some((c) => c.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const c = reportsHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedTextObjectIds(c) : [];
-      },
+      getCard: (id: string) => reportsHook.cards.find((cc) => cc.id === id),
       addTextObjectLink: reportsHook.addCardParagraphId,
       removeTextObjectLink: reportsHook.removeCardParagraphId,
       modeB: releaseModeB(
@@ -3338,6 +3314,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
    * it undeletable from the margin (task 669). `sources` — the same row's
    * links — is what a multi-anchor Delete detaches (task 1149).
    */
+  // The host's per-kind delete permit (task 1527) — the SAME derivation the
+  // panel trash (`useCardDeleteAllowed`) and the drag-handle menu ask. Read by
+  // the marker builder (a refused kind's marker gets no `onDelete`) AND by the
+  // delete door below as its floor.
+  const mayDeleteCardKind = useCallback(
+    (kind: CardKind) => isCardMutationAllowed(chrome, kind),
+    [chrome],
+  );
   const handleMarginItemDelete = useCallback(
     (kind: MarginItemKind, cardId: string, row: MarginMarkerRow) =>
       deleteMarginItem({
@@ -3349,8 +3333,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         handlers: marginItemHandlers[kind],
         confirm: confirmMarginItemDelete,
         editor: innerRef.current?.getEditor() ?? null,
+        mayMutate: mayDeleteCardKind,
       }),
-    [marginItemHandlers, confirmMarginItemDelete],
+    [marginItemHandlers, confirmMarginItemDelete, mayDeleteCardKind],
   );
 
   // ── Margin marker click (R15) ────────────────────────────────────
@@ -3606,7 +3591,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // keystroke-stable (the hook object is), which keeps the controller memo stable
   // across typing.
   const revisionInsertDeps = useCallback(
-    (): InsertBelowCardDeps<RevisionSuggestionCard["status"]> => ({
+    (): InsertBelowCardDeps => ({
       getSuggestion: (cid) => {
         const s = revisionsHook.cards.find(
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -3620,12 +3605,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setSuggestionStatus: revisionsHook.setSuggestionStatus,
       setArchived: revisionsHook.setArchived,
       setAppliedChange: revisionsHook.setAppliedChange,
-      acceptedStatus: "accepted",
     }),
     [revisionsHook],
   );
   const cutterInsertDeps = useCallback(
-    (): InsertBelowCardDeps<CutterSuggestionCard["status"]> => ({
+    (): InsertBelowCardDeps => ({
       getSuggestion: (cid) => {
         const s = cutterHook.cards.find(
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
@@ -3639,7 +3623,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       setSuggestionStatus: cutterHook.setSuggestionStatus,
       setArchived: cutterHook.setArchived,
       setAppliedChange: cutterHook.setAppliedChange,
-      acceptedStatus: "accepted",
     }),
     [cutterHook],
   );
@@ -3686,15 +3669,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // The shared `applySuggestion` — the same path the auto-apply driver takes
       // (Phase 2), so the manual button and the driver stay byte-identical. The
       // card-state transitions happen inside via the deps.
-      applySuggestion<RevisionSuggestionCard["status"]>({
+      applySuggestion({
         editor,
         card: s,
         family: "revision-suggestion",
         setSuggestionStatus: revisionsHook.setSuggestionStatus,
         setAppliedChange: revisionsHook.setAppliedChange,
         generateAnchorId: generateEntityId,
-        appliedStatus: "applied",
-        staleStatus: "stale",
       });
     },
     [editor, revisionsHook],
@@ -3707,15 +3688,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
       );
       if (!s) return;
-      applySuggestion<CutterSuggestionCard["status"]>({
+      applySuggestion({
         editor,
         card: s,
         family: "cutter-suggestion",
         setSuggestionStatus: cutterHook.setSuggestionStatus,
         setAppliedChange: cutterHook.setAppliedChange,
         generateAnchorId: generateEntityId,
-        appliedStatus: "applied",
-        staleStatus: "stale",
       });
     },
     [editor, cutterHook],
@@ -3737,10 +3716,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       revisionsHook.setSuggestionStatus(id, "accepted");
       aiRequestsHook.addRequest(
         "suggestion",
-        buildSuggestionApplyPrompt("revision-suggestion", s),
+        buildSuggestionApplyPrompt("revision-suggestion", s, buildCardAnchorPass(editor)),
       );
     },
-    [revisionsHook, aiRequestsHook],
+    [revisionsHook, aiRequestsHook, editor],
   );
   const onAcceptCutterLegacy = useCallback(
     (id: string) => {
@@ -3755,10 +3734,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cutterHook.setSuggestionStatus(id, "accepted");
       aiRequestsHook.addRequest(
         "suggestion",
-        buildSuggestionApplyPrompt("cutter-suggestion", s),
+        buildSuggestionApplyPrompt("cutter-suggestion", s, buildCardAnchorPass(editor)),
       );
     },
-    [cutterHook, aiRequestsHook],
+    [cutterHook, aiRequestsHook, editor],
   );
   // REJECT — a bare status write, the partner of Accept on the flag-OFF pending
   // card AND the `stale` card's Dismiss under the flag (a drifted anchor can no
@@ -4059,6 +4038,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onDelete: (kind, cardId, row) => {
         void handleMarginItemDelete(kind, cardId, row);
       },
+      mayDelete: mayDeleteCardKind,
     };
     const src = MARGIN_MARKER_SOURCES;
     pushSourceMarkers(result, notesHook.notes, src.notes, markerCtx);
@@ -4098,6 +4078,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisionsHook.cards,
     reportsHook.cards,
     handleMarginItemDelete,
+    mayDeleteCardKind,
     handleMarginMarkerClick,
     handleErrorMarkerClick,
     allLatexErrors,
@@ -5279,7 +5260,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       dragHandleNotify({ message: refusal });
       return;
     }
-    const origin = archiveHook.snippetOrigin(id);
     // RETURN ADDRESS (task 965): an anchored clip goes back where it came
     // from, read off the SAME authority its Jump lands on (`jumpTarget`), so
     // Restore and Jump can never name two different places. Just after that
@@ -5328,48 +5308,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           settleDormancy(card as unknown as DormantCardShape, inArchive(), dormancyLiveness()),
         ),
     );
-    if (!restored && origin && origin.kind !== "excerpt") {
-      // A card, not an excerpt: the only ways back to its panel failing are a
-      // card with the same id already there, or an origin record the app
-      // can't read. Either way nothing moved, and nothing was pasted into the
-      // paper.
-      dragHandleNotify({
-        message:
-          origin.kind === "card"
-            ? `Couldn't put this card back in ${ARCHIVE_ORIGIN_PANEL_LABEL[origin.panel]} — ` +
-              "a card with the same id is already there. Nothing was removed from the Archive."
-            : "Couldn't restore this card: its record of where it came from is " +
-              "unreadable. Nothing was removed from the Archive.",
-      });
+    if (!restored.ok) {
+      // THE CAUSE IS A VALUE (task 1525): `restoreSnippet` names why it
+      // refused, where it refused, and ONE table words it — this handler
+      // re-guesses nothing from the origin or the address. A repeat press
+      // after a restore that already happened (`gone` / `already-restored`)
+      // words to null: silent, because nothing failed.
+      const message = restoreRefusalMessage(restored, { addressed: address !== null });
+      if (message) dragHandleNotify({ message });
       return;
     }
-    if (!restored && address) {
-      // It had somewhere to go and still didn't land — a body the document's
-      // schema can't hold (a read-only surface was refused above, by name). Moving the caret would not help,
-      // so don't tell the user to.
-      dragHandleNotify({
-        message:
-          "Couldn't put this back where it came from. Nothing was removed from the Archive.",
-      });
-      return;
-    }
-    if (!restored) {
-      // Nothing left the Archive — say so, and say what to do. The card body is
-      // the ONLY copy of this prose (it was deleted from the document when
-      // archived), so a silent no-op reads as "the button is broken" and a
-      // silent success would be data loss. The overwhelmingly common refusal is
-      // the caret sitting somewhere a block insert would tear (inside an
-      // example, a list, a heading, a gloss row) — hence the instruction rather
-      // than an apology.
-      dragHandleNotify({
-        message:
-          "Couldn't put this back. Click in an ordinary paragraph where the " +
-          "text should go, then try again — it can't be dropped inside a " +
-          "heading, list, or example. Nothing was removed from the Archive.",
-      });
-      return;
-    }
-    if (origin?.kind !== "card") {
+    if (restored.route === "excerpt") {
       // RESTORE'S END EDGE (task 1329): the snippet is retired, so it can no
       // longer bring anything back. The landing revived what it placed (same
       // transaction, and `onRemap` for collisions) — a carried word run it
@@ -5380,7 +5329,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // dormant links.
       settleDormantStores((snippetId) => snippetId !== id);
     }
-    if (origin?.kind === "card") {
+    if (restored.route === "card") {
       // A reinstated CARD leaves the Archive outright (`restoreSnippet` removes
       // the snippet — it does not retire it), so the archive card is gone as
       // surely as a trash-click deletes it and owes the same `card-deleted`
@@ -5399,7 +5348,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // stable per doc (it reads the live snippets off `stateRef`).
   }, [
     archiveHook.restoreSnippet,
-    archiveHook.snippetOrigin,
     archiveHook.snippets,
     anchorPass,
     anchorRetarget,

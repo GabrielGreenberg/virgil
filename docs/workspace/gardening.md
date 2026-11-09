@@ -1,4 +1,4 @@
-<!-- last-verified: 3010f199 2026-11-06 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -86,7 +86,9 @@ classes `.iconbtn-*` (task 826; sized by the `--iconbtn-{size}` / `-glyph` token
 `.card-mono` (task 825) and the resize-gutter grab family (`--gutter-grab`,
 `.drag-gap-grab-start` / `-end`, task 1241), plus `data-float-surface` — the
 float's stated surface the popped-card window rules gate on (task 1246), and the
-gutter-layout family `.tool-gutter*` / `.gutter-side-head` (task 1440). (The full namespace is the SSOT file itself,
+gutter-layout family `.tool-gutter*` / `.gutter-side-head` (task 1440), and the Sand redesign's
+`.card-kind-dot` / `.card-kind-mark`, `.omni-notices`, `.dialog-frame` / `.dialog-scrim`, and
+`data-margin-labels` / `data-icon-weight`. (The full namespace is the SSOT file itself,
 [src/app/globals.css](../../src/app/globals.css).)
 
 **Reserved file / folder paths** (SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)):

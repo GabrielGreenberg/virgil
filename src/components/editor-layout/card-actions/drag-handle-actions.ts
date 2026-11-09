@@ -206,7 +206,6 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       const side = omniSideToReveal(
         { placements, collapsedLeft, collapsedRight },
         panelId,
-        "right",
       );
       if (side === "left") expandLeft();
       else if (side === "right") expandRight();

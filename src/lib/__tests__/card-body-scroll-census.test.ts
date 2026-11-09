@@ -89,6 +89,33 @@ describe("card-body scroll census (task 1424)", () => {
     expect(code).toMatch(/\$\{PANEL\.cardBody\} \$\{cardBodyScroll\(isPoppedOut\)\}/);
   });
 
+  it("every card textarea grows with content (task 1524) — no fixed-rows inner scroller", () => {
+    // A fixed-height card `<textarea>` is a scroller NESTED in the capped
+    // body: the half-pane cap above never engages and a long note reads
+    // through a two-line slot. Every textarea under the card silos wears the
+    // shared `.card-textarea` content-sizing rule and states no `rows`.
+    const CARD_SILOS = [`src${path.sep}panels${path.sep}`, `src${path.sep}cards${path.sep}`];
+    const offenders: string[] = [];
+    let population = 0;
+    for (const p of SRC) {
+      if (!p.endsWith(".tsx") || !CARD_SILOS.some((d) => p.includes(d))) continue;
+      const code = readWithStrings(p);
+      for (const m of code.matchAll(/<textarea\b[\s\S]*?\/>/g)) {
+        population++;
+        const tag = m[0];
+        if (!/\bcard-textarea\b/.test(tag)) offenders.push(`${rel(p)}: no card-textarea class`);
+        if (/\brows=\{/.test(tag)) offenders.push(`${rel(p)}: fixed rows`);
+      }
+    }
+    expect(population).toBeGreaterThanOrEqual(2);
+    expect(offenders, "card textarea that cannot grow").toEqual([]);
+    const css = fs.readFileSync(path.join(REPO_ROOT, "src/app/globals.css"), "utf8");
+    const rule = css.match(/\.card-textarea\s*\{([^}]*)\}/);
+    expect(rule, ".card-textarea rule").not.toBeNull();
+    expect(rule![1]).toMatch(/field-sizing:\s*content/);
+    expect(rule![1]).toMatch(/min-height:\s*2lh/);
+  });
+
   it("the cap is half the measured scrollport, contained", () => {
     const css = fs.readFileSync(path.join(REPO_ROOT, "src/app/globals.css"), "utf8");
     const m = css.match(/\.card-body-scroll\s*\{([^}]*)\}/);

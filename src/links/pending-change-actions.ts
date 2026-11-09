@@ -48,12 +48,14 @@ import {
   type PendingChangeFamily,
 } from "@/links/apply-suggestion";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
+import type { SuggestionStatus } from "@/cards/suggestion-status";
 import type { MarkerConservationViolation } from "@/lib/latex-markers";
+import { removeLinkedAnchor, type CardWithLinks } from "@/links/links";
 import {
-  getLinkedTextObjectIds,
-  removeLinkedAnchor,
-  type CardWithLinks,
-} from "@/links/links";
+  buildCardAnchorPass,
+  cardAnchorPassOrIndexless,
+  type CardAnchorPass,
+} from "@/links/card-anchor-rows";
 import {
   getPreviewDir,
   resetPreviewDir,
@@ -81,36 +83,31 @@ export interface AppliedChangeDescriptor {
 /** The card-state mutators + lookup the commit / preview sequence drives. Both
  *  `useRevisions` and `useCutter` expose exactly this surface (the host
  *  closures already call these), so a host or the EditorPane marker passes its
- *  hook's methods straight through. Generic over the suggestion status union so
- *  each family keeps its own literal type. */
-export interface PendingChangeCardDeps<TStatus extends string = string> {
+ *  hook's methods straight through. Both families share one status union
+ *  (`SuggestionStatus`, task 1499), so the status each verb writes is spelled
+ *  here, never injected. */
+export interface PendingChangeCardDeps {
   /** Resolve the card's applied-splice descriptor by id, or `undefined` when
    *  the card isn't an applied suggestion (already kept / dismissed / wrong
    *  kind). Returning `undefined` makes the action a safe no-op. */
   getAppliedChange: (id: string) => AppliedChangeDescriptor | undefined;
-  setSuggestionStatus: (id: string, status: TStatus) => void;
+  setSuggestionStatus: (id: string, status: SuggestionStatus) => void;
   setArchived: (id: string, archived: boolean) => void;
   setAppliedChange: (id: string, appliedChange: undefined) => void;
   /** The card's suggestion family — needed to RE-STAMP the blue mark when a
    *  commit / preview re-applies the suggested view (so a cutter change tokens
    *  `cutter-suggestion:<id>`, a revision `revision-suggestion:<id>`). */
   family: PendingChangeFamily;
-  /** The accepted-status literal for this family (always `"accepted"`; passed
-   *  explicitly so the generic status union is satisfied without a cast). */
-  acceptedStatus: TStatus;
-  /** The rejected-status literal for this family (always `"rejected"`) — the
-   *  status a DISMISSED-but-preserved suggestion carries. */
-  rejectedStatus: TStatus;
 }
 
 /** Re-apply the suggested splice + blue mark for the applied change `ac` of card
  *  `id`, from the deps' `family`. Shared by `keepSuggestion`'s reconcile and
  *  `previewSuggested`. */
-function reapplySuggested<TStatus extends string>(
+function reapplySuggested(
   editor: Editor,
   id: string,
   ac: AppliedChangeDescriptor,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
 ): void {
   applyPendingChange(editor, {
     anchorUuid: ac.anchorUuid,
@@ -147,11 +144,11 @@ export type SettleResolution = "keep" | "revert";
  * original; from an original-preview (mark already gone, text already original)
  * it no-ops — so Cross deterministically leaves the ORIGINAL.
  */
-function commitAppliedChange<TStatus extends string>(
+function commitAppliedChange(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
   resolution: SettleResolution,
   alsoArchive: boolean,
 ): void {
@@ -179,7 +176,7 @@ function commitAppliedChange<TStatus extends string>(
   if (docId) void flushPendingForDoc(docId).catch(() => {});
   deps.setSuggestionStatus(
     id,
-    resolution === "keep" ? deps.acceptedStatus : deps.rejectedStatus,
+    resolution === "keep" ? "accepted" : "rejected",
   );
   if (alsoArchive) deps.setArchived(id, true);
   deps.setAppliedChange(id, undefined);
@@ -199,11 +196,11 @@ function commitAppliedChange<TStatus extends string>(
  * archived, hidden from its panel) or write an envelope onto a record that is
  * about to vanish.
  */
-export function settleAppliedChangeForLifecycle<TStatus extends string>(
+export function settleAppliedChangeForLifecycle(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
   resolution: SettleResolution,
 ): void {
   commitAppliedChange(editor, id, docId, deps, resolution, false);
@@ -214,11 +211,11 @@ export function settleAppliedChangeForLifecycle<TStatus extends string>(
  * card — the Check verb on every applied-card surface. See
  * {@link commitAppliedChange} for the ordering + mid-preview reconcile.
  */
-export function keepSuggestion<TStatus extends string>(
+export function keepSuggestion(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
 ): void {
   commitAppliedChange(editor, id, docId, deps, "keep", true);
 }
@@ -235,11 +232,11 @@ export function keepSuggestion<TStatus extends string>(
  * Cross deterministically leaves the ORIGINAL regardless of the transient
  * preview (`commit reads appliedChange, not the preview`).
  */
-export function dismissSuggestion<TStatus extends string>(
+export function dismissSuggestion(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
 ): void {
   commitAppliedChange(editor, id, docId, deps, "revert", true);
 }
@@ -251,11 +248,11 @@ export function dismissSuggestion<TStatus extends string>(
  * path can reconcile and the card body can render the active segment. No-ops
  * when there's no `appliedChange`, or when already previewing the original.
  */
-export function previewOriginal<TStatus extends string>(
+export function previewOriginal(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
 ): void {
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
@@ -277,11 +274,11 @@ export function previewOriginal<TStatus extends string>(
  * `archived` / `appliedChange`. Records the preview direction. No-ops when
  * there's no `appliedChange`, or when already previewing the suggestion.
  */
-export function previewSuggested<TStatus extends string>(
+export function previewSuggested(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: PendingChangeCardDeps<TStatus>,
+  deps: PendingChangeCardDeps,
 ): void {
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
@@ -305,9 +302,8 @@ export function previewSuggested<TStatus extends string>(
 /** The card-state mutators + suggestion lookup `insertSuggestionBelow` drives.
  *  A focused sibling of {@link PendingChangeCardDeps}: the insert needs the
  *  card's replacement text + Mode-A anchor (not just its applied descriptor), so
- *  it resolves the whole suggestion by id. Generic over the family's status
- *  union so each family keeps its literal type. */
-export interface InsertBelowCardDeps<TStatus extends string = string> {
+ *  it resolves the whole suggestion by id. */
+export interface InsertBelowCardDeps {
   /** Resolve the pending suggestion by id → the CARD itself (so the insert
    *  resolves its own replacement + anchor through the shared predicate rather
    *  than trusting a pre-extracted string — task 713: the extraction read
@@ -321,11 +317,12 @@ export interface InsertBelowCardDeps<TStatus extends string = string> {
         appliedChange: AppliedChangeDescriptor | undefined;
       }
     | undefined;
-  setSuggestionStatus: (id: string, status: TStatus) => void;
+  setSuggestionStatus: (id: string, status: SuggestionStatus) => void;
   setArchived: (id: string, archived: boolean) => void;
   setAppliedChange: (id: string, appliedChange: undefined) => void;
-  /** The accepted-status literal for this family (always `"accepted"`). */
-  acceptedStatus: TStatus;
+  /** The card-anchor pass to read the live anchor block from (task 1506).
+   *  Omitted → built from the live `editor` at insert time. */
+  anchorPass?: CardAnchorPass;
 }
 
 /**
@@ -350,19 +347,26 @@ export interface InsertBelowCardDeps<TStatus extends string = string> {
  * `accepted` + `archived` (drops it from the auto-apply `pending` filter, so it
  * can't recycle). Text-first ordering mirrors {@link keepSuggestion}.
  */
-export function insertSuggestionBelow<TStatus extends string>(
+export function insertSuggestionBelow(
   editor: Editor,
   id: string,
   docId: string | null,
-  deps: InsertBelowCardDeps<TStatus>,
+  deps: InsertBelowCardDeps,
 ): boolean {
   const s = deps.getSuggestion(id);
   if (!s) return false;
   // Can this card answer Insert below at all? ONE predicate, shared with the
   // button that offers the verb — no anchor, or nothing to insert (a
   // cutter/delete cut, or an unfinished revision) → refuse.
-  if (!suggestionInsertability(s.card).canApply) return false;
-  const anchorUuid = getLinkedTextObjectIds(s.card)[0];
+  // The block the card is anchored on NOW, from the authority (task 1506) —
+  // not its first STORED pid, which after a mid-session re-mint names a block
+  // no marker is drawn on.
+  const anchorUuid = suggestionAnchorBlock(
+    s.card,
+    deps.anchorPass ?? buildCardAnchorPass(editor),
+  );
+  if (!anchorUuid || !suggestionInsertability(s.card, anchorUuid).canApply)
+    return false;
 
   const inserted = insertParagraphAfter(
     editor,
@@ -381,7 +385,7 @@ export function insertSuggestionBelow<TStatus extends string>(
   // this id before it archives, so the three landing verbs leave no residue.
   resetPreviewDir(docId, id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
-  deps.setSuggestionStatus(id, deps.acceptedStatus);
+  deps.setSuggestionStatus(id, "accepted");
   deps.setArchived(id, true);
   return true;
 }
@@ -431,8 +435,8 @@ export interface SuggestionLike extends CardWithLinks {
  *  `useRevisions` and `useCutter` expose `setSuggestionStatus` / `setAppliedChange`
  *  with these exact signatures; `generateAnchorId` is injected (rather than
  *  imported here) so this module stays free of the uuid dependency and the
- *  caller can stub it in a unit test. Generic over the family's status union. */
-export interface ApplySuggestionDeps<TStatus extends string = string> {
+ *  caller can stub it in a unit test. */
+export interface ApplySuggestionDeps {
   editor: Editor;
   /** The pending suggestion card to apply. */
   card: SuggestionLike;
@@ -443,7 +447,7 @@ export interface ApplySuggestionDeps<TStatus extends string = string> {
    *  supplies the literal; the auto-apply driver passes the resolved family
    *  through. */
   family: PendingChangeFamily;
-  setSuggestionStatus: (id: string, status: TStatus) => void;
+  setSuggestionStatus: (id: string, status: SuggestionStatus) => void;
   setAppliedChange: (
     id: string,
     appliedChange: AppliedChangeDescriptor | undefined,
@@ -451,11 +455,30 @@ export interface ApplySuggestionDeps<TStatus extends string = string> {
   /** Mints the anchorId stamped on the blue range (so Keep/Revert can resolve
    *  it later). Injected = `generateEntityId` in app code, a stub in tests. */
   generateAnchorId: () => string;
-  /** The `applied` status literal for this family (always `"applied"`; passed
-   *  explicitly so the generic union is satisfied without a cast). */
-  appliedStatus: TStatus;
-  /** The `stale` status literal for this family (always `"stale"`). */
-  staleStatus: TStatus;
+  /** The card-anchor pass to read the live anchor block from (task 1506) — the
+   *  auto-apply driver hands in the one pass it built for its whole run.
+   *  Omitted → built from the live `editor` at apply time. */
+  anchorPass?: CardAnchorPass;
+}
+
+/**
+ * **Which block is this suggestion anchored on NOW?** — the first of the
+ * authority's live anchor blocks (`CardAnchorPass.anchorBlocksOf`, task 1506),
+ * the same block its marker is drawn beside and its Jump lands on. `null` when
+ * the card is not anchored. Every landing door (Apply, Insert below, the
+ * auto-apply pass) and the button that offers the verb read THIS, then hand it
+ * to the predicates below — so a card the margin shows as anchored can never be
+ * refused as `unanchored`, and a card whose stored pid is a dead record can
+ * never be spliced against the wrong block.
+ *
+ * `pass` null/omitted (a card body rendered outside a pane) reads the indexless
+ * pass — the stored pids, unverified, the authority's mount-gap answer.
+ */
+export function suggestionAnchorBlock(
+  card: CardWithLinks,
+  pass?: CardAnchorPass | null,
+): string | null {
+  return cardAnchorPassOrIndexless(pass).anchorBlocksOf(card)[0] ?? null;
 }
 
 /** Why a pending suggestion cannot be applied AT ALL. Each reason is a fact
@@ -547,8 +570,10 @@ export const SUGGESTION_BLOCK_TEXT: Record<SuggestionBlockReason, string> = {
 export function suggestionApplicability(
   card: SuggestionLike,
   family: PendingChangeFamily,
+  /** The card's live anchor block — {@link suggestionAnchorBlock}. */
+  anchorBlock: string | null,
 ): SuggestionApplicability {
-  if (!getLinkedTextObjectIds(card)[0])
+  if (!anchorBlock)
     return { canApply: false, reason: "unanchored" };
   if (card.original_text.length === 0)
     return { canApply: false, reason: "no-capture" };
@@ -593,8 +618,10 @@ export function suggestionLacksReplacement(
  */
 export function suggestionInsertability(
   card: SuggestionLike,
+  /** The card's live anchor block — {@link suggestionAnchorBlock}. */
+  anchorBlock: string | null,
 ): SuggestionApplicability {
-  if (!getLinkedTextObjectIds(card)[0])
+  if (!anchorBlock)
     return { canApply: false, reason: "unanchored" };
   if (!hasSuggestionReplacement(card))
     return { canApply: false, reason: "no-replacement" };
@@ -626,18 +653,24 @@ export type ApplySuggestionResult =
  * caller owns those). The single source of truth shared by the manual Apply
  * button (both hosts) and the auto-apply driver.
  */
-export function applySuggestion<TStatus extends string>(
-  deps: ApplySuggestionDeps<TStatus>,
+export function applySuggestion(
+  deps: ApplySuggestionDeps,
 ): ApplySuggestionResult {
   const { editor, card } = deps;
   // Can this card answer Apply at all? ONE predicate, shared with the button
   // that offers the verb (task 695) — bail WITHOUT mutating the doc or the card
   // (matches Phase 1b's early return), carrying the reason out to the caller.
-  const applicability = suggestionApplicability(card, deps.family);
+  // The block the card is anchored on NOW (task 1506) — the authority's first
+  // live row, the block its marker sits beside — not its first stored pid.
+  const anchorBlock = suggestionAnchorBlock(
+    card,
+    deps.anchorPass ?? buildCardAnchorPass(editor),
+  );
+  const applicability = suggestionApplicability(card, deps.family, anchorBlock);
   if (!applicability.canApply)
     return { outcome: "skipped", reason: applicability.reason };
-  // Mode-A anchor: the first linked paragraph uuid — non-empty by the predicate.
-  const anchorUuid = getLinkedTextObjectIds(card)[0];
+  // Non-null by the predicate.
+  const anchorUuid = anchorBlock!;
 
   // TASK 713 — what lands is the card's REPLACEMENT, which is the human's
   // `user_text` when they typed one. This read was `card.suggested_text`, so a
@@ -661,7 +694,7 @@ export function applySuggestion<TStatus extends string>(
 
   if (!result.ok) {
     // result.reason === "stale" — no doc mutation happened. Mark + never retry.
-    deps.setSuggestionStatus(card.id, deps.staleStatus);
+    deps.setSuggestionStatus(card.id, "stale");
     return result.markerViolation
       ? { outcome: "stale", markerViolation: result.markerViolation }
       : { outcome: "stale" };
@@ -683,7 +716,7 @@ export function applySuggestion<TStatus extends string>(
     mode,
     appliedAt: new Date().toISOString(),
   };
-  deps.setSuggestionStatus(card.id, deps.appliedStatus);
+  deps.setSuggestionStatus(card.id, "applied");
   deps.setAppliedChange(card.id, appliedChange);
   return { outcome: "applied", anchorUuid, appliedChange };
 }

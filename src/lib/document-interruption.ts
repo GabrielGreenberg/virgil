@@ -238,7 +238,7 @@ export function describePreservation(n: PreservationNotice): {
  * (the AI-request inbox, the card-flag bridge, the bib-review queue) and they
  * must not each compose their own sentence about the same event.
  *
- * `what` is the publisher's noun ("AI request"), because only the writer knows
+ * `what` is the publisher's noun ("AI requests"), because only the writer knows
  * what it was writing; every word around it is decided once, here.
  *
  * `unreadable` (task 679) is the one reason on the READ side, so it is also the

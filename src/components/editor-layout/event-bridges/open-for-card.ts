@@ -1,5 +1,5 @@
-import type { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
-import { dockedSideOf } from "@/hooks/view-prefs-derived";
+import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import { dockedSideOf, panelSideOf } from "@/hooks/view-prefs-derived";
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
@@ -105,10 +105,6 @@ export function findOmniEntry(
   );
 }
 
-function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Side {
-  return prefs.placements.find((p) => p.id === panelId)?.side ?? fallback;
-}
-
 export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void {
   const { omniKey, entrySelector, panelId, targetY, skipScroll, scope } = args;
   const {
@@ -131,8 +127,9 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   }
 
   const registry = PANEL_REGISTRY[panelId as keyof typeof PANEL_REGISTRY];
-  const fallbackSide: Side = registry?.defaultStripSide ?? "left";
-  const homeSide = resolveHomeSide(prefs, panelId, fallbackSide);
+  // The side the card's omni column is on — the ONE ladder (task 1528), so
+  // Rule 3's omni test asks the column the card actually renders in.
+  const homeSide = panelSideOf(prefs, panelId);
   const isActive = dockedSideOf(prefs, panelId) === homeSide;
 
   // Rule 2: Native panel already open on home side → just scroll (unless

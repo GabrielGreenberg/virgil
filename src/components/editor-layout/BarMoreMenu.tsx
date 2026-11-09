@@ -272,7 +272,7 @@ function BarMoreMenuBody({
         checked={zenOn}
         onToggle={pick(onToggleZen)}
       />
-      <PomodoroMenuRow />
+      <PomodoroMenuRow onPicked={close} />
       <MenuToggleRow
         id="more-collab"
         label="Collaborator mode"

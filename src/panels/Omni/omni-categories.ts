@@ -32,7 +32,6 @@ import type { PanelKind, CardKind } from "@/panels/_shared/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { APPLIED_SPLICE_KIND_LIST } from "@/cards/lifecycle/applied-splice";
 import {
-  defaultPanelSide,
   panelSidesFromPlacements,
   resolvePanelSide,
   type SidedPlacement,
@@ -108,7 +107,10 @@ export type OmniCategorySides = Partial<Record<OmniCategory, Side | null>>;
  *  `null` → not offered here, a side → that side. */
 function placedSide(categorySides: OmniCategorySides, c: OmniCategory): Side | null {
   const s = categorySides[c];
-  return s === undefined ? defaultPanelSide(c) : s;
+  // Absent → the ONE ladder with no placement (task 1528): the registry
+  // default, or "right" under the cards-right gutter layout — never a raw
+  // registry read that the layout cannot reach.
+  return s === undefined ? resolvePanelSide(c, {}) : s;
 }
 
 /**
@@ -180,8 +182,8 @@ export function appliedPendingSide(categorySides: OmniCategorySides): Side {
     if (!panel) continue;
     // A host that does not offer the panel (`null`, task 1117) still owes the
     // navigator ONE side — the count is a document fact, not a panel's — so it
-    // takes the registry default rather than vanishing.
-    return placedSide(categorySides, panel.kind) ?? defaultPanelSide(panel.kind);
+    // takes the ladder's no-placement answer rather than vanishing.
+    return placedSide(categorySides, panel.kind) ?? resolvePanelSide(panel.kind, {});
   }
   // Unreachable while the family is non-empty (pinned by applied-splice's
   // own coverage suite); the registry default keeps the type total.

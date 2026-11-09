@@ -1,4 +1,4 @@
-<!-- last-verified: 6b0fbf8e 2026-10-28 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Bar occupancy: several occupants, ONE priority rule

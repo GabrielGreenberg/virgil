@@ -21,11 +21,12 @@ import { act } from "react";
 vi.mock("@/components/editor-layout/layout-scroll", () => ({
   alignEntryToYIfNeeded: vi.fn(),
 }));
-vi.mock("@/links/links", () => ({
-  resolveLink: () => ({ domEl: document.getElementById("anchor") }),
+vi.mock("@/links/jump-to-card", () => ({
+  resolveCardRowTargets: () => [{ fake: true }],
+  jumpTargetElement: () => document.getElementById("anchor"),
 }));
 vi.mock("../card-anchor-links", () => ({
-  linksForCardRef: () => [{ fake: true }],
+  anchorCardOfRef: () => ({ id: "fake" }),
 }));
 
 import { alignEntryToYIfNeeded } from "@/components/editor-layout/layout-scroll";

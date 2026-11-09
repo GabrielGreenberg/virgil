@@ -42,6 +42,8 @@ import {
   type InlineProjectionSegment,
 } from "@/lib/inline-content";
 import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
+import { rebaseTextEdit } from "@/lib/rebase-text-edit";
+import { announceEditRefused, editRefusalNotice } from "@/lib/edit-refusal";
 
 // ---------------------------------------------------------------------------
 // UUID addressing
@@ -164,7 +166,21 @@ export function editStructuredNodeByUuid(
     if (!shallowEqualAttrs(node.attrs as Record<string, unknown>, nextAttrs)) {
       // `mapping` keeps the attr edit valid after a content replace above.
       const mappedPos = tr.mapping.map(pos);
-      tr = tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+      if (node.isLeaf) {
+        // A LEAF's `setNodeMarkup` is a whole-node ReplaceStep whose undo
+        // restores EVERY attr — for a source pod (texBlock/forestBlock), its
+        // code too, over whatever a popped-out float typed since (task 1533).
+        // Per-attr AttrSteps undo only what this edit changed, and are the
+        // shape `writeSourcePodAttrs` (the pods' own door) records.
+        const norm = (v: unknown) => (v === undefined ? null : v);
+        for (const k of Object.keys(node.attrs)) {
+          if (norm(node.attrs[k]) !== norm(nextAttrs[k])) {
+            tr = tr.setNodeAttribute(mappedPos, k, norm(nextAttrs[k]));
+          }
+        }
+      } else {
+        tr = tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+      }
       changed = true;
     }
   }
@@ -368,16 +384,48 @@ function fragmentFromNodes(
  * (the C2 DATA-LOSS fix, `OUT-F5-01`). `newText` is the edited
  * `projectInline` string the rename input was seeded with; this splices back
  * only the characters that changed (task 707).
+ *
+ * `seed` is the string the rename box OPENED with (task 1532). The heading may
+ * have moved since — another pane, an AI writeback — so what lands is the
+ * user's `seed → newText` edit replayed onto the LIVE text
+ * ({@link rebaseTextEdit}), and an edit that overlaps the foreign one is
+ * REFUSED out loud rather than written over it. Omitted, the live text is
+ * taken as the seed (a caller with no async gap between read and write).
  */
 export function renameHeadingByUuid(
   editor: Editor,
   uuid: string,
   newText: string,
+  seed?: string,
 ): boolean {
-  return editStructuredNodeByUuid(editor, uuid, {
+  let refused = false;
+  const done = editStructuredNodeByUuid(editor, uuid, {
     assertType: "heading",
-    editInlineContent: (frag) => buildHeadingRenameFragment(editor, frag, newText),
+    editInlineContent: (frag) => {
+      const live = projectInline(frag).text;
+      const target = seed === undefined ? newText : rebaseTextEdit(seed, newText, live);
+      if (target === null) {
+        refused = true;
+        return frag;
+      }
+      return buildHeadingRenameFragment(editor, frag, target);
+    },
   });
+  if (refused) announceRenameRefused("heading", newText);
+  return done;
+}
+
+/** The one notice for a rename whose target moved under the open box. */
+function announceRenameRefused(what: "heading" | "title", draft: string): void {
+  announceEditRefused(
+    editRefusalNotice({
+      title: what === "heading" ? "Heading not renamed" : "Title not renamed",
+      what,
+      reason: "changed",
+      during: "you were renaming it",
+      draft,
+    }),
+  );
 }
 
 /**
@@ -398,11 +446,24 @@ export function renameParTitleByUuid(
   editor: Editor,
   uuid: string,
   newTitle: string,
+  seed?: string,
 ): boolean {
-  const trimmed = newTitle.trim();
-  return editStructuredNodeByUuid(editor, uuid, {
+  let refused = false;
+  const done = editStructuredNodeByUuid(editor, uuid, {
     guard: (node) => TITLED_NODE_TYPES.has(node.type.name),
-    setAttrs: (attrs) => ({ ...attrs, parTitle: trimmed ? trimmed : null }),
+    setAttrs: (attrs) => {
+      // Task 1532: the same seed rebase as the heading rename, on the attr.
+      const live = (attrs.parTitle as string | null) ?? "";
+      const target = seed === undefined ? newTitle : rebaseTextEdit(seed, newTitle, live);
+      if (target === null) {
+        refused = true;
+        return attrs;
+      }
+      const trimmed = target.trim();
+      return { ...attrs, parTitle: trimmed ? trimmed : null };
+    },
   });
+  if (refused) announceRenameRefused("title", newTitle);
+  return done;
 }
 

@@ -23,6 +23,7 @@ import {
   bracesBalance,
   fieldAliasesOf,
   lineAnchoredOpeners,
+  maskBibComments,
   scanBibFields,
   scanBibSource,
   type Patch,
@@ -46,24 +47,6 @@ function getCite() {
 // ---------------------------------------------------------------------------
 
 /**
- * MASK BibTeX comment lines (lines starting with %) — replacing each one with
- * the same number of spaces rather than deleting it.
- *
- * Length-preserving is load-bearing since task 688: the blocks are scanned on
- * the masked text but every `raw` slice and every splice offset is taken
- * against the ORIGINAL, so the two must share a coordinate system. The old
- * blanking (`line -> ""`) shifted every offset after the first comment, which
- * is why a `% checked against print` note inside an entry used to be blanked
- * out of `raw` and then written back blanked.
- */
-function stripBibComments(bibText: string): string {
-  return bibText
-    .split("\n")
-    .map((line) => (line.trimStart().startsWith("%") ? " ".repeat(line.length) : line))
-    .join("\n");
-}
-
-/**
  * Try to parse a single CSL-JSON item into a BibEntry.
  *
  * `raw` and `uid` are supplied by the caller (paired to the source block by
@@ -76,9 +59,16 @@ function cslItemToEntry(
   raw: string,
   uid: string,
   source?: BibSourceRef,
+  sourceType?: string,
 ): BibEntry {
   const key = (item["citation-key"] || item.id || "") as string;
-  const type = cslTypeToBib((item.type as string) || "misc");
+  // `type` is the SOURCE head's `@type` whenever the item has a block (task
+  // 1518). The CSL round trip knows eight types and folds the rest — so
+  // `@mastersthesis` came back `phdthesis`, `@inbook` `incollection`,
+  // `@online`/`@booklet`/`@manual` `misc` — and the paper-bib save then wrote
+  // that projection over the real head on an edit to any field. The CSL map
+  // survives only for an item with no source block to read.
+  const type = sourceType || cslTypeToBib((item.type as string) || "misc");
   const fields: Record<string, string> = {};
 
   if (item.author) fields.author = formatCslAuthors(item.author as Array<{ given?: string; family?: string }>);
@@ -132,6 +122,8 @@ interface OrderedRawBlock {
   balanced: boolean;
   /** uid recovered from a preceding `\vbid{}` marker, or undefined → mint. */
   vbidUid?: string;
+  /** The block head's own `@type`, lower-cased by the scanner (task 1518). */
+  type: string;
 }
 
 /**
@@ -168,6 +160,7 @@ function extractOrderedRawBlocks(bibText: string, masked: string): OrderedRawBlo
       end: block.end,
       balanced: block.balanced,
       vbidUid: binding?.uid,
+      type: block.type,
     });
   }
   return result;
@@ -210,7 +203,11 @@ export function parseBibFile(bibText: string): BibEntry[] {
 
   const CiteClass = getCite();
   const entries: BibEntry[] = [];
-  const cleaned = stripBibComments(bibText);
+  // THE comment model (task 1519, `maskBibComments` — length-preserving since
+  // task 688, so `raw` slices and splice offsets share one coordinate system):
+  // the same view every scanner in `bib-source` reads, and what citation-js
+  // is handed.
+  const cleaned = maskBibComments(bibText);
   // Source-ordered raw blocks (with any preceding `\vbid` uid). Two blocks
   // that share a citekey appear as two ordered entries — the basis for
   // distinct-uid-per-block.
@@ -251,7 +248,13 @@ export function parseBibFile(bibText: string): BibEntry[] {
       const key = (item["citation-key"] || item.id || "") as string;
       const block = takeBlock(key);
       entries.push(
-        cslItemToEntry(item, block?.raw ?? "", uidForBlock(block), block ? sourceRefOf(block) : undefined),
+        cslItemToEntry(
+          item,
+          block?.raw ?? "",
+          uidForBlock(block),
+          block ? sourceRefOf(block) : undefined,
+          block?.type,
+        ),
       );
     }
     return rememberParse(bibText, entries);
@@ -267,7 +270,7 @@ export function parseBibFile(bibText: string): BibEntry[] {
       const cite = new CiteClass(block.raw);
       for (const item of cite.data) {
         consumed[i] = true;
-        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block), sourceRefOf(block)));
+        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block), sourceRefOf(block), block.type));
       }
     } catch {
       if (!WARNED_KEYS.has(block.key)) {

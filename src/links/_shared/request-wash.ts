@@ -70,6 +70,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { getBus, type StructureDiff } from "@/lib/tiptap/doc-structure";
+import { buildCardAnchorPass, type CardAnchorPass } from "../card-anchor-rows";
 import {
   getTextAnchor,
   getLinkedTextObjectIds,
@@ -122,13 +123,23 @@ export function isRequestCard(card: RequestWashCardLike): boolean {
 
 /**
  * The card's anchor in the one vocabulary this module needs: a Mode-B range's
- * `anchorId`, else the Mode-A block `uuid`. Null when the card wants no wash.
+ * `anchorId`, else the Mode-A block mode. Null when the card wants no wash.
  * Mode-B wins — a card that has a selection range is anchored to THAT, and its
  * block uuid is only the paragraph the range happens to live in.
+ *
+ * Block mode carries the card's STORED pids (`uuids`), and they are an
+ * IDENTITY KEY only — what the desired-set key and the re-entry test compare.
+ * They are NOT where the card is (task 1506): a stored pid can be dead after a
+ * mid-session re-mint while the card is bound by its snapshot elsewhere, and a
+ * request on two paragraphs is on both. WHICH blocks get painted is the
+ * authority's answer, read in {@link requestWashTargets}.
  */
 export function requestWashAnchor(
   card: RequestWashCardLike,
-): { mode: "range"; anchorId: string } | { mode: "block"; uuid: string } | null {
+):
+  | { mode: "range"; anchorId: string }
+  | { mode: "block"; uuids: readonly string[] }
+  | null {
   if (card.aiRequest !== true) return null;
   // An ARCHIVED card draws no anchor chrome (task 497's rule, stated in
   // `archived-anchor-chrome.ts`) — and this wash is anchor chrome the 1331
@@ -143,8 +154,8 @@ export function requestWashAnchor(
   if (cardIsArchived(card)) return null;
   const range = getTextAnchor(card);
   if (range) return { mode: "range", anchorId: range.anchorId };
-  const uuid = getLinkedTextObjectIds(card)[0];
-  return uuid ? { mode: "block", uuid } : null;
+  const uuids = getLinkedTextObjectIds(card);
+  return uuids.length > 0 ? { mode: "block", uuids } : null;
 }
 
 /**
@@ -160,7 +171,7 @@ export function requestWashKey(
   for (const c of cards) {
     const a = requestWashAnchor(c);
     if (!a) continue;
-    parts.push(`${c.id}@${a.mode === "range" ? `r:${a.anchorId}` : `b:${a.uuid}`}`);
+    parts.push(`${c.id}@${a.mode === "range" ? `r:${a.anchorId}` : `b:${a.uuids.join(",")}`}`);
   }
   return parts.sort().join("|");
 }
@@ -173,21 +184,19 @@ export function requestWashKey(
 export function requestWashTargets(
   editor: Editor,
   cards: ReadonlyArray<RequestWashCardLike>,
+  /** The card-anchor pass a block-mode card's blocks are read from. Omitted →
+   *  built from `editor` the first time a block-mode card needs it. */
+  anchorPass?: CardAnchorPass,
 ): TransientHighlightTarget[] {
   const out: TransientHighlightTarget[] = [];
   const seen = new Set<string>();
-  for (const c of cards) {
-    const a = requestWashAnchor(c);
-    if (!a) continue;
-    const range =
-      a.mode === "range"
-        ? resolveTextRangeByAnchorId(editor, a.anchorId)
-        : paragraphRangeByUuid(editor, a.uuid);
-    if (!range || range.to <= range.from) continue;
+  let pass = anchorPass;
+  const push = (range: { from: number; to: number } | null) => {
+    if (!range || range.to <= range.from) return;
     // Two cards washing the SAME region paint one band, not two stacked
     // (stacking would darken the tint and misreport "more AI attention here").
     const dedupe = `${range.from}:${range.to}`;
-    if (seen.has(dedupe)) continue;
+    if (seen.has(dedupe)) return;
     seen.add(dedupe);
     out.push({
       from: range.from,
@@ -197,6 +206,20 @@ export function requestWashTargets(
       // text typed into it. See `TransientHighlightTarget.inclusive`.
       inclusive: true,
     });
+  };
+  for (const c of cards) {
+    const a = requestWashAnchor(c);
+    if (!a) continue;
+    if (a.mode === "range") {
+      push(resolveTextRangeByAnchorId(editor, a.anchorId));
+      continue;
+    }
+    // Block mode washes EVERY block the authority binds the card to NOW (task
+    // 1506) — each live row, a snapshot-recovered block included — never just
+    // its first stored pid, which washed one paragraph of a two-paragraph
+    // request and none of a card whose first pid was re-minted.
+    pass ??= buildCardAnchorPass(editor);
+    for (const uuid of pass.anchorBlocksOf(c)) push(paragraphRangeByUuid(editor, uuid));
   }
   return out;
 }
@@ -258,7 +281,7 @@ export function requestWashAnchorReentered(
     const a = requestWashAnchor(c);
     if (!a) continue;
     if (a.mode === "range") anchorIds.add(a.anchorId);
-    else uuids.add(a.uuid);
+    else for (const u of a.uuids) uuids.add(u);
   }
   if (uuids.size === 0 && anchorIds.size === 0) return false;
   for (const b of diff.addedBlocks) if (uuids.has(b.uuid)) return true;

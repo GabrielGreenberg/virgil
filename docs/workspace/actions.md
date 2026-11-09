@@ -1,4 +1,4 @@
-<!-- last-verified: 3010f199 2026-11-06 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -268,7 +268,9 @@ were not universally consulted, which is the shape all three share:
   is why a popup-only fix would have shipped green. *Residual:* a successful command is still
   TWO undo steps. Since task 1196 the door runs only on a collapsed caret at the typed
   name's end — a range (or a caret off the name) is refused with nothing dispatched, and
-  the popup closes on a range.
+  the popup closes on a range. Since task 1496 both Enter doors answer only a PLAIN Enter (`isPlainCommitEnter`,
+  [key-intent.ts](../../src/lib/key-intent.ts)) — a modified Enter after `\command` does what it does after
+  prose — and the popup-less door requires an UNESCAPED backslash (`\\section` is prose).
 
 - **968 — a greyed command says WHY.** `verdictOf` (action-registry.ts) walks the same gates
   `applies()` does and names the one that refused as a `Refusal`; ONE table,

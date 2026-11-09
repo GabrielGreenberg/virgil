@@ -291,7 +291,7 @@ describe("applyDiff", () => {
     const changeH1: StructureDiff = {
       ...EMPTY_DIFF,
       changedHeadings: [
-        { uuid: "h1", pos: 0, level: 2, text: "Intro", label: null, numbered: true },
+        { uuid: "h1", pos: 0, level: 2, label: null, numbered: true },
       ],
     };
     const next = applyDiff(prev, changeH1);

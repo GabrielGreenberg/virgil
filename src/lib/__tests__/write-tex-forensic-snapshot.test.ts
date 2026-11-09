@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 //
-// `writeTex` takes a forensic snapshot before it overwrites (task 357).
+// `rewriteTex` takes a forensic snapshot before it overwrites (task 357).
 //
 // The style switch and the compile-path documentclass swap both replace the
 // document's preamble wholesale, and both are USER-INTENT — so a preservation
 // GATE would be wrong there: refusing them would refuse exactly what the user
 // asked for. What was missing was the other half. Every other `.tex` writer in
-// this backend calls `snapshotPriorBundle` before it writes; `writeTex` called
+// this backend calls `snapshotPriorBundle` before it writes; `rewriteTex` called
 // nothing, so the single most destructive write Virgil makes was the one with
 // no way back.
 //
@@ -119,7 +119,7 @@ vi.mock("@/lib/doc-index", () => ({
   mutateIndex: vi.fn(async () => undefined),
 }));
 
-import { writeTex } from "@/lib/storage-fsa";
+import { rewriteTex } from "@/lib/storage-fsa";
 import {
   beginDocPipeline,
   __resetForTests as resetPipelines,
@@ -152,17 +152,17 @@ beforeEach(() => {
   seed();
 });
 
-describe("writeTex · the style swap keeps a way back", () => {
+describe("rewriteTex · the style swap keeps a way back", () => {
   it("snapshots the PRE-write .tex, then writes the new bytes", async () => {
     const h = beginDocPipeline(DOC_ID);
-    await writeTex(h, SWAPPED);
+    await rewriteTex(h, () => SWAPPED);
 
     // The user's intent lands…
     expect(docHandle.files.get(TEX)?.text).toBe(SWAPPED);
     // …and the preamble it replaced is recoverable from `virgil/.history/`.
     expect(
       snapshottedTex(),
-      "writeTex overwrote the .tex with no forensic snapshot",
+      "rewriteTex overwrote the .tex with no forensic snapshot",
     ).toBe(ORIGINAL);
   });
 
@@ -173,7 +173,7 @@ describe("writeTex · the style swap keeps a way back", () => {
     const h = beginDocPipeline(DOC_ID);
     const stripped =
       "\\documentclass{article}\n\n\\begin{document}\n\nThe body the user wrote.\n\n\\end{document}\n";
-    await writeTex(h, stripped);
+    await rewriteTex(h, () => stripped);
     expect(docHandle.files.get(TEX)?.text).toBe(stripped);
     expect(snapshottedTex()).toBe(ORIGINAL);
   });

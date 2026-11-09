@@ -13,7 +13,13 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 vi.mock("@/lib/storage", () => ({}));
 
 import PrintDialog from "@/components/PrintDialog";
-import { DEFAULT_PRINT_OPTIONS, PRINT_FONT_SIZES, type PrintOptions } from "@/lib/print";
+import {
+  DEFAULT_PRINT_OPTIONS,
+  PRINT_ELEMENTS,
+  PRINT_ELEMENT_ORDER,
+  PRINT_FONT_SIZES,
+  type PrintOptions,
+} from "@/lib/print";
 
 afterEach(cleanup);
 
@@ -53,6 +59,22 @@ describe("PrintDialog exposes its state to assistive tech", () => {
     expect(onOptionsChange).toHaveBeenCalledTimes(1);
     const next = onOptionsChange.mock.calls[0][0] as PrintOptions;
     expect(next.elements.marginalia).toBe(!options.elements.marginalia);
+  });
+
+  it("each option group is a fieldset whose legend wears the section register (task 1498)", () => {
+    open();
+    const groups = Array.from(document.querySelectorAll("fieldset"));
+    expect(groups.map((g) => g.querySelector(":scope > legend")?.textContent)).toEqual([
+      ...new Set(PRINT_ELEMENT_ORDER.map((k) => PRINT_ELEMENTS[k].group)),
+      "Include panels as appendices",
+      "Font size",
+    ]);
+    for (const g of groups) {
+      const legend = g.querySelector(":scope > legend")!;
+      // The Sand section register (field-primitives FIELD_LABEL_REGISTER.section).
+      expect(legend.className).toContain("text-2xs font-medium text-ink-subtle");
+      expect(legend.className).not.toContain("text-xs");
+    }
   });
 
   it("marks exactly the active font size pressed", () => {

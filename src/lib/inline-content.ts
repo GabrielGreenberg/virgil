@@ -35,7 +35,12 @@ import type { Transaction } from "@tiptap/pm/state";
 // facet — read it off ATOM_REGISTRY rather than re-encoding the ternary here, so
 // this by-id resolver shares the single source of truth (peer: stack-pull.ts,
 // which resolves `node.attrs[meta.idAttr]` the same registry way).
-import { atomMetaForNodeName, CARD_ATOM_ID_ATTRS, type CardAtomNodeName } from "./tiptap/atom-registry";
+import {
+  atomMetaForNodeName,
+  CARD_ATOM_ID_ATTRS,
+  CARD_ATOM_MIRROR_ID_ATTR,
+  type CardAtomNodeName,
+} from "./tiptap/atom-registry";
 
 // ---------------------------------------------------------------------------
 // Place A — attr-borne atom payload (absorbed from atom-text.ts)
@@ -580,7 +585,7 @@ export function removeCitationFromJsonContent(
  *  the unified identity mirror every cascade-managed atom carries, kept in
  *  lock-step with whichever per-kind attr holds the id — it is not per-kind,
  *  and pretending it were would make the registry claim something false. */
-const ATOM_ID_ATTRS: ReadonlyArray<string> = [...CARD_ATOM_ID_ATTRS, "linkId"];
+const ATOM_ID_ATTRS: ReadonlyArray<string> = [...CARD_ATOM_ID_ATTRS, CARD_ATOM_MIRROR_ID_ATTR];
 
 export interface RemintedAtom {
   typeName: string;

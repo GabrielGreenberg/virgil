@@ -132,6 +132,7 @@ describe("round trip — byte-identical over two cycles", () => {
     "Dated \\today\\ in Los Angeles.",
     "Dated \\today{}x",
     "Dated \\today x",
+    "Dated \\today",
     "\\today",
   ])("%s", (src) => {
     expectStable(src);
@@ -147,14 +148,25 @@ describe("round trip — byte-identical over two cycles", () => {
 });
 
 describe("emit — the token break comes back when a letter now follows", () => {
-  const chip = (term: "" | "{}", marks?: JSONContent["marks"]) =>
+  const chip = (term: string, marks?: JSONContent["marks"]) =>
     ({ type: "latexDynamic", attrs: { command: "today", term }, marks }) as JSONContent;
 
   it("a bare chip before a letter re-emits `{}` (else `\\todayx`)", () => {
     expect(emitDynamicCommand(chip(""), { type: "text", text: "x" })).toBe("\\today{}");
-    expect(emitDynamicCommand(chip(""), { type: "text", text: " x" })).toBe("\\today");
+    // Task 1492: a space the editor SHOWS after a bare chip is one TeX would
+    // gobble — the token break comes back for whitespace too.
+    expect(emitDynamicCommand(chip(""), { type: "text", text: " x" })).toBe("\\today{}");
+    expect(emitDynamicCommand(chip(""), { type: "text", text: "." })).toBe("\\today");
     expect(emitDynamicCommand(chip(""), null)).toBe("\\today");
     expect(emitDynamicCommand(chip("{}"), { type: "text", text: "x" })).toBe("\\today{}");
+  });
+
+  it("a gobbled-space term re-emits its bytes, unless more whitespace now follows (task 1492)", () => {
+    expect(emitDynamicCommand(chip(" "), { type: "text", text: "x" })).toBe("\\today ");
+    expect(emitDynamicCommand(chip("  "), null)).toBe("\\today  ");
+    expect(emitDynamicCommand(chip(" "), { type: "text", text: " x" })).toBe("\\today{}");
+    // A non-whitespace junk term is not trusted — the safe spelling.
+    expect(emitDynamicCommand(chip("x"), null)).toBe("\\today{}");
   });
 
   it("a differing wrapper means a brace sits between — no extra `{}`", () => {
@@ -171,6 +183,79 @@ describe("emit — the token break comes back when a letter now follows", () => 
     para.content![idx + 1] = { type: "text", text: "x" };
     assignUuids(doc);
     expect(serializeBodyOnly(doc)).toContain("Dated \\today{}x");
+  });
+});
+
+describe("TeX's skipped space (task 1492) — the editor shows what the PDF prints", () => {
+  it("the parser absorbs the whitespace after a bare `\\today` into the term", () => {
+    expect(matchDynamicCommandAt("\\today x", 0)).toEqual({ command: "today", term: " ", end: 7 });
+    expect(matchDynamicCommandAt("\\today{} x", 0)).toEqual({ command: "today", term: "{}", end: 8 });
+    expect(matchDynamicCommandAt("\\today.", 0)).toEqual({ command: "today", term: "", end: 6 });
+    const doc = parseLatex("\\documentclass{article}\n\\begin{document}\nDated \\today x\n\\end{document}\n");
+    const para = findAll(doc, "paragraph")[0];
+    const idx = para.content!.findIndex((n) => n.type === "latexDynamic");
+    expect(para.content![idx + 1]).toMatchObject({ type: "text", text: "x" });
+    const card = richLatexToJson("Dated \\today x");
+    expect(JSON.stringify(card)).not.toContain('" x"');
+  });
+
+  it("a multi-space or line-end run round-trips in the body (card bodies collapse whitespace anyway)", () => {
+    for (const src of ["Dated \\today  x", "Dated \\today\nnext line"]) {
+      expect(bodyCycle(src)).toBe(src);
+      expect(bodyCycle(bodyCycle(src))).toBe(src);
+    }
+  });
+
+  it("editing \".\" → \" and more\" after a parsed bare chip keeps the space", () => {
+    const doc = parseLatex("\\documentclass{article}\n\\begin{document}\nDated \\today.\n\\end{document}\n");
+    const para = findAll(doc, "paragraph")[0];
+    const idx = para.content!.findIndex((n) => n.type === "latexDynamic");
+    para.content![idx + 1] = { type: "text", text: " and more" };
+    assignUuids(doc);
+    expect(serializeBodyOnly(doc)).toContain("Dated \\today{} and more");
+  });
+
+  it("a space typed after a parsed `\\today x` chip survives", () => {
+    const doc = parseLatex("\\documentclass{article}\n\\begin{document}\nDated \\today x\n\\end{document}\n");
+    const para = findAll(doc, "paragraph")[0];
+    const idx = para.content!.findIndex((n) => n.type === "latexDynamic");
+    para.content![idx + 1] = { type: "text", text: " x" };
+    assignUuids(doc);
+    expect(serializeBodyOnly(doc)).toContain("Dated \\today{} x");
+  });
+
+  it("footnote twin: the same edit in a card body keeps the space", () => {
+    const json = richLatexToJson("Revised \\today.");
+    const para = (json.content ?? [])[0] ?? json;
+    const nodes = para.content!;
+    const idx = nodes.findIndex((n) => n.type === "latexDynamic");
+    nodes[idx + 1] = { type: "text", text: " again" };
+    expect(richJsonToLatex(json)).toBe("Revised \\today{} again");
+  });
+
+  it("the `\\date` insert's bare chip: typing ` (revised)` saves `\\date{\\today{} (revised)}`", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      extensions: buildEditorExtensions({
+        surface: "main",
+        editableRef: { current: true },
+        cardContext: false,
+        callbacks: {},
+        docIdRef: { current: null },
+        anchoredUuidsRef: { current: new Set<string>() },
+        host: null,
+      } as unknown as EditorExtensionsCtx),
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+    });
+    try {
+      COMMAND_MAP.get("date")!.action(editor.view, "\\date");
+      editor.view.dispatch(editor.state.tr.insertText(" (revised)"));
+      expect(serializeToLatex(editor.getJSON())).toContain("\\date{\\today{} (revised)}");
+    } finally {
+      editor.destroy();
+    }
   });
 });
 

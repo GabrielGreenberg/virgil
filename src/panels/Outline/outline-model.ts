@@ -60,7 +60,12 @@ export interface HeadingItem {
    *  rename then no-ops gracefully rather than mis-addressing by index. */
   uuid: string | null;
   level: number;
+  /** The DISPLAY text — `editText`, or "Untitled" when that is empty. */
   text: string;
+  /** The editable projection itself (task 707) — what the rename box opens
+   *  with, and the seed its commit rebases from (task 1532). Unlike `text` it
+   *  is never a placeholder: an empty heading's seed is "", not "Untitled". */
+  editText: string;
   label: string | null;
   sectionNumber: string | null;
   index: number; // top-level block index in doc.content
@@ -111,6 +116,7 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
       // first interaction) fall back to the positional id so they remain
       // foldable until they earn a uuid; once hydrated they key durably.
       const uuid = (node.attrs.uuid as string | null) || null;
+      const editText = projectInline(node).text;
       headings.push({
         id: uuid ?? `heading-${idx}`,
         uuid,
@@ -119,7 +125,8 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         // this and `buildHeadingRenameFragment` splices it back through the
         // same `projectInline`, so the two cannot disagree. A footnote is an
         // opaque zero-width atom here (its body is not heading text).
-        text: projectInline(node).text || "Untitled",
+        text: editText || "Untitled",
+        editText,
         label: (node.attrs.label as string) || null,
         sectionNumber: (node.attrs.sectionNumber as string) || null,
         index: idx,
@@ -182,6 +189,25 @@ export function buildTree(headings: HeadingItem[]): TreeNode[] {
   return roots;
 }
 
+/** "Can this heading fold?" — the ONE answer the chevron (both modes) and
+ *  Collapse all read: it has sub-headings, or it has paragraph titles AND
+ *  titles are shown. `titlesShown` is the view toggle in view mode and always
+ *  `true` in edit mode (edit mode always shows title pods — see `buildPods`). */
+export function isCollapsible(node: TreeNode, titlesShown: boolean): boolean {
+  return node.children.length > 0 || (titlesShown && node.heading.parTitles.length > 0);
+}
+
+/** Every heading id in the tree that `isCollapsible` — what Collapse all folds. */
+export function collapsibleHeadingIds(tree: TreeNode[], titlesShown: boolean): string[] {
+  const ids: string[] = [];
+  const visit = (node: TreeNode) => {
+    if (isCollapsible(node, titlesShown)) ids.push(node.heading.id);
+    node.children.forEach(visit);
+  };
+  tree.forEach(visit);
+  return ids;
+}
+
 /* ── Edit-mode pods: the tree, flattened ────────────────────────────── */
 
 export interface OutlinePod {
@@ -193,6 +219,9 @@ export interface OutlinePod {
   /** The heading's LaTeX level (its type scale); null on a parTitle pod. */
   level: number | null;
   text: string;
+  /** What the rename box opens with — the raw value, never a placeholder
+   *  (see `HeadingItem.editText`). */
+  editText: string;
   blockIndex: number;   // top-level block index in doc.content (reorder/scroll)
   blockCount: number;   // how many top-level blocks this pod covers
   id: string;
@@ -235,6 +264,7 @@ export function buildPods(
         depth,
         level: null,
         text: pt.title,
+        editText: pt.title,
         blockIndex: pt.index,
         blockCount: 1,
         id: parTitleId(pt),
@@ -250,6 +280,7 @@ export function buildPods(
       depth: node.depth,
       level: h.level,
       text: h.text,
+      editText: h.editText,
       blockIndex: h.index,
       // From this heading to the next heading of same/higher level — through
       // the SHARED section rule (task 285), whose doc-side adapter the reorder
@@ -260,7 +291,7 @@ export function buildPods(
       id: h.id,
       uuid: h.uuid,
       parentHeadingId: node.parentId,
-      hasCollapsibleChildren: node.children.length > 0 || h.parTitles.length > 0,
+      hasCollapsibleChildren: isCollapsible(node, true),
     });
     pushTitles(h.parTitles, node.depth, h.id);
     node.children.forEach(visit);

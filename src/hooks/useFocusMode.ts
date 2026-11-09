@@ -18,6 +18,7 @@ import {
   sectionExtentFromHeadings,
   type BlockAddress,
 } from "@/lib/tiptap/block-address";
+import { TITLED_NODE_TYPES } from "@/lib/node-attr-sets";
 
 /**
  * The index-based view of the focus band, kept for the OUTLINE's positional
@@ -227,18 +228,51 @@ export function sectionRange(
   return [blockIndex, blockIndex];
 }
 
-/** The block range a clicked outline NODE owns: a heading → its subtree
- *  (sectionRange); any non-heading block (paragraph/parTitle/doc-start) → just
- *  that block. The band edges and clicks both resolve through THIS so the
- *  highlighted row and the confined region always agree. */
+/**
+ * THE row→range rule (task 1530): the block range an outline ROW owns. Every
+ * focus-band write — click, shift-click, edge drag — resolves its target row
+ * through this, and the band's paint (`OutlinePanel` `paintedBandRows`, "the
+ * last rendered row ≤ end") is its inverse, so the row a range is PAINTED on
+ * and the range a row COMMITS can never disagree.
+ *
+ *  - a HEADING row owns its section (`sectionRange` — its whole subtree);
+ *  - a PAR-TITLE row (a titled block, `titled`) and the Document-start row
+ *    (index 0) own themselves plus the untitled blocks after them, up to (not
+ *    including) the next row — the next heading of ANY level or the next
+ *    titled block. Those untitled blocks have no row of their own; before
+ *    this a par-title row owned exactly itself, so a band whose bottom edge
+ *    was PAINTED on that row confined to a range that silently dropped them
+ *    (and a locked band then hid them from the editor) while the painted band
+ *    stayed pixel-identical;
+ *  - any other block (one no row names) owns exactly itself.
+ *
+ * `headings` and `titled` must be in document order.
+ */
 export function regionForNode(
   blockIndex: number,
   headings: { index: number; level: number }[],
   totalBlocks: number,
+  titled: readonly number[] = [],
 ): [number, number] {
   const isHeading = headings.some((h) => h.index === blockIndex);
   if (isHeading) return sectionRange(blockIndex, headings, totalBlocks);
-  return [blockIndex, blockIndex];
+  if (blockIndex !== 0 && !titled.includes(blockIndex)) return [blockIndex, blockIndex];
+  let next = totalBlocks;
+  const nextHeading = headings.find((h) => h.index > blockIndex);
+  if (nextHeading) next = Math.min(next, nextHeading.index);
+  const nextTitled = titled.find((t) => t > blockIndex);
+  if (nextTitled !== undefined) next = Math.min(next, nextTitled);
+  return [blockIndex, Math.max(blockIndex, next - 1)];
+}
+
+/** Top-level indices of every TITLED block — the outline's par-title rows —
+ *  in document order (the same predicate `extractHeadings` gives a row). */
+export function collectTitledBlocks(doc: PMNode): number[] {
+  const out: number[] = [];
+  doc.forEach((node, _offset, index) => {
+    if (TITLED_NODE_TYPES.has(node.type.name) && node.attrs?.parTitle) out.push(index);
+  });
+  return out;
 }
 
 /**
@@ -266,7 +300,12 @@ export function regionForAddress(
 ): [number, number] | null {
   const blockIndex = resolveBlockIndex(doc, target);
   if (blockIndex == null) return null;
-  return regionForNode(blockIndex, collectTopLevelHeadings(doc), doc.childCount);
+  return regionForNode(
+    blockIndex,
+    collectTopLevelHeadings(doc),
+    doc.childCount,
+    collectTitledBlocks(doc),
+  );
 }
 
 export function useFocusMode(docId: string | null, editor: Editor | null) {
@@ -490,11 +529,13 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   // section, not the bare header row. The TOP edge takes the region START, the
   // BOTTOM edge the region END — so a bottom drag onto a heading ends at the
   // section's last body block (the reported bug: it used to stop at the header).
-  // A non-heading row resolves to itself (`[i, i]`), preserving parTitle/
-  // paragraph precision. Both edges CLAMP past the opposite edge to a 1-row
-  // minimum so the handle keeps tracking the cursor across a crossover. The
-  // visual band rect (OutlinePanel `measure()`) already lands botEl on the last
-  // visible row ≤ endBlockIndex, so the committed range paints with no jump.
+  // A par-title row resolves to its title block PLUS the untitled blocks under
+  // it (task 1530 — the row→range rule, stated once in `regionForNode`), so
+  // the committed end is the end of the row the band will be painted on. Both
+  // edges CLAMP past the opposite edge to a 1-row minimum so the handle keeps
+  // tracking the cursor across a crossover. The visual band rect (OutlinePanel
+  // `paintedBandRows`) lands on the last rendered row ≤ endBlockIndex — the row
+  // that owns it — so the committed range paints with no jump.
   const snapBoundary = useCallback(
     (edge: "top" | "bottom", target: BlockAddress) => {
       const doc = editorRef.current?.state?.doc;

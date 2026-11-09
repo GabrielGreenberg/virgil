@@ -1,4 +1,4 @@
-<!-- last-verified: 6b0fbf8e 2026-10-28 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # The write path: no automatic write may lose content
@@ -509,12 +509,30 @@ Four rules it earned:
 - **`drainDoc` inherits the fix for free.** It already called
   `flushPendingForDoc` before draining the queue, so a doc switch, a compile and
   a delete now settle every sidecar debounce too — no second mechanism.
-- **The channel and the mirror stay MODEL-scoped, deliberately.** A sidecar
-  write is landed by step 1 or logged by its own `persist`; putting it on the
-  unsaved-work channel would make every 300 ms card edit read as blocked work,
-  and the mirror cannot represent it. So `unlanded` keeps its meaning; what the
-  door buys is that the sidecar half has been fired and awaited by the time it
-  is computed.
+- **The MIRROR stays MODEL-scoped; the CHANNEL no longer does (task 1503,
+  superseding 559's "channel stays model-scoped").** 559 kept card writes off
+  the channel — and with them off the leave prompt and the save badge, so a
+  card body in its 300 ms debounce (or in flight) got no `beforeunload` at all.
+  The worry ("every card edit would read as blocked work") was about `reason`,
+  not dirt: young unblocked dirt is the badge's quiet `pending` tier. Now every
+  sidecar writer (`usePersistentState`, `useFootnotes`, `useBibReview`)
+  publishes through `createSidecarWorkPublisher` as a member of a per-document
+  SET (`sidecarDirtySince`), distinct from the model's `dirtySince`/`reason`:
+  a bundle landing cannot clear a card's dirt, nor one card another's. Doors
+  ask `hasUnlandedWork` (either kind); the bundle writer's own flush/receipt
+  paths and the mirror's arming ask the model (`hasUnlandedModelWork`,
+  `shouldMirror`). After the reload door's step 1 a sidecar-dirty document is
+  one whose card write FAILED — reported unlanded and NOT mirrored, honestly.
+  STATED RESIDUAL: `RichTextField`'s 250 ms upstream coalescer has no docId in
+  hand and is still covered only by its blur/unmount flush.
+  **The channel is the publisher's only memory (task 1516).** A publisher's
+  private "already published for A" cache desynced the moment
+  `clearUnsavedWork(A)` (the external-change Reload — doc and writer stay
+  mounted) forgot A, and the next failed write never re-entered the channel.
+  `sync(A, true)` now always reaches `noteSidecarWork`, whose `set.has` bail
+  keeps the repeat O(1) and silent; `publishedFor` only names the doc to
+  RELEASE on a move. And every sidecar writer's failed write records a
+  `recordSidecarRefusal` (footnotes included), never only a `console.error`.
 - **The phase exists because of ORDER, found by asking what else coalesces.**
   The code pane holds the last 600 ms of typing in CodeMirror and only then
   re-parses it into TipTap; the bundle writer snapshots the live model. Its
@@ -2676,3 +2694,22 @@ CI: `write-coalescer.test.ts`, `useWriteCoalescer.test.tsx`,
 declared non-write site), `usePersistentState.test.tsx` ("continuous update()
 bursts"); the population regexes of `reload-door.test.ts` and
 `cross-window-storage-guardrail.test.ts` count a coalescer as a held debounce.
+
+## The out-of-band half: a rewrite the user ASKED for transforms the file as it stands (task 1501)
+
+> **A `.tex` rewrite outside the editor's own save — style switch, doc-type
+> swap, compile's class prompt — goes through ONE door,
+> [`rewriteTexOutOfBand`](../../../src/lib/tex-rewrite.ts), and is a TRANSFORM,
+> never a whole text.** The door drains the doc (which also runs the code pane's
+> `settle` flusher — so there is no pre-write "will-change" event), resolves the
+> handle at write time, applies the caller's pure transform to a FRESH read
+> inside the doc's serialized write queue (`rewriteTex`, both backends — the
+> `.tex`'s compare-and-swap, task 849's base-timing rule), and tells an open code
+> pane only when bytes changed. A caller that must ASK the user asks FIRST and
+> calls the door AFTER the answer: the pre-prompt read is what it DETECTED on,
+> never what it writes (the compile prompt used to write a stale read across an
+> unbounded dialog, overwriting a cowork skill's concurrent commit). A file that
+> is not valid UTF-8 answers `undecodable` and is left untouched.
+
+CI: `tex-rewrite-door.test.ts` (behaviour + census: no production caller of
+`rewriteTex` but the door; `writeTex` and the will-change event stay retired).

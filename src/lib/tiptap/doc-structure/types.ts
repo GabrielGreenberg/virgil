@@ -95,8 +95,10 @@ export interface HeadingEntry {
   uuid: string;
   pos: number;
   level: number;
-  /** Plain-text content used by the outline / numbering. */
-  text: string;
+  // No `text` (task 1495): a heading's title is BODY content, and typing in it
+  // is deliberately not a structural change (keystroke sanctity), so a copy
+  // here could only go stale. Readers take it off the live node at `pos`
+  // (`section-path.ts`). See `ENTRY_FIELDS` in `step-inspector.ts`.
   /** `\label{…}` attribute on the heading, if any. */
   label: string | null;
   numbered: boolean;
@@ -108,8 +110,13 @@ export interface FootnoteEntry {
   pos: number;
   /** `thanks` footnotes are numbered as "A" rather than counted. */
   thanks: boolean;
-  /** Current `number` attribute (renumber pass updates this). */
+  /** Current `number` attribute (renumber pass updates this). `0` for a
+   *  thanks or a `[n]` override — neither steps the counter. */
   number: number;
+  /** `\footnote[n]{…}`'s raw mark, null on a plain footnote (task 1517).
+   *  Carried so a reader prints `footnoteLabel(entry)`, never the bare
+   *  `number` (which is 0 for an override). */
+  numberOverride?: string | null;
   /** The card title (`title` attr, "" when untitled — task 705). Carried so a
    *  rename is a structural footnote change: the card rows re-read it. */
   title?: string;
@@ -270,8 +277,9 @@ export interface FigureEntry {
   pos: number;
   label: string;
   numbered: boolean;
-  /** Current `figureNumber` attribute (numberer updates this). */
-  number: number | null;
+  // No `number` (task 1495): `figureNumber` is the numberer's OUTPUT, and its
+  // write must not wake the numberer again, so the snapshot cannot track it
+  // without going stale. Nothing read it; the live attr is the answer.
   /** Will this figure carry a `\caption` in the emitted `.tex` (tasks
    *  318/319 — `figureNodeEmitsCaption`)? A NUMBERING input, so it belongs to
    *  the structural comparison beside `numbered`: LaTeX numbers a float iff it
@@ -635,8 +643,7 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
 // here once rather than in each gate.
 //
 // What counts as a CHANGE is the step inspector's call
-// (`headingStructurallyChanged` / `figureStructurallyChanged` /
-// `exampleChanged`, step-inspector.ts) — order is a numbering input (task
+// (`ENTRY_FIELDS`, step-inspector.ts — every snapshot field, task 1495) — order is a numbering input (task
 // 892), so a same-uuid move already lands in the `changed*` bucket and these
 // predicates need no separate order term.
 // ---------------------------------------------------------------------------

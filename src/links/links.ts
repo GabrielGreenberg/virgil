@@ -2,8 +2,9 @@
  * Public API for the Link system, as it ships.
  *
  * READ side: `collectLinksFromEditor` derives every in-doc `Link` record
- * from the live doc; `resolveLink` locates one; `jumpToLink` navigates (a
- * CARD's jump is `./jump-to-card`, which resolves through the authority); `deleteLink` removes. All live.
+ * from the live doc; `resolveInlineAtomLink` locates an inline atom (a CARD
+ * is located — and jumped to — by `./jump-to-card`, through the anchor
+ * authority); `deleteLink` removes. All live.
  *
  * WRITE side: anchors are minted by `createLinkedAnchor` (here) and inline
  * atoms by the atom commands (`src/lib/tiptap/insert-inline-atom.ts` +
@@ -31,7 +32,11 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import { findInlineAtomPosDeep } from "@/lib/inline-content";
-import { cardAtomMetaForNodeName, type CardAtomNodeName } from "@/lib/tiptap/atom-registry";
+import {
+  CARD_ATOM_MIRROR_ID_ATTR,
+  cardAtomMetaForNodeName,
+  type CardAtomNodeName,
+} from "@/lib/tiptap/atom-registry";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { docStructureKey, resolveTouchedBlock } from "@/lib/tiptap/doc-structure/observer-plugin";
 import type { Link, LinkResolution } from "./_shared/types";
@@ -40,10 +45,8 @@ import { normalizeParagraphText } from "./_shared/normalize-text";
 import { isDormantLink } from "./dormant";
 import { generateEntityId } from "@/lib/uuid";
 import { transactionAdmitted } from "@/lib/tiptap/transaction-admitted";
-import { paneRootOf, resolvePaneMarker } from "@/components/editor-layout/pane-dom";
 import {
   linkCardKeyFromToken,
-  linkCardSelector,
   linkIdSelector,
   parseLinkCardKey,
 } from "./link-dom-contract";
@@ -53,10 +56,6 @@ import {
   legacyMarkKindToCardKind,
   defaultTintForLinkedAnchorKind,
 } from "@/cards/legacy-token-crosswalk";
-import {
-  alignEntryToYIfNeeded,
-  scrollEntryIntoViewIfNeeded,
-} from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
 export type {
@@ -68,7 +67,6 @@ export type {
   ModeBAnchorLink,
   RangedModeBLink,
 } from "./_shared/types";
-export { isModeB, isRangedModeB } from "./_shared/types";
 // The DOM contract (`DATA_LINK_*`, `linkCardKey`, `parseLinkCardKey`) is NOT
 // re-exported here. It was, and that is how a dead surface hid for three
 // months: a re-export makes a symbol look referenced to every grep while no
@@ -197,7 +195,7 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
     if (atom) {
       const attrs = node.attrs as Record<string, unknown>;
       const entityId = (attrs[atom.idAttr] as string) || "";
-      const linkId = (attrs.linkId as string) || entityId;
+      const linkId = (attrs[CARD_ATOM_MIRROR_ID_ATTR] as string) || entityId;
       if (linkId) {
         links.push({
           id: linkId,
@@ -280,238 +278,64 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
 // below. The crosswalk SSOT they wrapped is live and unchanged
 // (`legacyMarkKindForCardKind` in `@/cards/legacy-token-crosswalk`).
 
-/** Locate `link` in the live editor. Returns null if it's missing. */
-export function resolveLink(
+/**
+ * Locate an INLINE-ATOM link (footnote / citation) in the live editor; null if
+ * it is missing — or if `link` is not an inline-atom link at all.
+ *
+ * Atom-only by design (task 1505). It used to locate paragraph anchors too, by
+ * a ladder of its own — the mark, then each STORED `textObjectIds` uuid, then a
+ * snapshot re-find — beside the anchor authority (`buildCardAnchorPass`) that
+ * draws the margin markers. The two disagreed (a Mode-B link's stored pids are
+ * a birth record, not its anchor; the ladder had no dormant rung; its snapshot
+ * rung matched paragraphs merely repeating the text), so Jump (task 935), hover
+ * and selection placement each lit or scrolled to paragraphs no marker marks.
+ * Every "where is this card?" now asks the authority; inline atoms, which the
+ * authority does not resolve, are all that is left here.
+ */
+export function resolveInlineAtomLink(
   editor: Editor,
   link: Link,
 ): LinkResolution | null {
-  if (link.anchor.type === "inline-atom") {
-    // Deep resolve: a TOP-LEVEL atom resolves exactly as before; a citation
-    // (or footnote) NESTED in a footnote body resolves to the HOST footnote's
-    // marker — the nested atom has no own DOM, so the host superscript is the
-    // only scrollable target (`BIB-F3-01` / `CI-F3-01`).
-    const loc = findInlineAtomPosDeep(editor, link.anchor.nodeName, link.id);
-    if (loc == null) return null;
-    const pos = loc.pos;
-    const node = editor.state.doc.nodeAt(pos);
-    // The DOM address to query: a top-level hit uses the atom's own link id;
-    // a nested hit uses the HOST footnote's id (its marker carries
-    // `data-link-id="<hostFootnoteId>"`).
-    const domLinkId = loc.nested ? loc.hostFootnoteId : link.id;
-    // Prefer `data-link-id` (set by newer atoms); fall back to the atom's
-    // own DOM via view.nodeDOM — older atoms (footnote/citation) render
-    // their id as `data-footnote-id`/`data-citation-id`, not linkId.
-    const queried = domLinkId
-      ? (editor.view.dom.querySelector(
-          linkIdSelector(domLinkId),
-        ) as HTMLElement | null)
-      : null;
-    const nodeDom = editor.view.nodeDOM(pos);
-    const domEl =
-      queried ??
-      (nodeDom instanceof HTMLElement
-        ? nodeDom
-        : (nodeDom?.parentElement as HTMLElement | null) ?? null);
-    return {
-      kind: "inline-atom",
-      pos,
-      nodeSize: node?.nodeSize ?? 1,
-      domEl,
-    };
-  }
-  if (link.anchor.type === "textObject") {
-    // Mode B: prefer the text-range mark.
-    if (link.anchor.textRange) {
-      const range = resolveTextRangeByAnchorId(
-        editor,
-        link.anchor.textRange.anchorId,
-      );
-      if (range) {
-        const domEl = editor.view.dom.querySelector(
-          linkIdSelector(link.anchor.textRange.anchorId),
-        ) as HTMLElement | null;
-        return { kind: "text-range", from: range.from, to: range.to, domEl };
-      }
-    }
-    // Mode A (or Mode B with a lost mark): try each textObject UUID and
-    // take the first that still exists in the doc. Callers that passed
-    // multiple ids shouldn't fail just because the first one was edited
-    // away.
-    for (const paragraphId of link.anchor.textObjectIds) {
-      if (!paragraphId) continue;
-      const pos = findParagraphByUuid(editor, paragraphId);
-      if (pos == null) continue;
-      // `data-uuid` is not rendered to the DOM by our node specs
-      // (rendered: false) — fall back to view.nodeDOM(pos).
-      const queried = editor.view.dom.querySelector(
-        `[data-uuid="${paragraphId}"]`,
-      ) as HTMLElement | null;
-      const nodeDom = editor.view.nodeDOM(pos);
-      const domEl =
-        queried ??
-        (nodeDom instanceof HTMLElement
-          ? nodeDom
-          : (nodeDom?.parentElement as HTMLElement | null) ?? null);
-      return { kind: "paragraph", paragraphId, pos, domEl };
-    }
-    // Rung 3 — the SNAPSHOT re-find (task 665). Until this landed, the ACT had
-    // two rungs where the GATE had four: `resolveCardAnchor` binds a card by
-    // its live uuid, by a surviving `linkedAnchor` mark, by the RC1 self-heal,
-    // OR by its `paragraphSnapshot`; `resolveLink` tried the mark and the uuid
-    // and stopped. So every surface that gates a Jump on the authority's
-    // verdict — the omni row, the popped float, the margin marker — could
-    // truthfully say "anchored" about a card `jumpToCard` then refused to
-    // reach, having iterated its links and resolved none.
-    //
-    // The load reconcile normally rewrites a snapshot-recovered link before
-    // this matters, but it fires once per `docId` (`modeAReconciledDocRef`), so
-    // a MID-SESSION uuid re-mint has no second pass and lands exactly here.
-    //
-    // Cost: the failure path only. Both rungs above already walk the doc per
-    // id, so a fully-dead link paid an O(doc) sweep before this existed too —
-    // and it runs on a click, never on a keystroke. Normalized through the same
-    // `normalizeParagraphText` the authority uses, so the act cannot match on a
-    // stricter or looser spelling than the gate did.
-    const snapshot = link.anchor.textRange?.textSnapshot ?? link.anchor.paragraphSnapshot;
-    const recovered = snapshot ? findParagraphIdByNormalizedText(editor, snapshot) : null;
-    if (recovered) {
-      const pos = findParagraphByUuid(editor, recovered);
-      if (pos != null) {
-        const queried = editor.view.dom.querySelector(
-          `[data-uuid="${recovered}"]`,
-        ) as HTMLElement | null;
-        const nodeDom = editor.view.nodeDOM(pos);
-        const domEl =
-          queried ??
-          (nodeDom instanceof HTMLElement
-            ? nodeDom
-            : (nodeDom?.parentElement as HTMLElement | null) ?? null);
-        return { kind: "paragraph", paragraphId: recovered, pos, domEl };
-      }
-    }
-    return null;
-  }
-  return null;
+  if (link.anchor.type !== "inline-atom") return null;
+  // Deep resolve: a TOP-LEVEL atom resolves exactly as before; a citation
+  // (or footnote) NESTED in a footnote body resolves to the HOST footnote's
+  // marker — the nested atom has no own DOM, so the host superscript is the
+  // only scrollable target (`BIB-F3-01` / `CI-F3-01`).
+  const loc = findInlineAtomPosDeep(editor, link.anchor.nodeName, link.id);
+  if (loc == null) return null;
+  const pos = loc.pos;
+  const node = editor.state.doc.nodeAt(pos);
+  // The DOM address to query: a top-level hit uses the atom's own link id;
+  // a nested hit uses the HOST footnote's id (its marker carries
+  // `data-link-id="<hostFootnoteId>"`).
+  const domLinkId = loc.nested ? loc.hostFootnoteId : link.id;
+  // Prefer `data-link-id` (set by newer atoms); fall back to the atom's
+  // own DOM via view.nodeDOM — older atoms (footnote/citation) render
+  // their id as `data-footnote-id`/`data-citation-id`, not linkId.
+  const queried = domLinkId
+    ? (editor.view.dom.querySelector(
+        linkIdSelector(domLinkId),
+      ) as HTMLElement | null)
+    : null;
+  const nodeDom = editor.view.nodeDOM(pos);
+  const domEl =
+    queried ??
+    (nodeDom instanceof HTMLElement
+      ? nodeDom
+      : (nodeDom?.parentElement as HTMLElement | null) ?? null);
+  return {
+    kind: "inline-atom",
+    pos,
+    nodeSize: node?.nodeSize ?? 1,
+    domEl,
+  };
 }
 
-/**
- * Re-find a live paragraph by a link's stored text snapshot, matched on the
- * CANONICAL normalization (`normalizeParagraphText`) — the same key
- * `buildResolveIndex`'s `snapshotToParagraph` builds, so `resolveLink`'s rung 3
- * and `resolveCardAnchor`'s rung 3 agree on what "this text" means. First match
- * wins in document order, exactly as the index's map does (duplicated
- * paragraph text resolves to the FIRST occurrence).
- *
- * Deliberately NOT `findParagraphIdBySnapshot` below: that one compares RAW
- * `textContent`, which is the pre-normalization spelling the authority stopped
- * using — reusing it would have re-opened the gate/act disagreement by one
- * whitespace difference.
- */
-function findParagraphIdByNormalizedText(
-  editor: Editor,
-  snapshot: string,
-): string | null {
-  const key = normalizeParagraphText(snapshot);
-  if (!key) return null;
-  let found: string | null = null;
-  editor.state.doc.descendants((node) => {
-    if (found !== null) return false;
-    if (node.isText) return true;
-    const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
-    if (uuid && normalizeParagraphText(node.textContent) === key) {
-      found = uuid;
-      return false;
-    }
-    return true;
-  });
-  return found;
-}
-
-/** Scroll the appropriate end of the link into view.
- *
- *  - `"to-marker"`: scroll the editor to the in-text marker.
- *  - `"to-card"`:   scroll the panel to the card entry.
- *  - `"both"`:      do both.
- *
- *  When `sourceEl` is provided, the moving end is aligned to that
- *  element's top edge (mirroring `alignEntryToY`). Without it, the
- *  moving end is centered in the viewport (legacy behavior).
- *
- *  The post-jump visual highlight is handled separately, driven by card
- *  selection state via `useAnchorHighlightReconciler`. */
-export function jumpToLink(
-  editor: Editor,
-  link: Link,
-  dir: "to-marker" | "to-card" | "both",
-  sourceEl?: HTMLElement | null,
-): void {
-  const sourceY = sourceEl ? sourceEl.getBoundingClientRect().top : null;
-  if (dir === "to-marker" || dir === "both") {
-    const resolved = resolveLink(editor, link);
-    if (resolved?.domEl) {
-      if (sourceY != null) {
-        // Necessity-gated since task 328: a jump is TWO movements — the
-        // document's and the card's — and the card's exists only to
-        // compensate for the document's, so the pin rides the scroll's
-        // verdict. Marker already visible and near enough ⇒ neither happens.
-        // Compute the pin's pod-relative Y from the marker's pre-scroll
-        // position (NOT the card's). After alignEntryToY scrolls the row
-        // by `markerY - sourceY`, the pinned card's viewport Y will land
-        // at sourceY iff its pod-relative top equals
-        // `markerY - podTop` (both measured pre-scroll). Derivation:
-        //   newPodTop = podTop - scrollDelta = podTop - (markerY - sourceY)
-        //   card viewportY = newPodTop + pinTop
-        //                  = podTop - markerY + sourceY + markerY - podTop
-        //                  = sourceY  ✓
-        const omniWrapper = sourceEl?.closest(
-          "[data-omni-entry-wrapper]",
-        ) as HTMLElement | null;
-        const pod = omniWrapper?.parentElement as HTMLElement | null;
-        const omniKey = omniWrapper?.dataset.omniEntryWrapper;
-        const pinTop =
-          omniKey && pod
-            ? resolved.domEl.getBoundingClientRect().top -
-              pod.getBoundingClientRect().top
-            : null;
-        const moved = alignEntryToYIfNeeded(resolved.domEl, sourceY);
-        if (moved && omniKey && pinTop !== null) {
-          window.dispatchEvent(
-            new CustomEvent("virgil-card-jumped", {
-              // The wrapper's own pane rides along (task 1458): the key is
-              // per-document, and another visible Reader may mount it too.
-              detail: { omniKey, pinTop, paneRoot: paneRootOf(omniWrapper) },
-            }),
-          );
-        }
-      } else {
-        scrollEntryIntoViewIfNeeded(resolved.domEl, {
-          behavior: "instant",
-          block: "center",
-        });
-      }
-    }
-  }
-  if (dir === "to-card" || dir === "both") {
-    // In THIS editor's pane (task 1458; visible-first inside it, task 873):
-    // card ids are unique only per document, so a hidden keep-alive pane — or
-    // a second visible Reader — can hold the same address.
-    const entryEl = resolvePaneMarker(
-      linkCardSelector(link.target.ref.kind, link.target.ref.id),
-      "fail-open",
-      paneRootOf(editor.view.dom),
-    );
-    if (entryEl) {
-      if (sourceY != null) {
-        alignEntryToYIfNeeded(entryEl, sourceY);
-      } else {
-        scrollEntryIntoViewIfNeeded(entryEl, {
-          behavior: "instant",
-          block: "center",
-        });
-      }
-    }
-  }
-}
+// `jumpToLink` lived here — a second card→text scroll door (and a dead
+// `to-card` half) beside `jumpToTarget`, which had already drifted from it (the
+// pin event's pane root, task 1458, reached only this copy). Its two callers,
+// the footnote / citation scrolls, now go through `jumpToTarget` with an atom
+// target (task 1505).
 
 /** Delete `link` from the editor. For inline-atom kinds this removes the
  *  node; for Mode B anchor links it strips the `linkedAnchor` mark. Mode A
@@ -598,8 +422,7 @@ export function paragraphRangeByUuid(
  * task 926) over the codebase SSOT walker `findLinkedAnchorRange`
  * (src/lib/linked-anchor-range.ts) so atom-split (a mark interrupted by an
  * inline atom) and cross-block anchors resolve to their WHOLE span, not just
- * the first contiguous run (task 071). Every caller here — resolveLink's
- * textRange branch, removeLinkedAnchorMark,
+ * the first contiguous run (task 071). Every caller here — removeLinkedAnchorMark,
  * removeTransientAnchor, updateLinkedAnchorCard, apply-linked-anchors — hands
  * the range to nodesBetween / the `writeLinkedAnchorMark` door and wants the
  * full extent.
@@ -1305,17 +1128,24 @@ export type AnchorSummary =
  *  the word count of the anchored region. Used by card UIs to render a
  *  "selection · 14 words" / "paragraph · 47 words" badge. Mode B
  *  (text-range) wins over Mode A (paragraph). Returns null for cards
- *  with no anchor at all. */
+ *  with no anchor at all.
+ *
+ *  The paragraph words are counted over `anchorBlocks` — the blocks the card
+ *  is anchored on NOW, `CardAnchorPass.anchorBlocksOf(card)` (task 1506) —
+ *  never over its stored pids, which for a snapshot-bound card are dead and
+ *  read "paragraph · 0 words" beside a card that is visibly anchored. The
+ *  stored pids still decide WHETHER the card declares a paragraph anchor. */
 export function getAnchorSummary(
   card: CardWithLinks & { selectedText?: string },
   editor: Editor | null,
+  anchorBlocks: readonly string[],
 ): AnchorSummary {
   const ta = getTextAnchor(card);
   if (ta) {
     return { kind: "selection", words: countWords(ta.anchorText) };
   }
-  const pids = getLinkedTextObjectIds(card);
-  if (pids.length === 0) return null;
+  if (getLinkedTextObjectIds(card).length === 0) return null;
+  const pids = anchorBlocks;
   if (editor) {
     const { state } = editor;
     // O(linked ids) through the DocStructure snapshot (task 926) — this runs

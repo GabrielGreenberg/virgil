@@ -23,8 +23,8 @@
  *     subscription from float-sync — own-write filter + docChanged gate)
  *     drives `syncFromMain`, which re-reads the target node's source /
  *     `parTitle` attrs into local state, refreshing CodeMirror.
- *   - float → main: CodeMirror's onChange dispatches setNodeMarkup with
- *     the new source attr.
+ *   - float → main: CodeMirror's onChange writes the new source attr
+ *     through the ONE source-pod door, `writeSourcePodAttrs` (task 1533).
  *
  * Title editing piggybacks on the same FLOAT_WRITE_META gating.
  */
@@ -38,10 +38,8 @@ import {
   findSourceNodeByUuid,
   type SourceRange,
 } from "@/lib/float-source-range";
-import {
-  FLOAT_WRITE_META,
-  useMainTransactionSync,
-} from "@/lib/float-sync";
+import { useMainTransactionSync } from "@/lib/float-sync";
+import { writeSourcePodAttrs } from "@/lib/tiptap/source-pod-write";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
 import type { FloatSourceKind } from "@/lib/float-sync";
 import { FloatTitleField } from "./float-title-field";
@@ -77,7 +75,7 @@ export function SourcePodFloatBody({
   const ref = editorRef as RefObject<EditorHandle | null>;
   const mainEditor = ref.current?.getEditor() ?? null;
   // The float twin of the in-place pod's gate (task 728). Same signal, same
-  // reason: every write below is a `setNodeMarkup` on the MAIN doc, which
+  // reason: every write below is an attr write on the MAIN doc, which
   // `readOnlyEnforcer` drops on a read-only / partner-claimed doc — so the
   // popped-out pod must refuse the typing rather than show it and lose it.
   // `SourcePodNodeView` states the whole argument.
@@ -129,15 +127,13 @@ export function SourcePodFloatBody({
         setSourceMissing(true);
         return;
       }
-      const node: PMNode = src.node;
-      if ((node.attrs?.[sourceAttr] as string) === next) return;
-      const tr = ed.state.tr.setNodeMarkup(src.start, undefined, {
-        ...node.attrs,
-        [sourceAttr]: next,
+      // The ONE source-pod door (task 1533): unrecorded whole-node replace,
+      // which also ENDS main's history for this pod, so a main undo cannot
+      // replay an older snapshot over what is typed here.
+      writeSourcePodAttrs(ed.view, src.start, src.node, { [sourceAttr]: next }, {
+        kind: "float",
+        floatId: `${kind}:${uuid}`,
       });
-      tr.setMeta("addToHistory", false);
-      tr.setMeta(FLOAT_WRITE_META, `${kind}:${uuid}`);
-      ed.view.dispatch(tr);
     },
     [ref, uuid, kind, sourceAttr, mainEditable],
   );
@@ -163,13 +159,13 @@ export function SourcePodFloatBody({
         sourceRangeRef.current,
       );
       if (!src) return;
-      const node: PMNode = src.node;
-      const tr = ed.state.tr.setNodeMarkup(src.start, undefined, {
-        ...node.attrs,
-        parTitle: next,
+      // Same door as the code write — so the title, too, is unrecorded like
+      // every float write (it alone used to be history-recorded, and its
+      // whole-node inverse reverted the float's code on a main Cmd-Z).
+      writeSourcePodAttrs(ed.view, src.start, src.node, { parTitle: next }, {
+        kind: "float",
+        floatId: `${kind}:${uuid}`,
       });
-      tr.setMeta(FLOAT_WRITE_META, `${kind}:${uuid}`);
-      ed.view.dispatch(tr);
     },
     [ref, uuid, kind, sourceAttr, mainEditable],
   );

@@ -22,8 +22,10 @@ import { countWords } from "@/hooks/useWordCount";
 import { canProducePendingChanges } from "@/lib/pending-changes-flag";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { usePendingChangeController } from "@/links/pending-change-controller";
+import { useOptionalCardAnchorPass } from "@/components/editor-layout/contexts/card-anchor";
 import {
   SUGGESTION_BLOCK_TEXT,
+  suggestionAnchorBlock,
   suggestionApplicability,
   suggestionInsertability,
   suggestionLacksReplacement,
@@ -54,16 +56,11 @@ import { SegmentedToggle } from "@/components/SegmentedToggle";
 import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 import { cardPrimaryFieldProps } from "@/lib/card-primary-field";
+import type { SuggestionStatus } from "@/cards/suggestion-status";
 
-/** The two cards share a
- *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
- *  `applied`/`stale` are flag-ON-only (pending-changes-flag). */
-export type SuggestionStatus =
-  | "pending"
-  | "applied"
-  | "stale"
-  | "accepted"
-  | "rejected";
+/** The two cards share one status union, owned by the dependency-free leaf
+ *  (task 1499). `applied`/`stale` are flag-ON-only (pending-changes-flag). */
+export type { SuggestionStatus };
 export type SuggestionAuthor = "human" | "ai";
 
 /** `accepted` is the one member with a semantic token behind it — it is the
@@ -442,8 +439,7 @@ export function FieldBlock({
           onKeyDown={readOnly ? undefined : onTextareaKeyDown}
           placeholder={readOnly ? "" : FIELD_PLACEHOLDER[field]}
           style={textareaStyle}
-          className={`${FIELD_TEXTAREA_CLASS[field]}${readOnly ? " cursor-default" : ""}`}
-          rows={2}
+          className={`card-textarea ${FIELD_TEXTAREA_CLASS[field]}${readOnly ? " cursor-default" : ""}`}
         />
       )}
     </div>
@@ -514,6 +510,7 @@ export function PendingActionRow({
   align?: "start" | "end";
 }) {
   const controller = usePendingChangeController();
+  const anchorPass = useOptionalCardAnchorPass();
   const id = card.id;
   // "May a NEW pending change be produced?" — the rollout flag's actual
   // subject, and the ONLY question the producing verbs below ask of the app.
@@ -533,10 +530,13 @@ export function PendingActionRow({
     // is empty" means a cut in Cutter and an unfinished draft in Revisions.
     // TASK 716 — and which predicate depends on the AUTHOR, because an AI card
     // offers Insert-below where a human card offers Apply.
+    // TASK 1506 — and "has an anchor" is the AUTHORITY's answer (the block
+    // the card's marker is drawn beside), not the card's first stored pid.
     const isAi = card.author === "ai";
+    const anchorBlock = suggestionAnchorBlock(card, anchorPass);
     const applicability = isAi
-      ? suggestionInsertability(card)
-      : suggestionApplicability(card, family);
+      ? suggestionInsertability(card, anchorBlock)
+      : suggestionApplicability(card, family, anchorBlock);
     const blockedReason = applicability.canApply
       ? null
       : SUGGESTION_BLOCK_TEXT[applicability.reason];

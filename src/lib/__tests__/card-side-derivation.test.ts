@@ -348,6 +348,32 @@ describe("card side — no second speller", () => {
     expect([...PERMITTED].filter((f) => !found.includes(f))).toEqual([]);
   });
 
+  it("no side is derived from `placements.find(...)` outside the stated dock readers (task 1528)", () => {
+    // "Which side is this panel on?" is `resolvePanelSide` (or `panelSideOf`
+    // for a `ViewPrefs` holder). A hand-spelled `placements.find(...)?.side ??
+    // fallback` type-checks perfectly and goes blind to the ladder's first
+    // rung — the cards-right gutter layout (task 1440) — which is how
+    // `omniSideToReveal` named the folded LEFT gutter for a card rendering on
+    // the right. The survivors read the STORED placement on purpose: they place
+    // a strip band or a float, not a card, and each is named with its reason.
+    const PERMITTED = new Set([
+      // `resolveSide` — the DOCK opener's target side (explicit arg → strip
+      // placement → registry default); plus the placement WRITERS.
+      "src/hooks/useViewPrefs.ts",
+      // `reconcileDockStackToPlacements` / `redockAt` — the dock-stack engine
+      // reconciling bands to their stored strip placement.
+      "src/hooks/view-prefs-dock.ts",
+      // `jumpTargetSide` — which side a cross-panel jump DOCKS the band on.
+      "src/components/editor-layout/jump-docks.ts",
+      // The floating-panel host: a popped-out band's rail body takes its
+      // stored strip side — a band lifted off its strip, not a card's column.
+      "src/components/EditorPane.tsx",
+    ]);
+    const found = hits(PROD, /\bplacements\s*\??\.\s*find\s*\(/);
+    expect(found.filter((f) => !PERMITTED.has(f))).toEqual([]);
+    expect([...PERMITTED].filter((f) => !found.includes(f))).toEqual([]);
+  });
+
   it("every omni HOST combines the two facts through the shared door", () => {
     // The column a card renders in is `omniCategoriesForSide(derived, hidden)`.
     // A host that intersects them by hand is the two-tables shape restored, and

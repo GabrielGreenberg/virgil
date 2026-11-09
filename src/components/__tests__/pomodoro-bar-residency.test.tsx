@@ -31,8 +31,9 @@
  * census is what keeps it that way: a `timerRunning` prop added to
  * `StatusClusterProps` next year type-checks perfectly, repaints the bar every
  * second, and is invisible to every behavioural test above — so the source is
- * asked directly whether either resident is rendered with a prop, and whether
- * the three bar components are still memoized.
+ * asked directly whether any resident is rendered with a prop (the ⋯ menu's
+ * Timer row may take the menu's `close`, and nothing else), and whether the
+ * three bar components are still memoized.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -287,7 +288,15 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
   const BAR = "src/components/editor-layout/TopBar.tsx";
   const TABS = "src/components/editor-layout/TabStrip.tsx";
 
-  it("every resident is rendered with NO props at all", () => {
+  /** The ONE prop a resident may take: the ⋯ menu's dismissal, handed to its
+   *  Timer row so a pick closes the menu like every sibling's `pick(...)`
+   *  (task 1514). A menu callback carries no timer state, so it cannot repaint
+   *  the bar on a tick; anything else is the bug this census exists to catch. */
+  const ALLOWED_PROPS: Record<string, string> = {
+    PomodoroMenuRow: "onPicked={close}",
+  };
+
+  it("every resident is rendered with NO state props — the menu row takes only the menu's close", () => {
     const src = read(CLUSTER) + read("src/components/editor-layout/BarMoreMenu.tsx");
     const hits = [...src.matchAll(/<(Pomodoro\w+)([^>]*)\/>/g)];
     expect(hits.map((h) => h[1]).sort()).toEqual([
@@ -295,7 +304,7 @@ describe("census — the perf claim is STRUCTURAL, not careful", () => {
       "PomodoroStatusDot",
       "PomodoroTimer",
     ]);
-    for (const h of hits) expect(h[2].trim()).toBe("");
+    for (const h of hits) expect(h[2].trim(), h[1]).toBe(ALLOWED_PROPS[h[1]] ?? "");
   });
 
   it("no bar component's props carry the timer", () => {

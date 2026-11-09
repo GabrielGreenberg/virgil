@@ -58,9 +58,9 @@ function row(attr: string, top: number): HTMLElement {
 
 // Outline: docstart(0) · §1 h-1 (index 1, level 1) · §1.1 h-2 (index 2, level 2, IN BAND) · §2 h-5.
 const HEADINGS = [
-  { id: "h1", uuid: "u1", level: 1, text: "One", label: null, sectionNumber: "1", index: 1, parTitles: [] },
-  { id: "h2", uuid: "u2", level: 2, text: "One.one", label: null, sectionNumber: "1.1", index: 2, parTitles: [] },
-  { id: "h5", uuid: "u5", level: 1, text: "Two", label: null, sectionNumber: "2", index: 5, parTitles: [] },
+  { id: "h1", uuid: "u1", level: 1, text: "One", editText: "One", label: null, sectionNumber: "1", index: 1, parTitles: [] },
+  { id: "h2", uuid: "u2", level: 2, text: "One.one", editText: "One.one", label: null, sectionNumber: "1.1", index: 2, parTitles: [] },
+  { id: "h5", uuid: "u5", level: 1, text: "Two", editText: "Two", label: null, sectionNumber: "2", index: 5, parTitles: [] },
 ];
 
 function setup() {

@@ -76,6 +76,60 @@ export function resolveLiveBlockRange(
   return { from, to: from + id.length };
 }
 
+/** An ATOM-anchored identity: a Card-bearing atom (footnote / citation) named
+ *  by its canonical id attr (`footnoteId` / `citationId`). The atom's own
+ *  position is the address, so — unlike `BlockRangeId` — there is no offset. */
+export interface AtomRef {
+  kind: CardAtomKind;
+  id: string;
+}
+
+/**
+ * Resolve an atom identity to its LIVE position from the editor's
+ * `DocStructureBus` snapshot — the atom sibling of `resolveLiveBlockRange`,
+ * with the SAME three-way contract (task 1534):
+ *
+ * - a number — the atom's live, re-mapped `pos`;
+ * - `null` — the snapshot is PRESENT but no longer carries the atom (it was
+ *   deleted): the caller no-ops rather than land on whatever now sits at a
+ *   baked position;
+ * - `undefined` — no snapshot at all: only here may the caller fall back.
+ *
+ * **Keystroke sanctity:** a discrete-action call (a result click, one read per
+ * search run) — O(#atoms of that kind), never per keystroke.
+ */
+export function resolveLiveAtomPos(
+  editor: Editor | null,
+  ref: AtomRef,
+): number | null | undefined {
+  const s = getBus(editor)?.structure;
+  if (!s) return undefined;
+  const entry = ATOM_SNAPSHOT_LIST[ref.kind](s).find((a) => a.id === ref.id);
+  return entry ? entry.pos : null;
+}
+
+/**
+ * One id → live-pos lookup per atom kind, read ONCE from the current snapshot
+ * (task 1534) — for a producer that positions many atoms in one pass (a search
+ * run) and must not trust a rev-gated prop's baked `pos`. `null` without a
+ * snapshot, so the caller keeps its own positions. O(#footnotes + #citations).
+ */
+export function liveAtomPositions(
+  editor: Editor | null,
+): ((kind: CardAtomKind, id: string) => number | undefined) | null {
+  const s = getBus(editor)?.structure;
+  if (!s) return null;
+  const maps = {} as Record<CardAtomKind, Map<string, number>>;
+  for (const kind of Object.keys(ATOM_SNAPSHOT_LIST) as CardAtomKind[]) {
+    const m = new Map<string, number>();
+    // First entry wins: a citation listed twice (nested + top level) keeps
+    // the earlier position, matching `resolveLiveAtomPos`'s `find`.
+    for (const a of ATOM_SNAPSHOT_LIST[kind](s)) if (!m.has(a.id)) m.set(a.id, a.pos);
+    maps[kind] = m;
+  }
+  return (kind, id) => maps[kind].get(id);
+}
+
 /**
  * Maps a caller's id → the entity's LIVE document position, derived from the
  * editor's `DocStructureBus` snapshot (`getBus(editor).structure`) — which the

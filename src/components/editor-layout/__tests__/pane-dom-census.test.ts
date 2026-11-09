@@ -710,7 +710,9 @@ describe("pane-dom census — ownership (task 1393)", () => {
       ["components/editor-layout/event-bridges/marker-clicks.ts", "scope: env.getPaneRoot"],
       ["components/editor-layout/event-bridges/marker-clicks.ts", "getPaneRoot: origin.host.getPaneRoot"],
       ["links/_shared/usePlacement.ts", "paneRootOf(editor.view.dom)"],
-      ["links/links.ts", "paneRootOf(editor.view.dom)"],
+      // Task 1505 — `jumpToLink` (links.ts) folded into the ONE jump door,
+      // whose pin event now carries its wrapper's pane like the deleted copy did.
+      ["links/jump-to-card.ts", "paneRoot: paneRootOf(omniWrapper)"],
     ];
     for (const [file, needle] of expected) {
       const code = CODE.get(path.join(SRC, ...file.split("/")));
