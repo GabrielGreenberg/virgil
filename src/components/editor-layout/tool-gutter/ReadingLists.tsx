@@ -114,7 +114,7 @@ export function ReadingList({
   // Headings only change on a structural edit (`rev.headings`), never on a
   // keystroke, so the sections are re-read at that pace.
   const sections = useMemo<GutterSectionHead[]>(
-    () => (editorInstance && !editorInstance.isDestroyed ? topSections(readDocStructure(editorInstance.state).headings) : []),
+    () => (editorInstance && !editorInstance.isDestroyed ? topSections(readDocStructure(editorInstance.state).headings, (pos) => editorInstance.state.doc.nodeAt(pos)?.textContent ?? "") : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editorInstance, rev.headings],
   );

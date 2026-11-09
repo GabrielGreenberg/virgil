@@ -19,14 +19,14 @@ import {
   topSections,
 } from "../gutter-lists";
 
-const heading = (pos: number, text: string, level = 2, numbered = true): HeadingEntry => ({
-  uuid: `h${pos}`,
-  pos,
-  level,
-  text,
-  label: null,
-  numbered,
-});
+// A heading's title lives on the node, not the snapshot (task 1495), so the
+// fixture keeps titles beside the entries and `textAt` reads them by position.
+const TITLES = new Map<number, string>();
+const heading = (pos: number, text: string, level = 2, numbered = true): HeadingEntry => {
+  TITLES.set(pos, text);
+  return { uuid: `h${pos}`, pos, level, label: null, numbered };
+};
+const textAt = (pos: number) => TITLES.get(pos) ?? "";
 const HEADINGS = [
   heading(0, "Introduction"),
   heading(50, "A subsection", 3),
@@ -42,7 +42,7 @@ const bib = (key: string, type: string, fields: Record<string, string>): BibEntr
 
 describe("sections", () => {
   it("numbers only the top level, skipping unnumbered headings", () => {
-    const s = topSections(HEADINGS);
+    const s = topSections(HEADINGS, textAt);
     expect(s.map((x) => [x.text, x.number])).toEqual([
       ["Introduction", "1"],
       ["Acknowledgements", ""],
@@ -54,7 +54,7 @@ describe("sections", () => {
 });
 
 describe("footnoteGroups", () => {
-  const sections = topSections(HEADINGS);
+  const sections = topSections(HEADINGS, textAt);
 
   it("groups by section in document order and marks as the paper does", () => {
     const groups = footnoteGroups(
@@ -97,7 +97,7 @@ describe("bibliography", () => {
     { citationId: "c2", keys: ["bolter2001", "nonexistent2026"], pos: 210 },
     { citationId: "c3", keys: ["grafton1997"], pos: 220 },
   ];
-  const sections = topSections(HEADINGS);
+  const sections = topSections(HEADINGS, textAt);
 
   it("formats a reference the way it will print", () => {
     expect(referenceParts(entries[0])).toMatchObject({

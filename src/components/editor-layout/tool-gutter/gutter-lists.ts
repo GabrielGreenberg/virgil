@@ -86,7 +86,12 @@ export interface GutterSectionHead {
 /** The paper's TOP-LEVEL sections — the shallowest heading level present —
  *  numbered the way LaTeX counts them (unnumbered headings take no number and
  *  leave the count alone). */
-export function topSections(headings: readonly HeadingEntry[]): GutterSectionHead[] {
+export function topSections(
+  headings: readonly HeadingEntry[],
+  /** A heading's title, read off the live node at its position — the
+   *  snapshot carries none (task 1495: a title is body content). */
+  textAt: (pos: number) => string,
+): GutterSectionHead[] {
   if (headings.length === 0) return [];
   const top = Math.min(...headings.map((h) => h.level));
   let n = 0;
@@ -94,7 +99,7 @@ export function topSections(headings: readonly HeadingEntry[]): GutterSectionHea
     .filter((h) => h.level === top)
     .map((h) => ({
       pos: h.pos,
-      text: h.text.trim() || "Untitled section",
+      text: textAt(h.pos).trim() || "Untitled section",
       number: h.numbered ? String(++n) : "",
     }));
 }
