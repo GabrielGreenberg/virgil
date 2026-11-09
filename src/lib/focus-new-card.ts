@@ -31,7 +31,7 @@
 import { attrSelector } from "@/lib/attr-selector";
 import { migrateLegacyKeyToFloat } from "@/floats/float-key";
 import { cardStampsPrimaryField, findCardPrimaryField } from "@/lib/card-primary-field";
-import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
+import { pickCardPresence } from "@/lib/card-presence";
 import type { ViewLifetime, ViewTimer } from "@/lib/tiptap/view-lifetime";
 
 /** The one pending request (focus is window-global — see the header). */
@@ -42,7 +42,20 @@ export function hasPendingCardFocus(): boolean {
   return pendingRequest !== null;
 }
 
-export function focusNewCard(cardKey: string, owner: ViewLifetime): void {
+export interface FocusNewCardOptions {
+  /** The caller is floating this card (the toolbar create path pops it at its
+   *  anchor right after arming the focus). Until the float mounts, the only
+   *  match may be the docked twin — so keep retrying for the FLOAT rather
+   *  than settling on the dock, and accept the dock only on the last attempt
+   *  (task 1536). */
+  awaitFloat?: boolean;
+}
+
+export function focusNewCard(
+  cardKey: string,
+  owner: ViewLifetime,
+  opts: FocusNewCardOptions = {},
+): void {
   pendingRequest?.cancel();
   // Normalize to the canonical `float:card:<kind>:<id>` grammar the card stamps
   // on `data-card-key`, so a caller that still passes a legacy `<prefix>:<id>`
@@ -70,22 +83,21 @@ export function focusNewCard(cardKey: string, owner: ViewLifetime): void {
   };
   const tryFocus = () => {
     if (settled) return;
-    // A card can render in MULTIPLE places at once — the docked panel AND the
-    // omni margin. `querySelector` returns the first in DOM order, which may be
-    // a HIDDEN (compressed / `display:none` keep-alive) instance whose body
-    // isn't mounted. Pick the VISIBLE one (`isPaneElementVisible`, the ONE
-    // keep-alive visible rung) so we focus a real body, not a collapsed twin.
-    // Fall back to the first match (jsdom lays nothing out, and tests mount a
-    // single instance anyway).
+    // A card can render in MULTIPLE places at once — the docked panel, the
+    // omni margin, a popped float. DOM order says nothing about which one the
+    // user is looking at (the float portals to <body>, AFTER the dock), so
+    // the choice is `pickCardPresence`'s stated ladder: the card's own float,
+    // then the visible copy, then the first match (task 1536).
     const candidates = Array.from(
       document.querySelectorAll<HTMLElement>(attrSelector("data-card-key", domKey)),
     );
-    const card =
-      candidates.find(isPaneElementVisible) ?? candidates[0] ?? null;
-    if (!card) {
+    const presence = pickCardPresence(candidates, domKey);
+    const lastAttempt = attempts + 1 >= MAX_ATTEMPTS;
+    if (!presence || (opts.awaitFloat && !presence.isFloat && !lastAttempt)) {
       retry();
       return;
     }
+    const card = presence.el;
     const target = pickFocusTarget(card);
     if (!target) {
       retry();

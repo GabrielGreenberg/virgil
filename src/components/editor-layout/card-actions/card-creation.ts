@@ -455,7 +455,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         // single store writes — no per-keystroke work.
         store.expand({ kind, id });
         store.select({ kind, id }, { placement: "none" });
-        focusNewCard(cardPopKey(kind, id), focusLifetime);
+        // The toolbar path floats the card at its anchor (below): the caret
+        // belongs in THAT float, not in the docked twin an open panel also
+        // renders (task 1536).
+        focusNewCard(cardPopKey(kind, id), focusLifetime, {
+          awaitFloat: opts.mode !== "omni" && fromToolbar(opts),
+        });
       }
       if (opts.mode === "omni") return;
       if (fromToolbar(opts)) popCardAtAnchor(kind, id, opts.anchorRect!);
