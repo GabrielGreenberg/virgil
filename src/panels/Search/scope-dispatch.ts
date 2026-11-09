@@ -25,6 +25,7 @@ import {
   type SearchHit,
   type FootnoteSearchItem,
   type EditorCitationItem,
+  type LiveAtomPos,
   searchFootnotes,
   searchNotes,
   searchCitations,
@@ -60,6 +61,10 @@ export interface ScopeSearchCtx {
    *  search run walks no doc for card positions. */
   resolveCardAnchor: CardAnchorResolver;
   footnotes: FootnoteSearchItem[];
+  /** The live DocStructure atom positions, read once per run (task 1534):
+   *  footnote/citation hits take their position from here over the item
+   *  arrays' (rev-gated, so stale after a plain edit). `null` = no snapshot. */
+  liveAtomPos?: LiveAtomPos | null;
   orphanedFootnotes: OrphanedFootnote[];
   notes: UserNote[];
   citations: CitationRef[];
@@ -86,7 +91,7 @@ export type ScopeSearchFn = (ctx: ScopeSearchCtx) => SearchHit[];
  */
 export const SCOPE_DISPATCH: Record<SearchScope, ScopeSearchFn> = {
   mainText: (c) => c.searchMainText(c.editor, c.re),
-  footnotes: (c) => searchFootnotes(c.footnotes, c.orphanedFootnotes, c.re),
+  footnotes: (c) => searchFootnotes(c.footnotes, c.orphanedFootnotes, c.re, c.liveAtomPos),
   notes: (c) => searchNotes(c.notes, c.resolveCardAnchor, c.re),
   citations: (c) =>
     searchCitations(
@@ -94,6 +99,7 @@ export const SCOPE_DISPATCH: Record<SearchScope, ScopeSearchFn> = {
       c.editorCitations,
       c.getCitationDisplayText,
       c.re,
+      c.liveAtomPos,
     ),
   todos: (c) => searchTodos(c.todos, c.resolveCardAnchor, c.re),
   archive: (c) => searchArchive(c.archiveSnippets, c.resolveCardAnchor, c.re),
