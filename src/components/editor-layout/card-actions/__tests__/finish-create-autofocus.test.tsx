@@ -103,7 +103,25 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
     expect(cardStore.isExpanded(ref)).toBe(true);
     expect(cardStore.isSelected(ref)).toBe(true);
     expect(focusMock).toHaveBeenCalledTimes(1);
-    expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"), expect.anything());
+    expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"), expect.anything(), {
+      awaitFloat: false,
+    });
+  });
+
+  // Task 1536 — the toolbar path pops the new card at its anchor, so the focus
+  // waits for THAT float rather than settling on a docked twin in an open panel.
+  it("toolbar create (anchorRect) asks the focus to await the popped float", () => {
+    const popCardAtAnchor = vi.fn();
+    const { result } = renderHook(() => useCardCreation(makeDeps({ popCardAtAnchor })));
+
+    act(() => {
+      result.current.createNote({ anchorRect: new DOMRect(10, 20, 30, 40) });
+    });
+
+    expect(popCardAtAnchor).toHaveBeenCalledTimes(1);
+    expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"), expect.anything(), {
+      awaitFloat: true,
+    });
   });
 
   it("autoFocus:false skips expand, store-select, and focus", () => {
@@ -139,7 +157,9 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
     act(() => {
       result.current.createTodo({});
     });
-    expect(focusMock).toHaveBeenCalledWith(cardPopKey("todo", "todo-1"), expect.anything());
+    expect(focusMock).toHaveBeenCalledWith(cardPopKey("todo", "todo-1"), expect.anything(), {
+      awaitFloat: false,
+    });
 
     focusMock.mockClear();
     act(() => {

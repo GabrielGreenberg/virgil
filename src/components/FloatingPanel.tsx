@@ -41,6 +41,7 @@ import { useIsVisible, usePaneScopedListener } from "@/lib/keep-alive/visibility
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 import { DOCKED_POD_Z } from "@/components/editor-layout/constants";
 import { PANE_OWNER_ATTR, PaneRootContext } from "@/components/editor-layout/pane-dom";
+import { FLOAT_PRESENCE_ATTR } from "@/lib/card-presence";
 import {
   paneDockSlot,
   usePaneRoot,
@@ -1394,6 +1395,10 @@ function FloatingPanelInner({
       {...(ownerPane ? { [PANE_OWNER_ATTR]: ownerPane } : {})}
       data-panel-shell-mode={mode}
       data-panel-shell-id={panelId}
+      // A FLOATING card window names the card it floats, so a presence picker
+      // can tell "this card's own float" from a docked twin of the same
+      // `data-card-key` (task 1536, `pickCardPresence`).
+      {...(mode === "floating" && cardKey ? { [FLOAT_PRESENCE_ATTR]: cardKey } : {})}
       // The float's SURFACE as a stated fact (task 1246): the popped-card
       // window rules in globals.css gate on `data-float-surface="card"` so a
       // whole-panel float keeps its tier's shadow + per-card outlines.
