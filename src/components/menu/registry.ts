@@ -20,7 +20,12 @@
  * multi-pane keep-alive law), not a module slot.
  */
 
-import { computeNextActive, freshNavMemory, type NavMemory } from "./nav-core";
+import {
+  computeNextActive,
+  freshNavMemory,
+  nearestEnabledNeighbour,
+  type NavMemory,
+} from "./nav-core";
 import type {
   MenuLayout,
   MenuNode,
@@ -335,15 +340,17 @@ export class MenuRegistry implements MenuRegistryHandle {
   /** Run the active node's remove verb — see `MenuRegistryHandle.removeActive`.
    *  The cursor steps to the next row (else the previous) BEFORE the verb runs:
    *  the removed row's unmount would otherwise clear `active` and drop the
-   *  keyboard user back to an un-highlighted menu. */
+   *  keyboard user back to an un-highlighted menu. "Next" never wraps and never
+   *  leaves the row's region (`nearestEnabledNeighbour`, task 1543) — a
+   *  wrapping `move("down")` sent the cursor from a deleted LAST row to the
+   *  menu's first. */
   removeActive(): boolean {
     const id = this.active;
     if (id === null) return false;
     const rec = this.records.get(id);
     if (!rec || rec.disabled || rec.region === "widget" || !rec.remove) return false;
-    this.move("down");
-    if (this.active === id) this.move("up");
-    if (this.active === id) this.setActiveFrom(null, false);
+    this.keyboardNav = true;
+    this.setActiveFrom(nearestEnabledNeighbour(this.items(), id), false);
     rec.remove();
     return true;
   }

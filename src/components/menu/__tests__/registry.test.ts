@@ -241,3 +241,32 @@ describe("the MenuRegistryHandle contract", () => {
     expect(typeof handle.activate).toBe("function");
   });
 });
+
+describe("MenuRegistry.removeActive — the cursor steps without wrapping (task 1543)", () => {
+  function three(removed: string[]) {
+    const r = new MenuRegistry("m", "list");
+    for (const id of ["a", "b", "c"]) r.register(reg({ id, remove: () => removed.push(id) }));
+    return r;
+  }
+  it("removing the LAST row lands on the one above it, not the first", () => {
+    const removed: string[] = [];
+    const r = three(removed);
+    r.setActive("c");
+    expect(r.removeActive()).toBe(true);
+    expect(removed).toEqual(["c"]);
+    expect(r.activeId()).toBe("b");
+  });
+  it("removing a middle row lands on the next", () => {
+    const r = three([]);
+    r.setActive("b");
+    r.removeActive();
+    expect(r.activeId()).toBe("c");
+  });
+  it("removing the sole row clears the cursor", () => {
+    const r = new MenuRegistry("m", "list");
+    r.register(reg({ id: "a", remove: () => {} }));
+    r.setActive("a");
+    r.removeActive();
+    expect(r.activeId()).toBeNull();
+  });
+});

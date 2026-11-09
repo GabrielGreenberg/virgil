@@ -121,6 +121,46 @@ function cellAtRowNearCol(
   return best;
 }
 
+/** The first row, scanning `from` → `to` (either direction, inclusive), that
+ *  has an enabled cell — and that row's enabled cell nearest `col`. Home and
+ *  End both scan (task 1543): a fully-disabled edge row is walked PAST, the
+ *  way Up/Down already walk past one, rather than answering "no target". */
+function scanRowsNearCol(
+  cells: MenuNode[],
+  from: number,
+  to: number,
+  col: number,
+): MenuNode | null {
+  const step = from <= to ? 1 : -1;
+  for (let r = from; step > 0 ? r <= to : r >= to; r += step) {
+    const c = cellAtRowNearCol(cells, r, col);
+    if (c) return c;
+  }
+  return null;
+}
+
+// ── Remove: where the cursor goes when its row goes ─────────────────────────
+
+/**
+ * The row the cursor should land on when row `id` is removed (task 1543): the
+ * next enabled node of the SAME region in snapshot order, else the previous,
+ * else null. Never wraps — deleting the last of a list walks UP to its new
+ * last row, not round to the first; and never crosses a region, so a list
+ * row's neighbour is never a grid cell.
+ */
+export function nearestEnabledNeighbour(
+  nodes: MenuNode[],
+  id: string,
+): string | null {
+  const idx = nodes.findIndex((n) => n.id === id);
+  if (idx < 0) return null;
+  const region = nodes[idx].region;
+  const ok = (n: MenuNode) => n.region === region && ENABLED(n);
+  for (let i = idx + 1; i < nodes.length; i++) if (ok(nodes[i])) return nodes[i].id;
+  for (let i = idx - 1; i >= 0; i--) if (ok(nodes[i])) return nodes[i].id;
+  return null;
+}
+
 // ── Composite (grid above list) ──────────────────────────────────────────────
 
 /**
@@ -148,11 +188,11 @@ function gridMove(
   const cur =
     active && active.region === "grid" && active.coords ? active : null;
   if (dir === "home") {
-    const c = cellAtRowNearCol(cells, 0, -Infinity as unknown as number);
+    const c = scanRowsNearCol(cells, 0, maxRow, -Infinity);
     return c ? { id: c.id } : { id: null };
   }
   if (dir === "end") {
-    const c = cellAtRowNearCol(cells, maxRow, Infinity as unknown as number);
+    const c = scanRowsNearCol(cells, maxRow, 0, Infinity);
     return c ? { id: c.id } : { exit: "below" };
   }
   const curRow = cur?.coords?.row ?? 0;
