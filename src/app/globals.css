@@ -184,6 +184,13 @@
      gutter's content (the left gutter's lists, the right gutter's cards). The
      gutter heads' controls sit on the card's top edge, this far down. */
   --gutter-inset: 8px;
+  /* How far a gutter's content keeps off its INBOARD edge so nothing reaches
+     under the text card's matte: the pod frame (`data-pod-frame`, sticky,
+     z-31) rings the card with a solid `--pod-gap` of canvas to mask what
+     scrolls behind its corners, and the gutters sit only `--gutter-inset`
+     away — so without this the matte bites the inboard 2px off every card
+     border, selection ring and lozenge. +2px clears a ring or outline. */
+  --gutter-matte-clear: calc(var(--pod-gap) - var(--gutter-inset) + 2px);
   /* The gutter's toolbar lozenges: a step between the panel paper and the
      canvas/Virgil-bar midpoint, ringed a little harder than the resting depth
      so they stay legible on the sand at this pale a fill. */
@@ -6936,7 +6943,7 @@ body.perf-contain .static-borrowed-text {
   /* The column runs to the window edge (no strip column), so the gutter
      carries its own edge inset. The bottom keeps the lists clear of the
      pane's Stack button, which sits over the gutter's foot. */
-  padding: 0 0 40px 6px;
+  padding: 0 var(--gutter-matte-clear) 40px 6px;
   /* The Outline's voice: the UI sans at text-sm — stated here because the
      pane around the gutter speaks the paper's serif. */
   font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
@@ -7012,11 +7019,11 @@ body.perf-contain .static-borrowed-text {
 .tool-gutter-tools .iconbtn-toggle[aria-pressed="true"] {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--control-selected-ink) 55%, transparent);
 }
-/* The right gutter's cards come right up to the gutter's inboard edge, so
-   the text card's gap to them is the one `--gutter-inset` (the cascade's
-   `left-2` inset would add 8px on this side only). */
-[data-gutter-side-host="right"] .omni-entry-slide {
-  left: 0;
+/* The right gutter's cards sit just clear of the text card's matte (see
+   `--gutter-matte-clear`), so the gap to them reads as the one gutter gap
+   rather than the cascade's own `left-2` inset on this side only. */
+[data-gutter-side-host="right"] [data-omni-entry-wrapper] {
+  left: var(--gutter-matte-clear);
 }
 /* The right gutter's lozenge (task 1440, edge to edge): the left gutter's
    toolbar on a sticky row over the cards, holding the collapse toggle at its
@@ -7033,7 +7040,7 @@ body.perf-contain .static-borrowed-text {
   justify-content: flex-end;
   align-items: center;
   height: 30px;
-  margin: var(--gutter-inset) 4px 0 0;
+  margin: var(--gutter-inset) 4px 0 var(--gutter-matte-clear);
   padding: 3px; /* aligns: a 24px icon button in the 30px lozenge */
   background: var(--gutter-lozenge-bg);
   border-radius: var(--pod-radius);
