@@ -32,6 +32,8 @@ import {
   defaultDirForStatusFacet,
   gridTemplate,
   isReorderableColId,
+  projectBoundaryDelta,
+  renderedStatusWidth,
   resizeNeighborsForBoundary,
   resolveColOrder,
   sortEntries,
@@ -972,53 +974,57 @@ function Resizer({
   // scalar value is the boundary DELTA (0 at start); apply() projects it onto
   // the up-to-two neighbor widths and rewrites the inherited template var on
   // the list root — no React state, no store write, until commit().
+  //
+  // The projection works on the RENDERED widths (task 1545): below the
+  // title's comfort width the status track's `clamp()` renders narrower than
+  // the stored width, so the snapshot seeds status with what the grid shows
+  // and `projectBoundaryDelta` keeps it inside what the grid will show —
+  // the handle tracks the pointer and the commit stores what the user saw.
   const startRef = useRef<{
     widths: Record<ResizableColId, number>;
-    leftW: number;
-    rightW: number;
+    gridPx: number;
   } | null>(null);
+  // The header grid this resizer sits in, captured on press: its width is
+  // the `100%` the status track's clamp resolves against.
+  const gridRef = useRef<HTMLElement | null>(null);
 
-  const widthsForDelta = (delta: number): Record<ResizableColId, number> => {
+  const project = (delta: number) => {
     const start = startRef.current;
-    if (!start) return { ...widthsRef.current };
-    const next = { ...start.widths };
-    if (leftCol) next[leftCol] = start.leftW + delta;
-    if (rightCol) next[rightCol] = start.rightW - delta;
-    return next;
+    if (!start) return { delta, widths: { ...widthsRef.current } };
+    return projectBoundaryDelta(
+      start.widths,
+      leftCol,
+      rightCol,
+      delta,
+      colOrder,
+      start.gridPx,
+    );
   };
 
   const handle = usePaneResizeHandle({
     id: `library-columns:${leftCol ?? "fr"}|${rightCol ?? "fr"}`,
     axis: "x",
     getValue: () => {
+      const gridPx = gridRef.current?.clientWidth ?? 0;
       const snapshot = { ...widthsRef.current };
-      startRef.current = {
-        widths: snapshot,
-        leftW: leftCol ? snapshot[leftCol] : 0,
-        rightW: rightCol ? snapshot[rightCol] : 0,
-      };
+      // Only a boundary that pulls status re-seeds it: another column's drag
+      // commits the full record, and must not overwrite a stored status width
+      // the list is merely too narrow to show right now.
+      if (gridPx > 0 && (leftCol === "status" || rightCol === "status")) {
+        snapshot.status = renderedStatusWidth(snapshot, colOrder, gridPx);
+      }
+      startRef.current = { widths: snapshot, gridPx };
       return 0;
     },
-    clamp: (delta) => {
-      const start = startRef.current;
-      if (!start) return delta;
-      // Constrain the boundary delta against BOTH columns' clamps so total
-      // fixed width is preserved (otherwise the 1fr title absorbs the
-      // difference and the status column shifts visibly) — the existing
-      // per-column min/max floors (clampWidth) are the authority.
-      let d = delta;
-      if (leftCol) d = clampWidth(leftCol, start.leftW + d) - start.leftW;
-      if (rightCol) d = start.rightW - clampWidth(rightCol, start.rightW - d);
-      return d;
-    },
+    clamp: (delta) => project(delta).delta,
     apply: (delta) => {
       listRootRef.current?.style.setProperty(
         COL_TEMPLATE_VAR,
-        gridTemplate(widthsForDelta(delta), colOrder),
+        gridTemplate(project(delta).widths, colOrder),
       );
     },
     commit: (delta) => {
-      onCommitWidths(widthsForDelta(delta));
+      onCommitWidths(project(delta).widths);
     },
   });
 
@@ -1043,6 +1049,7 @@ function Resizer({
       onPointerDown={(e) => {
         // Keep the press out of the header cells' drag-reorder machinery.
         e.stopPropagation();
+        gridRef.current = e.currentTarget.parentElement;
         handle.onPointerDown(e);
       }}
       // Width stays inline: it is the same RESIZER_WIDTH constant the grid

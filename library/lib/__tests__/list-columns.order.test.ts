@@ -8,6 +8,8 @@ import {
   fitColumns,
   gridTemplate,
   isReorderableColId,
+  projectBoundaryDelta,
+  renderedStatusWidth,
   resizeNeighborsForBoundary,
   resolveColOrder,
   type ReorderableColId,
@@ -212,5 +214,73 @@ describe("isReorderableColId", () => {
     expect(isReorderableColId("bibimp")).toBe(false);
     expect(isReorderableColId(null)).toBe(false);
     expect(isReorderableColId(42)).toBe(false);
+  });
+});
+
+// Task 1545: the status track renders `clamp(floor, 100% − fixed − comfort,
+// stored)`, so below the title's comfort width the RENDERED status width is
+// not the stored one. A boundary drag must work in the rendered model: seed
+// from what the grid shows, never leave it, commit what the user saw.
+describe("status-column resize in the clamp regime (task 1545)", () => {
+  const order = DEFAULT_COL_ORDER;
+  // A user whose stored status predates the narrower default.
+  const stored = { year: 56, author: 130, status: 208, citekey: 140 };
+  // Fixed (non-title, non-status) width: 56 + 130 + 140 + 4 resizers.
+  const fixed = 56 + 130 + 140 + 4 * RESIZER_WIDTH;
+
+  /** The status width as the grid would render it after the projection. */
+  const rendered = (w: typeof stored, g: number) => renderedStatusWidth(w, order, g);
+
+  it("resolves the rendered width the clamp() track paints", () => {
+    expect(rendered(stored, 2000)).toBe(208); // wide: the stored width
+    expect(rendered(stored, 800)).toBe(800 - fixed - 280); // title at comfort
+    expect(rendered(stored, 700)).toBe(148); // the floor
+    // At or below the floor the track is plain px, whatever the grid.
+    expect(rendered({ ...stored, status: 130 }, 500)).toBe(130);
+  });
+
+  it("status│citekey: status widens under the pointer, citekey pays, nothing slides", () => {
+    const g = 800;
+    const start = { ...stored, status: rendered(stored, g) };
+    const r = projectBoundaryDelta(start, "status", "citekey", 20, order, g);
+    expect(r.delta).toBe(20);
+    expect(r.widths.status).toBe(start.status + 20);
+    expect(rendered(r.widths, g)).toBe(start.status + 20);
+    expect(r.widths.status + r.widths.citekey).toBe(start.status + start.citekey);
+  });
+
+  it("title│status: the rendered status moves from the first pixel (no dead zone)", () => {
+    const g = 800;
+    const start = { ...stored, status: rendered(stored, g) };
+    for (const d of [1, 5, 20]) {
+      const r = projectBoundaryDelta(start, null, "status", d, order, g);
+      expect(r.delta).toBe(d);
+      expect(rendered(r.widths, g)).toBe(start.status - d);
+    }
+    // Widening past the title's comfort is a wall, not a silent stored value.
+    const wide = projectBoundaryDelta(start, null, "status", -30, order, g);
+    expect(wide.delta).toBe(0);
+  });
+
+  it("every projected delta commits exactly the width the grid renders", () => {
+    for (const g of [650, 700, 760, 800, 860, 1200]) {
+      const start = { ...stored, status: rendered(stored, g) };
+      for (let d = -80; d <= 80; d += 7) {
+        for (const [l, rt] of [
+          ["status", "citekey"],
+          [null, "status"],
+        ] as const) {
+          const r = projectBoundaryDelta(start, l, rt, d, order, g);
+          expect(rendered(r.widths, g)).toBe(r.widths.status);
+        }
+      }
+    }
+  });
+
+  it("an unmeasured grid or a boundary away from status keeps the plain projection", () => {
+    const r = projectBoundaryDelta(stored, "status", "citekey", 20, order, 0);
+    expect(r.widths.status).toBe(228);
+    const a = projectBoundaryDelta(stored, "author", null, 15, order, 700);
+    expect(a.widths).toEqual({ ...stored, author: 145 });
   });
 });

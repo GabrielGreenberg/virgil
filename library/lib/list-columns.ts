@@ -223,6 +223,93 @@ function trackFor(
   return `clamp(${floor}px, calc(100% - ${fixedPx + TITLE_COMFORT_WIDTH}px), ${widths.status}px)`;
 }
 
+/** Width of everything in the grid that is neither the title nor the status:
+ *  the other px columns plus the resizer tracks. The status track's `clamp()`
+ *  middle term is `100% − fixedPx − TITLE_COMFORT_WIDTH`. */
+function fixedWidth(
+  widths: Record<ResizableColId, number>,
+  order: readonly ReorderableColId[],
+): number {
+  return (
+    order.reduce(
+      (sum, col) => (col === "title" || col === "status" ? sum : sum + widths[col]),
+      0,
+    ) +
+    (order.length - 1) * RESIZER_WIDTH
+  );
+}
+
+/**
+ * The status column's RENDERED width in a grid `gridPx` wide — the px value
+ * `gridTemplate`'s status track resolves to (CSS `clamp(MIN, VAL, MAX)` is
+ * `max(MIN, min(VAL, MAX))`). Below the title's comfort width the rendered
+ * width is NOT the stored `widths.status`, so anything that edits the status
+ * width by gesture must start from, and stay within, this value (task 1545).
+ */
+export function renderedStatusWidth(
+  widths: Record<ResizableColId, number>,
+  order: readonly ReorderableColId[],
+  gridPx: number,
+): number {
+  const floor = statusFloor(widths);
+  if (floor === widths.status) return widths.status;
+  const ceiling = gridPx - fixedWidth(widths, order) - TITLE_COMFORT_WIDTH;
+  return Math.max(floor, Math.min(ceiling, widths.status));
+}
+
+/**
+ * Project a column-boundary drag onto the widths, in the RENDERED model: the
+ * gesture pulls `left` by +delta and `right` by −delta, each within its
+ * min/max, and — when the status column is in the grid and the grid has been
+ * measured (`gridPx > 0`) — never past the width the status track would
+ * actually render. So at every delta the status column is exactly as wide as
+ * its stored value (the handle tracks the pointer 1:1, no neighbour slides
+ * into the title's slack) and the record committed on release is the width
+ * the user saw. `start.status` must already be the rendered width
+ * (`renderedStatusWidth`), which is what makes delta 0 always valid.
+ */
+export function projectBoundaryDelta(
+  start: Record<ResizableColId, number>,
+  left: ResizableColId | null,
+  right: ResizableColId | null,
+  delta: number,
+  order: readonly ReorderableColId[],
+  gridPx: number,
+): { delta: number; widths: Record<ResizableColId, number> } {
+  // The per-column min/max clamps are the first authority: they keep the
+  // total fixed width constant (otherwise the 1fr title absorbs the
+  // difference and a column shifts visibly).
+  let d = delta;
+  if (left) d = clampWidth(left, start[left] + d) - start[left];
+  if (right) d = start[right] - clampWidth(right, start[right] - d);
+
+  const at = (x: number): Record<ResizableColId, number> => {
+    const next = { ...start };
+    if (left) next[left] = start[left] + x;
+    if (right) next[right] = start[right] - x;
+    return next;
+  };
+  const renders = (x: number): boolean => {
+    const next = at(x);
+    return renderedStatusWidth(next, order, gridPx) === next.status;
+  };
+
+  const governed =
+    gridPx > 0 && order.includes("status") && (left === "status" || right === "status");
+  if (governed && !renders(d)) {
+    // Walk back toward 0 (always valid) to the furthest pixel that renders.
+    let ok = 0;
+    let bad = Math.round(d);
+    while (Math.abs(bad - ok) > 1) {
+      const mid = Math.trunc((ok + bad) / 2);
+      if (renders(mid)) ok = mid;
+      else bad = mid;
+    }
+    d = ok;
+  }
+  return { delta: d, widths: at(d) };
+}
+
 /**
  * Build the grid-template from the LIVE column order (F#13). For N content
  * columns we emit N tracks with a `RESIZER_WIDTH` track BETWEEN every adjacent
@@ -236,12 +323,7 @@ export function gridTemplate(
   widths: Record<ResizableColId, number>,
   order: readonly ReorderableColId[] = DEFAULT_COL_ORDER,
 ): string {
-  const fixedPx =
-    order.reduce(
-      (sum, col) => (col === "title" || col === "status" ? sum : sum + widths[col]),
-      0,
-    ) +
-    (order.length - 1) * RESIZER_WIDTH;
+  const fixedPx = fixedWidth(widths, order);
   const tracks: string[] = [];
   order.forEach((col, i) => {
     tracks.push(trackFor(col, widths, fixedPx));
