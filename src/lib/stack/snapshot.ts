@@ -10,6 +10,7 @@
  */
 
 import type { Editor, JSONContent } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { suggestionReplacement } from "@/panels/_shared/suggestion-field-vocabulary";
 import { generateEntityId } from "@/lib/uuid";
 import { richJsonToPlainText } from "@/lib/footnote-content";
@@ -18,7 +19,11 @@ import { getSectionRangeByUuid } from "@/lib/section-range";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import type { TextObjectRef } from "@/text-objects/types";
-import { isRangeKind, isSubObjectKind } from "@/text-objects/text-object-registry";
+import {
+  TEXT_OBJECT_REGISTRY,
+  isRangeKind,
+  isSubObjectKind,
+} from "@/text-objects/text-object-registry";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -190,7 +195,19 @@ export function snapshotHeadingSection(
 ): StackItem | null {
   const range = getSectionRangeByUuid(editor.state.doc, uuid);
   if (!range) return null;
-  const nodes = range.nodes.map((n) => cleanNode(n.toJSON() as JSONContent));
+  return snapshotBlockRun(range.nodes, source);
+}
+
+/** Snapshot a run of top-level blocks as the multi-block payload — the
+ *  shape a kind's `collectMoveSource` extent captures. The payload's
+ *  persisted name is `"heading"` because heading is the kind that introduced
+ *  it; the stack-pull spec inserts its `nodes` as-is, whatever kind declared
+ *  the extent. */
+function snapshotBlockRun(
+  blocks: readonly PMNode[],
+  source: { docId: string | null; docTitle?: string },
+): StackItem | null {
+  const nodes = blocks.map((n) => cleanNode(n.toJSON() as JSONContent));
   if (nodes.length === 0) return null;
   return {
     id: makeStackId(),
@@ -274,7 +291,9 @@ export function snapshotSubObjectContent(
  * floatable plan). Routes by kind to the matching payload, each of which the
  * stack-pull spec already round-trips:
  *
- *   • heading      → `heading` payload (the whole dominated section)
+ *   • any kind     → `heading` (multi-block) payload: exactly the extent the
+ *     declaring      kind MOVES, so Stack capture and move can't disagree
+ *     `collectMoveSource` (heading → its dominated section; task 1547)
  *   • linkedRange  → `text` slice (the marked range, identity stripped)
  *   • sub-object   → `text` slice (the item's inner content) — any kind
  *     (listItem,     the registry marks `isSubObject` (`isSubObjectKind`)
@@ -290,8 +309,10 @@ export function snapshotTextObject(
   ref: TextObjectRef,
   source: { docId: string | null; docTitle?: string },
 ): StackItem | null {
-  if (ref.kind === "heading") {
-    return snapshotHeadingSection(editor, ref.id, source);
+  const collectMoveSource = TEXT_OBJECT_REGISTRY[ref.kind].collectMoveSource;
+  if (collectMoveSource) {
+    const moved = collectMoveSource(editor.state.doc, ref.id);
+    return moved ? snapshotBlockRun(moved.nodes, source) : null;
   }
   if (isRangeKind(ref.kind)) {
     return snapshotLinkedRange(editor, ref.id, source);

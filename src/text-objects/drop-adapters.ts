@@ -178,7 +178,7 @@ export function exampleItemDropAdapter(
 // can never disagree. Adding a 4th expex-inner kind is then: widen the expex.ts
 // union + set that kind's registry `dropAdapter` + add it here, and the parity
 // test enforces the last two agree. Mirrors the shipped
-// `MEANINGFUL_BLOCK_ATOM_NODE_NAMES` derivation (drag-handle-actions.ts).
+// `MEANINGFUL_BLOCK_ATOM_NODE_NAMES` derivation (text-object-registry.ts).
 // ---------------------------------------------------------------------------
 
 export const EXPEX_INNER_KINDS: ReadonlySet<TextObjectKind> =

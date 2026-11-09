@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MEANINGFUL_BLOCK_ATOM_NODE_NAMES,
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   textObjectPopoutKey,
@@ -63,12 +64,33 @@ describe("TEXT_OBJECT_REGISTRY", () => {
     expect(TEXT_OBJECT_REGISTRY.displayMath.isMeaningfulBlockAtom).toBe(true);
     expect(TEXT_OBJECT_REGISTRY.latexComment.isMeaningfulBlockAtom).toBe(true);
     // figureBlock is meaningful-for-confirm but must stay "ok" for the
-    // block/heading gates → NOT flagged here (added separately to
-    // MEANINGFUL_BLOCK_ATOM_NODE_NAMES).
+    // block/heading gates → NOT flagged here (it carries the LOSS facet
+    // `destroyLosesContent` alone).
     expect(TEXT_OBJECT_REGISTRY.figureBlock.isMeaningfulBlockAtom).toBe(false);
     // Prose kinds.
     expect(TEXT_OBJECT_REGISTRY.paragraph.isMeaningfulBlockAtom).toBe(false);
     expect(TEXT_OBJECT_REGISTRY.heading.isMeaningfulBlockAtom).toBe(false);
+  });
+
+  // Task 1547: the "non-trivial to lose" set is the rows whose LOSS facet is
+  // true — no hand-appended name. Every gating atom is also a loss kind, and
+  // figureBlock is the one loss kind that is not a gating atom.
+  it("derives MEANINGFUL_BLOCK_ATOM_NODE_NAMES from destroyLosesContent alone", () => {
+    const loss = Object.entries(TEXT_OBJECT_REGISTRY)
+      .filter(([, meta]) => meta.destroyLosesContent)
+      .map(([kind]) => kind)
+      .sort();
+    expect([...MEANINGFUL_BLOCK_ATOM_NODE_NAMES].sort()).toEqual(loss);
+    for (const [kind, meta] of Object.entries(TEXT_OBJECT_REGISTRY)) {
+      if (meta.isMeaningfulBlockAtom) {
+        expect(meta.destroyLosesContent, kind).toBe(true);
+      }
+    }
+    expect(
+      Object.entries(TEXT_OBJECT_REGISTRY)
+        .filter(([, m]) => m.destroyLosesContent && !m.isMeaningfulBlockAtom)
+        .map(([k]) => k),
+    ).toEqual(["figureBlock"]);
   });
 
   it("classifies sub-objects correctly", () => {

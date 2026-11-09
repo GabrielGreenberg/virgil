@@ -282,10 +282,19 @@ export interface TextObjectMeta {
    *  `% ` comment stays archivable) and feeds `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`.
    *  TRUE for `texBlock`/`graphicsBlock`/`displayMath`/`latexComment`.
    *  `figureBlock` is meaningful-for-destructive-confirm but must stay "ok" for
-   *  the block/heading gates, so it is **false** here and is added SEPARATELY to
-   *  `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`. (Was the gating half of the former
-   *  conflated `isAtomBlock`.) */
+   *  the block/heading gates, so it is **false** here and carries the
+   *  destroy half alone, on `destroyLosesContent`. (Was the gating half of the
+   *  former conflated `isAtomBlock`.) */
   isMeaningfulBlockAtom: boolean;
+
+  /** LOSS facet — whether this block is NON-TRIVIAL TO LOSE even with empty
+   *  `textContent`: a destructive action must confirm before dropping it, and a
+   *  capture that cannot represent it must refuse. The ONE source of
+   *  `MEANINGFUL_BLOCK_ATOM_NODE_NAMES` (task 1547). TRUE for every
+   *  `isMeaningfulBlockAtom` kind (pinned by `registry.test.ts`) PLUS
+   *  `figureBlock`, which is not a schema atom but is destroy-with-a-confirm
+   *  content. */
+  destroyLosesContent: boolean;
 
   /** Whether this kind is a mark-backed range (only `linkedRange`). */
   isRange: boolean;
@@ -461,14 +470,20 @@ export interface TextObjectMeta {
    *  `hasAnchorsOrAtoms` and passes it through so the kind can decide
    *  cheaply.
    *
-   *  Duplicate is NOT routed through this slot — it's non-destructive
-   *  and stays heading-only via `confirmHeadingLifecycle`. */
+   *  Duplicate is NOT routed through this slot — it's non-destructive;
+   *  its confirm is the sibling `confirmDuplicate`. */
   confirmDestructive?: (
     doc: PMNode,
     uuid: string,
     action: "archive" | "delete",
     ctx: ConfirmDestructiveContext,
   ) => ConfirmDescriptor | null;
+
+  /** Optional per-kind confirm for Duplicate — the NON-destructive sibling of
+   *  `confirmDestructive` (task 1547). Only heading sets it today: a section
+   *  copy is wide enough to be disorienting. Return `null` to proceed
+   *  silently. The dispatcher applies tone `"default"` when unset. */
+  confirmDuplicate?: (doc: PMNode, uuid: string) => ConfirmDescriptor | null;
 }
 
 /** Context passed to per-kind `confirmDestructive` so it can decide

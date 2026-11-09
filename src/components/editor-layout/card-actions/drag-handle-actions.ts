@@ -277,11 +277,9 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       //     its own copy + can return null to skip the dialog when
       //     nothing's at stake (empty paragraph w/ no anchors). See
       //     post-refactor followup B3.
-      //   • Heading × Duplicate → wide-scope section summary via the
-      //     legacy `confirmHeadingLifecycle`. Duplicate is non-
-      //     destructive so it doesn't go through `confirmDestructive`;
-      //     heading × Duplicate still warns because a section copy is
-      //     wide enough to be disorienting.
+      //   • Duplicate → per-kind confirm via `meta.confirmDuplicate`
+      //     (the non-destructive sibling slot, task 1547). Only heading
+      //     sets it: a section copy is wide enough to be disorienting.
       //
       // Cancel returns silently.
       if (action === "archive" || action === "delete") {
@@ -292,9 +290,15 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const proceed = await confirm({ ...descriptor, tone });
           if (!proceed) return;
         }
-      } else if (action === "duplicate" && ref.kind === "heading") {
-        const proceed = await confirmHeadingLifecycle(ed, ref, "duplicate", confirm);
-        if (!proceed) return;
+      } else if (action === "duplicate") {
+        const descriptor = resolveDuplicateConfirm(ed, ref);
+        if (descriptor) {
+          const proceed = await confirm({
+            ...descriptor,
+            tone: descriptor.tone ?? "default",
+          });
+          if (!proceed) return;
+        }
       }
 
       // ── RE-ASK AFTER EVERY AWAIT (task 735) ─────────────────────────────
@@ -1238,51 +1242,17 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
 }
 
 /**
- * Wide-scope summary dialog for `heading × Duplicate` only. The
- * Archive/Delete variants of this warning now live in the registry slot
- * `heading.confirmDestructive` so they share the per-kind confirm
- * routing with every other kind. Duplicate is non-destructive (creates
- * a copy, no loss of work), so it stays out of `confirmDestructive` —
- * but heading × Duplicate is still wide enough to be disorienting
- * without warning, so this helper survives for that single case.
- *
- * Reads off `collectMoveSource` for the section nodes, so the message
- * body never walks the doc twice. See ACTION-MENU-DIAGNOSIS.md C5.
+ * Resolve the per-kind confirm descriptor for Duplicate — the registry's
+ * `confirmDuplicate` slot (task 1547; heading's section summary today). A
+ * SelectionRef or a kind without the slot proceeds silently, as does a heading
+ * whose section can't be resolved (fail-open).
  */
-async function confirmHeadingLifecycle(
+export function resolveDuplicateConfirm(
   ed: Editor,
-  ref: TextObjectRef,
-  action: "duplicate",
-  confirm: (opts: ConfirmOptions) => Promise<boolean>,
-): Promise<boolean> {
-  const meta = TEXT_OBJECT_REGISTRY.heading;
-  const source = meta.collectMoveSource?.(ed.state.doc, ref.id);
-  if (!source) return true; // fail-open if the section can't be resolved
-  const headingNode = source.nodes[0];
-  const headingText = headingNode?.textContent?.trim() ?? "";
-  const paragraphCount = source.nodes.filter(
-    (n) => n.type.name === "paragraph",
-  ).length;
-  const subHeadingCount = source.nodes.filter(
-    (n, i) => i > 0 && n.type.name === "heading",
-  ).length;
-  const counts: string[] = [];
-  if (paragraphCount > 0) {
-    counts.push(`${paragraphCount} paragraph${paragraphCount === 1 ? "" : "s"}`);
-  }
-  if (subHeadingCount > 0) {
-    counts.push(
-      `${subHeadingCount} sub-heading${subHeadingCount === 1 ? "" : "s"}`,
-    );
-  }
-  const countsText = counts.length > 0 ? ` — ${counts.join(", ")}` : "";
-  const titleText = headingText ? `"${headingText}"` : "this section";
-  return confirm({
-    title: `${action[0].toUpperCase() + action.slice(1)} the entire section?`,
-    message: `This will ${action} the entire section ${titleText}${countsText}.`,
-    confirmLabel: "Duplicate section",
-    tone: "default",
-  });
+  ref: DragHandleRef,
+): ConfirmDescriptor | null {
+  if (ref.kind === "selection" || !isTextObjectKind(ref.kind)) return null;
+  return TEXT_OBJECT_REGISTRY[ref.kind].confirmDuplicate?.(ed.state.doc, ref.id) ?? null;
 }
 
 /**

@@ -191,10 +191,14 @@ const LINKED_RANGE_ACTIONS: ReadonlyArray<DragHandleAction> =
 // ---------------------------------------------------------------------------
 
 /** Action-verb word pair for use in confirm copy. */
-function actionVerb(action: "archive" | "delete"): { verb: string; label: string } {
+function actionVerb(
+  action: "archive" | "delete" | "duplicate",
+): { verb: string; label: string } {
   return action === "delete"
     ? { verb: "Delete", label: "Delete" }
-    : { verb: "Archive", label: "Archive" };
+    : action === "duplicate"
+      ? { verb: "Duplicate", label: "Duplicate" }
+      : { verb: "Archive", label: "Archive" };
 }
 
 /** Truncate a snippet to a short preview suitable for inline display in
@@ -294,14 +298,14 @@ function descriptorForAtomBlock(
   };
 }
 
-/** Heading × Delete/Archive: wide-scope section summary. Mirrors the
- *  pre-existing `confirmHeadingLifecycle` for these two actions; the
- *  Duplicate gate still uses that helper directly since this slot only
- *  covers destructive actions. */
+/** Heading × Delete/Archive/Duplicate: wide-scope section summary. Serves
+ *  both `confirmDestructive` and `confirmDuplicate` (task 1547 retired the
+ *  drag-handle's private `confirmHeadingLifecycle`, which re-spelled this
+ *  copy for Duplicate). */
 function descriptorForHeading(
   doc: PMNode,
   uuid: string,
-  action: "archive" | "delete",
+  action: "archive" | "delete" | "duplicate",
 ): ConfirmDescriptor | null {
   const section = getSectionRangeByUuid(doc, uuid);
   if (!section) return null;
@@ -352,6 +356,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -372,6 +377,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
@@ -514,12 +520,15 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     },
     confirmDestructive: (doc, uuid, action) =>
       descriptorForHeading(doc, uuid, action),
+    confirmDuplicate: (doc, uuid) =>
+      descriptorForHeading(doc, uuid, "duplicate"),
   },
   bulletList: {
     label: "Bullet list",
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
@@ -544,6 +553,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
@@ -573,6 +583,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -587,6 +598,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // MARKLESS, not NON_PROSE (task 146): codeBlock's node is `marks: ""`
@@ -610,6 +622,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: true,
     isMeaningfulBlockAtom: true,
+    destroyLosesContent: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ATOM_BLOCK_ACTIONS,
@@ -634,6 +647,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: TITLE_FIELD_ACTIONS,
@@ -658,6 +672,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // nonsensical heading / block-convert target, and the empty-content archive
     // bail treats it as meaningful (an empty `% ` line stays archivable).
     isMeaningfulBlockAtom: true,
+    destroyLosesContent: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // marks:"" → Highlight (a linkedAnchor MARK) can't apply; use the
@@ -678,6 +693,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // positioning math.
     selectsAsNode: true,
     isMeaningfulBlockAtom: true,
+    destroyLosesContent: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 280 },
@@ -717,6 +733,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // classified as an atom block for grab-handle positioning math.
     selectsAsNode: true,
     isMeaningfulBlockAtom: true,
+    destroyLosesContent: true,
     isRange: false,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
@@ -743,6 +760,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // Drag-handle uses TextSelection rather than NodeSelection here.
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // L3n (the FINAL kind migration): figureBlock drags through the same
@@ -774,6 +792,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: true,
     isMeaningfulBlockAtom: true,
+    destroyLosesContent: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // L3n: graphicsBlock (an atom, no caption) shares FigureBody — its float is
@@ -795,6 +814,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -833,6 +853,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     parentKinds: ["bulletList", "orderedList"],
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
@@ -896,6 +917,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     parentKinds: ["exampleBlock"],
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: false,
     // Chip-2 chrome geometry: the handle hugs this item's MEASURED
     // `.expex-item-marker` (`a./b.`) left edge — `block-frame.ts`
@@ -934,6 +956,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     selectsAsNode: false,
     isMeaningfulBlockAtom: false,
+    destroyLosesContent: false,
     isRange: true,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: LINKED_RANGE_ACTIONS,
@@ -1157,13 +1180,15 @@ function blockStyleElement(editor: Editor, pos: number): HTMLElement {
 /**
  * Block node names whose presence makes a range NON-TRIVIAL TO LOSE — content a
  * destructive action must never silently destroy, even when its `textContent`
- * is empty. Derived from the SSOTs so a newly-added kind is recognized for free:
- * every `TEXT_OBJECT_REGISTRY` kind flagged `isMeaningfulBlockAtom` (the kind
- * name IS the PM node name), PLUS `figureBlock`, which is not a schema atom
- * (`content: "figureCaption?"`) but is still destroy-with-a-confirm content.
+ * is empty. Derived from ONE spec field so a newly-added kind is recognized for
+ * free: every `TEXT_OBJECT_REGISTRY` kind flagged `destroyLosesContent` (the
+ * kind name IS the PM node name) — the meaningful atoms plus `figureBlock`,
+ * which is not a schema atom (`content: "figureCaption?"`) but is still
+ * destroy-with-a-confirm content (task 1547 moved it off a hand-appended
+ * literal onto its row).
  *
  * Do not hard-code a parallel list anywhere. A new kind must either carry
- * `isMeaningfulBlockAtom` (block) or sit in `ATOM_REGISTRY` (inline) to be seen.
+ * `destroyLosesContent` (block) or sit in `ATOM_REGISTRY` (inline) to be seen.
  *
  * TWO consumers (task 641 hoisted it here from `drag-handle-actions.ts`, where
  * it was module-private and the second consumer would have had to copy it):
@@ -1174,12 +1199,11 @@ function blockStyleElement(editor: Editor, pos: number): HTMLElement {
  *      `deleteSelection()`, which refuses outright rather than confirming.
  * One list, two severities of the same judgement about what may be lost.
  */
-export const MEANINGFUL_BLOCK_ATOM_NODE_NAMES: ReadonlySet<string> = new Set<string>([
-  ...Object.entries(TEXT_OBJECT_REGISTRY)
-    .filter(([, meta]) => meta.isMeaningfulBlockAtom)
+export const MEANINGFUL_BLOCK_ATOM_NODE_NAMES: ReadonlySet<string> = new Set<string>(
+  Object.entries(TEXT_OBJECT_REGISTRY)
+    .filter(([, meta]) => meta.destroyLosesContent)
     .map(([kind]) => kind),
-  "figureBlock",
-]);
+);
 
 const KIND_SET = new Set<TextObjectKind>(
   Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[],
