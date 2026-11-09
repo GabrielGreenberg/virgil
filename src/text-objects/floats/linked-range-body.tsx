@@ -64,8 +64,11 @@ import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline"
 import {
   FLOAT_WRITE_META,
   FloatStatusStrip,
+  useFloatEditable,
   useFloatMainSync,
 } from "@/lib/float-sync";
+import { MAIN_REFUSED_WRITE_REASON } from "@/lib/float-write-back";
+import { dispatchLanded } from "@/components/drop-mode/commit-seam";
 // L3f-2: the marked-range resolver now lives in one shared util consumed by
 // this float, the linkedRange lift-overlay hooks, and the text-range-move
 // drop spec — see src/lib/linked-anchor-range.ts.
@@ -149,6 +152,11 @@ export function LinkedRangeBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  // A range the popout cannot represent (task 842's write door, below) —
+  // declared here because it is the static half of the editability gate.
+  const [refusal, setRefusal] = useState<LinkedRangeRefusal | null>(null);
+  // THE float editability gate (task 1546): main's live read-only state ∧ this body's own static reason.
+  const floatEditable = useFloatEditable(mainEditor, refusal === null);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     // FCU factory — the SAME stack as the main editor + every other prose float
@@ -160,7 +168,7 @@ export function LinkedRangeBody({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
-      editable: true,
+      editable: floatEditable,
       cardContext: true,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
@@ -173,7 +181,7 @@ export function LinkedRangeBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: seed.doc ?? EMPTY_FLOAT_DOC,
-    editable: true,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -193,7 +201,6 @@ export function LinkedRangeBody({
   // rebuild every child it writes; otherwise it refuses (no dispatch) and the
   // body says so. `planLinkedRangeWriteBack` asks both schemas; this only
   // dispatches or reports.
-  const [refusal, setRefusal] = useState<LinkedRangeRefusal | null>(null);
 
   // Takes the float editor from `onUpdate` itself rather than closing over
   // `floatEditor`, which is null on the render whose closure useEditor keeps.
@@ -226,7 +233,13 @@ export function LinkedRangeBody({
     if (!plan.tr) return;
     plan.tr.setMeta("addToHistory", false);
     plan.tr.setMeta(FLOAT_WRITE_META, floatId);
-    ed.view.dispatch(plan.tr);
+    // Measured, not assumed (task 1546): main's read-only enforcer drops the
+    // write silently, and the float must say so rather than keep the text.
+    reportWrite(
+      dispatchLanded(ed, plan.tr)
+        ? { status: "unchanged" }
+        : { status: "refused", reason: MAIN_REFUSED_WRITE_REASON },
+    );
     // No range write here. `useMainTransactionSync` ran synchronously inside
     // the dispatch above and already mapped the range through this
     // transaction AND its appended ones. Restating the root-only arithmetic
@@ -280,8 +293,9 @@ export function LinkedRangeBody({
     [anchorId],
   );
 
-  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef, writeRefusal, reportWrite } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,
@@ -300,6 +314,7 @@ export function LinkedRangeBody({
       cardKey={cardKey}
       sourceKind="linkedRange"
       sourceMissing={sourceMissing}
+      writeRefusal={writeRefusal}
       notice={refusal ? <RefusalNotice refusal={refusal} /> : null}
     >
       {/* No manual `.par-title-wrapper` here: the factory's paragraph

@@ -47,6 +47,7 @@ import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline"
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import {
+  useFloatEditable,
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
@@ -121,13 +122,15 @@ export function HeadingBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  // THE float editability gate (task 1546): main's live read-only state ∧ this body's own static reason.
+  const floatEditable = useFloatEditable(mainEditor, chrome.showHeadingFloatLabelEdit);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
-      editable: chrome.showHeadingFloatLabelEdit,
+      editable: floatEditable,
       cardContext: true,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
@@ -143,7 +146,7 @@ export function HeadingBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: chrome.showHeadingFloatLabelEdit,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -234,6 +237,7 @@ export function HeadingBody({
     reportWrite,
   } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,

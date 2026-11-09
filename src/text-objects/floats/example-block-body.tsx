@@ -30,7 +30,7 @@
 
 import { scrollWithinOwnBox } from "@/lib/tiptap/contained-scroll";
 import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
+import { type RefObject, useCallback, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
@@ -43,8 +43,8 @@ import {
   type ExpexColumnWidths,
 } from "@/lib/tiptap/expex";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
-import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
 import {
+  useFloatEditable,
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
@@ -79,7 +79,6 @@ export function ExampleBlockBody({
   // read-only / partner-claimed doc shows a read-only float instead of
   // accepting phantom typing whose write-back the readOnlyEnforcer would
   // silently reject at dispatch.
-  const mainEditable = useMainEditable(mainEditor);
 
   const initial = useMemo(() => {
     let blockJson: JSONContent | null = null;
@@ -145,13 +144,15 @@ export function ExampleBlockBody({
   const docIdRef = useRef<string | null>(docId);
   docIdRef.current = docId;
 
+  // THE float editability gate (task 1546): main's live read-only state.
+  const floatEditable = useFloatEditable(mainEditor);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       // Virgil's own spellchecker (task 518) — see `EditorExtensionsCtx`.
       spellcheckPortRef,
       surface: "float",
-      editable: mainEditable,
+      editable: floatEditable,
       cardContext: true,
       // Task 1170: the doc is exactly one exampleBlock — Cmd-A selects its
       // content, and no edit can leave the float without it.
@@ -171,7 +172,7 @@ export function ExampleBlockBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: mainEditable,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -258,18 +259,12 @@ export function ExampleBlockBody({
     reportWrite,
   } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,
   });
 
-  // Keep the float's editability in lock-step with the main doc's, in case
-  // read-only mode toggles after mount (collab pen handoff).
-  useEffect(() => {
-    if (floatEditor && floatEditor.isEditable !== mainEditable) {
-      floatEditor.setEditable(mainEditable);
-    }
-  }, [floatEditor, mainEditable]);
 
   return (
     <FloatBodyFrame

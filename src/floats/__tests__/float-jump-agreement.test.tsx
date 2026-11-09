@@ -360,6 +360,7 @@ function ParagraphBody({
   const { sourceMissing } = useFloatMainSync({
     mainEditor: main,
     floatEditor: float,
+    editable: true,
     floatId: `paragraph:${uuid}`,
     readSource: (doc: PMNode, hint: SourceRange | null) => {
       const src = findSourceNodeByUuid(doc, uuid, "paragraph", hint);

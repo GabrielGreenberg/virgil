@@ -58,6 +58,10 @@ export type SourcePodWriteOrigin =
 /** prosemirror-history / TipTap UndoRedo default `newGroupDelay`. */
 export const SOURCE_POD_GROUP_DELAY_MS = 500;
 
+/** What a pod write did: wrote, had nothing to write, or was dropped by a
+ *  transaction filter (read-only) — task 1546. */
+export type SourcePodWriteResult = "landed" | "unchanged" | "refused";
+
 interface LastRecordedWrite {
   /** The state the previous recorded write produced. */
   state: EditorState;
@@ -72,7 +76,9 @@ const lastRecorded = new WeakMap<EditorView, LastRecordedWrite>();
 /**
  * Write `attrs` onto the source pod at `pos` (whose node is `node`). Attrs
  * equal to what the node already holds are skipped; a write that changes
- * nothing dispatches nothing. Returns whether a transaction was dispatched.
+ * nothing dispatches nothing (`unchanged`). A dispatched write is MEASURED
+ * (task 1546): `refused` when a filter — the read-only enforcer — dropped it,
+ * so the caller can say so instead of showing text the paper never got.
  */
 export function writeSourcePodAttrs(
   view: EditorView,
@@ -80,11 +86,11 @@ export function writeSourcePodAttrs(
   node: PMNode,
   attrs: Record<string, unknown>,
   origin: SourcePodWriteOrigin,
-): boolean {
+): SourcePodWriteResult {
   const changed = Object.keys(attrs).filter(
     (k) => node.attrs[k] !== attrs[k],
   );
-  if (changed.length === 0) return false;
+  if (changed.length === 0) return "unchanged";
   const tr = view.state.tr;
 
   if (origin.kind === "float") {
@@ -95,7 +101,9 @@ export function writeSourcePodAttrs(
     tr.setMeta(FLOAT_WRITE_META, origin.floatId);
     lastRecorded.delete(view);
     view.dispatch(tr);
-    return true;
+    // A filtered transaction leaves the SAME doc object (`dispatchLanded`'s
+    // question, drop-mode/commit-seam.ts).
+    return view.state.doc !== tr.before ? "landed" : "refused";
   }
 
   for (const k of changed) tr.setNodeAttribute(pos, k, attrs[k]);
@@ -123,5 +131,5 @@ export function writeSourcePodAttrs(
     // Filtered (read-only enforcer) — nothing to join next time.
     lastRecorded.delete(view);
   }
-  return true;
+  return view.state.doc !== tr.before ? "landed" : "refused";
 }

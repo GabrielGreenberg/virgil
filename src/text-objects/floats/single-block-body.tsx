@@ -71,6 +71,7 @@ import { useSpellcheckPortRef } from "@/lib/spell/spellcheck-context";
 import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import {
   type FloatSourceKind,
+  useFloatEditable,
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
@@ -268,6 +269,8 @@ export function SingleBlockBody({
   onConfirmHeadingDeleteRef.current = (typeName) =>
     ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
+  // THE float editability gate (task 1546): main's live read-only state ∧ this body's own static reason.
+  const floatEditable = useFloatEditable(mainEditor, config.editable);
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
@@ -280,7 +283,7 @@ export function SingleBlockBody({
       // Read-only kinds (displayMath) build the float editor non-editable;
       // floats gate editability via TipTap's own `editable` flag (the main
       // surface uses the readOnlyEnforcer plugin instead — see editor-extensions).
-      editable: config.editable,
+      editable: floatEditable,
       cardContext: true,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
@@ -296,7 +299,7 @@ export function SingleBlockBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: config.editable,
+    editable: floatEditable,
     immediatelyRender: false,
     editorProps: {
       // A nested editor scrolls only its own box, never the document row (task 1424).
@@ -380,6 +383,7 @@ export function SingleBlockBody({
     reportWrite,
   } = useFloatMainSync({
     mainEditor,
+    editable: floatEditable,
     floatEditor,
     floatId,
     readSource,
