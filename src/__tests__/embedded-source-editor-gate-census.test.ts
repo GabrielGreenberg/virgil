@@ -64,8 +64,9 @@ const CODEMIRROR = "@uiw/react-codemirror";
 /** Handing a mounted surface its editability from the caller's own value —
  *  what makes a module a DELEGATING surface rather than a gate-holder. */
 const DELEGATES_EDITABILITY = /editable=\{/;
-/** Writing a ProseMirror node attribute — the two spellings in this tree. */
-const ATTR_WRITE = /\bupdateAttributes\b|\bsetNodeMarkup\b/;
+/** Writing a ProseMirror node attribute — the spellings in this tree (the
+ *  third is the source pods' own write door, task 1533). */
+const ATTR_WRITE = /\bupdateAttributes\b|\bsetNodeMarkup\b|\bwriteSourcePodAttrs\b/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const full of walkFiles(dir, { skipDirs: ["__tests__"] })) if (/\.tsx?$/.test(full)) out.push(full);

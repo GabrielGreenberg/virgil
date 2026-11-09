@@ -15,6 +15,7 @@ import {
   useFieldEditSession,
 } from "@/lib/field-edit-session";
 import { useMainEditable } from "@/components/editor-layout/contexts/use-main-editable";
+import { writeSourcePodAttrs } from "@/lib/tiptap/source-pod-write";
 import { useIsFloatPopped } from "@/hooks/usePoppedCards";
 import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 import { parTitleAffordance } from "@/lib/par-title-affordance";
@@ -138,10 +139,18 @@ export default function SourcePodNodeView({
   node,
   updateAttributes,
   deleteNode,
+  getPos,
   editor,
   config,
   cardContext,
 }: Pick<NodeViewProps, "node" | "updateAttributes" | "deleteNode"> & {
+  /**
+   * The node's position getter — with `editor`, what routes every attr write
+   * through the ONE source-pod write door (`writeSourcePodAttrs`, task 1533)
+   * as per-attr `AttrStep`s. Optional for a bare unit mount, which falls back
+   * to `updateAttributes`.
+   */
+  getPos?: NodeViewProps["getPos"];
   /**
    * The editor this pod is mounted in — the ONE thing a wearer has to hand
    * over for the read-only gate below (task 728). Optional so a bare unit
@@ -197,7 +206,7 @@ export default function SourcePodNodeView({
    * partner-claimed is enforced downstream by `readOnlyEnforcer`'s
    * `filterTransaction`, which drops any `docChanged` transaction without the
    * `ignoreReadOnly` meta — and EVERY write this pod makes is a
-   * `setNodeMarkup` through `updateAttributes`, so every one of them is
+   * attr write on the main doc (`writeSourcePodAttrs`), so every one of them is
    * dropped. Ungated, the pod therefore accepted a whole tikz picture or
    * forest tree, showed it as if saved, and lost it at the next re-render.
    *
@@ -212,6 +221,27 @@ export default function SourcePodNodeView({
    * `.ProseMirror[data-editable="false"]` block in globals.css.
    */
   const editable = useMainEditable(editor ?? null);
+
+  /**
+   * Every in-place attr write — code, title, fold — through the ONE source-pod
+   * door (task 1533): per-attr `AttrStep`s, so a main undo of one attr never
+   * restores a whole-node snapshot over the others (or over code a float typed
+   * since). `node` is read at call time from the live doc, not this render's
+   * prop, so the door's equality bail sees what main actually holds.
+   */
+  const writeAttrs = useCallback(
+    (attrs: Record<string, unknown>) => {
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (!editor || typeof pos !== "number") {
+        updateAttributes(attrs);
+        return;
+      }
+      const live = editor.state.doc.nodeAt(pos);
+      if (!live) return;
+      writeSourcePodAttrs(editor.view, pos, live, attrs, { kind: "in-place" });
+    },
+    [editor, getPos, updateAttributes],
+  );
 
   // ONE derivation per (kind, source) — the tree and its badge are two halves
   // of a single verdict and must never come from two parses (pod-config.tsx).
@@ -245,9 +275,9 @@ export default function SourcePodNodeView({
       // Belt to the CodeMirror `editable={editable}` braces below: a
       // read-only pod must not dispatch a write the enforcer would drop.
       if (!editable) return;
-      if (val !== source) updateAttributes({ [config.sourceAttr]: val });
+      if (val !== source) writeAttrs({ [config.sourceAttr]: val });
     },
-    [editable, source, updateAttributes, config.sourceAttr],
+    [editable, source, writeAttrs, config.sourceAttr],
   );
 
   const setTitle = useCallback(
@@ -258,9 +288,9 @@ export default function SourcePodNodeView({
       // must not dispatch a transaction (an undo step and an autosave arm for
       // an edit that changed nothing).
       if (trimmed === title) return;
-      updateAttributes({ parTitle: trimmed });
+      writeAttrs({ parTitle: trimmed });
     },
-    [editable, title, updateAttributes],
+    [editable, title, writeAttrs],
   );
 
   const toggleCollapsed = useCallback(() => {
@@ -268,8 +298,8 @@ export default function SourcePodNodeView({
     // and is dropped read-only. The chevron and the collapsed preview hide
     // themselves below rather than offer a fold that silently fails.
     if (!editable) return;
-    updateAttributes({ collapsed: !collapsed });
-  }, [editable, collapsed, updateAttributes]);
+    writeAttrs({ collapsed: !collapsed });
+  }, [editable, collapsed, writeAttrs]);
 
   // Auto-focus + select on enter-edit-mode.
   useEffect(() => {

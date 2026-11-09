@@ -166,7 +166,21 @@ export function editStructuredNodeByUuid(
     if (!shallowEqualAttrs(node.attrs as Record<string, unknown>, nextAttrs)) {
       // `mapping` keeps the attr edit valid after a content replace above.
       const mappedPos = tr.mapping.map(pos);
-      tr = tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+      if (node.isLeaf) {
+        // A LEAF's `setNodeMarkup` is a whole-node ReplaceStep whose undo
+        // restores EVERY attr — for a source pod (texBlock/forestBlock), its
+        // code too, over whatever a popped-out float typed since (task 1533).
+        // Per-attr AttrSteps undo only what this edit changed, and are the
+        // shape `writeSourcePodAttrs` (the pods' own door) records.
+        const norm = (v: unknown) => (v === undefined ? null : v);
+        for (const k of Object.keys(node.attrs)) {
+          if (norm(node.attrs[k]) !== norm(nextAttrs[k])) {
+            tr = tr.setNodeAttribute(mappedPos, k, norm(nextAttrs[k]));
+          }
+        }
+      } else {
+        tr = tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+      }
       changed = true;
     }
   }
