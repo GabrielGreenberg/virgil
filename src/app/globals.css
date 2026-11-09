@@ -6929,6 +6929,12 @@ body.perf-contain .static-borrowed-text {
      and pinned (the sticky offset) alike. */
   top: var(--gutter-inset);
   margin-top: var(--gutter-inset);
+  /* A sticky box rides up once its containing block ends, and the column's
+     row ends `--pod-gap` above the scrollport while the gutter ends only
+     `--gutter-inset` above it — so at max scroll it slid up the difference.
+     The negative bottom margin takes it out of that last stretch: the column
+     still ends where it did, the gutter stays pinned to the end. */
+  margin-bottom: calc(-1 * var(--pod-gap));
   /* Two halves split ONE fixed height (the visible pane), each scrolling on
      its own, so the list icons stay in reach however long the tool runs. */
   height: calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--gutter-inset));
