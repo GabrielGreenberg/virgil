@@ -80,7 +80,7 @@
  * that never asked Keep/Revert.
  *
  * KEYSTROKE SANCTITY: runs only on an explicit user lifecycle action (trash /
- * kind-chevron click), never per transaction.
+ * kind-chevron / archive click), never per transaction.
  */
 
 import { CARD_REGISTRY, canMorphCard } from "../card-registry";
@@ -127,7 +127,7 @@ export interface CardLifecycleDeps {
   /** Perform the data mutation (the per-doc hook op). Awaited so the signal /
    *  remap that follow see the post-mutation state. */
   mutate: () => void | Promise<void>;
-  /** The SETTLE obligation (obligation 2). OPTIONAL: a host with no
+  /** The SETTLE obligation. OPTIONAL: a host with no
    *  pending-change wiring — a test, or the flag-OFF path where no card can
    *  ever reach `status:"applied"` — omits it and the step is skipped entirely
    *  (byte-identical to pre-238 behaviour). When present it is consulted for
@@ -140,7 +140,7 @@ export interface CardLifecycleDeps {
    *  event can only reach the store of the pane that ran it (task 739). A door
    *  that forgets it is a compile error, not a cross-doc leak. */
   signal: CardLifecycleSink;
-  /** The FINALIZE obligation (obligation 5, task 1046): hand the ENDED record
+  /** The FINALIZE obligation (task 1046): hand the ENDED record
    *  to the proposal leave rule (`finalizeLeavingProposal` in
    *  `src/links/proposal-finalize.ts`), which ends the Task an AI proposal
    *  answers and ignores every other record. OPTIONAL like `appliedSplice`: a
@@ -156,7 +156,7 @@ export type LifecycleEvent =
       id: string;
       hasContent: boolean;
       /** The record as it stands before the delete, for FINALIZE (task 1046).
-       *  Omitted → obligation 5 is skipped (nothing to judge). */
+       *  Omitted → FINALIZE is skipped (nothing to judge). */
       card?: unknown;
     }
   | {
@@ -372,7 +372,7 @@ export function appliedSpliceSettleMessage(
 export type AppliedSpliceSettleOutcome = "none" | "settled" | "declined";
 
 /**
- * Obligation 2 — SETTLE, for ONE card, as a door any lifecycle surface can
+ * SETTLE — for ONE card, as a door any lifecycle surface can
  * knock on. `"declined"` means the event must NOT proceed, which cancels it
  * whole (nothing mutated, nothing signalled). Two ways that happens, and they
  * are the same judgement: the splice is still live and we are not allowed to
@@ -426,7 +426,7 @@ async function settleAppliedSplice(
   return settleAppliedSpliceForCard(ev.type, kind, ev.id, deps.appliedSplice);
 }
 
-/** Obligation 5 — FINALIZE (task 1046). Runs after a committed mutation. */
+/** FINALIZE (task 1046). Runs after a committed mutation. */
 function finalizeEndedRecord(
   ev: LifecycleEvent,
   settled: AppliedSpliceSettleOutcome,
