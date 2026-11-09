@@ -28,6 +28,7 @@
 import { useEffect, useRef } from "react";
 import { isKeyOwner, popDialog, pushDialog } from "./dialog-stack";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
+import { readFocusHolder } from "@/lib/focus-holder";
 
 /**
  * Give focus back, on close, to whatever held it when the dialog opened.
@@ -38,16 +39,11 @@ import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 export function useDialogFocusRestore(open: boolean): void {
   useEffect(() => {
     if (!open) return;
-    const previous = document.activeElement;
     // Nothing was focused (or only the document itself was) ⇒ nothing to give
-    // back; `<body>` is where focus lands anyway once the portal goes.
-    if (
-      !previous ||
-      previous === document.body ||
-      previous === document.documentElement
-    ) {
-      return;
-    }
+    // back; `<body>` is where focus lands anyway once the portal goes. The read
+    // is shared with `MenuProvider`'s Escape ladder (task 1542).
+    const previous = readFocusHolder();
+    if (!previous) return;
     return () => {
       // STAND DOWN when something else has already claimed focus during the
       // close. By the time a passive cleanup runs the portal is already
@@ -64,8 +60,7 @@ export function useDialogFocusRestore(open: boolean): void {
       // the card the confirm just deleted, the grab handle of the block it
       // removed — restores NOTHING, rather than guessing a substitute target.
       if (!previous.isConnected) return;
-      const el = previous as HTMLElement;
-      if (typeof el.focus !== "function") return;
+      const el = previous;
       try {
         // `preventScroll` because a restore is a FOCUS, not a NAVIGATION: the
         // caret was already where the user left it, and yanking the viewport to

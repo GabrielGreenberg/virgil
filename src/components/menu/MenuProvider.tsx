@@ -55,6 +55,7 @@ import {
 import { MenuRegistry } from "./registry";
 import { useMenuDismiss } from "./useMenuDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
+import { readFocusHolder } from "@/lib/focus-holder";
 import type {
   MenuDismissConfig,
   MenuLayout,
@@ -138,7 +139,12 @@ export interface MenuProviderProps {
    * Escape may sit on a clicked row). Supplying a host therefore IS supplying a
    * return target; the contract is structural, not opt-in per caller. A host
    * INSIDE the menu (a combobox's own `<input>`) is no target — it unmounts with
-   * the menu. An editor-anchored menu's host is the PM view's editable, and the
+   * the menu — so the ladder's LAST rung (task 1542) is whatever held focus
+   * just before the menu opened (`readFocusHolder`, the read the dialog shell's
+   * restore shares), under the same outside-and-connected rule: the paper's
+   * editable for a caret-opened `\cite` / `\ref` popover, the opening button
+   * for a Library picker, and nothing at all when nothing was focused. An
+   * editor-anchored menu's host is the PM view's editable, and the
    * return is a native `focus({ preventScroll: true })`, never TipTap's
    * `focus()` (Refocus is not navigation): ProseMirror restores its own
    * selection on focus, so the caret stays where it was and nothing scrolls.
@@ -376,8 +382,14 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   useLayoutEffect(() => {
     hostGetterRef.current = getActiveDescendantHost;
   });
+  // And the element that held focus BEFORE the menu took it (task 1542) — the
+  // ladder's last rung, for a host that lives INSIDE the menu (a combobox's own
+  // `<input>`, which unmounts with it). Read in the same mount layout effect,
+  // which runs before any child's focus-on-mount passive effect or rAF.
+  const openPriorFocusRef = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     openHostRef.current = hostGetterRef.current?.() ?? null;
+    openPriorFocusRef.current = readFocusHolder();
   }, []);
   const hasHost = !!getActiveDescendantHost;
   const cancelDoor = useMemo(() => {
@@ -390,7 +402,9 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       const captured = openHostRef.current;
       if (outside(captured)) return captured;
       const live = hostGetterRef.current?.() ?? null;
-      return outside(live) ? live : null;
+      if (outside(live)) return live;
+      const prior = openPriorFocusRef.current;
+      return outside(prior) ? prior : null;
     };
     return () => {
       const target = resolveTarget();
