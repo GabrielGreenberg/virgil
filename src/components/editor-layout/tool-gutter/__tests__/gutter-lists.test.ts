@@ -123,13 +123,17 @@ describe("bibliography", () => {
     expect(groups[0].rows[0].entityId).toBe("odd2001");
   });
 
-  it("A–Z: letter dividers, a count for repeat citations, then Needs attention", () => {
+  it("A–Z: one continuous list in author order, a count for repeat citations, then Needs attention", () => {
     const groups = bibliographyGroups(entries, cites, sections, "az");
-    expect(groups.map((g) => g.label)).toEqual(["B", "G", "Needs attention"]);
-    expect(groups[1].rows[0].count).toBe(2);
-    const attention = groups[2].rows;
+    expect(groups.map((g) => g.label)).toEqual(["", "Needs attention"]);
+    expect(groups[0].rows.map((r) => r.entityId)).toEqual(["bolter2001", "grafton1997"]);
+    expect(groups[0].rows[1].count).toBe(2);
+    const attention = groups[1].rows;
     expect(attention[0]).toMatchObject({ entityId: "nonexistent2026", missing: true });
     expect(attention[1]).toMatchObject({ entityId: "mckenzie1999", muted: true });
+    // "Cited only" leaves out the uncited entries, not the missing keys.
+    const citedOnly = bibliographyGroups(entries, cites, sections, "az", true);
+    expect(citedOnly[1].rows.map((r) => r.entityId)).toEqual(["nonexistent2026"]);
   });
 
   it("as cited: section groups in citation order, a later use dimmed with ↺", () => {

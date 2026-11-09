@@ -124,8 +124,8 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      anchors' own nodes, re-synced on structural revisions only). Footnotes group
      under their top-level sections, numbered as the paper does, with orphaned
      and unanchored ones last; the … menu adds one and picks Active/Archives/All.
-     The bibliography toggles A–Z (the reference as it will print, letter
-     dividers, "N×") and As cited (section groups, a repeat dimmed with ↺), both
+     The bibliography toggles A–Z (the references as they will print, one
+     continuous list in author order, "N×") and As cited (section groups, a repeat dimmed with ↺), both
      ending in "Needs attention" (cited but not in the .bib, then uncited); its …
      menu has cited-only and Export cited.bib (`@/lib/bib-export-cited`, shared
      with the panel). Examples show "(N)", lettered sub-items, a gloss's first

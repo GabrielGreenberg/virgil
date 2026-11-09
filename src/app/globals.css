@@ -7042,10 +7042,6 @@ body.perf-contain .static-borrowed-text {
   font-weight: 600;
   color: var(--muted);
 }
-.gutter-list-group[data-group-style="letter"] .gutter-list-group-head {
-  padding-top: 6px;
-  color: var(--muted-light);
-}
 .gutter-list-group[data-group-style="attention"] .gutter-list-group-head {
   padding-top: 14px;
 }

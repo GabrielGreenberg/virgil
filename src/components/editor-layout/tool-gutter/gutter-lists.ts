@@ -69,8 +69,7 @@ export interface GutterListGroup {
   /** "" for an untitled run (before the first heading). */
   label: string;
   number?: string;
-  /** A letter divider (A–Z) reads lighter than a section heading. */
-  style?: "section" | "letter" | "attention";
+  style?: "section" | "attention";
   rows: GutterListRow[];
 }
 
@@ -351,6 +350,7 @@ function attentionGroup(
   entries: readonly BibEntry[],
   byKey: Map<string, string[]>,
   firstPos: Map<string, number>,
+  citedOnly: boolean,
 ): GutterListGroup | null {
   const known = new Set(entries.map((e) => e.key));
   const rows: GutterListRow[] = [];
@@ -369,7 +369,7 @@ function attentionGroup(
       bibKey: key,
     });
   }
-  for (const e of [...entries].sort(byFiling)) {
+  for (const e of citedOnly ? [] : [...entries].sort(byFiling)) {
     if (byKey.has(e.key)) continue;
     rows.push({ ...bibRow(e, []), key: `bib-uncited:${e.uid || e.key}`, muted: true, sub: "Not cited" });
   }
@@ -389,11 +389,11 @@ function byFiling(a: BibEntry, b: BibEntry): number {
 }
 
 /**
- * The bibliography two ways. `az`: the reference list as it will print, under
- * letter dividers. `cited`: each section's sources in first-citation order,
+ * The bibliography two ways. `az`: the reference list as it will print, one
+ * continuous run in author order. `cited`: each section's sources in first-citation order,
  * a later use of an entry dimmed with ↺. Both end with "Needs attention".
- * `citedOnly` drops uncited entries from the A–Z list (they still show in
- * "Needs attention").
+ * `citedOnly` leaves the uncited entries out of "Needs attention" (a cited
+ * key missing from the .bib still shows).
  */
 export function bibliographyGroups(
   entries: readonly BibEntry[],
@@ -413,17 +413,13 @@ export function bibliographyGroups(
   const groups: GutterListGroup[] = [];
 
   if (mode === "az") {
-    const rows = unique.filter((e) => byKey.has(e.key) || !citedOnly).sort(byFiling);
-    let letter = "";
-    for (const e of rows) {
-      if (!byKey.has(e.key)) continue; // uncited ones read under "Needs attention"
-      const L = (filingKey(e)[0] ?? "#").toUpperCase();
-      if (L !== letter) {
-        letter = L;
-        groups.push({ key: `bib:letter:${L}`, label: L, style: "letter", rows: [] });
-      }
-      groups[groups.length - 1].rows.push(bibRow(e, byKey.get(e.key) ?? []));
-    }
+    // One continuous list, as it will print — no letter dividers (Gabriel,
+    // 2026-11-09). Uncited entries read under "Needs attention".
+    const rows = unique
+      .filter((e) => byKey.has(e.key))
+      .sort(byFiling)
+      .map((e) => bibRow(e, byKey.get(e.key) ?? []));
+    if (rows.length) groups.push({ key: "bib:az", label: "", rows });
   } else {
     // One row per entry per section, at its first citation there, with "N×"
     // when the section cites it more than once; ↺ only when an EARLIER
@@ -466,7 +462,7 @@ export function bibliographyGroups(
     }
     groups.push(...bySection(cited, sections, "bib"));
   }
-  const attention = attentionGroup(unique, byKey, firstPos);
+  const attention = attentionGroup(unique, byKey, firstPos, citedOnly);
   if (attention) groups.push(attention);
   return groups;
 }
