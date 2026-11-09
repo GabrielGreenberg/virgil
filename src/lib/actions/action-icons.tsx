@@ -46,6 +46,11 @@ export interface CardActionPresentation {
   separator?: boolean;
   /** Render with destructive (red) styling. */
   destructive?: boolean;
+  /** Named keys that ALSO run this row while its menu is open — for a row whose
+   *  painted `letter` is a glyph, not a typeable key (Delete's "⌫" answers to
+   *  Backspace / Delete). Declared HERE, on the row, so every surface that
+   *  renders the row binds the same keys its hint paints (task 1538). */
+  keyAliases?: readonly string[];
 }
 
 /**
@@ -70,7 +75,13 @@ export const CARD_ACTION_PRESENTATION: Readonly<
   report: { label: "Request report", letter: "R", icon: <IconReports size={16} /> },
   duplicate: { label: "Duplicate", letter: "D", icon: <IconDuplicate size={16} />, separator: true },
   archive: { label: "Archive", letter: "A", icon: <IconArchive size={16} />, separator: true },
-  delete: { label: "Delete", letter: "⌫", icon: <IconTrash size={16} />, destructive: true },
+  delete: {
+    label: "Delete",
+    letter: "⌫",
+    keyAliases: ["Backspace", "Delete"],
+    icon: <IconTrash size={16} />,
+    destructive: true,
+  },
 };
 
 /**
