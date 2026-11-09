@@ -16,6 +16,7 @@ import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
 import type { BibEntry, FootnoteRef, OrphanedFootnote } from "@/lib/types";
 import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import { bibFieldDisplay } from "@/lib/bib-parser";
+import { footnoteLabel } from "@/lib/footnote-numbering";
 import { bibShortLabel, rowEntityId, type GutterJump, type GutterRow } from "./gutter-rows";
 
 /** What an open row mounts — the kind's own card. */
@@ -145,10 +146,10 @@ function bySection(
 
 // ── Footnotes ─────────────────────────────────────────────────────────────
 
-/** The marker the paper prints: the `\footnote[n]` override, `*` for
- *  `\thanks`, else the running number. */
+/** The marker the paper prints — through the one footnote-label door
+ *  (`footnoteLabel`), so the gutter can never disagree with the text. */
 export function footnoteMarker(f: FootnoteInfo): string {
-  return f.numberOverride ? String(f.numberOverride) : f.thanks ? "*" : String(f.number);
+  return footnoteLabel(f);
 }
 
 /**

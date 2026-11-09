@@ -64,7 +64,7 @@ describe("footnoteGroups", () => {
       sections,
     );
     expect(groups.map((g) => [g.number, g.label, g.rows.map((r) => r.marker)])).toEqual([
-      ["1", "Introduction", ["*"]],
+      ["1", "Introduction", ["A"]],
       ["2", "Method", ["2", "9"]],
     ]);
   });
