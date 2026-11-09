@@ -780,11 +780,12 @@ function inspectMarkStep(
  *     display resolves against), because `inspectNodeAt` emits the label entry.
  *     The hand-rolled branch synthesised headings and figures and forgot it.
  *
- * Nothing in `src` emits a raw `AttrStep` today — every writer goes through
- * `setNodeMarkup`, which on a non-leaf node produces a `ReplaceAroundStep` and
- * on a leaf a `ReplaceStep` (task 247). This branch is the defensive fallback
- * that must be right on the day one finally fires; congruence with the live
- * range path is what makes that checkable.
+ * Most writers go through `setNodeMarkup`, which on a non-leaf node produces a
+ * `ReplaceAroundStep` and on a leaf a `ReplaceStep` (task 247). Since task 1533
+ * the RECORDED attr writes to a leaf — the source pods' in-place door
+ * (`writeSourcePodAttrs`) and a leaf's structural attr edit — emit raw
+ * `AttrStep`s, so this branch is live; congruence with the range path is what
+ * makes it checkable.
  */
 function inspectAttrStep(step: AttrStep, c: StepCoords, sink: DiffSink): void {
   // `step.pos` is in `c.stepDoc` — NOT in `oldDoc`. Reading `oldDoc.nodeAt` /
@@ -802,7 +803,7 @@ function inspectAttrStep(step: AttrStep, c: StepCoords, sink: DiffSink): void {
   const afterNode = res.deleted ? null : c.newDoc.nodeAt(res.pos);
   if (!afterNode || afterNode.type !== beforeNode.type) return;
   // An AttrStep moves nothing, so both sides share one parent shape; the
-  // O(depth) resolve runs only on this never-emitted defensive branch.
+  // O(depth) resolve is per attr write, never per main-text keystroke.
   inspectNodeAt(beforeNode, step.pos, sink.removed, c.stepDoc, c.back, c.stepDoc.resolve(step.pos).parent);
   inspectNodeAt(afterNode, res.pos, sink.added, c.newDoc, null, c.newDoc.resolve(res.pos).parent);
   noteOrderFlags(sink);

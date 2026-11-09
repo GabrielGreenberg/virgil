@@ -21,6 +21,7 @@ export default function TexBlockNodeView({
   node,
   updateAttributes,
   deleteNode,
+  getPos,
   editor,
   extension,
 }: NodeViewProps) {
@@ -31,6 +32,7 @@ export default function TexBlockNodeView({
       node={node}
       updateAttributes={updateAttributes}
       deleteNode={deleteNode}
+      getPos={getPos}
       editor={editor}
       cardContext={opts.cardContext === true}
       config={TEX_POD_CONFIG}
