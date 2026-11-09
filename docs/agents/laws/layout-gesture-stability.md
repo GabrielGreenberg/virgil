@@ -1,4 +1,4 @@
-<!-- last-verified: d4a1a53a 2026-11-08 -->
+<!-- last-verified: 0ea66658 2026-11-09 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Layout-gesture stability
