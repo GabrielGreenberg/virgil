@@ -28,6 +28,7 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { coerceSuggestionStatus } from "@/cards/suggestion-status";
 import {
   bridgeCardAiRequestFlag,
   bridgeFlagForCard,
@@ -106,13 +107,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
   const r = (raw ?? {}) as Partial<CutterSuggestionCard>;
   if (!r.id) return null;
   const links = migrateCardLinks("cutter-suggestion", raw);
-  const status: CutterSuggestionCard["status"] =
-    r.status === "accepted" ||
-    r.status === "rejected" ||
-    r.status === "applied" ||
-    r.status === "stale"
-      ? r.status
-      : "pending";
+  const status: CutterSuggestionCard["status"] = coerceSuggestionStatus(r.status);
   return carryUnknownKeys<CutterSuggestionCard>(raw, {
     kind: "suggestion",
     id: r.id,

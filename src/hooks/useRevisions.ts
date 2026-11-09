@@ -28,6 +28,7 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { coerceSuggestionStatus } from "@/cards/suggestion-status";
 import {
   bridgeCardAiRequestFlag,
   bridgeFlagForCard,
@@ -108,13 +109,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
   const r = (raw ?? {}) as Partial<RevisionSuggestionCard>;
   if (!r.id) return null;
   const links = migrateCardLinks("revision-suggestion", raw);
-  const status: RevisionSuggestionCard["status"] =
-    r.status === "accepted" ||
-    r.status === "rejected" ||
-    r.status === "applied" ||
-    r.status === "stale"
-      ? r.status
-      : "pending";
+  const status: RevisionSuggestionCard["status"] = coerceSuggestionStatus(r.status);
   return carryUnknownKeys<RevisionSuggestionCard>(raw, {
     kind: "suggestion",
     id: r.id,
