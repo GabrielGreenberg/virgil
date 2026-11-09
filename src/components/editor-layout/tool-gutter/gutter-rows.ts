@@ -28,6 +28,7 @@ import type { LatexError } from "@/lib/latex-errors";
 import type { CardWithLinks } from "@/links/links";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { footnoteLabel } from "@/lib/footnote-numbering";
+import { isResolvedSuggestionStatus } from "@/cards/suggestion-status";
 import { bibFieldDisplay } from "@/lib/bib-parser";
 import { suggestionReplacement } from "@/panels/_shared/suggestion-field-vocabulary";
 
@@ -56,7 +57,7 @@ export interface GutterRow {
   text: string;
   /** To-do rows: the id the checkbox toggles, and its state. */
   todo?: { id: string; done: boolean };
-  /** Dim the row (a done to-do, an applied change). */
+  /** Dim the row (a done to-do, a settled — accepted/rejected — change). */
   muted?: boolean;
   jump: GutterJump;
 }
@@ -309,7 +310,10 @@ function changeRows(
         jump: { kind: "card", slot, card: c },
       };
     }
-    const done = c.status === "applied" || c.status === "accepted" || c.status === "rejected";
+    // Settled is the SSOT's word, not this file's (task 1539): an `applied`
+    // change still awaits Keep/Revert, so it is OPEN — labelled, not dimmed,
+    // exactly as the margin still marks it.
+    const settled = isResolvedSuggestionStatus(c.status);
     // The replacement the APPLY path would use (the user's own text wins).
     const replacement = suggestionReplacement(c);
     const text = replacement
@@ -319,10 +323,11 @@ function changeRows(
         : c.explanation || c.instructions;
     return {
       key: `${prefix}:${c.id}`,
-      // A settled change says its state in a word; the row is also dimmed.
-      marker: done ? c.status : "",
+      // Any non-drafted change says its state in a word (`applied`, `stale`,
+      // `accepted`, `rejected`); only a settled one is also dimmed.
+      marker: c.status === "pending" ? "" : c.status,
       text: oneLine(text),
-      muted: done,
+      muted: settled,
       jump: { kind: "card", slot, card: c },
     };
   });

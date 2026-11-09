@@ -19,7 +19,12 @@
 //      (`SuggestionStatus`);
 //   3. no caller injects the status literals a verb writes (the deleted
 //      `appliedStatus`/`staleStatus`/`acceptedStatus`/`rejectedStatus` deps —
-//      a parameter whose value was always the same constant).
+//      a parameter whose value was always the same constant);
+//   4. (task 1539) no source hand-spells a SUBSET of the vocabulary as a
+//      disjunction (`status === "accepted" || status === "rejected"`, the
+//      gutter's old `applied|accepted|rejected` "settled" set, a migrator's
+//      member list) — ask `isResolvedSuggestionStatus` /
+//      `coerceSuggestionStatus` / `isSuggestionStatus`.
 
 import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
@@ -91,5 +96,23 @@ describe("applied-pending predicate CENSUS (task 1499)", () => {
       .filter((f) => /\b(?:applied|stale|accepted|rejected)Status\s*:/.test(f.code))
       .map((f) => f.rel);
     expect(offenders).toEqual([]);
+  });
+
+  it("no hand-spelled disjunction of suggestion statuses outside the owner (task 1539)", () => {
+    const LEG = String.raw`[\w.?]*status\s*[!=]==?\s*["'](?:applied|stale|accepted|rejected)["']`;
+    const re = new RegExp(`${LEG}\\s*\\|\\|\\s*${LEG}`, "g");
+    const offenders: string[] = [];
+    for (const f of files) {
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(f.code))) {
+        offenders.push(`${f.rel}:${f.code.slice(0, m.index).split("\n").length}`);
+      }
+    }
+    expect(
+      offenders,
+      "read src/cards/suggestion-status.ts (isResolvedSuggestionStatus / coerceSuggestionStatus)",
+    ).toEqual([]);
+    // Non-vacuity: the pattern catches the shape it bans.
+    expect(re.test('if (c.status === "accepted" || c.status === "rejected") {}')).toBe(true);
   });
 });

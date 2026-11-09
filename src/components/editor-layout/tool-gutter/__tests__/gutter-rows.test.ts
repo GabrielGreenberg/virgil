@@ -133,15 +133,28 @@ describe("citationRows / bibliographyRows", () => {
 });
 
 describe("revisionRows", () => {
-  it("says a suggestion as original → suggested and dims a settled one", () => {
+  it("says a suggestion as original → suggested; labels every non-drafted status, dims only a settled one (task 1539)", () => {
+    const sug = (id: string, status: string) => ({
+      kind: "suggestion", id, original_text: "old", suggested_text: "new", status,
+      explanation: "", user_text: "", instructions: "", author: "ai", createdAt: "", links: [],
+    });
     const cards = [
       { kind: "comment", id: "r1", text: "Tighten this", content: null, aiRequest: false, createdAt: "", links: [] },
-      { kind: "suggestion", id: "r2", original_text: "old", suggested_text: "new", status: "applied", explanation: "", user_text: "", instructions: "", author: "ai", createdAt: "", links: [] },
+      sug("r2", "pending"),
+      // Applied = spliced, still awaiting Keep/Revert: OPEN, as the margin says.
+      sug("r3", "applied"),
+      sug("r4", "stale"),
+      sug("r5", "accepted"),
+      sug("r6", "rejected"),
     ] as unknown as RevisionCard[];
     const rows = revisionRows(cards, NONE);
     expect(rows.map((r) => [r.marker, r.text, !!r.muted])).toEqual([
       ["", "Tighten this", false],
-      ["applied", "old → new", true],
+      ["", "old → new", false],
+      ["applied", "old → new", false],
+      ["stale", "old → new", false],
+      ["accepted", "old → new", true],
+      ["rejected", "old → new", true],
     ]);
   });
 });

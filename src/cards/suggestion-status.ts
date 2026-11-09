@@ -51,6 +51,22 @@ export const SUGGESTION_STATUSES = [
 ] as const;
 export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
 
+/** True iff `status` is a member of the suggestion status vocabulary. */
+export function isSuggestionStatus(status: unknown): status is SuggestionStatus {
+  return typeof status === "string" && (SUGGESTION_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * A loaded record's status, read against the vocabulary (task 1539): a member
+ * survives; anything else — absent, misspelled, from a newer build — is the
+ * drafted `pending` stage. Read by both families' sidecar migrators, which once
+ * each hand-listed the members (so a status added above would have been
+ * silently coerced to `pending` on load).
+ */
+export function coerceSuggestionStatus(status: unknown): SuggestionStatus {
+  return isSuggestionStatus(status) ? status : "pending";
+}
+
 /** The members of `T` that declare an `appliedChange`, with it present. */
 export type AppliedPending<T> = T extends unknown
   ? "appliedChange" extends keyof T
