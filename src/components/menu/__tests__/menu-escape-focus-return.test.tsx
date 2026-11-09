@@ -132,12 +132,71 @@ describe("Escape's focus return defaults from the activedescendant host (task 13
     expect(document.activeElement).toBe(elsewhere);
   });
 
-  it("a host INSIDE the menu (a combobox's own input) is no target", () => {
+  it("a host INSIDE the menu with NOTHING focused before it opened: <body> (fail safe)", () => {
     render(<Harness host={() => byId("row")} />);
     byId("row").focus();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(byId("row")).toBeNull();
     expect(document.activeElement).toBe(document.body);
+  });
+});
+
+// Task 1542 — a combobox's host IS its own input, which unmounts with the
+// menu, so the ladder's last rung is whatever held focus before the menu
+// opened: the paper's editable for `\cite` / `\ref`, the opener otherwise.
+describe("Escape falls back to the PRIOR focus holder when the host is inside the menu (task 1542)", () => {
+  const focusedEditable = () => {
+    const editable = document.createElement("div");
+    editable.setAttribute("contenteditable", "true");
+    editable.tabIndex = 0; // jsdom: focusable
+    document.body.appendChild(editable);
+    editable.focus();
+    return editable;
+  };
+
+  it("a combobox-hosted menu opened from a focused editable returns there on Escape", () => {
+    const editable = focusedEditable();
+    render(<Harness host={() => byId("row")} />);
+    byId("row").focus(); // the combobox input takes focus on open
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(byId("row")).toBeNull();
+    expect(document.activeElement).toBe(editable);
+  });
+
+  it("the prior holder is read at OPEN: a later focus move does not change it", () => {
+    const editable = focusedEditable();
+    render(<Harness host={() => byId("row")} />);
+    byId("row").focus();
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(editable);
+  });
+
+  it("never steals: focus moved OUTSIDE the menu stays put", () => {
+    focusedEditable();
+    render(<Harness host={() => byId("row")} />);
+    const elsewhere = document.createElement("input");
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it("fails safe: a prior holder that has since unmounted restores nothing", () => {
+    const editable = focusedEditable();
+    render(<Harness host={() => byId("row")} />);
+    byId("row").focus();
+    editable.remove();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("a host OUTSIDE the menu still wins over the prior holder", () => {
+    focusedEditable();
+    render(<Harness host={() => byId("trigger")} />);
+    byId("row").focus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(byId("trigger"));
   });
 });
 
@@ -174,5 +233,24 @@ describe("CENSUS: every <MenuProvider> resolves an Escape focus-return target (t
       /\bgetActiveDescendantHost=/.test(tag) || /\breturnFocusOnCancel=/.test(tag),
       "a MenuProvider with no activedescendant host must name its trigger via returnFocusOnCancel, or declare returnFocusOnCancel={false}",
     ).toBe(true);
+  });
+
+  // Task 1542: a host prop is not proof of a target. A combobox caller
+  // (`keyboardSource="input"`) hosts on its OWN input, which the ladder rejects,
+  // so without an explicit `returnFocusOnCancel` it resolves a target only
+  // through the provider's prior-focus rung — pinned here so the census cannot
+  // again count such a caller as covered while the rung is missing.
+  it("combobox callers without an explicit target are covered by the prior-focus rung", () => {
+    // Raw source, not `codeOnly` — that blanks the `"input"` string literal.
+    const comboboxes = files.filter((f) => {
+      const raw = readFileSync(f, "utf8");
+      return /<MenuProvider\b/.test(raw) && /\bkeyboardSource="input"/.test(raw) && !/\breturnFocusOnCancel=/.test(raw);
+    });
+    expect(comboboxes.length).toBeGreaterThanOrEqual(2); // LabelRefPopover, BibEntryPickerMenu
+    const provider = codeOnly(
+      readFileSync(`${REPO_ROOT}/src/components/menu/MenuProvider.tsx`, "utf8"),
+    );
+    expect(provider).toMatch(/openPriorFocusRef\.current = readFocusHolder\(\)/);
+    expect(provider).toMatch(/const prior = openPriorFocusRef\.current;\s*return outside\(prior\) \? prior : null;/);
   });
 });
