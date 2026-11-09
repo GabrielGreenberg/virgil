@@ -6957,23 +6957,25 @@ body.perf-contain .static-borrowed-text {
   line-height: 1.375;
   color: var(--foreground);
 }
-/* A half is its icon row plus, when something is open, a scrolling body. A
-   closed half is just its row; an open one takes the room, and with BOTH open
-   they share it by `--tool-gutter-split` (the divider's position). */
+/* A half is its icon row plus, when something is open, a scrolling body.
+   With both lozenges showing the halves ALWAYS split the room by
+   `--tool-gutter-split` (the divider's position), open or closed — a closed
+   half is its lozenge over empty sand — so neither lozenge moves when a tool
+   or a list opens or closes. With no tools row (the Reader's lists only) the
+   one half takes the room when open. */
 .tool-gutter-half {
   display: flex;
   flex-direction: column;
   min-height: 0;
   flex: 0 0 auto;
 }
-.tool-gutter[data-top-open] > [data-gutter-half="top"],
-.tool-gutter[data-bottom-open] > [data-gutter-half="bottom"] {
+.tool-gutter:not([data-split])[data-bottom-open] > [data-gutter-half="bottom"] {
   flex: 1 1 0;
 }
-.tool-gutter[data-top-open][data-bottom-open] > [data-gutter-half="top"] {
+.tool-gutter[data-split] > [data-gutter-half="top"] {
   flex: var(--tool-gutter-split) 1 0;
 }
-.tool-gutter[data-top-open][data-bottom-open] > [data-gutter-half="bottom"] {
+.tool-gutter[data-split] > [data-gutter-half="bottom"] {
   flex: calc(1 - var(--tool-gutter-split)) 1 0;
 }
 .tool-gutter-scroll {
@@ -6982,10 +6984,6 @@ body.perf-contain .static-borrowed-text {
   overflow-y: auto;
   scrollbar-width: thin;
   padding-right: 4px;
-}
-/* With the top half closed, the two lozenges stack with the card's gap. */
-.tool-gutter:not([data-top-open]) > [data-gutter-half="bottom"] {
-  margin-top: var(--gutter-inset);
 }
 /* The divider between the halves: the shared gutter look (`band-grip`'s
    pill on hover/drag). It paints nothing at rest; the lozenge under it is

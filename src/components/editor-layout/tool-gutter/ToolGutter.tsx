@@ -172,12 +172,14 @@ export function ToolGutter(p: ToolGutterProps) {
   const selectedId =
     selectedIdSet(selected?.id ?? null, selectedBibKey, diagnostics.selectedErrorId);
 
-  // The DIVIDER between the two halves — shown only while both a tool and a
-  // list are open (otherwise the open half simply takes the room). Dragged
+  // The DIVIDER between the two halves — shown whenever both lozenges are,
+  // open or closed (Gabriel, 2026-11-09): the halves always keep their
+  // shares, so opening or closing a tool or a list never MOVES the lists
+  // lozenge, and the boundary can be dragged with nothing open. Dragged
   // through the ONE pane-resize engine: the halves' share is a CSS var on
   // the gutter, written imperatively per frame and committed to the store
   // once, on release.
-  const split = activeTool !== null && activeList !== null;
+  const split = tools.length > 0 || !!p.leading;
   const rootRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -228,6 +230,7 @@ export function ToolGutter(p: ToolGutterProps) {
       data-tool-gutter=""
       data-top-open={activeTool ? "" : undefined}
       data-bottom-open={activeList ? "" : undefined}
+      data-split={split ? "" : undefined}
       style={{ [SPLIT_VAR]: String(state.split) } as React.CSSProperties}
     >
       <div ref={topRef} className="tool-gutter-half" data-gutter-half="top">

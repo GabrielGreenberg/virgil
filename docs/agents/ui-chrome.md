@@ -148,8 +148,11 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      flow (`bib-library-flow.tsx`: Search library… / add, the four-way citekey
      conflict, Request entry and pending requests, Local/Library search scope),
      and its rows drag into the text as `\cite` (`startBibEntryDrag`).
-  3. **Divider** — mounted only while a tool AND a list are open (otherwise the
-     open half takes the room). A `drag-gap-h band-grip` on the pane-resize
+  3. **Divider** — mounted whenever both lozenges show (`data-split`), open
+     or closed (Gabriel, 2026-11-09): the halves always keep their
+     `--tool-gutter-split` shares, a closed half being its lozenge over empty
+     sand, so opening or closing a tool or a list never moves the lists
+     lozenge, and the boundary drags with nothing open. A `drag-gap-h band-grip` on the pane-resize
      engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`
      on the gutter, `commit` stores `split` (clamped 0.15–0.85) once. It paints
      nothing at rest: each half's icon row is a raised lozenge

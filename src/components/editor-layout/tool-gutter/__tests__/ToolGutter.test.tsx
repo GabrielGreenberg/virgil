@@ -2,7 +2,8 @@
 /**
  * The tool gutter (task 1440, split in round 3): tools write their body in
  * the top half, list icons write one list in the bottom half, "+" adds an
- * icon and "…" removes one, a divider shows only while both halves are open,
+ * icon and "…" removes one, the halves keep their split (and the divider)
+ * whether or not anything is open,
  * a row click goes through the editor's own jump door and selects the card,
  * and a to-do's box ticks without a jump.
  */
@@ -137,13 +138,21 @@ describe("ToolGutter", () => {
     expect(open()).toEqual([]);
   });
 
-  it("the divider shows only while a tool and a list are both open", () => {
+  it("the halves keep their split, and the divider shows, whether or not anything is open", () => {
     mount();
-    expect(document.querySelector("[data-gutter-divider]")).toBeNull();
+    const gutter = () => document.querySelector("[data-tool-gutter]")!;
+    // Footnotes open, no tool: still split, so the lists lozenge stays put.
+    expect(gutter().hasAttribute("data-split")).toBe(true);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
     fireEvent.click(document.querySelector('[data-gutter-tool-button="outline"]')!);
     expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
+    // Closing the list (and then the tool) keeps both: nothing moves.
     fireEvent.click(document.querySelector('[data-gutter-list-button="footnotes"]')!);
-    expect(document.querySelector("[data-gutter-divider]")).toBeNull();
+    expect(gutter().hasAttribute("data-bottom-open")).toBe(false);
+    expect(gutter().hasAttribute("data-split")).toBe(true);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
+    fireEvent.click(document.querySelector('[data-gutter-tool-button="outline"]')!);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
   });
 
   it("every icon can leave through the … menu, the defaults included, and + brings one back", () => {
