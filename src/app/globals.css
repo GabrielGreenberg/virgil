@@ -6984,6 +6984,13 @@ body.perf-contain .static-borrowed-text {
 .tool-gutter-tools {
   display: flex;
   align-items: center;
+  /* More tools than one row holds SQUEEZE (each button gives up to 6px, its
+     16px glyph unchanged) rather than spill past the lozenge's rounded edge
+     into the gutter's inboard clip; `overflow: hidden` is only the floor (the
+     ring is the lozenge's own shadow, so it is never clipped by it). */
+  min-width: 0;
+  overflow: hidden;
+  flex-shrink: 0; /* `overflow` drops the auto min-height: keep the 30px */
   gap: 2px;
   padding: 3px; /* aligns: a 24px icon button in the 30px lozenge */
   /* Keeps the ring clear of the drag gap, which paints over the gutter's edge. */
@@ -6994,6 +7001,14 @@ body.perf-contain .static-borrowed-text {
 }
 /* A lit gutter toggle reads at a glance: the azure wash PLUS a thin azure
    ring (Gabriel, round 3: "not just the highlight color"). */
+.tool-gutter-tools > .iconbtn-md,
+.tool-gutter-tools > .relative {
+  flex: 0 1 24px;
+  min-width: 18px;
+}
+.tool-gutter-tools > .relative > .iconbtn-md {
+  width: 100%;
+}
 .tool-gutter-tools .iconbtn-toggle[aria-pressed="true"] {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--control-selected-ink) 55%, transparent);
 }

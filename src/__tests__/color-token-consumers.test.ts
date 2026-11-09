@@ -550,7 +550,9 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
     const out: string[] = [];
     const RULE = /([^{}]+)\{([^{}]*)\}/g;
     let m: RegExpExecArray | null;
-    while ((m = RULE.exec(cssCommentsStripped(css)))) {
+    // Strip ONCE: re-stripping per match made the scan quadratic in the sheet.
+    const stripped = cssCommentsStripped(css);
+    while ((m = RULE.exec(stripped))) {
       const sel = m[1].trim().replace(/\s+/g, " ");
       if (/:hover/.test(sel) && /(?:^|[;\s])background(?:-color)?\s*:/.test(m[2])) out.push(sel);
     }
