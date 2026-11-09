@@ -2,6 +2,7 @@
 
 import type { CutterGoal } from "@/lib/types";
 import { PanelGoalStrip } from "@/panels/_shared/PanelGoalStrip";
+import { countNoun } from "@/lib/count-noun";
 
 interface CutterStripProps {
   goal: CutterGoal | null;
@@ -39,10 +40,10 @@ export function CutterGoalStrip({
 
   return (
     <PanelGoalStrip
-      summary={`${fmt(currentWords)} words`}
+      summary={countNoun(currentWords, "word")}
       hasGoal={!!goal}
       reached={reached}
-      statusLabel={reached ? "goal reached" : `${fmt(leftToCut)} words to cut`}
+      statusLabel={reached ? "goal reached" : `${countNoun(leftToCut, "word")} to cut`}
       footer={goal ? `${fmt(currentWords)} / ${fmt(goal.target)}` : ""}
       progress={totalToCut === 0 ? 1 : Math.min(1, cutSoFar / totalToCut)}
       initialDraft={goal ? String(goal.target) : ""}
