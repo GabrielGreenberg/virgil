@@ -7622,7 +7622,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     {chromeHeaderTrailing}
                     {menuBar && (
                     <MenuBar
-                      editor={overrideEditor ?? editor}
                       viewPrefs={menuBar.prefs}
                       availableDividerLevels={menuBar.availableDividerLevels}
                       onToggleViewPref={menuBar.toggleViewPref}

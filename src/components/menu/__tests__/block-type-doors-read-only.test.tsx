@@ -30,7 +30,7 @@ vi.mock("@/lib/storage", async () =>
 
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { BlockTypeDropdown } from "../../MenuBar";
+import { BlockTypeDropdown } from "../../BlockTypeDropdown";
 import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
 import { createHeadingWithLabel, createParagraphWithTitle } from "@/lib/editor-extensions";
 

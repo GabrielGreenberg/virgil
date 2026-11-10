@@ -33,7 +33,7 @@ class ResizeObserverStub {
 
 // The nested-menu grid trigger + the block inserters need a live editor; mock
 // them (orthogonal to the stack membership under test). The color popover is REAL.
-vi.mock("../../MenuBar", () => ({
+vi.mock("../../BlockTypeDropdown", () => ({
   BlockTypeDropdown: () => <button data-hint="Block type">¶</button>,
 }));
 // Task 638: `ActionsMenuPanel` now reads the collab pen through

@@ -16,7 +16,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
-vi.mock("../../MenuBar", () => ({
+vi.mock("../../BlockTypeDropdown", () => ({
   BlockTypeDropdown: () => <button data-hint="Block type">¶</button>,
 }));
 

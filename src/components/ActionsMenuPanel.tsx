@@ -60,7 +60,7 @@ import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { useStorageKeySync } from "@/lib/cross-window-storage";
 import { useCollabContext } from "@/hooks/useCollab";
-import { BlockTypeDropdown } from "./MenuBar";
+import { BlockTypeDropdown } from "./BlockTypeDropdown";
 import { blockTypeVerdict } from "@/lib/actions/block-type";
 import { IconExample } from "./editor-layout/panel-icons";
 import { SelectionColorPopover } from "./SelectionColorPopover";

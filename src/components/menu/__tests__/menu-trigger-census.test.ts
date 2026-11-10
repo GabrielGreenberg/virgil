@@ -238,7 +238,7 @@ describe("menu-trigger census (task 992)", () => {
 
   it("F finds the population (vacuity floor)", () => {
     const keys = greyable.map((g) => g.key);
-    expect(keys).toContain("src/components/MenuBar.tsx");
+    expect(keys).toContain("src/components/BlockTypeDropdown.tsx");
     expect(keys).toContain("src/components/menu/AnchoredMenu.tsx");
   });
 

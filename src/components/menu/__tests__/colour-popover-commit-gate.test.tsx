@@ -27,7 +27,7 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-vi.mock("../../MenuBar", () => ({
+vi.mock("../../BlockTypeDropdown", () => ({
   BlockTypeDropdown: () => <button data-hint="Block type">¶</button>,
 }));
 vi.mock("@/lib/storage", async () =>
