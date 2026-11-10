@@ -56,7 +56,7 @@ import {
 } from "react";
 import { withFocusIndicator } from "@/components/focus-indicator";
 import { MenuProvider } from "./MenuProvider";
-import { useMenuTrigger } from "./menu-trigger";
+import { useCloseOnDisabledEdge, useMenuTrigger } from "./menu-trigger";
 import type { MenuLayout, MenuOrientation, MenuRole } from "./types";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 
@@ -253,7 +253,9 @@ export interface AnchoredMenuProps {
   /** Trigger tooltip (`data-hint`). */
   triggerHint?: string;
   /** A disabled trigger: the button is `disabled`, so it neither opens the
-   *  menu nor takes focus (the Library's un-triaged catalog row, task 1011). */
+   *  menu nor takes focus (the Library's un-triaged catalog row, task 1011).
+   *  Greyed while the menu is OPEN, the menu closes on that edge and stays
+   *  closed when the grey lifts (task 1563). */
   triggerDisabled?: boolean;
   /** Trigger accessible name. Defaults to `ariaLabel`. */
   triggerAriaLabel?: string;
@@ -334,6 +336,10 @@ export function AnchoredMenu({
     setOpen(false);
     setAnchorRect(null);
   }, []);
+  // The grey edge is the shell's for the same reason the ARIA above is: a
+  // consumer that passes `triggerDisabled` should not have to re-derive it
+  // (task 1563, the ONE rule of task 1369).
+  useCloseOnDisabledEdge(triggerDisabled, close);
   const toggle = useCallback(() => {
     setOpen((o) => {
       const next = !o;

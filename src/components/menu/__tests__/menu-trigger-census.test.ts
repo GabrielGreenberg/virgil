@@ -25,7 +25,8 @@
 //      TRIGGERLESS / ARIA_EXEMPT);
 //   C. no source outside `menu-trigger.ts` hand-spells `aria-haspopup="menu"`;
 //   D. every allowlist entry still names a live provider (no stale reasons);
-//   E. no popover is MASKED by its trigger's `disabled` (task 1369).
+//   E. no popover is MASKED by its trigger's `disabled` (task 1369);
+//   F. a trigger that can be greyed CLOSES its popover on the edge (task 1563).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -78,6 +79,23 @@ function openTagAt(source: string, start: number): string {
     else if (c === ">" && depth === 0) return source.slice(start, i + 1);
   }
   return source.slice(start);
+}
+
+/** The trigger contract spread onto an element, in either of its spellings. */
+const TRIGGER_SPREAD = /\{\s*\.\.\.\s*(?:menuTriggerAria\(|triggerProps\b)/;
+
+/** How many elements in `source` are menu triggers a host can grey. */
+function greyableTriggers(source: string): number {
+  let count = 0;
+  for (const m of source.matchAll(/<[A-Za-z][\w.]*/g)) {
+    const tag = openTagAt(source, m.index!);
+    if (TRIGGER_SPREAD.test(tag) && /\bdisabled=/.test(tag)) count++;
+  }
+  return count;
+}
+
+function edgeHookCalls(source: string): number {
+  return [...source.matchAll(/\buseCloseOnDisabledEdge\(/g)].length;
 }
 
 function rel(prefix: string, root: string, file: string): string {
@@ -205,6 +223,51 @@ describe("menu-trigger census (task 992)", () => {
   it("E is red on the shipped ¶ mask shape", () => {
     expect(DISABLED_MASK.test(`{open && !disabled && (<MenuProvider />)}`)).toBe(true);
     expect(DISABLED_MASK.test(`{open && (<MenuProvider />)}`)).toBe(false);
+  });
+
+  // Task 1563: leg E forbids the mask but cannot see a trigger that neither
+  // masks nor closes, which is what `AnchoredMenu` shipped. The population is
+  // the trigger ELEMENT itself — one tag carrying both the trigger contract and
+  // `disabled=` — so the shell is held to it like any hand-rolled trigger, and
+  // a `disabled` row elsewhere in the file does not count. Counted, not merely
+  // present, so a second greyable trigger cannot ride the first one's hook.
+  const greyable = ALL.flatMap(({ key, source }) => {
+    const triggers = greyableTriggers(source);
+    return triggers > 0 ? [{ key, source, triggers }] : [];
+  });
+
+  it("F finds the population (vacuity floor)", () => {
+    const keys = greyable.map((g) => g.key);
+    expect(keys).toContain("src/components/MenuBar.tsx");
+    expect(keys).toContain("src/components/menu/AnchoredMenu.tsx");
+  });
+
+  it("F: every greyable trigger closes its popover on the grey edge", () => {
+    const offenders = greyable.filter(
+      ({ source, triggers }) => edgeHookCalls(source) < triggers,
+    );
+    expect(
+      offenders.map((o) => o.key),
+      "GREYED TRIGGER LEAVES ITS MENU OPEN: call `useCloseOnDisabledEdge(disabled, close)` " +
+        "(menu/menu-trigger.ts) once per greyable trigger, or use `<AnchoredMenu triggerDisabled>`.",
+    ).toEqual([]);
+  });
+
+  it("F is red on a greyable trigger with no hook, and green with one", () => {
+    const button = `<button disabled={disabled} onClick={() => setOpen(!open)} {...menuTriggerAria("menu", open)} />`;
+    const shell = `<button disabled={triggerDisabled || undefined} {...triggerProps} />`;
+    const hook = `useCloseOnDisabledEdge(disabled, close);`;
+    for (const trigger of [button, shell]) {
+      expect(greyableTriggers(trigger)).toBe(1);
+      expect(edgeHookCalls(trigger)).toBe(0);
+      expect(edgeHookCalls(`${hook}\n${trigger}`)).toBe(1);
+    }
+    // A greyed row beside an ungreyable trigger is not in the population.
+    expect(
+      greyableTriggers(`<button {...menuTriggerAria("menu", open)} /><button disabled={x} />`),
+    ).toBe(0);
+    // Two greyable triggers owe two hooks.
+    expect(greyableTriggers(`${button}\n${button}`)).toBe(2);
   });
 
   it("D: every allowlist entry names a live role=menu provider", () => {

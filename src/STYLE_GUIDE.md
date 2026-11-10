@@ -3386,7 +3386,10 @@ hand-rolled toolbar trigger) takes the same contract piecewise from
 `excludeRefs` and its activation is `open ? close : open` — otherwise the
 capture-phase click-outside closes on the press and the click re-opens, a
 remount where the user asked for "close" (task 992). Never hand-spell
-`aria-haspopup="menu"`; `menu-trigger-census.test.ts` fails it.
+`aria-haspopup="menu"`; `menu-trigger-census.test.ts` fails it. A trigger greyed
+while its menu is open closes the menu on that edge and does not reopen it when
+the grey lifts (`useCloseOnDisabledEdge`, tasks 1369 and 1563): `AnchoredMenu`
+does this for `triggerDisabled`, and the census requires it of any other trigger.
 
 Why the shell exists, given the primitive already did (task 143): `ItemMenu` had
 folded onto `MenuProvider` and hard-codes a kebab trigger, so a "+" button, a
