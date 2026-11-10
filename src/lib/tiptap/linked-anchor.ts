@@ -12,8 +12,9 @@ import {
 import {
   archiveReplayTracker,
   groupHeldDepartures,
-  holdingsApplyTo,
+  holdingsScopeOf,
   snippetHoldingUuid,
+  type HoldingsScope,
 } from "@/lib/tiptap/archive-holdings";
 import { hasLiveAnchor, hasLiveBlock, readDiffFor } from "@/lib/tiptap/doc-structure";
 import {
@@ -147,15 +148,18 @@ export const LinkedAnchor = Mark.create({
  *  read at append time — true only for the Redo of the archive's own history
  *  event (task 1302); an ordinary delete after an Undo of the archive (task
  *  1297), an Undo that takes the passage away, or a Redo of some other removal
- *  all orphan, as if nothing were held). O(departed) O(1) lookups; an
+ *  all orphan, as if nothing were held). Task 1557 adds the second scope a
+ *  removal can carry: a CUT's departures go dormant in the CLIPBOARD holding
+ *  (`clipboard-carry.ts`) — `replay` is `holdingsScopeOf(transactions)`, and
+ *  only holdings of that scope are consulted. O(departed) O(1) lookups; an
  *  empty registry answers at once. */
 function announceArchivedDepartures(
   docId: string | null,
-  replay: boolean,
+  replay: HoldingsScope | null,
   departed: { uuids?: readonly string[]; anchorIds?: readonly string[] },
 ): void {
   if (!replay) return;
-  for (const [snippetId, held] of groupHeldDepartures(docId, departed)) {
+  for (const [snippetId, held] of groupHeldDepartures(docId, departed, replay)) {
     dispatchAnchorsArchived({ docId, snippetId, ...held });
   }
 }
@@ -227,7 +231,7 @@ export const LinkedAnchorGuard = Extension.create<{
             }, 0);
           }
           if (diff.removedAnchors.length === 0) return null;
-          const replay = holdingsApplyTo(transactions);
+          const replay = holdingsScopeOf(transactions);
           setTimeout(() => {
             // Liveness is the observer snapshot's answer, read off the SETTLED
             // state (task 878): an id the index still holds survived (interior
@@ -418,7 +422,7 @@ export const TextObjectOrphanGuard = Extension.create<{
           // now. O(replace steps × depth), and only on a block-removal
           // transaction — plain typing bailed two lines above.
           const { absorbedInto } = classifyBlockDepartures(transactions);
-          const replay = holdingsApplyTo(transactions);
+          const replay = holdingsScopeOf(transactions);
           setTimeout(() => {
             // Liveness is the observer snapshot's answer, read off the SETTLED
             // state (task 878): a uuid the index holds was resurrected (or
@@ -652,7 +656,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // the same whichever of the two plugins the appendTransaction chain
           // runs first.
           const departures = classifyBlockDepartures(transactions);
-          const replay = holdingsApplyTo(transactions); // EXCEPTION 5's gate
+          const replay = holdingsScopeOf(transactions); // EXCEPTION 5's gate
 
           const paraType = newState.schema.nodes.paragraph;
           if (!paraType) return null;
@@ -684,7 +688,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
             // OTHER removal of the live paragraph — an ordinary delete, an Undo
             // of the paste that made it, a Redo of an ordinary Cut — must
             // resurrect as with no archive.
-            if (replay && snippetHoldingUuid(docIdRef?.current, b.uuid)) continue;
+            if (replay && snippetHoldingUuid(docIdRef?.current, b.uuid, replay)) continue;
             vanished.push({ uuid: b.uuid, pos: b.pos });
           }
           if (vanished.length === 0) return null;

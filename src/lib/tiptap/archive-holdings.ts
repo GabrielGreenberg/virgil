@@ -90,7 +90,31 @@ export function holdingsOf(snippets: readonly ArchivedSnippet[]): ArchiveHolding
  *  the registry asks this first, so all of them give one answer per batch.
  *  O(batch). */
 export function holdingsApplyTo(transactions: readonly Transaction[]): boolean {
-  return transactions.some((tr) => ARCHIVE_REDOS.has(tr));
+  return holdingsScopeOf(transactions) !== null;
+}
+
+/** WHICH holdings answer this removal (task 1557) — the one question every
+ *  guard asks, so all of them give one answer per batch:
+ *
+ *    - `"clipboard"` — a CUT (ProseMirror's own `uiEvent: "cut"`). Cut is
+ *      "archive to the clipboard": the passage's ids are held by the clipboard
+ *      holding `clipboard-carry.ts` published as the cut began, and its cards
+ *      go dormant there until a paste lands them. Only CLIPBOARD holdings are
+ *      consulted, so an ordinary Cut of a passage an undone archive still
+ *      holds orphans into nothing archive-side (task 1297 stands).
+ *    - `"archive"` — the Redo of an archive (above).
+ *    - `null` — every other removal: nothing is held.
+ *
+ *  O(batch). */
+export type HoldingsScope = "archive" | "clipboard";
+
+export function holdingsScopeOf(transactions: readonly Transaction[]): HoldingsScope | null {
+  let scope: HoldingsScope | null = null;
+  for (const tr of transactions) {
+    if (tr.getMeta("uiEvent") === "cut") return "clipboard";
+    if (ARCHIVE_REDOS.has(tr)) scope = "archive";
+  }
+  return scope;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,19 +201,40 @@ export function archiveReplayTracker(): Plugin<readonly ArchiveEventSlot[]> {
   });
 }
 
-const REGISTRY = new Map<string, Map<object, ArchiveHoldings>>();
+interface HoldingsEntry {
+  scope: HoldingsScope;
+  holdings: ArchiveHoldings;
+}
+
+const REGISTRY = new Map<string, Map<object, HoldingsEntry>>();
+
+function publish(docId: string, owner: object, entry: HoldingsEntry): void {
+  let byOwner = REGISTRY.get(docId);
+  if (!byOwner) {
+    byOwner = new Map();
+    REGISTRY.set(docId, byOwner);
+  }
+  byOwner.set(owner, entry);
+}
 
 export function publishArchiveHoldings(
   docId: string,
   owner: object,
   holdings: ArchiveHoldings,
 ): void {
-  let byOwner = REGISTRY.get(docId);
-  if (!byOwner) {
-    byOwner = new Map();
-    REGISTRY.set(docId, byOwner);
-  }
-  byOwner.set(owner, holdings);
+  publish(docId, owner, { scope: "archive", holdings });
+}
+
+/** The CLIPBOARD's holding (task 1557): the ids a cut took to the clipboard,
+ *  keyed by the clipboard holding's id. Same registry, same owner rule — the
+ *  publishing `ClipboardCarry` plugin view is the owner, so one editor's cut
+ *  never replaces another pane's. */
+export function publishClipboardHoldings(
+  docId: string,
+  owner: object,
+  holdings: ArchiveHoldings,
+): void {
+  publish(docId, owner, { scope: "clipboard", holdings });
 }
 
 /** A departing owner removes only its OWN entry. */
@@ -203,28 +248,36 @@ export function retractArchiveHoldings(docId: string, owner: object): void {
 function lookup(
   docId: string | null | undefined,
   pick: (h: ArchiveHoldings) => string | undefined,
+  scope: HoldingsScope,
 ): string | null {
   if (!docId) return null;
   const byOwner = REGISTRY.get(docId);
   if (!byOwner) return null;
-  for (const h of byOwner.values()) {
-    const id = pick(h);
+  for (const e of byOwner.values()) {
+    if (e.scope !== scope) continue;
+    const id = pick(e.holdings);
     if (id) return id;
   }
   return null;
 }
 
-/** The un-retired snippet holding block `uuid` in `docId`, or null. O(owners). */
-export function snippetHoldingUuid(docId: string | null | undefined, uuid: string): string | null {
-  return lookup(docId, (h) => h.uuids.get(uuid));
+/** The un-retired holding (an archive snippet, or the clipboard's — `scope`)
+ *  of block `uuid` in `docId`, or null. O(owners). */
+export function snippetHoldingUuid(
+  docId: string | null | undefined,
+  uuid: string,
+  scope: HoldingsScope = "archive",
+): string | null {
+  return lookup(docId, (h) => h.uuids.get(uuid), scope);
 }
 
-/** The un-retired snippet holding `linkedAnchor` id `anchorId`, or null. */
+/** The un-retired holding of `linkedAnchor` id `anchorId`, or null. */
 export function snippetHoldingAnchor(
   docId: string | null | undefined,
   anchorId: string,
+  scope: HoldingsScope = "archive",
 ): string | null {
-  return lookup(docId, (h) => h.anchorIds.get(anchorId));
+  return lookup(docId, (h) => h.anchorIds.get(anchorId), scope);
 }
 
 /** Group departing ids by the snippet that holds them — the shape of the
@@ -232,6 +285,7 @@ export function snippetHoldingAnchor(
 export function groupHeldDepartures(
   docId: string | null | undefined,
   departed: { uuids?: readonly string[]; anchorIds?: readonly string[] },
+  scope: HoldingsScope = "archive",
 ): Map<string, { uuids: string[]; anchorIds: string[] }> {
   const out = new Map<string, { uuids: string[]; anchorIds: string[] }>();
   const slot = (snippetId: string) => {
@@ -244,11 +298,11 @@ export function groupHeldDepartures(
   };
   if (!docId || !REGISTRY.has(docId)) return out;
   for (const u of departed.uuids ?? []) {
-    const s = snippetHoldingUuid(docId, u);
+    const s = snippetHoldingUuid(docId, u, scope);
     if (s) slot(s).uuids.push(u);
   }
   for (const a of departed.anchorIds ?? []) {
-    const s = snippetHoldingAnchor(docId, a);
+    const s = snippetHoldingAnchor(docId, a, scope);
     if (s) slot(s).anchorIds.push(a);
   }
   return out;
