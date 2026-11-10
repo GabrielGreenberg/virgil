@@ -14,8 +14,8 @@ import { collabReadOnly } from "./collab-read-only-gate";
 // table the action registry reconciles its `surfaces.typed` flags against, so
 // the `inline-math` / `display-math` rows and these rules cannot recognize a
 // different math vocabulary.
-import { matchTypedLatexRule } from "./typed-latex-input-rules";
-import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
+import { delimitersAreTypedSource, matchTypedLatexRule } from "./typed-latex-input-rules";
+import { armTypedLatexRevert, typedLatexRevertSpec, typedSubjectBefore } from "./typed-latex-revert";
 import { rangeHoldsOnlyText } from "./typed-prose-gate";
 // Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
 // from the atom SSOT rather than hardcoded literals, so a NodeView rename can't
@@ -263,18 +263,12 @@ export const InlineMath = Node.create<MathOptions>({
             // Caret form, deliberately (task 428): an input rule's match range
             // lies inside ONE textblock, so `from` names every block it reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
-            const $from = state.doc.resolve(from);
-            const textBefore = $from.parent.textBetween(
-              Math.max(0, $from.parentOffset - 200),
-              $from.parentOffset,
-              undefined,
-              "￼"
-            );
+            const subject = typedSubjectBefore(state, inlineRevert.key, from, 200);
             // Match $...$ where the closing $ is what the user just typed
             // Task 578: the body class excludes the U+FFFC atom placeholder, and
             // the replace range is asked of the door — a `$` pair around an
             // inline atom must never swallow it into the math's `latex`.
-            const match = matchTypedLatexRule("inline-math", textBefore);
+            const match = matchTypedLatexRule("inline-math", subject);
             if (!match) return false;
             const latex = match[1];
             const start = from - match[0].length;
@@ -410,15 +404,11 @@ export const DisplayMath = Node.create<MathOptions>({
             // share this `from`.
             if (!posHostsBlockInsert(state.doc, from, nodeType)) return false;
             const $from = state.doc.resolve(from);
-            const textBefore = $from.parent.textBetween(
-              Math.max(0, $from.parentOffset - 500),
-              $from.parentOffset,
-              undefined,
-              "￼"
-            );
+            const subject = typedSubjectBefore(state, displayRevert.key, from, 500);
 
-            // Case 1: $$ on an empty/start of paragraph → empty display math block
-            if (textBefore === "$") {
+            // Case 1: $$ on an empty/start of paragraph → empty display math
+            // block — when the first `$` was typed too (task 1562).
+            if (subject.text === "$" && delimitersAreTypedSource(subject, [0])) {
               const tr = state.tr.replaceWith(
                 blockReplaceStart($from, from - 1, nodeType),
                 from,
@@ -430,7 +420,7 @@ export const DisplayMath = Node.create<MathOptions>({
 
             // Case 2: $$content$$ — closing pair
             // Task 578: same refusal as the inline twin above.
-            const match = matchTypedLatexRule("display-math", textBefore);
+            const match = matchTypedLatexRule("display-math", subject);
             if (!match) return false;
             const latex = match[1];
             const start = from - match[0].length;

@@ -40,7 +40,7 @@ import { pickFootnoteCarriedAttrs } from "@/lib/footnote-source-attrs";
 // — and the table `assertActionCoverage` reconciles against is the one this
 // rule actually matches with, not a description of it.
 import { matchTypedLatexRule } from "./typed-latex-input-rules";
-import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
+import { armTypedLatexRevert, typedLatexRevertSpec, typedSubjectBefore } from "./typed-latex-revert";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 // CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
@@ -188,7 +188,6 @@ export const Footnote = Node.create<FootnoteOptions>({
             if (collabReadOnly(view)) return false;
             if (text !== "}") return false;
             const { state } = view;
-            const $from = state.doc.resolve(from);
             // The ONE inline-atom door (task 740) — it asks BOTH halves: the
             // curated POLICY (task 061: a non-prose block greys `footnote` out;
             // a `titleField` permits it) and the SCHEMA (task 396: a markless
@@ -198,13 +197,8 @@ export const Footnote = Node.create<FootnoteOptions>({
             // Caret form, deliberately (task 428): the typed match lies inside
             // ONE textblock, so `from` names every block the rule reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
-            const textBefore = $from.parent.textBetween(
-              Math.max(0, $from.parentOffset - 200),
-              $from.parentOffset,
-              undefined,
-              "\ufffc"
-            ) + text;
-            const match = matchTypedLatexRule("footnote", textBefore);
+            const subject = typedSubjectBefore(state, footnoteRevert.key, from, 200, text);
+            const match = matchTypedLatexRule("footnote", subject);
             if (!match) return false;
             const content = normalizeRichContent(match[1]);
             const existing = new Set<string>();
