@@ -35,6 +35,7 @@ import {
   useState,
   useSyncExternalStore,
   type CSSProperties,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -56,6 +57,11 @@ import { MenuRegistry } from "./registry";
 import { useMenuDismiss } from "./useMenuDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
 import { readFocusHolder } from "@/lib/focus-holder";
+import {
+  FAMILY_BY_CONTAINER,
+  type FamilyWalk,
+  type MenuFamilyTest,
+} from "./menu-family";
 import type {
   MenuDismissConfig,
   MenuLayout,
@@ -105,6 +111,12 @@ export interface MenuProviderProps {
   onEscape?: () => boolean;
   /** Extra click-outside exemptions (nested popovers / external inputs). */
   excludeRefs?: readonly (HTMLElement | null)[];
+  /** Receives this menu's family test (`MenuFamilyTest`) while it is mounted,
+   *  null after (task 1548). For an opener whose own lifetime gate reads focus
+   *  — the caret-mode ⚡ bolt — so focus moving INTO the menu it opened (a
+   *  native colour picker, a combobox filter: the controls the mousedown fence
+   *  below deliberately lets take focus) is not read as focus LEAVING. */
+  familyRef?: MutableRefObject<MenuFamilyTest | null>;
   /** The element whose aria-activedescendant mirrors the active node (the PM
    *  view's contentEditable, or a combobox input). */
   getActiveDescendantHost?: () => HTMLElement | null;
@@ -223,6 +235,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     dismissOn,
     onEscape,
     excludeRefs,
+    familyRef,
     getActiveDescendantHost,
     keyboardSource = "window",
     onClose,
@@ -355,6 +368,43 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     },
     [positionRef],
   );
+
+  // ── the family test (task 1548): container ∪ exclude set, recursing into a
+  // nested provider's own family. Stable; reads the live refs at call time. ──
+  // `seen` is shared across the whole walk, so two menus that exclude each
+  // other's containers cannot recurse forever.
+  const familyWalk = useCallback<FamilyWalk>(
+    (node, seen) => {
+      const own = containerRef.current;
+      if (own) {
+        if (seen.has(own)) return false;
+        seen.add(own);
+        if (own.contains(node)) return true;
+      }
+      return getExcludes().some((el) => {
+        if (!el || seen.has(el)) return false;
+        if (el.contains(node)) return true;
+        const nested = FAMILY_BY_CONTAINER.get(el);
+        return nested ? nested(node, seen) : false;
+      });
+    },
+    [getExcludes],
+  );
+  const familyContains = useCallback<MenuFamilyTest>(
+    (node) => !!node && familyWalk(node, new Set()),
+    [familyWalk],
+  );
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el) FAMILY_BY_CONTAINER.set(el, familyWalk);
+    if (familyRef) familyRef.current = familyContains;
+    return () => {
+      if (el) FAMILY_BY_CONTAINER.delete(el);
+      if (familyRef && familyRef.current === familyContains) {
+        familyRef.current = null;
+      }
+    };
+  }, [familyWalk, familyContains, familyRef]);
 
   // ── auto-register into the parent's exclude set on mount ──
   useEffect(() => {
