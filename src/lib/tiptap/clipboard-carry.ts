@@ -20,7 +20,10 @@
  *      resurrected, and the departed ids go dormant in the holding
  *      (`virgil-anchors-archived` → each card store's `markDormant`) instead of
  *      orphaning. Nothing new on the card side — the same door Redo-of-Archive
- *      uses.
+ *      uses. A TEXT selection over every character of the blocks it touches
+ *      is cut as those whole blocks (`wholeBlockCutRange`), so a dragged or
+ *      triple-clicked paragraph moves with its uuid rather than leaving an
+ *      emptied line holding its cards.
  *   2. PASTE. When the pasted slice is the held cut's own text (its text
  *      signature matches) in the SAME document, the HELD slice lands instead of
  *      the parsed one, so the very same uuids and marks come back — and the
@@ -46,7 +49,7 @@
  */
 
 import { Extension } from "@tiptap/core";
-import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection, type EditorState } from "@tiptap/pm/state";
 import { Fragment, Slice, type Node as PMNode } from "@tiptap/pm/model";
 import type { RefObject } from "react";
 import {
@@ -56,6 +59,7 @@ import {
 import { hasLiveAnchor, hasLiveBlock } from "@/lib/tiptap/doc-structure";
 import { collectAtomIds } from "@/lib/tiptap/node-identity";
 import { generateShortId } from "@/lib/uuid";
+import { expandCascadeRange } from "@/text-objects/delete-range";
 
 /** The prefix every clipboard holding's id carries — the `archivedWith` a
  *  dormant link names while its text is on the clipboard. Never an archive
@@ -152,6 +156,35 @@ export function landingSlice(held: Slice, state: EditorState): Slice {
   return new Slice(land(held.content), held.openStart, held.openEnd);
 }
 
+/** The whole-block range a text cut MEANS, or null. A writer who selects a
+ *  paragraph's every character (drag, triple-click, Shift-↓ to the next line's
+ *  start) is moving the PARAGRAPH — but ProseMirror's slice of that selection is
+ *  OPEN, so its uuid stays on the emptied line left behind and its cards with
+ *  it. When the selection covers every textblock it touches entirely, the cut
+ *  takes the blocks themselves (and any wrapper the removal would leave empty —
+ *  the archive's `expandCascadeRange`), so the slice is closed and the block
+ *  ids travel. A selection that starts or ends mid-block is a passage cut:
+ *  null, the default cut runs. */
+export function wholeBlockCutRange(state: EditorState): { from: number; to: number } | null {
+  const sel = state.selection;
+  if (!(sel instanceof TextSelection) || sel.empty) return null;
+  const { $from } = sel;
+  let { $to } = sel;
+  if (!$from.parent.isTextblock || $from.parentOffset !== 0) return null;
+  // Ending at the very start of the NEXT textblock (Shift-↓, a drag past the
+  // line end) covers the previous block to its end.
+  if ($to.parent.isTextblock && $to.parentOffset === 0 && $to.pos > $from.pos) {
+    const back = TextSelection.findFrom(state.doc.resolve($to.before()), -1, true);
+    if (!back || back.$from.pos < $from.pos) return null;
+    $to = back.$from;
+  }
+  if (!$to.parent.isTextblock || $to.parentOffset !== $to.parent.content.size) return null;
+  const from = $from.before();
+  const to = $to.after();
+  if (to <= from) return null;
+  return expandCascadeRange(state.doc, { from, to });
+}
+
 export interface ClipboardCarryOptions {
   docIdRef: RefObject<string | null> | null;
 }
@@ -191,12 +224,17 @@ export const ClipboardCarry = Extension.create<ClipboardCarryOptions>({
             // Runs BEFORE ProseMirror's own cut handler, which then serializes
             // the clipboard and dispatches the `uiEvent: "cut"` delete the
             // guards read the holding for. Never handles the event itself.
-            cut(view) {
+            cut(view, event) {
               retire();
               const docId = docIdRef?.current ?? null;
               const sel = view.state.selection;
               if (!docId || sel.empty) return false;
-              const slice = sel.content();
+              // A whole-block cut is performed HERE (ProseMirror's handler
+              // would cut the open slice): same clipboard payload, same
+              // `uiEvent: "cut"` delete, over the closed block range.
+              const data = (event as ClipboardEvent).clipboardData;
+              const range = data ? wholeBlockCutRange(view.state) : null;
+              const slice = range ? view.state.doc.slice(range.from, range.to) : sel.content();
               const id = `${CLIPBOARD_HOLDING_PREFIX}${generateShortId()}`;
               const wholeUuids = wholeBlockUuids(slice);
               const anchorIds = sliceAnchorIds(slice);
@@ -221,7 +259,19 @@ export const ClipboardCarry = Extension.create<ClipboardCarryOptions>({
                   anchorIds: new Map(anchorIds.map((a) => [a, id])),
                 });
               }
-              return false;
+              if (!range || !data) return false;
+              const { dom, text } = view.serializeForClipboard(slice);
+              event.preventDefault();
+              data.clearData();
+              data.setData("text/html", dom.innerHTML);
+              data.setData("text/plain", text);
+              view.dispatch(
+                view.state.tr
+                  .delete(range.from, range.to)
+                  .scrollIntoView()
+                  .setMeta("uiEvent", "cut"),
+              );
+              return true;
             },
           },
           handlePaste(view, _event, slice) {

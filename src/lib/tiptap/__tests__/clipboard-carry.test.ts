@@ -211,4 +211,64 @@ describe("cut carries a passage's cards to its paste (task 1557)", () => {
     expect(uuids(editor)).toContain("p2");
     expect(rec.seen.archived).toEqual([]);
   });
+
+  it("a TEXT selection over a paragraph's every character cuts the paragraph whole (and carries it)", async () => {
+    editor = mount();
+    rec = record();
+    const clip = new Map<string, string>();
+    const p = posOf(editor, "p2");
+    const end = p + editor.state.doc.nodeAt(p)!.nodeSize - 1;
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, p + 1, end)));
+    editor.view.dom.dispatchEvent(clipboardEvent("cut", clip));
+    await flush();
+    expect(uuids(editor)).toEqual(["p1", "p3"]); // no emptied line left behind
+    expect((rec.seen.archived as { uuids: string[] }[]).flatMap((a) => a.uuids)).toEqual(["p2"]);
+    caretAtEnd(editor);
+    editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+    await flush();
+    expect(uuids(editor)).toContain("p2");
+    expect(anchorIds(editor)).toEqual(["a1"]);
+  });
+
+  it("a text selection from p2's start to p3's start (Shift-Down) cuts p2 whole; p2+p3 cuts both", async () => {
+    editor = mount();
+    rec = record();
+    let clip = new Map<string, string>();
+    const p2 = posOf(editor, "p2");
+    const p3 = posOf(editor, "p3");
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, p2 + 1, p3 + 1)));
+    editor.view.dom.dispatchEvent(clipboardEvent("cut", clip));
+    await flush();
+    expect(uuids(editor)).toEqual(["p1", "p3"]);
+    editor.destroy();
+    rec.off();
+
+    editor = mount();
+    rec = record();
+    clip = new Map<string, string>();
+    const q2 = posOf(editor, "p2");
+    const q3 = posOf(editor, "p3");
+    const q3end = q3 + editor.state.doc.nodeAt(q3)!.nodeSize - 1;
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, q2 + 1, q3end)));
+    editor.view.dom.dispatchEvent(clipboardEvent("cut", clip));
+    await flush();
+    expect(uuids(editor)).toEqual(["p1"]);
+    expect((rec.seen.archived as { uuids: string[] }[]).flatMap((a) => a.uuids)).toContain("p2");
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)));
+    editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+    await flush();
+    expect(uuids(editor)).toEqual(expect.arrayContaining(["p1", "p2", "p3"]));
+    expect(anchorIds(editor)).toEqual(["a1"]);
+  });
+
+  it("a mid-paragraph selection is still a passage cut: the block stays", async () => {
+    editor = mount();
+    rec = record();
+    const clip = new Map<string, string>();
+    const p = posOf(editor, "p2");
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, p + 2, p + 6)));
+    editor.view.dom.dispatchEvent(clipboardEvent("cut", clip));
+    await flush();
+    expect(uuids(editor)).toEqual(["p1", "p2", "p3"]);
+  });
 });
