@@ -87,7 +87,9 @@ export function useMenuTrigger<T extends HTMLElement = HTMLButtonElement>({
  * enabled→disabled edge only, and MUST set state of the calling component
  * (setting another component's state during render is a React error). A host
  * re-renders on its `canEdit`, never on a keystroke, so this costs nothing per
- * keystroke. `menu-trigger-census.test.ts` forbids the mask shape.
+ * keystroke. `AnchoredMenu` calls it for every `triggerDisabled` consumer (task
+ * 1563); `menu-trigger-census.test.ts` forbids the mask shape and requires this
+ * hook of any other trigger that can be greyed.
  */
 export function useCloseOnDisabledEdge(disabled: boolean, close: () => void): void {
   const [wasDisabled, setWasDisabled] = useState(disabled);
