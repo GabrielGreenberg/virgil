@@ -501,3 +501,51 @@ describe("useDiagnostics", () => {
     expect(result.current.expandedErrorIds.has(idA)).toBe(true);
   });
 });
+
+describe("useDiagnostics — compile errors read against the LIVE text (task 1549)", () => {
+  const stamped = (line: number, text: string): LatexError => ({
+    ...compileErr(line, "Undefined control sequence"),
+    lineText: text,
+  });
+
+  it("an edit above re-points the snippet + paragraph and frees the line for a live lint error", () => {
+    // Compiled against SOURCE_TEXT: error on line 4 ("Second paragraph body.").
+    const compile = [stamped(4, "Second paragraph body.")];
+    const live = ["Inserted line.", SOURCE_TEXT].join("\n"); // everything moves down 1
+    MOCK_LINT_ERRORS = [lintErr(4, "fresh lint on live line 4")];
+    const { result } = renderHook(() =>
+      useDiagnostics(baseOptions({ compileErrors: compile, sourceText: live })),
+    );
+    const c = result.current.allLatexErrors.find((e) => e.source === "compile")!;
+    expect(c.line).toBe(5);
+    expect(result.current.errorSnippets.get(c.id)).toBe("Second paragraph body.");
+    expect(result.current.paragraphByErrorId.get(c.id)).toBe("bbbb");
+    expect(result.current.allLatexErrors.some((e) => e.message === "fresh lint on live line 4")).toBe(true);
+  });
+
+  it("a stamped line that no longer exists → no snippet, no paragraph, no lint suppression", () => {
+    const compile = [stamped(4, "Second paragraph body.")];
+    const live = SOURCE_TEXT.replace("Second paragraph body.", "Rewritten body.");
+    MOCK_LINT_ERRORS = [lintErr(4, "lint on 4")];
+    const { result } = renderHook(() =>
+      useDiagnostics(baseOptions({ compileErrors: compile, sourceText: live })),
+    );
+    const c = result.current.allLatexErrors.find((e) => e.source === "compile")!;
+    expect(c.line).toBe(0);
+    expect(c.compiledLine).toBe(4);
+    expect(result.current.errorSnippets.has(c.id)).toBe(false);
+    expect(result.current.paragraphByErrorId.has(c.id)).toBe(false);
+    expect(result.current.allLatexErrors.some((e) => e.message === "lint on 4")).toBe(true);
+  });
+
+  it("a moved error keeps the merged list's identity across a re-pause that resolves identically", () => {
+    const compile = [stamped(4, "Second paragraph body.")];
+    const live1 = ["Inserted line.", SOURCE_TEXT].join("\n");
+    const { result, rerender } = renderHook((p: UseDiagnosticsOptions) => useDiagnostics(p), {
+      initialProps: baseOptions({ compileErrors: compile, sourceText: live1 }),
+    });
+    const first = result.current.allLatexErrors;
+    rerender(baseOptions({ compileErrors: compile, sourceText: live1 + "\ntyped at the end" }));
+    expect(result.current.allLatexErrors).toBe(first);
+  });
+});

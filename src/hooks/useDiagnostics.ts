@@ -29,6 +29,7 @@ import type { ViewTimer } from "@/lib/tiptap/view-lifetime";
 import {
   mainFileLine,
   mergeLatexErrors,
+  relocateCompileDiagnostics,
   type LatexError,
 } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
@@ -46,6 +47,35 @@ import { pruneDismissed } from "@/lib/diagnostics-store";
 // while typing with nothing to show. The frozen singletons let all of that bail.
 const EMPTY_STRING_MAP: Map<string, string> = new Map();
 const EMPTY_ERRORS: LatexError[] = [];
+
+/**
+ * `relocateCompileDiagnostics`, identity-stable per compile record: a pass that
+ * resolves every record to the same line as the previous pass over the SAME
+ * record returns the previous array, so a moved error's steady state does not
+ * re-identify the merged list on every typing pause. Keyed weakly by the
+ * record's `errors` array — a new compile is a new key.
+ */
+const lastRelocation = new WeakMap<readonly LatexError[], readonly LatexError[]>();
+function relocateStable(
+  errors: readonly LatexError[],
+  sourceText: string | null,
+): readonly LatexError[] {
+  const next = relocateCompileDiagnostics(errors, sourceText);
+  if (next === errors) {
+    lastRelocation.delete(errors);
+    return errors;
+  }
+  const prev = lastRelocation.get(errors);
+  if (
+    prev &&
+    prev.length === next.length &&
+    prev.every((e, i) => e.line === next[i].line)
+  ) {
+    return prev;
+  }
+  lastRelocation.set(errors, next);
+  return next;
+}
 
 /** Minimal structural view of the editor handle the diagnostics need. The
  *  `EditorPane` inner handle (`EditorHandle`) satisfies this. */
@@ -110,13 +140,23 @@ export function useDiagnostics({
   const lifetime = useViewLifetime();
   const lintErrors = useLatexLint({ text: sourceText, knownBibKeys });
 
+  // Compile records index the text pdfTeX ran; re-address them against the
+  // LIVE source before anything maps their lines (task 1549 — the one door:
+  // snippet, paragraph anchor, code-view jump and the lint dedup all read the
+  // relocated records). Re-run per `sourceText` (a typing pause), identity-
+  // stable through `relocateStable`.
+  const liveCompileErrors = useMemo(
+    () => relocateStable(compileErrors, sourceText),
+    [compileErrors, sourceText],
+  );
+
   const allLatexErrors = useMemo<LatexError[]>(() => {
-    const merged = mergeLatexErrors(lintErrors, compileErrors as LatexError[]);
+    const merged = mergeLatexErrors(lintErrors, liveCompileErrors as LatexError[]);
     // Stable identity when empty (EMPTY_ERRORS): the merge always returns a fresh
     // array, and lint re-runs on every sourceText change — without this, the
     // no-errors steady state would re-identify `allLatexErrors` on a timer.
     return merged.length === 0 ? EMPTY_ERRORS : merged;
-  }, [lintErrors, compileErrors]);
+  }, [lintErrors, liveCompileErrors]);
 
   // ── Error-card session state ────────────────────────────────────────────
   const [selectedErrorId, setSelectedErrorId] = useState<string | null>(null);

@@ -341,3 +341,17 @@ describe("CompileService — boot failure", () => {
     expect(result.log).toContain("boot boom");
   });
 });
+
+describe("CompileService — diagnostics carry their compiled line's text (task 1549)", () => {
+  it("stamps each main-file diagnostic with the trimmed line it indexes in the text the engine ran", async () => {
+    passQueue = [{ kind: "fail", log: "(./main.tex\n! Undefined control sequence.\nl.3 \\bogus\n)" }];
+    const svc = new CompileService();
+    const result = await svc.compile({ files: texFile("  \\bogus  "), mainTexFilename: "main.tex", docId: "doc-test" });
+    const located = (result.diagnostics ?? []).filter((d) => d.line > 0);
+    expect(located.length).toBeGreaterThan(0);
+    for (const d of located) {
+      const ran = writtenFiles.find((f) => f.path === "main.tex")!.data as string;
+      expect(d.lineText).toBe(ran.split("\n")[d.line - 1].trim());
+    }
+  });
+});
