@@ -96,8 +96,8 @@ const LEDGER: Record<string, Row> = {
   },
   "components/SelectionActionsMenu.tsx": {
     scope: "visible",
-    events: ["window.mousedown", "window.resize", "window.keydown"],
-    why: "resize gated on visibility; mousedown bails unless inside this editor (its end edge is watchHeldPress, armed only by that press — task 993); keydown bails unless this editor is focused",
+    events: ["window.mousedown", "window.resize", "window.keydown", "document.focusin"],
+    why: "resize gated on visibility; mousedown bails unless inside this editor (its end edge is watchHeldPress, armed only by that press — task 993); keydown bails unless this editor is focused; focusin is armed only while this pane's menu is OPEN, and a hidden pane closes its menu (task 753) — it re-asks the caret-mode focus gate when focus moves between the menu family and the page (task 1548)",
   },
   "components/drop-mode/controller.ts": {
     scope: "gesture",
