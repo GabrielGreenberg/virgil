@@ -234,6 +234,7 @@ function BarMoreMenuBody({
             options={(Object.keys(BAR_VIEW_LABEL) as BarView[]).map((v) => ({
               value: v,
               label: BAR_VIEW_LABEL[v],
+              leading: <MenuGlyph name={`view-${v}`} />,
               disabled: v === "pdf" && !!pdfBlocked,
               hint: v === "pdf" ? pdfBlocked : undefined,
             }))}
@@ -336,7 +337,7 @@ function BarMoreMenuBody({
       )}
       <MenuActionRow
         id="more-toolbar"
-        leading={<MenuGlyph name="toolbar" />}
+        leading={<MenuGlyph name={toolsCollapsed ? "toolbar-show" : "toolbar"} />}
         label={toolsCollapsed ? "Show toolbar" : "Hide toolbar"}
         onSelect={pick(onToggleTools)}
       />

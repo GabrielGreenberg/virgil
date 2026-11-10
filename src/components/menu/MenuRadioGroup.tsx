@@ -23,6 +23,7 @@
  * pick-one row authored outside this door.
  */
 
+import type { ReactNode } from "react";
 import { MenuToggleRow } from "./MenuToggleRow";
 
 export interface MenuRadioOption<V extends string | number> {
@@ -33,6 +34,8 @@ export interface MenuRadioOption<V extends string | number> {
   disabled?: boolean;
   /** Tooltip + `aria-description` (why a row is disabled). */
   hint?: string;
+  /** Decorative glyph before the label — `MenuToggleRow`'s `leading`. */
+  leading?: ReactNode;
 }
 
 export interface MenuRadioGroupProps<V extends string | number> {
@@ -65,6 +68,7 @@ export function MenuRadioGroup<V extends string | number>({
           id={`${idPrefix}${o.value}`}
           role="menuitemradio"
           label={o.label}
+          leading={o.leading}
           checked={o.value === value}
           disabled={o.disabled}
           hint={o.hint}
