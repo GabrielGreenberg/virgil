@@ -130,8 +130,6 @@ const PRESENCE_PALETTE: TonePalette = Object.freeze({
   ink: "var(--ink-body)",
 });
 
-/** A pill's role/aria-live pairing. `role` is absent for a register that is
- *  not a live region. */
 /** `mode` (task 1353): a mode the USER turned on (Focus view, Helper mode) —
  *  the selected-toggle tint every pressed bar control wears
  *  (`.topbarbtn[aria-pressed="true"]`), so the chip reads as it did when it
@@ -146,6 +144,8 @@ const MODE_PALETTE: TonePalette = Object.freeze({
   glyph: "var(--control-selected-ink)",
 });
 
+/** A pill's role/aria-live pairing. `role` is absent for a register that is
+ *  not a live region. */
 export interface BarStatusAnnouncement {
   role?: "status" | "alert";
   "aria-live": "polite" | "assertive" | "off";

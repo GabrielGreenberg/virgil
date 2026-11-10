@@ -1461,7 +1461,7 @@ Five states. One implementation each.
   command surface RENDERS its verdict". So does a menu's icon CELL (the
   lightning grid, task 986): a menu cell is not a standalone button.
 
-**Topbar buttons.** Every button in the 40px Virgil bar uses
+**Topbar buttons.** Every button in the 32px Virgil bar (`--bar-base-h`; taller only under WCO) uses
 `.topbarbtn` (add `.topbarbtn-icon` for icon-only). One height (24px),
 uniform padding, the standard hover/press/focus/disabled states baked
 in. Toggle/"on" state via `aria-pressed="true"` — the utility paints
@@ -2907,7 +2907,7 @@ Card-level buttons (`CardTrashButton`, `CardJumpChevron`, drag handles) should u
 ### Helper mode
 
 Helper mode is just the **instant, always-on** rendering of the same hints.
-Toggle via the "?" button on the Virgil bar → "Helper mode"; `document.body`
+Toggle via the Virgil bar's ⋯ menu → "Helper mode"; `document.body`
 gets `data-helper-mode="on"` and `HintLayer` drops the hover delay to 0 so every
 `data-hint` is discoverable at a glance. `useHelperMode()`
 (`src/hooks/useHelperMode.ts`, module-scoped `useSyncExternalStore`, persisted to
@@ -3145,7 +3145,7 @@ that matches the surface, don't reinvent the shell:
 | --- | --- | --- | --- |
 | modal / global-centered (confirm, alert, prompt, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
 | draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
-| context menu / anchored dropdown (`ItemMenu`, help menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
+| context menu / anchored dropdown (`ItemMenu`, the bar's ⋯ menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
 | caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
 | resting margin trigger, in-scroll (⚡ bolt, grab handle) | — | no | `IN_SCROLL_MARGIN_TRIGGER_Z` |
 | resting margin trigger, fixed (pending-change pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
@@ -3420,7 +3420,7 @@ rendered positioned surface", which would sweep in every dialog and drag ghost
 and turn the allowlist into a filing cabinet. The panel silo is drained; the
 listed entries are one float shell, two Library-silo holdouts, and three named
 CSS-anchored follow-ups (the Fonts-dialog combobox, the library pod's add menu,
-and the Help menu's hover sub-menu) — each with a stated reason it is a
+and the ⋯ menu's hover sub-menu) — each with a stated reason it is a
 different job from swapping the shell.
 
 **A menu is a menu whatever it is ANCHORED to, and whatever paints it** (task
@@ -3445,7 +3445,7 @@ Three things follow, and they are the shape of the rule rather than three fixes:
   [_menu-census.ts](components/menu/__tests__/_menu-census.ts); the anchored
   census asks who POSITIONS by hand and the surface census asks who PAINTS by
   hand, of the same list. A menu whose PLACEMENT is a stated holdout is no longer
-  exempt from the SURFACE question — `FontPicker`, the Help menu and its
+  exempt from the SURFACE question — `FontPicker`, the ⋯ menu and its
   Commands sub-menu, the library pod's add menu, and both Library-silo kebabs had
   each sat on the placement allowlist for a release with their chrome censused by
   nothing.
@@ -4551,12 +4551,10 @@ reload (or a successful re-anchor) restores it to the grid.
 
 ## Top bar
 
-40px, `--topbar-bg`, a paler step of the sand canvas, closed by a fine `--topbar-border` line. It is the one band that belongs to the whole app; a pane's own toolbar, the PDF viewer's included, stands on the ground below it. One row. Slots: logo, project tabs, title bar, AI
-status, user menu. Hovers use `hover-on-dark`. The active tab is a
+32px (`--bar-base-h`; under WCO it grows to the OS title-bar strip), `--topbar-bg`, a paler step of the sand canvas, closed by a fine `--topbar-border` line (the `topbarBorder` pref, a visible step darker than the bar by default; zen drops it). It is the one band that belongs to the whole app; a pane's own toolbar, the PDF viewer's included, stands on the ground below it. One row, four occupants: the paper tabs (`TabStrip`), the must-see status segment, the collapsible tools (view switch, Compile, AI requests), and ⋯ (`BarMoreMenu`), which holds everything else and the folded tools. Hovers use `hover-on-dark`. The active tab is a
 lozenge: `SEGMENT_ON`, the same white tile as the view switch, so the bar
 has one way of saying what is selected. Inactive tabs are plain text in
-the same 24px box. The bar has no bottom line by default (`topbarBorder`
-matches the bar) and no dividers between tabs: it stands on the canvas.
+the same 24px box. There are no dividers between tabs.
 
 Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
@@ -4571,7 +4569,7 @@ state and `barStatusVisible(id, state)` says whether it is **must-see** — it
 needs an action, something is at risk, or the user turned it on. Informational
 states (a clean "Saved · 13:28", "Saving…", "Skills updated to v…") render
 nothing on the bar; where the information is still useful it moves to a menu
-(the skills version + restart hint ride the Help menu's "Refresh skills" row).
+(the skills version + restart hint ride the ⋯ menu's "Refresh skills" row).
 The update chip is the one standing exception Gabriel asked for, and it says
 exactly **"⟳ Virgil update"** — state detail goes in the hover hint, never in
 the label. Every item renders through `BarStatusPill` (an actionable chip uses
@@ -4593,7 +4591,7 @@ inherit the last paper's settled one.
 items mount inside ONE status segment in `StatusCluster` whose `gap` and
 trailing margin are the `--bar-occupant-gap` token (globals.css, beside
 `--bar-seam-lift`): pills are spaced from each other and from the first tool or
-the « chip after them. No occupant — `BarStatusPill` included — carries its own
+⋯ after them. No occupant — `BarStatusPill` included — carries its own
 margin; a bordered pill shows its edge, so per-item spacing that happens to
 look right on a transparent `.topbarbtn` reads as "flush" on a pill. The gap is
 not a root `gap` on the cluster (it would double around the zero-width
@@ -4667,7 +4665,7 @@ The collapsible group collapses by WIDTH rather than unmounting, so that its
 natural width stays measurable. Three things the unmount used to give it are
 paid on the collapse edge instead: its children REMOUNT (so a child's own open
 menu closes — `visibility: hidden` cannot reach a body-portaled dropdown),
-focus moves to the chip (never left in an `aria-hidden` subtree), and the clip
+focus moves to ⋯ (never left in an `aria-hidden` subtree), and the clip
 applies only while collapsed (an unconditional one trims focus rings in the
 expanded state).
 

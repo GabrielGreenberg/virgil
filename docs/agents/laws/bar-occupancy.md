@@ -1,4 +1,4 @@
-<!-- last-verified: 9ac1f766 2026-11-10 -->
+<!-- last-verified: 09b2494c 2026-11-10 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # Bar occupancy: several occupants, ONE priority rule
@@ -84,9 +84,9 @@ Four rules it earned:
   already fallen to `<body>` by the time any effect can ask, and asking
   "is it body?" would steal focus whenever the bar collapsed with nothing
   focused; (c) the clip is CONDITIONAL — an unconditional `overflow: hidden`
-  trims every button's focus ring in the expanded state too. A surface whose
-  open state lives OUTSIDE the group (the help menu, owned by `EditorLayout`) is
-  unaffected by a remount and is gated explicitly, exactly as unmounting left it.
+  trims every button's focus ring in the expanded state too. ⋯ sits OUTSIDE
+  the keyed group, so its own open menu survives a collapse; no other surface
+  keeps open state outside the group, so nothing further is gated.
 
 A composed ref on a measured element is a **stable** `useCallback`, never an
 inline arrow: React detaches and re-attaches an unstable ref callback on every

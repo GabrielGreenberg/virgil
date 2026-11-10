@@ -6,8 +6,8 @@
  * requests; the rest of the tools live here, and when the tabs need the room
  * those three fold in as well, so a tool is never out of reach.
  *
- * Built on the `<Menu>` primitive since task 1361 (as the Help menu, which this
- * grew out of):
+ * Built on the `<Menu>` primitive since task 1361 (as the former "?" Help menu
+ * this grew out of — the Sand redesign renamed it):
  *   - the trigger, its rect, re-anchoring, flip, click-outside, Escape and the
  *     activedescendant host are `AnchoredMenu`'s, stated once there;
  *   - Commands is a NESTED `MenuProvider` (the R6 stack: only the innermost
@@ -47,7 +47,7 @@ import {
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 
 /** The Commands row's registry id — read by the parent's ArrowRight hook. */
-const COMMANDS_ROW_ID = "help-commands";
+const COMMANDS_ROW_ID = "more-commands";
 
 /** Sideways first, the side with room winning; the cross-axis pair under each
  *  so a sub-menu near the window bottom slides up rather than clipping (the
@@ -306,7 +306,7 @@ function BarMoreMenuBody({
         />
       )}
       <MenuToggleRow
-        id="help-helper-mode"
+        id="more-helper-mode"
         label="Helper mode"
         checked={helperOn}
         onToggle={pick(onHelperToggle)}
@@ -349,7 +349,7 @@ function RefreshSkillsRow({
   onSelect: () => void;
 }) {
   const { active, getItemProps } = useMenuItem({
-    id: "help-refresh-skills",
+    id: "more-refresh-skills",
     run: onSelect,
   });
   return (
@@ -423,7 +423,7 @@ function CommandsRow({
       </button>
       {open && rowEl && (
         <MenuProvider
-          id="help-commands-submenu"
+          id="more-commands-submenu"
           layout="list"
           ariaLabel="Commands"
           anchorRect={rowEl.getBoundingClientRect()}
@@ -472,7 +472,7 @@ function CommandRow({
   onInsert: (name: string) => void;
 }) {
   const { active, getItemProps } = useMenuItem({
-    id: `help-command-${name}`,
+    id: `more-command-${name}`,
     run: () => onInsert(name),
   });
   return (

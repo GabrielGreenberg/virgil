@@ -183,7 +183,7 @@ export interface AnchoredMenuRenderProps {
    *  interaction and hosts `aria-activedescendant` (task 477). A body that
    *  opens a NESTED sub-menu passes it as that provider's host too, so the
    *  sub-menu's active row is announced from the same element (task 1361 —
-   *  the Help menu's Commands sub-menu; `claimActiveDescendant` stacks). */
+   *  the ⋯ menu's Commands sub-menu; `claimActiveDescendant` stacks). */
   triggerEl: HTMLElement | null;
 }
 

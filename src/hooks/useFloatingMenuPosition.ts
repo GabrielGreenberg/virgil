@@ -428,7 +428,7 @@ export function useFloatingMenuPosition(
   // Memoized so the returned `style` keeps a stable identity across renders
   // where the computed position/clamp didn't change. An un-memoized fresh
   // object every render churns every consumer's memo (e.g. EditorLayout's
-  // memoized status cluster reads the Help menu's position style), defeating
+  // memoized status cluster reads the ⋯ menu's position style), defeating
   // the bail on unrelated ticks.
   const style: CSSProperties = useMemo(
     () =>

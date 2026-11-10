@@ -32,7 +32,7 @@
  * protected tier, not how the tier yields.
  *
  * Informational state that leaves the bar does not vanish: the skills-sync
- * version and restart hint live on the Help menu's "Refresh skills" row, and
+ * version and restart hint live on the ⋯ menu's "Refresh skills" row, and
  * the save timestamp is the absence of a save pill (Cmd+S still works).
  */
 
