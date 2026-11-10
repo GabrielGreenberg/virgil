@@ -1,4 +1,4 @@
-<!-- last-verified: 0ea66658 2026-11-09 -->
+<!-- last-verified: 9ac1f766 2026-11-10 -->
 <!-- derives-from: AGENTS.md#laws -->
 
 # A NodeView owns its timers' lifetime
