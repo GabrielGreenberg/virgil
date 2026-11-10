@@ -263,11 +263,6 @@ export function SingleBlockBody({
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   // THE float editability gate (task 1546): main's live read-only state ∧ this body's own static reason.
   const floatEditable = useFloatEditable(mainEditor, config.editable);
@@ -287,7 +282,6 @@ export function SingleBlockBody({
       cardContext: true,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       // None of these kinds holds a figure (blockquote content is prose,
       // codeBlock is text, displayMath is an atom), so — like paragraph-body —

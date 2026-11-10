@@ -139,11 +139,6 @@ export function LinkedRangeBody({
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   // Thread the real docId so figure/graphics atoms inside the range resolve and
   // render their actual image (read-only), like the list float (Issue-4) — the
@@ -172,7 +167,6 @@ export function LinkedRangeBody({
       cardContext: true,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       docIdRef,
       // Heading/list title + heading structural writes inside the range proxy

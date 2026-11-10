@@ -5,37 +5,38 @@ import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import type { SaveBibEntry } from "@/hooks/useCitations";
 import type { RequestBibReview } from "@/hooks/useBibReview";
-import { Button, ItemMenu, PANEL } from "@/components/panel-primitives";
-import { Input, Textarea } from "@/components/field-primitives";
+import { ItemMenu, PANEL } from "@/components/panel-primitives";
+import { Input } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import { PanelThemeMenuRow } from "@/components/PanelThemePicker";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { MenuRadioGroup } from "@/components/menu/MenuRadioGroup";
 import { MenuActionRow } from "@/components/menu/MenuActionRow";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
-import { bibFieldDisplay, serializeBibForExport } from "@/lib/bib-parser";
-import { NO_BIB_UID } from "@/lib/bib-uid";
-import { bibKeyIndex, citekeyIdentity, findBibEntryByKey } from "@/lib/bib-address";
+import { byProjectedAuthor, downloadCitedBib } from "@/lib/bib-export-cited";
+import {
+  BibConflictStrip,
+  BibLibraryPicker,
+  BibPendingRequests,
+  BibRequestForm,
+  LIBRARY_NOT_CONNECTED_HINT,
+  bibEntryFieldsEqual,
+  useBibLibraryFlow,
+} from "./bib-library-flow";
+import { bibKeyIndex, findBibEntryByKey } from "@/lib/bib-address";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
-import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import {
   useLibraryItems,
   useLibraryMasterBib,
   useLibraryMemberships,
 } from "@/hooks/useLibrary";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import {
   LibraryMembershipChips,
   membershipChipsFor,
 } from "@/components/library/provenance-chips";
 import { LibraryStatusRow } from "@/components/library/library-entry-status";
-import {
-  LibraryEntryMenu,
-  type RowState,
-} from "@/components/library/LibraryEntryMenu";
 import { iconHint } from "@/components/Hint";
-import { StatusDot } from "@/components/StatusDot";
 import { SegmentedToggle } from "@/components/SegmentedToggle";
 import {
   VIEW_PREF_REGISTRY,
@@ -43,57 +44,8 @@ import {
   type RegistryPrefs,
 } from "@/lib/view-prefs/registry";
 import { isCancelEscape } from "@/lib/key-intent";
-import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
-import { formatWhen } from "@/lib/relative-time";
 
-/** True when two bib entries describe the same record at field level —
- *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
- *  field order) don't count as a conflict. */
-function bibEntryFieldsEqual(a: BibEntry, b: BibEntry): boolean {
-  // bib-display-exempt: non-display — this compares stored BYTES to decide
-  // whether two records conflict. A projection here would call `L{\'o}pez` and
-  // `L{ó}pez` the same entry and silently swallow a real difference.
-  if (a.type !== b.type) return false;
-  const aKeys = Object.keys(a.fields);
-  const bKeys = Object.keys(b.fields);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const k of aKeys) {
-    if (a.fields[k] !== b.fields[k]) return false;
-  }
-  return true;
-}
-
-/** Fallback formatter used when `entry.raw` isn't available (e.g. for an
- *  entry assembled in-memory). Produces a BibTeX-ish block suitable for
- *  embedding in `requestNotes`. */
-function formatBibEntryForNote(entry: BibEntry): string {
-  // bib-display-exempt: non-display — this emits a BibTeX block into an AI
-  // request note; it is source, not a rendering.
-  const lines = [`@${entry.type}{${entry.key},`];
-  for (const [field, value] of Object.entries(entry.fields)) {
-    lines.push(`  ${field} = {${value}},`);
-  }
-  lines.push("}");
-  return lines.join("\n");
-}
-
-/**
- * Author sort, on PROJECTED text (task 409, decision 3). Sorting the raw `.bib`
- * bytes filed every accented surname under its escape — `L{\'o}pez` sorts on
- * `L{` and lands above "Adams" — so the list order was simply wrong. ONE
- * comparator, read by the panel list AND by the cited-export, because the two
- * disagreeing about order is how the export's byte order drifts from what the
- * user was looking at.
- *
- * Stated cost: the first `cited.bib` export after this lands is a one-time
- * deterministic RE-ORDERING of the exported file. That is a diff, not a loss.
- */
-function byProjectedAuthor(a: BibEntry, b: BibEntry): number {
-  const keyOf = (e: BibEntry) =>
-    (bibFieldDisplay(e, "author") || e.key).toLowerCase();
-  return keyOf(a).localeCompare(keyOf(b));
-}
 
 interface BibliographyPanelProps {
   citations: CitationRef[];
@@ -139,12 +91,6 @@ type BibFilter = RegistryPrefs["bibFilter"];
  *  Values + labels are the registry's own (task 931). */
 const BIB_FILTER_OPTIONS = enumOptions("bibFilter");
 
-/** Why the Library search scope is unavailable. ONE string for both the
- *  disabled segment's hint (the only place a user can meet the reason while
- *  the segment is disabled) and the inline note shown if the library drops
- *  while the Library scope is already active (task 950). */
-const LIBRARY_NOT_CONNECTED_HINT =
-  "Connect the central library to search master.bib.";
 
 function BibliographyPanel({
   citations,
@@ -194,40 +140,11 @@ function BibliographyPanel({
   const [searchScope, setSearchScope] = useState<"local" | "library">("local");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const [showRequestForm, setShowRequestForm] = useState(false);
-  const [requestText, setRequestText] = useState("");
-  const requestInputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Citekey-conflict inline confirmation strip: shown when the user clicks
-  // "Add" on a library result whose citekey already exists locally but with
-  // different fields. Null means no conflict pending.
-  const [conflictDecision, setConflictDecision] = useState<
-    | {
-        libraryEntry: BibEntry;
-        localEntry: BibEntry;
-      }
-    | null
-  >(null);
-
-  // Cross-library picker dropdown — opens from the add-menu's "Search
-  // library…" item. Anchored to the rect of the "+" trigger at click
-  // time (passed through by HeaderAddDropdown) so the popover lands
-  // under the user's gesture even though the add-menu closes immediately
-  // after.
-  const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
-  const [libraryMenuAnchor, setLibraryMenuAnchor] = useState<DOMRect | null>(
-    null,
-  );
-
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (showSearch) searchInputRef.current?.focus();
   }, [showSearch]);
-
-  useEffect(() => {
-    if (showRequestForm) requestInputRef.current?.focus();
-  }, [showRequestForm]);
 
   const keyToCitationIds = useCallback(() => {
     const map: Record<string, string[]> = {};
@@ -398,43 +315,39 @@ function BibliographyPanel({
     [handleSelectBibKey],
   );
 
-  const handleExportCited = useCallback(() => {
-    const seen = new Set<string>();
-    const cited = bibEntries.filter((e) => {
-      if (!citedKeys.has(e.key) || seen.has(e.key)) return false;
-      seen.add(e.key);
-      return true;
-    });
-    if (cited.length === 0) return;
-    cited.sort(byProjectedAuthor);
-    // Reconstruct every entry through the serializer — NEVER the raw-passthrough
-    // that `.filter(Boolean)`-drops an in-memory entry with empty `raw`
-    // (BIB-F7-01, DATA-LOSS). `serializeBibForExport` rebuilds from fields when
-    // `raw === ""`, so a "Save under new citekey"/library-added/AI-found entry
-    // exports its reconstructed block instead of silently vanishing.
-    // …and from the SOURCE, so the file carries what those entries depend on
-    // (their `@string` macros, `@preamble`, crossref parents — task 949).
-    const content = serializeBibForExport(cited, bibSource);
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "cited.bib";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [bibEntries, bibSource, citedKeys]);
+  // Leave the search context (field, query, scope). The conflict strip it may
+  // have raised is cleared by `closeSearch` / the flow itself.
+  const leaveSearch = useCallback(() => {
+    setShowSearch(false);
+    setSearchQuery("");
+    setSearchScope("local");
+  }, []);
 
-  const handleAddFromCentralLibrary = useCallback(
-    (anchor: DOMRect | null) => {
-      setShowRequestForm(false);
-      setConflictDecision(null);
-      setLibraryMenuAnchor(anchor);
-      setLibraryMenuOpen(true);
+  // The library flow — add from the library, the four-way citekey conflict,
+  // entry requests — shared with the tool gutter's bibliography list.
+  const flow = useBibLibraryFlow({
+    bibEntries,
+    onAddBibEntry,
+    onSaveBibEntry,
+    onRequestReview,
+    onAddEntryRequest,
+    select: handleSelectBibKey,
+    onAddedUnderNewKey: (key) => {
+      // A conflict is only raised from library results, which never contain
+      // the suffixed `<key>-N`: leave the search, widen the filter (a new
+      // entry is uncited and hidden under "Cited only"), then reveal it.
+      leaveSearch();
+      setFilter("all");
+      navigateToEntry(key);
     },
-    [],
-  );
+  });
+  const clearConflict = flow.clearConflict;
+
+  const handleExportCited = useCallback(() => {
+    downloadCitedBib(bibEntries, citedKeys, bibSource);
+}, [bibEntries, bibSource, citedKeys]);
+
+  const handleAddFromCentralLibrary = flow.libraryMenu.openAt;
 
   const handleToggleSearch = useCallback(() => {
     setShowSearch((prev) => {
@@ -444,49 +357,27 @@ function BibliographyPanel({
         setSearchScope("local");
         // Toggling search off tears down the context that raised the conflict
         // strip — clear it too, same as `closeSearch` (task 096, Member A).
-        setConflictDecision(null);
+        clearConflict();
       } else {
-        setShowRequestForm(false);
+        flow.request.hide();
       }
       return next;
     });
-  }, []);
+  }, [clearConflict, flow.request]);
 
   const closeSearch = useCallback(() => {
-    setShowSearch(false);
-    setSearchQuery("");
-    setSearchScope("local");
+    leaveSearch();
     // The citekey-conflict strip is owned by the library-search context that
     // raised it — tearing that context down must clear it, or an orphaned amber
     // strip lingers over an unrelated list with its four actions still live on a
     // stale snapshot (task 096, Member A).
-    setConflictDecision(null);
-  }, []);
+    clearConflict();
+  }, [leaveSearch, clearConflict]);
 
   const handleOpenRequestForm = useCallback(() => {
     setShowSearch(false);
-    setShowRequestForm(true);
-    setRequestText("");
-  }, []);
-
-  const handleSubmitRequest = useCallback(() => {
-    if (!requestText.trim()) return;
-    onAddEntryRequest(requestText.trim());
-    setShowRequestForm(false);
-    setRequestText("");
-  }, [requestText, onAddEntryRequest]);
-
-  const onRequestKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
-    if (isCancelEscape(e)) {
-      setShowRequestForm(false);
-      setRequestText("");
-    }
-    const press = chordPress(e, FIELD_COMMIT_SHORTCUT);
-    if (!press) return;
-    e.preventDefault();
-    if (press === "held") return; // a held ⌘Enter files one request
-    handleSubmitRequest();
-  });
+    flow.request.show();
+  }, [flow.request]);
 
   // Case-folded (task 1325): a library `smith2020` beside a local `Smith2020`
   // is the SAME key to BibTeX and to `addBibEntry`'s dedupe, so it must take
@@ -495,138 +386,11 @@ function BibliographyPanel({
   const localEntryByKey = useMemo(() => bibKeyIndex(bibEntries), [bibEntries]);
 
   const handleAddEntry = useCallback(
-    (entry: BibEntry) => {
-      // Library-scope: if the citekey already exists locally and the
-      // fields differ, surface the four-option conflict strip instead
-      // of silently double-adding.
-      if (searchScope === "library") {
-        const local = localEntryByKey.get(entry.key);
-        if (local) {
-          if (bibEntryFieldsEqual(local, entry)) {
-            // Byte-identical — silent no-op, navigate to it.
-            handleSelectBibKey(local.key);
-            return;
-          }
-          setConflictDecision({ libraryEntry: entry, localEntry: local });
-          return;
-        }
-      }
-      onAddBibEntry?.(entry);
-      // Keep the entry in the global/library results — localEntryByKey
-      // re-render flips the chip from "Add" to "Added" so the list
-      // doesn't shift under the user's cursor while they're typing.
-    },
-    [
-      onAddBibEntry,
-      searchScope,
-      localEntryByKey,
-      handleSelectBibKey,
-    ],
+    (entry: BibEntry) => flow.addEntry(entry, searchScope === "library"),
+    [flow, searchScope],
   );
 
-  // Pick handler for the cross-library dropdown. Returns the row state
-  // the menu should adopt afterward — "added" on a clean add, "conflict"
-  // when the local citekey diverges and the conflict strip takes over.
-  const handlePickFromLibrary = useCallback(
-    (entry: BibEntry): RowState => {
-      const local = localEntryByKey.get(entry.key);
-      if (local) {
-        if (bibEntryFieldsEqual(local, entry)) {
-          handleSelectBibKey(local.key);
-          return "added";
-        }
-        setConflictDecision({ libraryEntry: entry, localEntry: local });
-        setLibraryMenuOpen(false);
-        return "conflict";
-      }
-      onAddBibEntry?.(entry);
-      return "added";
-    },
-    [localEntryByKey, handleSelectBibKey, onAddBibEntry],
-  );
 
-  const getLibraryRowState = useCallback(
-    (entry: BibEntry): RowState => {
-      const local = localEntryByKey.get(entry.key);
-      if (!local) return "addable";
-      return bibEntryFieldsEqual(local, entry) ? "added" : "conflict";
-    },
-    [localEntryByKey],
-  );
-
-  const dismissConflict = useCallback(() => setConflictDecision(null), []);
-
-  const handleConflictReplace = useCallback(() => {
-    if (!conflictDecision) return;
-    const { libraryEntry, localEntry } = conflictDecision;
-    // "Replace with library" is set-all (D3 / BIB-A3-02): the local entry's
-    // fields become EXACTLY the library version's — a local-only field the
-    // library lacks must be dropped, not merge-retained. ONE write (task 691):
-    // the fallback here used to be a merge write PLUS a separate type write,
-    // the same two-writes-one-gesture shape as the bib editor's Save, racing
-    // in the same queue.
-    onSaveBibEntry(localEntry, {
-      fields: libraryEntry.fields,
-      type: libraryEntry.type,
-    });
-    setConflictDecision(null);
-    handleSelectBibKey(localEntry.key);
-  }, [
-    conflictDecision,
-    onSaveBibEntry,
-    handleSelectBibKey,
-  ]);
-
-  const handleConflictNewCitekey = useCallback(() => {
-    if (!conflictDecision) return;
-    const { libraryEntry } = conflictDecision;
-    const existing = new Set(bibEntries.map((e) => citekeyIdentity(e.key)));
-    let suffix = 2;
-    let next = `${libraryEntry.key}-${suffix}`;
-    while (existing.has(citekeyIdentity(next))) {
-      suffix += 1;
-      next = `${libraryEntry.key}-${suffix}`;
-    }
-    // Drop `raw` so the serializer rebuilds the block from fields and the
-    // new citekey — keeping `raw` would re-emit the library's original
-    // `@type{<originalKey>,…}` and the suffix would never reach disk. The uid
-    // comes through as `NO_BIB_UID` (a library result is a preview and carries
-    // none), so `addBibEntry`'s door mints this new, distinct entry's durable
-    // identity against the uids the bibliography already holds — task 693.
-    // This used to mint here, with no collision set, which is how a fresh
-    // entry could be born sharing another entry's uid.
-    onAddBibEntry?.({ ...libraryEntry, uid: NO_BIB_UID, key: next, raw: "" });
-    // Surface the just-added entry (task 096, Member B). A conflict is only
-    // raised from the library-search "Add" affordance or the cross-library
-    // dropdown, so the rendered list is library results / a local search that
-    // never contains the suffixed `<key>-N` — `handleSelectBibKey(next)` alone
-    // would select an entry the list does not render (an invisible add). Leave the search
-    // context (which also clears the conflict strip), widen the filter — a
-    // brand-new entry is uncited and hidden under "Cited only" — then
-    // select + scroll the new entry into view.
-    closeSearch();
-    setFilter("all");
-    navigateToEntry(next);
-  }, [
-    conflictDecision,
-    bibEntries,
-    onAddBibEntry,
-    closeSearch,
-    setFilter,
-    navigateToEntry,
-  ]);
-
-  const handleConflictRequestMerge = useCallback(() => {
-    if (!conflictDecision) return;
-    const { libraryEntry, localEntry } = conflictDecision;
-    const libRaw = libraryEntry.raw?.trim() || formatBibEntryForNote(libraryEntry);
-    const notes =
-      `Merge with library entry ${libraryEntry.key}. The user's Virgil Library has an alternate version of this entry — please reconcile the two and verify against authoritative sources. ` +
-      `\n\nLibrary version:\n${libRaw}`;
-    onRequestReview(localEntry.key, "fields", notes);
-    setConflictDecision(null);
-    handleSelectBibKey(localEntry.key);
-  }, [conflictDecision, onRequestReview, handleSelectBibKey]);
 
   // Row migration (task 477): the two filter rows and the export command were
   // bare `<button>`s, so this kebab's registry was EMPTY and the shared
@@ -741,7 +505,7 @@ function BibliographyPanel({
                 // Flipping away from library scope abandons the context that
                 // raised the conflict strip — clear it so it can't linger over
                 // the now-local list (task 096, Member A).
-                if (scope === "local") setConflictDecision(null);
+                if (scope === "local") clearConflict();
               }}
               options={[
                 { value: "local", label: "Local", hint: "Search local" },
@@ -782,146 +546,14 @@ function BibliographyPanel({
         </div>
       )}
 
-      {conflictDecision && (
-        <div className={`${AMBER_ATTENTION_STRIP} border-b`}>
-          <div className="text-2xs text-ink-body mb-1.5">
-            <span className="font-mono text-ink-muted">
-              {conflictDecision.libraryEntry.key}
-            </span>{" "}
-            is already in your bib with different fields.
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            <Button
-              variant="warm"
-              size="sm"
-              onClick={handleConflictReplace}
-              data-hint="Overwrite local fields with the library version (citekey unchanged)"
-            >
-              Replace with library
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={dismissConflict}
-              data-hint="Keep your existing local entry as-is"
-            >
-              Keep yours
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleConflictNewCitekey}
-              data-hint="Add the library entry alongside under an auto-suffixed citekey"
-            >
-              Save under new citekey
-            </Button>
-            <Button
-              variant="warm"
-              size="sm"
-              onClick={handleConflictRequestMerge}
-              data-hint="File an AI bib-review request to merge both versions and authenticate"
-            >
-              Request AI merge &amp; authentication
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {showRequestForm && (
-        <div className={`${AMBER_ATTENTION_STRIP} border-b`}>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="section-caption">
-              Request entry
-            </span>
-            <button
-              onClick={() => {
-                setShowRequestForm(false);
-                setRequestText("");
-              }}
-              type="button"
-              className="iconbtn-xs iconbtn-on-dark ml-auto"
-              {...iconHint({ label: "Cancel" })}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <Textarea
-            ref={requestInputRef}
-            value={requestText}
-            onChange={(e) => setRequestText(e.target.value)}
-            onKeyDown={onRequestKeyDown}
-            placeholder="Describe the bibliography entry you need..."
-            density="dense"
-            className="w-full text-xs px-2 py-1.5 resize-none"
-            rows={3}
-          />
-          <div className="flex justify-end gap-1.5 mt-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setShowRequestForm(false);
-                setRequestText("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="warm"
-              size="sm"
-              onClick={handleSubmitRequest}
-              disabled={!requestText.trim()}
-            >
-              Submit
-            </Button>
-          </div>
-        </div>
-      )}
+      <BibConflictStrip flow={flow} />
+      <BibRequestForm flow={flow} />
     </>
   );
 
   const listTrailing =
     entryRequests.length > 0 ? (
-      <div className="mt-2 pt-2 border-t border-edge-subtle">
-        <div className="section-caption px-2 mb-1.5">
-          Pending requests ({entryRequests.length})
-        </div>
-        {entryRequests.map((req) => (
-          <div
-            key={req.id}
-            className={`${AMBER_ATTENTION_STRIP} border rounded-md mx-1 mb-1.5`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-xs text-ink-body whitespace-pre-wrap">
-                {req.description}
-              </p>
-              <button
-                type="button"
-                onClick={() => onRemoveEntryRequest(req.id)}
-                className="iconbtn-xs iconbtn-on-dark"
-                {...iconHint({ label: "Dismiss", pos: "above" })}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="text-2xs text-ink-muted mt-1">
-              {formatWhen(req.createdAt, Date.now(), { dateOnly: true })}
-              {req.status === "pending" && (
-                <span className="ml-1.5 inline-flex items-center gap-1">
-                  <StatusDot tone="pending" size="sm" motion="pulse" />
-                  Pending
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <BibPendingRequests requests={entryRequests} onRemove={onRemoveEntryRequest} />
     ) : null;
 
   return (
@@ -1064,14 +696,7 @@ function BibliographyPanel({
         );
       }}
     />
-    <LibraryEntryMenu
-      open={libraryMenuOpen}
-      anchorRect={libraryMenuAnchor}
-      onClose={() => setLibraryMenuOpen(false)}
-      onPick={handlePickFromLibrary}
-      getRowState={getLibraryRowState}
-      placeholder="Search library…"
-    />
+    <BibLibraryPicker flow={flow} />
     </>
   );
 }

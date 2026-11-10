@@ -76,6 +76,10 @@ const RAW_DISCLOSURES: Record<string, { count: number; reason: string }> = {
   "src/components/MenuBar.tsx": { count: 1, reason: "menu group row: roving `menuitem` (focus shown by `data-active`), not a tab stop" },
   "library/components/BibCard.tsx": { count: 1, reason: "inline-styled \"more/less\" chip in the bib card's key row" },
   "library/components/PaperHeader.tsx": { count: 1, reason: "inline-styled \"fields\" chip in the paper header's action row" },
+  "src/components/editor-layout/tool-gutter/GutterList.tsx": {
+    count: 4,
+    reason: "reading-list row: icon-only ⌄ open (in the hover cluster, or at a bibliography row's left edge) and the open view's ⌃/⌄ close — the row itself is the label",
+  },
 };
 
 /** Not a tab stop / its focus door lives elsewhere: the ring question is moot. */

@@ -898,7 +898,7 @@ export function AnchorBadge({
 }
 
 /** Orphaned/unanchored badge — a small faded color dot-squircle (~10px).
- *  Matches the "outside focus" ◎ dot; the data-hint/aria-label carry the
+ *  The data-hint/aria-label carry the
  *  "no anchor" meaning (no cross-out glyph). */
 export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   return (

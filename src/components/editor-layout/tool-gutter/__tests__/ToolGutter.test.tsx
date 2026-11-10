@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 /**
- * The tool gutter (task 1440): tools write their body at the top of the
- * gutter, every list folds and can leave, "More" adds one, a row click goes
- * through the editor's own jump door and selects the card, and a to-do's box
- * ticks without a jump.
+ * The tool gutter (task 1440, split in round 3): tools write their body in
+ * the top half, list icons write one list in the bottom half, "+" adds an
+ * icon and "…" removes one, the halves keep their split (and the divider)
+ * whether or not anything is open,
+ * a row click goes through the editor's own jump door and selects the card,
+ * and a to-do's box ticks without a jump.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { FootnoteInfo } from "@/components/Editor";
 import type { TodoItem } from "@/lib/types";
 
@@ -36,6 +38,9 @@ vi.mock("../../contexts/selections", () => ({
     setSelectedReportCardId: vi.fn(),
   }),
 }));
+vi.mock("@/lib/storage", async () =>
+  (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
+);
 vi.mock("@/hooks/useDiagnostics", () => ({
   useDiagnosticsContext: () => ({
     allLatexErrors: [],
@@ -97,15 +102,18 @@ beforeEach(() => {
 });
 
 describe("ToolGutter", () => {
-  it("shows the three tools and Footnotes and Bibliography by default, no card chrome", () => {
+  it("shows the three tools, and the Footnotes and Bibliography icons with Footnotes open", () => {
     mount();
     expect(screen.getByRole("toolbar", { name: "Tools" }).querySelectorAll("button")).toHaveLength(3);
+    const icons = [...document.querySelectorAll("[data-gutter-list-button]")].map((b) =>
+      b.getAttribute("data-gutter-list-button"),
+    );
+    expect(icons).toEqual(["footnotes", "bibliography"]);
     const sections = [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
       s.getAttribute("data-gutter-section"),
     );
-    expect(sections).toEqual(["footnotes", "bibliography"]);
+    expect(sections).toEqual(["footnotes"]);
     expect(document.querySelector("[data-card]")).toBeNull();
-    expect(screen.getByText("None yet")).toBeTruthy();
   });
 
   it("a tool icon writes that tool at the top; a second click closes it", () => {
@@ -119,32 +127,56 @@ describe("ToolGutter", () => {
     expect(screen.queryByTestId("tool-body")).toBeNull();
   });
 
-  it("folds a list from its heading", () => {
+  it("a list icon writes one list at a time; a second click closes it", () => {
     mount();
-    const fn = document.querySelector('[data-gutter-section="footnotes"]')!;
-    expect(within(fn as HTMLElement).getByText("First note")).toBeTruthy();
-    fireEvent.click(within(fn as HTMLElement).getByRole("button", { expanded: true }));
-    expect(within(fn as HTMLElement).queryByText("First note")).toBeNull();
+    const open = () =>
+      [...document.querySelectorAll("[data-gutter-section]")].map((s) => s.getAttribute("data-gutter-section"));
+    fireEvent.click(document.querySelector('[data-gutter-list-button="bibliography"]')!);
+    expect(open()).toEqual(["bibliography"]);
+    expect(screen.getByText("None yet")).toBeTruthy();
+    fireEvent.click(document.querySelector('[data-gutter-list-button="bibliography"]')!);
+    expect(open()).toEqual([]);
   });
 
-  it("every list can leave, the defaults included, and More brings it back", () => {
+  it("the halves keep their split, and the divider shows, whether or not anything is open", () => {
     mount();
-    const sections = () =>
-      [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
-        s.getAttribute("data-gutter-section"),
+    const gutter = () => document.querySelector("[data-tool-gutter]")!;
+    // Footnotes open, no tool: still split, so the lists lozenge stays put.
+    expect(gutter().hasAttribute("data-split")).toBe(true);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
+    fireEvent.click(document.querySelector('[data-gutter-tool-button="outline"]')!);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
+    // Closing the list (and then the tool) keeps both: nothing moves.
+    fireEvent.click(document.querySelector('[data-gutter-list-button="footnotes"]')!);
+    expect(gutter().hasAttribute("data-bottom-open")).toBe(false);
+    expect(gutter().hasAttribute("data-split")).toBe(true);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
+    fireEvent.click(document.querySelector('[data-gutter-tool-button="outline"]')!);
+    expect(document.querySelector("[data-gutter-divider]")).not.toBeNull();
+  });
+
+  it("every icon can leave through the … menu, the defaults included, and + brings one back", () => {
+    mount();
+    const icons = () =>
+      [...document.querySelectorAll("[data-gutter-list-button]")].map((b) =>
+        b.getAttribute("data-gutter-list-button"),
       );
-    for (const id of ["footnotes", "bibliography"]) {
-      const section = document.querySelector(`[data-gutter-section="${id}"]`) as HTMLElement;
-      fireEvent.click(within(section).getByRole("button", { name: /^Remove / }));
+    for (const label of ["Remove Footnotes", "Remove Bibliography"]) {
+      fireEvent.click(screen.getByRole("button", { name: "List options" }));
+      fireEvent.click(screen.getByText(label));
     }
-    expect(sections()).toEqual([]);
-    expect(screen.getByRole("button", { name: "More lists" })).toBeTruthy();
-    act(() => revealGutterSection("footnotes"));
-    expect(sections()).toEqual(["footnotes"]);
+    expect(icons()).toEqual([]);
+    expect(document.querySelector("[data-gutter-section]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add a list" }));
+    fireEvent.click(screen.getByText("Footnotes"));
+    expect(icons()).toEqual(["footnotes"]);
+    // The added list opens.
+    expect(document.querySelector('[data-gutter-section="footnotes"]')).not.toBeNull();
   });
 
   it("a row click selects the card and jumps through the editor's door", () => {
     mount();
+    // Footnotes is the default open list.
     fireEvent.click(screen.getByText("First note"));
     expect(setSelectedFootnoteId).toHaveBeenCalledWith("f1");
     expect(scrollToFootnote).toHaveBeenCalledWith("f1", expect.any(HTMLElement));
@@ -164,9 +196,9 @@ describe("ToolGutter", () => {
     revealGutterSection("examples");
     mount(["outline", "search", "footnotes", "examples", "notes"]);
     expect(screen.getByRole("toolbar", { name: "Tools" }).querySelectorAll("button")).toHaveLength(2);
-    const sections = [...document.querySelectorAll("[data-gutter-section]")].map((s) =>
-      s.getAttribute("data-gutter-section"),
+    const icons = [...document.querySelectorAll("[data-gutter-list-button]")].map((b) =>
+      b.getAttribute("data-gutter-list-button"),
     );
-    expect(sections).toEqual(["footnotes", "examples"]);
+    expect(icons).toEqual(["footnotes", "examples"]);
   });
 });

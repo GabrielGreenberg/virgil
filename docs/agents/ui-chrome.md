@@ -85,26 +85,90 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
 - **The LEFT rail is the tool gutter.** `PaneRail side="left"` takes a
   `toolGutter` node that replaces its omni desktop: `ToolGutter`
   ([tool-gutter/ToolGutter.tsx](../../src/components/editor-layout/tool-gutter/ToolGutter.tsx)),
-  sticky in the column (`top: var(--pod-gap)`, `max-height: var(--dock-slot-frame-h)`,
-  internal scroll). Everything in it is text on the manila (`.tool-gutter*` in
-  `globals.css`; no pod fill, no card frame):
+  sticky in the column at `--gutter-inset` (its tools row sits on the text
+  card's top edge), one pane tall, split into a TOP and a BOTTOM half that each
+  scroll on their own. Everything in it is text on the manila (`.tool-gutter*`
+  in `globals.css`; no pod fill, no card frame):
   1. **Tools** — three icon buttons across the top. The active tool's body is the
      SAME `PaneRailBody` the dock rendered (props built once as
      `paneRailBodyShared` in EditorPane), wrapped in `.tool-gutter-tool`, which
      flattens Search's result cards (`[data-card]`) and Word count's pods
      (`.rounded-lg`) onto the manila. There is no ×: the tool's own button in
      the row above closes it, and a tool mounts no `PanelChromeProvider`.
-  2. **Lists** — fold-out sections. None is required: Footnotes and Bibliography
-     show by default (`DEFAULT_GUTTER_SECTIONS`), any can be removed, and "More"
-     (an `AnchoredMenu`) adds the rest, including one the user removed. A row is ONE line of text from
+  2. **Lists** (the bottom half, round 3) — a second icon row, one icon per
+     list, same toggle style as the tools: a click writes THAT list beneath the
+     row, one at a time (`list` in the store). None is required: Footnotes and
+     Bibliography by default (`DEFAULT_GUTTER_SECTIONS`); "+" (an
+     `AnchoredMenu`) adds an icon and opens its list, "…" removes one or resets
+     to the defaults. A row is ONE line of text from
      [gutter-rows.ts](../../src/components/editor-layout/tool-gutter/gutter-rows.ts)
      (pure, archived cards left out via `archivedIds`, `\cite…{}` read as
      "Author Year"); a click selects the card (`useSelectionsContext`) and jumps
      through the editor handle's own doors (`scrollToFootnote` / `scrollToExample`
      / `scrollToCitation` / `jumpToCard` / `errorJump`); a to-do's checkbox calls
      `toggleItem`. The selected card's row wears `data-selected`.
-  The section set honours the host's `visiblePanels` (the Reader's whitelist).
-- **Store.** `tool-gutter-store.ts` — `{ tool, extra, folded }`, window-wide like
+     **Reading lists** (Gabriel, 2026-11-08): Footnotes, Bibliography and
+     Numbered examples are not one-line rows but `GutterList`s
+     ([GutterList.tsx](../../src/components/editor-layout/tool-gutter/GutterList.tsx),
+     groups from the pure
+     [gutter-lists.ts](../../src/components/editor-layout/tool-gutter/gutter-lists.ts),
+     wired in [ReadingLists.tsx](../../src/components/editor-layout/tool-gutter/ReadingLists.tsx)).
+     One row model: a click selects (no scroll); hover/focus shows ↗ jump and ⌄
+     open; open turns the row IN PLACE into the kind's own card
+     ([GutterCardBody.tsx](../../src/components/editor-layout/tool-gutter/GutterCardBody.tsx):
+     FootnoteCard and its orphan/unanchored twins, ExampleCard) — one open per
+     list, closed by ⌃ or Escape (a card field that handled Escape keeps it).
+     Bibliography rows instead open from a ⌄ at their LEFT edge
+     (`leadingToggle`, no hover buttons) into a compact view
+     ([BibOpenView.tsx](../../src/components/editor-layout/tool-gutter/BibOpenView.tsx)):
+     the reference; PDF ↗ when the library holds the paper
+     (`@/lib/library/open-library-pdf` — the window opens inside the click, a
+     missing file closes it and shows an inline message), the citekey, the
+     status word; "Cited in" with ‹ n / N › and one 2-line sentence per
+     citation (the cite bold, the current one tinted; a click jumps there); the
+     annotation as one line; and a foot — Edit entry · Note · Check with
+     Claude — each opening ONE part of BibEntryCard (`section`); ↑/↓ move between rows; a 2px accent bar
+     marks rows whose anchor is on screen (an IntersectionObserver over the
+     anchors' own nodes, re-synced on structural revisions only). Footnotes group
+     under their top-level sections, numbered as the paper does, with orphaned
+     and unanchored ones last; the … menu adds one and picks Active/Archives/All.
+     The bibliography toggles A–Z (the references as they will print, one
+     continuous list in author order, "N×") and As cited (section groups, a repeat dimmed with ↺), both
+     ending in "Needs attention" (cited but not in the .bib, then uncited); its …
+     menu has cited-only and Export cited.bib (`@/lib/bib-export-cited`, shared
+     with the panel). Examples show "(N)", lettered sub-items, a gloss's first
+     tier, and "label · referred to N×" (`countLabelRefs`). Every other list
+     (to-dos, notes, citations, archive, revisions, cuts, reports, errors) runs
+     on the same row model (`CardList` in ToolGutter.tsx, rows from
+     `cardListGroups`): its open row is the card OmniHost already built, read
+     from the pane's omni card registry
+     ([omni-card-registry.tsx](../../src/components/editor-layout/contexts/omni-card-registry.tsx))
+     without the omni-only `data-omni-entry`, so it is the right gutter's card;
+     a to-do keeps its box. The bibliography list also has the panel's library
+     flow (`bib-library-flow.tsx`: Search library… / add, the four-way citekey
+     conflict, Request entry and pending requests, Local/Library search scope),
+     and its rows drag into the text as `\cite` (`startBibEntryDrag`).
+  3. **Divider** — mounted whenever both lozenges show (`data-split`), open
+     or closed (Gabriel, 2026-11-09): the halves always keep their
+     `--tool-gutter-split` shares, a closed half being its lozenge over empty
+     sand, so opening or closing a tool or a list never moves the lists
+     lozenge, and the boundary drags with nothing open. A `drag-gap-h band-grip` on the pane-resize
+     engine (`id: "tool-gutter-split"`): `apply` writes `--tool-gutter-split`
+     on the gutter, `commit` stores `split` (clamped 0.15–0.85) once. It paints
+     nothing at rest: each half's icon row is a raised lozenge
+     (`--gutter-lozenge-bg`, `--gutter-lozenge-shadow`), so the list lozenge is
+     the seam, and it stays when a half is closed.
+  The icon set honours the host's `visiblePanels` (the Reader's whitelist).
+- **One inset frames the text card** (round 3, Gabriel's notes): `--gutter-inset`
+  (8px) is the gap above the card and between it and each gutter's content —
+  the inboard column padding is dropped and the PanelColumn drag gap paints
+  `--gutter-inset − PANE_ROW_GAP_PX` under this layout (the grab keeps its
+  `--gutter-grab` floor), and the right cascade's `.omni-entry-slide` loses its
+  inboard `left-2`. Both gutters' head controls sit on the card's top edge; the
+  right lozenge ends `--gutter-inset + 30px` down (the strip's floor is `--omni-sticky-top`), so the
+  first card starts just under it. A lit gutter toggle wears a thin azure ring
+  on top of the wash.
+- **Store.** `tool-gutter-store.ts` — `{ tool, sections, folded, list, split }`, window-wide like
   the dock it replaces, one `localStorage` key (`virgil:tool-gutter`) re-read on
   the `storage` event via `subscribeToStorageKey`.
 - **Shared top of the right column.** With every omni surface on the right, the
@@ -177,7 +241,7 @@ See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, 
 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, reports, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
 
-**Omni bins (tasks 421–422, 544).** A card omni cannot place in the cascade is surfaced in a collapsed **bin pill** at the head of the column, both rendering through the ONE `OmniBinPill` primitive: **"N unanchored"** — the ONE surface for a card with no place in the text, orphaned (anchor died) and deliberately parked alike (task 544, Gabriel: "no conceptual distinction between unanchored and unplaced"); the `AnchorState` distinction survives PER ROW when expanded (`BadgeOrphaned` beside an orphan, `◌` beside a parked card) and the pill wears the strongest state it holds (error tone iff any member is orphaned) — and **"N outside focus"** (neutral). Task 422's two-pill split ("N unplaced" for the free set) is retired. The bin reads the side's WHOLE item list — the category filter is a cascade preference, and an affordance that exists so a card cannot vanish is not hideable by one. The pane-chrome `UnanchoredCardsChip` is its FALLBACK, listing only the cards whose side has no bin surface (zen, a collapsed column, the code split, folded Reader gutters), read off the edge `PanelColumn.onBinSurfaceChange` publishes. The cascade CLEARS the frame: `useInTextPositions` takes a `CascadeFloor` (the frame's measured occupancy at scroll zero, `cascadeFloorForBinSlot`), so a card anchored to the first paragraphs is never painted under the pills or a docked band. `tone` is a REQUIRED prop (published as `data-omni-bin-tone`) so a new bin can't inherit an error look by default. **Placement**: the bins live in the column's ONE sticky layer, not the document-tall cascade pod — `PanelColumn` renders an empty slot as the last flex child of the band frame (Layer C) and publishes it through [omni-bin-slot.ts](../../src/components/editor-layout/omni-bin-slot.ts); `OmniViewPanel` portals its `OmniBinStack` into it. So the bins stack BELOW whatever bands are docked by flex order rather than a z-index race, are sticky for free, and take zero flow space in the pod. With no column host (unit fixtures, a bare mount) the stack falls back to an in-pod sticky posture.
+**Omni bins (tasks 421–422, 544).** A card omni cannot place in the cascade is surfaced in a collapsed **bin pill** at the head of the column, through the `OmniBinPill` primitive: **"N unanchored"** — the ONE surface for a card with no place in the text, orphaned (anchor died) and deliberately parked alike (task 544, Gabriel: "no conceptual distinction between unanchored and unplaced"); the `AnchorState` distinction survives PER ROW when expanded (`BadgeOrphaned` beside an orphan, `◌` beside a parked card) and the pill wears the strongest state it holds (error tone iff any member is orphaned). In the gutter layout it is the compact anchor button on the right lozenge. The "N outside focus" pill is gone (Gabriel, 2026-11-06): a card outside a locked focus band is simply out of the cascade until focus ends. Task 422's two-pill split ("N unplaced" for the free set) is retired. The bin reads the side's WHOLE item list — the category filter is a cascade preference, and an affordance that exists so a card cannot vanish is not hideable by one. The pane-chrome `UnanchoredCardsChip` is its FALLBACK, listing only the cards whose side has no bin surface (zen, a collapsed column, the code split, folded Reader gutters), read off the edge `PanelColumn.onBinSurfaceChange` publishes. The cascade CLEARS the frame: `useInTextPositions` takes a `CascadeFloor` (the frame's measured occupancy at scroll zero, `cascadeFloorForBinSlot`), so a card anchored to the first paragraphs is never painted under the pills or a docked band. `tone` is a REQUIRED prop (published as `data-omni-bin-tone`) so a new bin can't inherit an error look by default. **Placement**: the bins live in the column's ONE sticky layer, not the document-tall cascade pod — `PanelColumn` renders an empty slot as the last flex child of the band frame (Layer C) and publishes it through [omni-bin-slot.ts](../../src/components/editor-layout/omni-bin-slot.ts); `OmniViewPanel` portals its `OmniBinStack` into it. So the bins stack BELOW whatever bands are docked by flex order rather than a z-index race, are sticky for free, and take zero flow space in the pod. With no column host (unit fixtures, a bare mount) the stack falls back to an in-pod sticky posture.
 
 Omni-view surfaces a **`OmniBulkPendingHeader`** when applied-pending changes exist: since 209eac4d it's a **navigator** — `[▲ prev] [counter "i of N"] [▼ next] … [⋮]` — where ▲/▼ step the applied changes in doc order (scroll-into-view + light the blue range, via `sortAppliedKeysByDocPos` in [pending-change-nav.ts](../../src/links/pending-change-nav.ts)) and the ⋮ kebab holds Keep-all / Dismiss-all (was a flat count + Keep-all/Dismiss-all strip). **It renders on ONE side, chosen by PLACEMENT (task 420):** `appliedPendingSide(categorySides)` ([omni-categories.ts](../../src/panels/Omni/omni-categories.ts)) resolves the side from the derived category placements (the task-381 ladder), with the family set derived from `APPLIED_SPLICE_KIND_LIST` and a stated tie-break (first family → Revisions). The old per-host gate was a per-side VIEW-FILTER predicate, so Revisions and Cutter on opposite strips gave two navigators driving one cursor, and hiding both in the filter menu removed the only document-wide way to find/keep/revert unreviewed applied AI text while the blue ranges stayed live in the `.tex`. Placement decides WHERE; visibility decides nothing.
 

@@ -127,7 +127,6 @@ describe("editor callback producer census (task 534)", () => {
       expect.arrayContaining([
         "onConfirmLabelRename",
         "onConfirmFootnoteMove",
-        "onConfirmHeadingDelete",
         "onConfirmFigureDelete",
         "onOpenHeadingTypeMenu",
       ]),
@@ -137,7 +136,8 @@ describe("editor callback producer census (task 534)", () => {
     expect(EDITOR_CALLBACKS).not.toContain("isLabelTaken");
     expect(EDITOR_CALLBACKS).not.toContain("onAddComment");
     expect(EDITOR_CALLBACKS).not.toContain("onArchive");
-    expect(EDITOR_CALLBACKS.length).toBeGreaterThanOrEqual(5);
+    expect(EDITOR_CALLBACKS).not.toContain("onConfirmHeadingDelete");
+    expect(EDITOR_CALLBACKS.length).toBeGreaterThanOrEqual(4);
   });
 
   it("leg 1 — every optional callback is READ in Editor.tsx (declaration + destructure + a use)", () => {
@@ -168,7 +168,7 @@ describe("editor callback producer census (task 534)", () => {
   it("leg 3 — every member of the extension factory's `callbacks` bag is a produced prop", () => {
     const ext = commentsStripped(read(EXTENSIONS));
     const bag = members(interfaceBody(ext, "EditorExtensionsCallbackRefs")).map((m) => m.name);
-    expect(bag.length).toBeGreaterThanOrEqual(4);
+    expect(bag.length).toBeGreaterThanOrEqual(3);
     const orphaned = bag.filter((name) => !EDITOR_CALLBACKS.includes(name));
     expect(orphaned, "a bag member no <VirgilEditor> prop feeds").toEqual([]);
     // …and Editor.tsx actually threads each one into the bag it builds.

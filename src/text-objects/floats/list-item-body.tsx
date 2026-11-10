@@ -285,11 +285,6 @@ export function ListItemBody({
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   // Issue-4: thread the real docId so a figure/graphics atom in the item
   // resolves and renders its actual image (read-only) — like list-body.
@@ -312,7 +307,6 @@ export function ListItemBody({
       boundRoot: soleRoot("bulletList", "orderedList"),
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       docIdRef,
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
