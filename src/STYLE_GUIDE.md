@@ -1470,6 +1470,8 @@ the bar, because it is not something you do often; nothing on the bar is filled.
 used now and then is a row in ⋯ (`BarMoreMenu`), not another icon, and an off-
 switch for a state the user is in (the Zen button, a mode chip) is the only
 reason to add to the bar.
+Every ⋯ row leads with a 14px outlined glyph from `MenuGlyph`
+(`src/components/icons/MenuGlyph.tsx`); a new row adds its glyph there.
 
 **Omni bin pill.** The count-pill control in the Omni cascade that
 collects cards which can't render inline, the unanchored bin, is

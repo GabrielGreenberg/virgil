@@ -60,6 +60,7 @@
  */
 
 import { memo, useCallback, useEffect, useState } from "react";
+import { MenuGlyph } from "@/components/icons/MenuGlyph";
 import { iconHint } from "@/components/Hint";
 import { MenuToggleRow } from "@/components/menu";
 import { StatusDot } from "@/components/StatusDot";
@@ -108,6 +109,7 @@ function PomodoroMenuRowImpl({ onPicked }: { onPicked?: () => void }) {
     <MenuToggleRow
       id="more-timer"
       label="Timer"
+      leading={<MenuGlyph name="timer" />}
       checked={open}
       onToggle={() => {
         onPicked?.();

@@ -27,6 +27,7 @@ import {
 import type { SkillSyncNotice } from "@/hooks/useFiles";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { iconHint } from "@/components/Hint";
+import { MenuGlyph } from "@/components/icons/MenuGlyph";
 import {
   AnchoredMenu,
   MenuActionRow,
@@ -241,12 +242,14 @@ function BarMoreMenuBody({
           />
           <MenuActionRow
             id="more-compile"
+            leading={<MenuGlyph name="compile" />}
             label="Compile"
             disabledReason={compileBlocked}
             onSelect={pick(onCompile)}
           />
           <MenuActionRow
             id="more-ai-requests"
+            leading={<MenuGlyph name="ai-requests" />}
             label="AI requests"
             onSelect={pick(onOpenAiRequests)}
           />
@@ -255,12 +258,14 @@ function BarMoreMenuBody({
       )}
       <MenuActionRow
         id="more-style"
+        leading={<MenuGlyph name="style" />}
         label="Document style…"
         disabledReason={styleBlocked}
         onSelect={pick(onOpenStyle)}
       />
       <MenuActionRow
         id="more-print"
+        leading={<MenuGlyph name="print" />}
         label="Print…"
         disabledReason={printBlocked}
         onSelect={pick(onOpenPrint)}
@@ -268,6 +273,7 @@ function BarMoreMenuBody({
       <MenuSeparator />
       <MenuToggleRow
         id="more-zen"
+        leading={<MenuGlyph name="zen" />}
         label="Zen mode"
         checked={zenOn}
         onToggle={pick(onToggleZen)}
@@ -275,6 +281,7 @@ function BarMoreMenuBody({
       <PomodoroMenuRow onPicked={close} />
       <MenuToggleRow
         id="more-collab"
+        leading={<MenuGlyph name="collab" />}
         label="Collaborator mode"
         checked={!!collab.enabled}
         onToggle={pick(collab.enabled ? onDisableCollab : onEnableCollab)}
@@ -307,6 +314,7 @@ function BarMoreMenuBody({
       )}
       <MenuToggleRow
         id="help-helper-mode"
+        leading={<MenuGlyph name="helper" />}
         label="Helper mode"
         checked={helperOn}
         onToggle={pick(onHelperToggle)}
@@ -314,18 +322,21 @@ function BarMoreMenuBody({
       <MenuSeparator />
       <MenuActionRow
         id="more-preferences"
+        leading={<MenuGlyph name="preferences" />}
         label="Preferences…"
         onSelect={pick(onOpenPreferences)}
       />
       {onOpenBugReport && (
         <MenuActionRow
           id="more-bug-report"
+          leading={<MenuGlyph name="bug" />}
           label="Report a bug…"
           onSelect={pick(onOpenBugReport)}
         />
       )}
       <MenuActionRow
         id="more-toolbar"
+        leading={<MenuGlyph name="toolbar" />}
         label={toolsCollapsed ? "Show toolbar" : "Hide toolbar"}
         onSelect={pick(onToggleTools)}
       />
@@ -356,12 +367,15 @@ function RefreshSkillsRow({
     <button
       {...getItemProps()}
       type="button"
-      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-3 ${menuRowToneClass("default", false)}`}
+      className={`w-full text-left px-3 py-1.5 text-xs flex items-start gap-2 ${menuRowToneClass("default", false)}`}
       style={menuRowRovingStyle(active, false)}
       data-hint="Re-sync the skill bundle to this paper"
       data-skill-sync-notice={skillSyncNotice ? skillSyncNotice.version : undefined}
     >
-      <span className="flex flex-col items-start gap-0.5">
+      <span className="mt-px flex">
+        <MenuGlyph name="refresh" />
+      </span>
+      <span className="flex flex-1 flex-col items-start gap-0.5">
         <span>Refresh skills</span>
         {skillSyncNotice && (
           <span className="text-2xs text-ink-subtle leading-snug whitespace-normal">
@@ -370,10 +384,6 @@ function RefreshSkillsRow({
           </span>
         )}
       </span>
-      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
-        <path d="M2 5.2V12a1.2 1.2 0 0 0 1.2 1.2h9.6A1.2 1.2 0 0 0 14 12V6.2A1.2 1.2 0 0 0 12.8 5H7.4L6 3.2H3.2A1.2 1.2 0 0 0 2 4.4Z" />
-        <path d="M8 7.2v3.4M6.4 9.2 8 10.8l1.6-1.6" />
-      </svg>
     </button>
   );
 }
@@ -416,7 +426,10 @@ function CommandsRow({
         // which row the floating list belongs to.
         style={menuRowRovingStyle(active || open, false)}
       >
-        <span className="font-medium">Commands</span>
+        <span className="flex items-center gap-2">
+          <MenuGlyph name="commands" />
+          <span className="font-medium">Commands</span>
+        </span>
         <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
           <polyline points="9 18 15 12 9 6" />
         </svg>
