@@ -2299,19 +2299,56 @@ def bound_atom_after(text: str, pos: int):
         if cite.group("mname") and _cite_may_continue(text, cite.end(), gap):
             return partial
         return (text[pos:cite.end()], True)
+    groups = _atom_arg_groups(text, end, gap)
+    if groups is None:
+        return partial
+    return (text[pos:groups[-1][1] if groups else end], True)
+
+
+def _atom_arg_groups(text: str, end: int, gap):
+    """The argument groups of a non-citation atom whose command token ends at
+    `end`: any […] optional args, then ONE balanced {…} required arg, each
+    preceded by the argument gap — as [(start, end)] spans (start at the
+    opening bracket, end just past the closing one), or None when a group may
+    run past the end of `text`. The one walk `bound_atom_after` and
+    `footnote_body_span` share."""
+    groups = []
     while True:
         j = gap(end)
         if j >= len(text):
-            return partial
+            return None
         if text[j] not in "[{":
-            break
+            return groups
         e = _group_end(text, j, text[j], "]" if text[j] == "[" else "}")
         if e < 0:
-            return partial
+            return None
+        groups.append((j, e))
         end = e
         if text[j] == "{":
-            break
-    return (text[pos:end], True)
+            return groups
+
+
+_FOOTNOTE_ATOM_RE = re.compile(r"\\(?:footnote|thanks)(?![A-Za-z@])")
+
+
+def footnote_body_span(text: str, pos: int):
+    r"""The footnote atom (`\footnote` / `\thanks`) starting at `pos`, as
+    (body_start, body_end, atom_end) — the body is text[body_start:body_end],
+    inside the required {…} arg — or None when no complete footnote atom
+    starts there. Reads the same grammar as `bound_atom_after`, so LaTeX's
+    mark override `\footnote[7]{…}` (which the serializer emits raw) and an
+    argument gap are footnotes too (task 1561); the Python footnote helpers in
+    apply_response.py ask THIS rather than re-spelling `\footnote\{`."""
+    from cite_commands import ARG_GAP_RE  # same dir; no cycle
+
+    m = _FOOTNOTE_ATOM_RE.match(text, pos)
+    if not m:
+        return None
+    groups = _atom_arg_groups(text, m.end(), lambda p: ARG_GAP_RE.match(text, p).end())
+    if not groups or text[groups[-1][0]] != "{":
+        return None
+    start, end = groups[-1]
+    return (start + 1, end - 1, end)
 
 
 _MARKER_CALL_RE = re.compile(
