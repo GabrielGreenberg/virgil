@@ -19,7 +19,12 @@ import { useRef, type KeyboardEvent } from "react";
  *   e.g. a stored colour the palette no longer carries — must not leave the
  *   group unreachable by Tab);
  * - the arrow keys move the choice AND the focus together, wrapping at the
- *   ends, as native radios do.
+ *   ends, as native radios do — stepping ONE option from the option that
+ *   HOLDS FOCUS (task 1554), never from the checked index: with nothing
+ *   checked, stepping from "selection" made ArrowRight re-check the focused
+ *   Tab stop (a dead key) while ArrowLeft jumped to the last. Focus is where
+ *   the user is; the checked index and then the Tab stop are only fallbacks
+ *   for a keydown whose target is not an option.
  *
  * The hook owns the SEMANTICS; the VISUAL half of the contract is the
  * `RadioMark` leaf (`src/components/icons/RadioMark.tsx`, task 1279), which
@@ -53,7 +58,11 @@ export function useRadioGroup<V>({
           : 0;
     if (step === 0 || disabled || options.length === 0) return;
     e.preventDefault();
-    const current = checkedIndex >= 0 ? checkedIndex : step > 0 ? -1 : 0;
+    const target = e.target as Node;
+    const focused = refs.current.findIndex(
+      (el, i) => i < options.length && el != null && el.contains(target),
+    );
+    const current = focused >= 0 ? focused : tabStop;
     const next = (current + step + options.length) % options.length;
     onChange(options[next]);
     refs.current[next]?.focus();

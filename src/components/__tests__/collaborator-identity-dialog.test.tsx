@@ -103,6 +103,35 @@ describe("identity colour swatches are a radio group", () => {
     expect(radios.filter((r) => r.tabIndex === 0)).toEqual([radios[0]]);
   });
 
+  it("off-palette: ArrowRight from the Tab stop moves to swatch 1, ArrowLeft to the last (task 1554)", () => {
+    render(
+      <CollaboratorIdentityDialog
+        open
+        initial={{ name: "Sam", color: "#123456" }}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const radios = () => screen.getAllByRole("radio");
+    fireEvent.keyDown(radios()[0], { key: "ArrowRight" });
+    expect(checked()).toEqual([radios()[1]]);
+    expect(document.activeElement).toBe(radios()[1]);
+    cleanup();
+    __resetDialogStack();
+    render(
+      <CollaboratorIdentityDialog
+        open
+        initial={{ name: "Sam", color: "#123456" }}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const last = COLLAB_COLORS.length - 1;
+    fireEvent.keyDown(radios()[0], { key: "ArrowLeft" });
+    expect(checked()).toEqual([radios()[last]]);
+    expect(document.activeElement).toBe(radios()[last]);
+  });
+
   it("Escape still cancels", () => {
     const onCancel = vi.fn();
     render(
