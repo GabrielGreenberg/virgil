@@ -28,6 +28,7 @@ import {
   markDormant as markDormantWriter,
   releaseFromSnippet,
   reviveLiveLinks,
+  unparkFromSnippet,
   type DormantCardShape,
 } from "@/links/dormant";
 import { resolveCardAnchor, reconcileCardToResolved, type ResolveIndex } from "@/links/resolve-card-anchor";
@@ -43,6 +44,7 @@ import { hasSeparateModeALink } from "@/links/_shared/reapply-mode-b-anchors";
 import {
   ANCHORS_REVIVED_EVENT,
   dispatchAnchorsRevived,
+  dispatchHoldingReleased,
   type AnchorsRevivedDetail,
 } from "@/lib/tiptap/orphan-events";
 import { useDormantRevival } from "@/hooks/useDormantRevival";
@@ -496,6 +498,33 @@ describe("useDormantRevival — the card-hook side", () => {
     act(() => dispatchAnchorsRevived({ docId: "doc-1", uuids: ["P9"], anchorIds: [] }));
     expect(updates()).toBe(0);
     expect(hook.result.current.cards[0]).toBe(dormant);
+  });
+
+  // Task 1557: a cut's clipboard holding let go before its paste.
+  it("a released holding UNPARKS its cards — out of the archive, links still dormant, Undo still revives", () => {
+    const parked = markDormant<Card>({ id: "n1", links: [modeA("l1", "P1")] }, "clip:x");
+    const elsewhere = markDormant<Card>({ id: "n2", links: [modeA("l2", "P2")] }, "snip");
+    const { hook, updates } = setup([parked, elsewhere]);
+    act(() => dispatchHoldingReleased({ docId: "doc-2", snippetId: "clip:x" }));
+    expect(updates()).toBe(0);
+    act(() => dispatchHoldingReleased({ docId: "doc-1", snippetId: "clip:x" }));
+    const [a, b] = hook.result.current.cards;
+    expect(a.archived).toBe(false);
+    expect(isArchivedWithText(a)).toBe(false);
+    expect(a.links!.every(isDormantLink)).toBe(true); // reads `parked`, not orphaned
+    expect(b).toBe(elsewhere);
+    // An Undo of the cut re-inserts P1: the kept dormant link revives.
+    act(() => dispatchAnchorsRevived({ docId: "doc-1", uuids: ["P1"], anchorIds: [] }));
+    expect(hook.result.current.cards[0].links!.some(isDormantLink)).toBe(false);
+  });
+});
+
+describe("unparkFromSnippet (task 1557)", () => {
+  it("is identity for a card not archived with that holding, and for a hand archive", () => {
+    const other = markDormant<Card>({ id: "n1", links: [modeA("l1", "P1")] }, "snip");
+    expect(unparkFromSnippet(other, "clip:x")).toBe(other);
+    const byHand: Card = { id: "n2", archived: true, links: [modeA("l2", "P2")] };
+    expect(unparkFromSnippet(byHand, "clip:x")).toBe(byHand);
   });
 });
 

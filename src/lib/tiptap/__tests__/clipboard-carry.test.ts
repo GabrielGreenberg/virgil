@@ -17,13 +17,14 @@ import {
   ANCHORS_ARCHIVED_EVENT,
   ANCHORS_REVIVED_EVENT,
   ANCHOR_ORPHANED_EVENT,
+  HOLDING_RELEASED_EVENT,
   TEXTOBJECT_ORPHANED_EVENT,
 } from "@/lib/tiptap/orphan-events";
 import { isClipboardHoldingId } from "@/lib/tiptap/clipboard-carry";
 
 const DOC = "doc-cut";
 
-function mount(): Editor {
+function mount(docId: string = DOC, onlyP1 = false): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   const ctx: EditorExtensionsCtx = {
@@ -31,7 +32,7 @@ function mount(): Editor {
     editableRef: { current: true },
     cardContext: false,
     callbacks: {},
-    docIdRef: { current: DOC },
+    docIdRef: { current: docId },
     anchoredUuidsRef: { current: new Set(["p2"]) },
     host: null,
   };
@@ -41,7 +42,9 @@ function mount(): Editor {
     extensions: buildEditorExtensions(ctx),
     content: {
       type: "doc",
-      content: [
+      content: onlyP1
+        ? [{ type: "paragraph", attrs: { uuid: "p1" }, content: [{ type: "text", text: "first." }] }]
+        : [
         { type: "paragraph", attrs: { uuid: "p1" }, content: [{ type: "text", text: "first." }] },
         {
           type: "paragraph",
@@ -104,7 +107,13 @@ function anchorIds(editor: Editor): string[] {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 function record() {
-  const seen: Record<string, unknown[]> = { archived: [], revived: [], orphan: [], textOrphan: [] };
+  const seen: Record<string, unknown[]> = {
+    archived: [],
+    revived: [],
+    orphan: [],
+    textOrphan: [],
+    released: [],
+  };
   const order: string[] = [];
   const on = (name: string, key: string) => {
     const h = (e: Event) => {
@@ -119,16 +128,20 @@ function record() {
     on(ANCHORS_REVIVED_EVENT, "revived"),
     on(ANCHOR_ORPHANED_EVENT, "orphan"),
     on(TEXTOBJECT_ORPHANED_EVENT, "textOrphan"),
+    on(HOLDING_RELEASED_EVENT, "released"),
   ];
   return { seen, order, off: () => offs.forEach((f) => f()) };
 }
 
 let editor: Editor | null = null;
+let other: Editor | null = null;
 let rec: ReturnType<typeof record> | null = null;
 afterEach(() => {
   rec?.off();
   editor?.destroy();
+  other?.destroy();
   editor = null;
+  other = null;
 });
 
 function cutWholeP2(ed: Editor, clip: Map<string, string>) {
@@ -350,5 +363,81 @@ describe("cut carries a passage's cards to its paste (task 1557)", () => {
       expect(uuids(editor)).toEqual(["p1", "p2", "p3"]);
       expect(rec.seen.archived).toEqual([]);
     });
+  });
+
+  describe("a holding let go before its paste (release on supersede)", () => {
+    it("a copy after a never-pasted cut releases its holding, once, naming it", async () => {
+      editor = mount();
+      rec = record();
+      const clip = new Map<string, string>();
+      cutWholeP2(editor, clip);
+      await flush();
+      const holding = (rec.seen.archived as { snippetId: string }[])[0].snippetId;
+      expect(rec.seen.released).toEqual([]);
+
+      editor.view.dispatch(
+        editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, posOf(editor, "p1"))),
+      );
+      editor.view.dom.dispatchEvent(clipboardEvent("copy", clip));
+      expect(rec.seen.released).toEqual([{ docId: DOC, snippetId: holding }]);
+      // A second copy has nothing held — no second release.
+      editor.view.dom.dispatchEvent(clipboardEvent("copy", clip));
+      expect(rec.seen.released.length).toBe(1);
+
+      // The cut is still Undo-able: the text and its ids come back.
+      editor.commands.undo();
+      await flush();
+      expect(uuids(editor)).toEqual(["p1", "p2", "p3"]);
+      expect(anchorIds(editor)).toEqual(["a1"]);
+    });
+
+    it("a new cut releases the previous holding; closing the editor releases the last", async () => {
+      editor = mount();
+      rec = record();
+      const clip = new Map<string, string>();
+      cutWholeP2(editor, clip);
+      await flush();
+      const first = (rec.seen.archived as { snippetId: string }[])[0].snippetId;
+      editor.view.dispatch(
+        editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, posOf(editor, "p3"))),
+      );
+      editor.view.dom.dispatchEvent(clipboardEvent("cut", clip));
+      await flush();
+      expect(rec.seen.released).toEqual([{ docId: DOC, snippetId: first }]);
+      editor.destroy();
+      editor = null;
+      expect(rec.seen.released.length).toBe(2);
+    });
+
+    it("a copy with nothing held releases nothing", () => {
+      editor = mount();
+      rec = record();
+      editor.view.dispatch(
+        editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, posOf(editor, "p2"))),
+      );
+      editor.view.dom.dispatchEvent(clipboardEvent("copy", new Map()));
+      expect(rec.seen.released).toEqual([]);
+    });
+  });
+
+  it("a paste into ANOTHER paper is a copy: fresh identity, no carried mark", async () => {
+    editor = mount();
+    other = mount("doc-other", true);
+    rec = record();
+    const clip = new Map<string, string>();
+    cutWholeP2(editor, clip);
+    await flush();
+    caretAtEnd(other);
+    other.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+    await flush();
+    expect(uuids(other)).not.toContain("p2");
+    expect(anchorIds(other)).toEqual([]);
+    expect(other.state.doc.textContent).toContain("moved words here.");
+    // The source paper's holding is untouched — its own paste still carries.
+    caretAtEnd(editor);
+    editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+    await flush();
+    expect(uuids(editor)).toContain("p2");
+    expect(anchorIds(editor)).toEqual(["a1"]);
   });
 });

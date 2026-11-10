@@ -61,6 +61,7 @@ import {
 } from "@/lib/tiptap/archive-holdings";
 import { hasLiveAnchor, hasLiveBlock } from "@/lib/tiptap/doc-structure";
 import { collectAtomIds } from "@/lib/tiptap/node-identity";
+import { dispatchHoldingReleased } from "@/lib/tiptap/orphan-events";
 import { generateShortId } from "@/lib/uuid";
 import { expandCascadeRange } from "@/text-objects/delete-range";
 
@@ -205,8 +206,15 @@ export const ClipboardCarry = Extension.create<ClipboardCarryOptions>({
     // another pane's holding (per-doc services under multi-pane keep-alive).
     const owner = {};
     let held: HeldCut | null = null;
+    // Superseded (a copy, a new cut, the editor closing): the holding is
+    // dropped, and whatever cards are still parked in it — the cut was never
+    // pasted, or its paste was undone — come back out of the archive, parked,
+    // their links still dormant so an Undo of the cut revives them
+    // (`HOLDING_RELEASED_EVENT`). A no-op for cards a landed paste revived.
     const retire = () => {
-      if (held) retractArchiveHoldings(held.docId, owner);
+      if (!held) return;
+      retractArchiveHoldings(held.docId, owner);
+      dispatchHoldingReleased({ docId: held.docId, snippetId: held.id });
       held = null;
     };
     return [
@@ -218,8 +226,7 @@ export const ClipboardCarry = Extension.create<ClipboardCarryOptions>({
         props: {
           handleDOMEvents: {
             // A copy replaces the clipboard: the held cut can no longer be the
-            // thing a paste brings back. (Its cards stay dormant until the
-            // load reconcile releases them — task 1557 progress log.)
+            // thing a paste brings back, so its cards are let go (`retire`).
             copy() {
               retire();
               return false;

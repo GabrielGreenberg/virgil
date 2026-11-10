@@ -42,6 +42,12 @@ export const ANCHORS_REVIVED_EVENT = "virgil-anchors-revived";
  *  BEFORE the orphan events for the same ids, so the strip that follows sees
  *  dormant links and skips them (`removeTextObjectLink` / `getTextAnchor`). */
 export const ANCHORS_ARCHIVED_EVENT = "virgil-anchors-archived";
+/** A HOLDING was let go with its cards still in it (task 1557): a clipboard
+ *  holding superseded before its paste landed (a copy, a new cut, the editor
+ *  closing). The card hooks UNPARK what was archived with it — the card comes
+ *  back out of the archive and reads `parked`, its dormant links KEPT, so an
+ *  Undo of the cut still revives it by liveness (`unparkFromSnippet`). */
+export const HOLDING_RELEASED_EVENT = "virgil-holding-released";
 
 export interface AnchorOrphanedDetail {
   /** The document whose editor removed the mark; `null` = no document. */
@@ -75,6 +81,17 @@ export interface AnchorsArchivedDetail {
   uuids: string[];
   /** Departed `linkedAnchor` ids the snippet's carried marks name. */
   anchorIds: string[];
+}
+
+export interface HoldingReleasedDetail {
+  /** The document whose editor held the cards; `null` = no document. */
+  docId: string | null;
+  /** The holding (the `archivedWith` its dormant links name). */
+  snippetId: string;
+}
+
+export function dispatchHoldingReleased(detail: HoldingReleasedDetail): void {
+  window.dispatchEvent(new CustomEvent(HOLDING_RELEASED_EVENT, { detail }));
 }
 
 export function dispatchAnchorsArchived(detail: AnchorsArchivedDetail): void {
@@ -156,4 +173,13 @@ export function useAnchorsArchived(
   handler: (detail: AnchorsArchivedDetail) => void,
 ): void {
   useOrphanEvent(ANCHORS_ARCHIVED_EVENT, docId, handler);
+}
+
+/** Subscribe to holdings let go with cards still in them (task 1557) in
+ *  `docId` only. */
+export function useHoldingReleased(
+  docId: string | null,
+  handler: (detail: HoldingReleasedDetail) => void,
+): void {
+  useOrphanEvent(HOLDING_RELEASED_EVENT, docId, handler);
 }
