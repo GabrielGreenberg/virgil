@@ -37,7 +37,7 @@
  * this provider's exclude set (R8), so it needs no explicit exclusion.
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useLiveEditorSignature } from "@/lib/tiptap/use-live-editor-signature";
 import type { Editor } from "@tiptap/react";
 import { trackRange, type TrackedRange } from "@/lib/tiptap/tracked-pos";
@@ -66,6 +66,7 @@ import { IconExample } from "./editor-layout/panel-icons";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
+import type { MenuFamilyTest } from "./menu/menu-family";
 import { elementAnchor, type LiveAnchor } from "./menu/live-anchor";
 import { caretEditableHost } from "./menu/caret-host";
 import { useCloseOnDisabledEdge } from "./menu/menu-trigger";
@@ -322,6 +323,10 @@ export interface ActionsMenuPanelProps {
    *  click-outside so a press on it reaches its own toggle instead of closing
    *  the menu for the click to re-open (task 992). */
   triggerEl?: HTMLElement | null;
+  /** Receives the menu FAMILY's membership test while open (task 1548) — the
+   *  bolt's caret-mode lifetime gate reads it, so focus moving into this
+   *  menu's own colour picker is not taken for focus leaving the editor. */
+  familyRef?: MutableRefObject<MenuFamilyTest | null>;
   onClose: () => void;
   /** The document's `\documentclass` (null = unknown), for the ¶ block-type
    *  dropdown's per-class heading rows (task 752). */
@@ -342,6 +347,7 @@ export function ActionsMenuPanel({
   triggerRect,
   trackAnchor,
   triggerEl = null,
+  familyRef,
   onClose,
   documentClass = null,
 }: ActionsMenuPanelProps) {
@@ -732,6 +738,7 @@ export function ActionsMenuPanel({
         // live element so the click-outside treats it as "inside" (R8). The
         // trigger rides the same list, so re-pressing it toggles (task 992).
         excludeRefs={[triggerEl, colorPopoverEl]}
+        familyRef={familyRef}
         onClose={onClose}
         ariaLabel="Selection actions"
         containerClassName="selection-actions-menu"

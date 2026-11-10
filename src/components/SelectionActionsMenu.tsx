@@ -41,6 +41,7 @@ import { resolveAnchorableNode, resolveAnchorUuidAndKind } from "@/lib/anchor-uu
 import type { TextObjectKind } from "@/text-objects/types";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
+import { menuFamilyOwnsFocus, type MenuFamilyTest } from "./menu/menu-family";
 import { useMenuTrigger } from "./menu/menu-trigger";
 import { useHint } from "./Hint";
 import { chordPress } from "@/lib/portable-chord";
@@ -137,13 +138,27 @@ function portalHostOf(column: HTMLElement | null): HTMLElement | null {
  * (`toPortalCoords`, layout already clean after coordsAtPos) + arithmetic on
  * cached editor metrics — the grab handle's exact budget.
  */
-function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement {
+function computePlacement(
+  editor: Editor,
+  cache: EditorViewportFrame,
+  menuOwnsFocus: () => boolean,
+): Placement {
   const sel = editor.state.selection;
   if (sel instanceof NodeSelection) return INVISIBLE_PLACEMENT;
   // Cursor-only mode is gated on focus so the button doesn't materialize
   // at the document's default cursor position on first paint, before the
   // user has ever clicked into the prose.
-  if (sel.empty && !editor.isFocused) return INVISIBLE_PLACEMENT;
+  //
+  // "Focused" is the editor OR the menu family this bolt opened (task 1548).
+  // Focus leaving the editor is only a proxy for "the head line went away",
+  // and the proxy is wrong when focus moves INTO the open menu — the colour
+  // popover's native `<input type="color">` takes focus on purpose. Read as
+  // "focus lost", that click unmounted the menu (and the popover with it) the
+  // same frame, and the custom pick landed on a detached input. Selection mode
+  // never had this gate, which is why only caret mode lost the pick.
+  if (sel.empty && !editor.isFocused && !menuOwnsFocus()) {
+    return INVISIBLE_PLACEMENT;
+  }
   // Keep-alive: a hidden (display:none) editor has offsetHeight 0 and
   // coordsAtPos → {0,0,0,0}; bail BEFORE coordsAtPos so the margin bolt never
   // jitters and the hidden editor does zero placement measurement.
@@ -282,6 +297,14 @@ export function SelectionActionsMenu({
   // amplifier that turned a window-resize storm into a re-subscription storm
   // (task 317). Same shape as `TextObjectGrabHandle`'s `scheduleRefRef`.
   const updateRef = useRef<() => void>(() => {});
+  // The OPEN menu's family test, published by its `MenuProvider` while mounted
+  // (null when closed). `menuOwnsFocus` is the one predicate both placement
+  // reads (`run`, `liveBoltRect`) pass to the caret-mode focus gate.
+  const menuFamilyRef = useRef<MenuFamilyTest | null>(null);
+  const menuOwnsFocus = useCallback(
+    () => menuFamilyOwnsFocus(menuFamilyRef.current),
+    [],
+  );
 
   // Shared viewport frame (geometry service, C7). editorRight, scrollTop,
   // scrollBottom are read here per placement compute instead of being
@@ -325,7 +348,7 @@ export function SelectionActionsMenu({
     const isSuppressed = () => mouseDownInEditor || gestureActive;
     const run = () => {
       const next = editor && !editor.isDestroyed
-        ? computePlacement(editor, cacheRef.current)
+        ? computePlacement(editor, cacheRef.current, menuOwnsFocus)
         : INVISIBLE_PLACEMENT;
       // Scroll-anchor stability probe (task 042): one record per coalesced
       // frame — a stable RAF-gated portal reports ≤1 distinct top/frame.
@@ -422,7 +445,7 @@ export function SelectionActionsMenu({
       disarmPress?.();
       window.removeEventListener("resize", onResize);
     };
-  }, [editor, cacheRef, visibleRef]);
+  }, [editor, cacheRef, visibleRef, menuOwnsFocus]);
 
   // Recompute at the settled viewport-cache geometry. Out of the effect above
   // on purpose — see `updateRef`.
@@ -435,9 +458,9 @@ export function SelectionActionsMenu({
   // line to sit beside.
   const liveBoltRect = useCallback((): BoltRect | null => {
     if (!editor || editor.isDestroyed) return null;
-    const live = computePlacement(editor, cacheRef.current);
+    const live = computePlacement(editor, cacheRef.current, menuOwnsFocus);
     return live.visible ? boltViewportRect(live, cacheRef.current) : null;
-  }, [editor, cacheRef]);
+  }, [editor, cacheRef, menuOwnsFocus]);
 
   // The OPEN menu's live anchor (task 1200). The menu is a fixed `<Menu>`
   // portal, so it cannot ride the scroll by layout the way the resting bolt
@@ -490,7 +513,8 @@ export function SelectionActionsMenu({
   ]);
 
   // Close the menu on a genuine visibility DROP only — the head line went away
-  // (`computePlacement` yields visible:false: focus lost in cursor mode, a node
+  // (`computePlacement` yields visible:false: focus lost in cursor mode — to
+  // somewhere OUTSIDE the open menu family (task 1548) — a node
   // selection, a hidden editor). A RISE (false→true) must NOT close (task 154).
   // The directional guard is why `placement.visible` was split out of the
   // identity-close effect above. (Scrolling OUT of the band is no longer a
@@ -501,6 +525,20 @@ export function SelectionActionsMenu({
     prevVisibleRef.current = placement.visible;
     if (droppedOffScreen) setMenuTarget(null);
   }, [placement.visible]);
+
+  // While the menu is OPEN, every focus move re-asks the caret-mode gate
+  // (task 1548). The editor's own blur/focus already poke `update`; this
+  // covers focus moving between the menu family and the REST of the page —
+  // Tab out of the colour input to an outside control closes the menu, as a
+  // blur to that control always did. Edge-only, and only while open: nothing
+  // on the transaction path (keystroke sanctity).
+  const menuOpen = menuTarget !== null;
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onFocusIn = () => updateRef.current();
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, [menuOpen]);
 
   // Keep the latest open-state reachable from the mount-once Cmd+/ handler
   // without re-subscribing the listener on every selection change.
@@ -684,6 +722,7 @@ export function SelectionActionsMenu({
         triggerRect={menuTarget.triggerRect}
         trackAnchor={trackBolt}
         triggerEl={boltEl}
+        familyRef={menuFamilyRef}
         onClose={() => setMenuTarget(null)}
         documentClass={documentClass}
       />
