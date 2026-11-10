@@ -353,7 +353,12 @@ the pill decides everything else:
   read out. The bar mounts ONE `BarStatusAnnouncer` (a polite and an assertive
   visually-hidden region, alive for the cluster's whole life) and the pill
   writes its sentence (`announce`, default `ariaLabel`) into it on appearance
-  and on change; the visible body is a labelled `role="group"`.
+  and on change; the visible body is a labelled `role="group"`. The
+  in-document interruption band follows the same rule from outside the bar
+  (task 1555): it mounts its own region pair through `useLiveAnnouncer` (the
+  bar announcer's mechanics) in BOTH its empty and its shown branch, and
+  speaks only the kinds no bar pill already speaks
+  (`INTERRUPTION_BAR_SPEAKER` — so a state is announced once).
 - **Glyph** — 14–16px stroke, inked with the tone's `edge`.
 - **Width** — ONE cap, 280px, on the labelled span; the label truncates and the
   full sentence lives on `data-hint` and in the menu's detail block. The

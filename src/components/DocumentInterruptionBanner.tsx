@@ -65,10 +65,16 @@ import {
   type DocumentInterruption,
   type InterruptionAction,
 } from "@/lib/document-interruption";
-import { announcementForTone, glyphInk, paletteForTone } from "@/lib/interruption-tone";
+import {
+  announcementForTone,
+  barSpeaksInterruption,
+  glyphInk,
+  paletteForTone,
+} from "@/lib/interruption-tone";
 import { clearSidecarRefusal } from "@/lib/sidecar-refusal";
 import { requestBlockingFlow, requestSaveNow } from "@/lib/save-request";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { useLiveAnnouncer } from "./status/BarStatusAnnouncer";
 
 /** The pen glyph the topbar badge draws — the same shape, so the two surfaces
  *  read as one event. */
@@ -169,6 +175,21 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
     };
   }, [el, kind]);
 
+  // SPEECH (task 1555). The live regions are mounted for the band's whole
+  // life — in the empty branch too — so the sentence lands in a region that
+  // predates it; a region minted holding its text is not read out (task
+  // 1390's finding, which the band's old `role`/`aria-live` spread repeated).
+  // A kind a bar pill already speaks is not spoken twice
+  // (`INTERRUPTION_BAR_SPEAKER`); the band speaks the rest.
+  const { announce, regions } = useLiveAnnouncer("doc-interruption-announcer");
+  const spoken = view && !barSpeaksInterruption(view.kind) ? `${view.title}. ${view.body}` : null;
+  const politeness = view ? announcementForTone(view.tone)["aria-live"] : "polite";
+  useEffect(() => {
+    if (!spoken) return;
+    announce(spoken, politeness);
+    return () => announce("", politeness);
+  }, [announce, spoken, politeness]);
+
   const run = useCallback(
     async (action: InterruptionAction) => {
       if (!docId || busy) return;
@@ -223,7 +244,12 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
   if (!view) {
     // A zero-size sentinel keeps a DOM anchor for the veil stamp's cleanup
     // edge; it paints nothing and takes no space.
-    return <span ref={setEl} hidden data-doc-interruption-band="none" />;
+    return (
+      <>
+        {regions}
+        <span ref={setEl} hidden data-doc-interruption-band="none" />
+      </>
+    );
   }
   // The tone → token map lives in `interruption-tone.ts` (task 571): this band
   // used to hold a private copy, and the save badge beside it read none — so
@@ -232,62 +258,62 @@ function DocumentInterruptionBannerImpl({ docId }: { docId: string | null }) {
   const live = view.tone === "live";
 
   return (
-    <div
-      ref={setEl}
-      className="doc-interruption-band shrink-0"
-      data-doc-interruption-band={view.kind}
-      data-doc-interruption-writer={view.writer}
-      // The tone → role/aria-live pairing is the leaf's (task 769), shared
-      // with every bar pill through `BarStatusPill`.
-      {...announcementForTone(view.tone)}
-      style={{
-        background: palette.bg,
-        borderBottom: `1px solid ${palette.edge}`,
-        boxShadow: `inset 3px 0 0 ${palette.edge}`,
-        color: palette.ink,
-      }}
-    >
-      <div className="doc-interruption-band__glyph" style={{ color: glyphInk(palette) }}>
-        <span className={live ? "cowork-pen-pulse" : undefined} style={{ display: "inline-flex" }}>
-          {glyphFor(view)}
-        </span>
-      </div>
-      <div className="doc-interruption-band__text">
-        <div className="doc-interruption-band__title">{view.title}</div>
-        <div className="doc-interruption-band__body">{view.body}</div>
-      </div>
-      {(view.recommended || view.alternatives.length > 0) && (
-        <div className="doc-interruption-band__actions">
-          {view.recommended && (
-            <button
-              type="button"
-              className="doc-interruption-band__primary"
-              disabled={busy}
-              onClick={() => void run(view.recommended!)}
-              data-hint={view.recommended.detail}
-              data-interruption-action={view.recommended.id}
-              data-interruption-recommended
-            >
-              {view.recommended.label}
-            </button>
-          )}
-          {view.alternatives.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className="doc-interruption-band__secondary"
-              disabled={busy}
-              onClick={() => void run(a)}
-              data-hint={a.detail}
-              data-interruption-action={a.id}
-            >
-              {a.label}
-            </button>
-          ))}
+    <>
+      {regions}
+      <div
+        ref={setEl}
+        className="doc-interruption-band shrink-0"
+        data-doc-interruption-band={view.kind}
+        data-doc-interruption-writer={view.writer}
+        style={{
+          background: palette.bg,
+          borderBottom: `1px solid ${palette.edge}`,
+          boxShadow: `inset 3px 0 0 ${palette.edge}`,
+          color: palette.ink,
+        }}
+      >
+        <div className="doc-interruption-band__glyph" style={{ color: glyphInk(palette) }}>
+          <span className={live ? "cowork-pen-pulse" : undefined} style={{ display: "inline-flex" }}>
+            {glyphFor(view)}
+          </span>
         </div>
-      )}
-      {dialog}
-    </div>
+        <div className="doc-interruption-band__text">
+          <div className="doc-interruption-band__title">{view.title}</div>
+          <div className="doc-interruption-band__body">{view.body}</div>
+        </div>
+        {(view.recommended || view.alternatives.length > 0) && (
+          <div className="doc-interruption-band__actions">
+            {view.recommended && (
+              <button
+                type="button"
+                className="doc-interruption-band__primary"
+                disabled={busy}
+                onClick={() => void run(view.recommended!)}
+                data-hint={view.recommended.detail}
+                data-interruption-action={view.recommended.id}
+                data-interruption-recommended
+              >
+                {view.recommended.label}
+              </button>
+            )}
+            {view.alternatives.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className="doc-interruption-band__secondary"
+                disabled={busy}
+                onClick={() => void run(a)}
+                data-hint={a.detail}
+                data-interruption-action={a.id}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {dialog}
+      </div>
+    </>
   );
 }
 

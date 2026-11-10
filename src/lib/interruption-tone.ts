@@ -88,6 +88,33 @@ export function toneForInterruptionKind(kind: InterruptionKind): InterruptionTon
   return INTERRUPTION_TONE[kind];
 }
 
+/**
+ * Kind → the Virgil-bar pill that already SPEAKS it, or `null` (task 1555).
+ *
+ * > **A state is announced once.** The bar's pills write their sentence into
+ * > the bar's one announcer (task 1390) on their visibility edge; the band
+ * > repeats the same state inside the paper with its guidance. Where a pill
+ * > speaks the kind, the band stays quiet (it is still there to be read);
+ * > where none does, the band is the one voice.
+ *
+ * Exhaustive by the `Record`, so a new kind must say who speaks it. The pill
+ * names are pinned to real `BarStatusPill` mounts by `bar-status-pill.test.tsx`.
+ */
+export const INTERRUPTION_BAR_SPEAKER: Readonly<Record<InterruptionKind, string | null>> =
+  Object.freeze({
+    "cowork-hold": "CoworkPenBadge",
+    preservation: "PreservationNoticeBadge",
+    conflict: "ExternalChangeBadge",
+    "save-error": "SaveStateBadge",
+    // No pill: the refused sidecar write is the band's alone (task 630).
+    "sidecar-refused": null,
+    "disk-change": "ExternalChangeBadge",
+  });
+
+export function barSpeaksInterruption(kind: InterruptionKind): boolean {
+  return INTERRUPTION_BAR_SPEAKER[kind] !== null;
+}
+
 /** The tokens a pill or band paints from. All `var(--…)` — jsdom
  *  resolves no CSS vars, so a test asserts the SPECIFIED value. */
 export interface TonePalette {
