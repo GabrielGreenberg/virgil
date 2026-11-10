@@ -23,6 +23,9 @@ export function useLatexLint({
   const [errors, setErrors] = useState<LatexError[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const runIdRef = useRef(0);
+  // This hook instance's lane in the lint client: a newer pass from THIS
+  // consumer supersedes its own queued one, never another pane's (task 1551).
+  const laneRef = useRef<object>({});
 
   // Stable identity for the key list so the effect re-fires only when the
   // actual keys change, not on every parent render.
@@ -44,7 +47,7 @@ export function useLatexLint({
       // Perf Wave 1 (S5): the whole pass — including the ~1MB unified-latex
       // bundle and the multi-second large-doc parse — runs in the lint Web
       // Worker (main-thread fallback inside lintInWorker for SSR/vitest).
-      void lintInWorker(text, bibKeysStable).then((next) => {
+      void lintInWorker(text, bibKeysStable, laneRef.current).then((next) => {
         if (myRun === runIdRef.current) setErrors(next);
       });
     }, debounceMs);
