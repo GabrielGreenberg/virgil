@@ -20,14 +20,13 @@
  * / biblatex) which additionally runs bibtex between passes and so needs a
  * THIRD pass to fold the generated `.bbl` in.
  *
- * The scan runs on `projectLiveLatex` so a commented-out or verbatim-quoted
- * `\ref`/`\bibliography` never inflates the pass count.
+ * The scan runs on `projectExecutedLatex` so a commented-out, verbatim-quoted
+ * or `\iffalse`'d `\ref`/`\bibliography` never inflates the pass count.
  */
 
 import {
   preambleListLoadsPackage,
-  projectLiveLatex,
-  VERBATIM_ENVS_FULL,
+  projectExecutedLatex,
 } from "@/lib/latex-lexer";
 import { listBibResourceDecls } from "@/lib/bib-resources";
 
@@ -67,13 +66,10 @@ function loadsBibBackend(live: string): boolean {
  * pass raw source.
  */
 export function detectPassPlan(projectedSource: string): PassPlan {
-  // Project comments/verbatim away so an inert `\ref` / `\bibliography` never
-  // drives extra passes. Use the FULL verbatim family (this is a compile-side
-  // scan with no byte-output coupling, unlike the requirements side).
-  const live = projectLiveLatex(projectedSource, {
-    envs: VERBATIM_ENVS_FULL,
-    inlineVerb: true,
-  });
+  // Only executed bytes count, so an inert `\ref` / `\bibliography` never
+  // drives extra passes (a compile-side scan with no byte-output coupling,
+  // unlike the requirements side — hence the executed door, not the detector).
+  const live = projectExecutedLatex(projectedSource);
 
   // A bib backend runs bibtex between passes → 3 passes (pass 1 writes
   // \citation to .aux, bibtex builds the .bbl, pass 2 folds it in, pass 3
