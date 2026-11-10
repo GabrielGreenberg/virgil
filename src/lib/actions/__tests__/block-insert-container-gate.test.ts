@@ -54,6 +54,7 @@ import {
   type ActionRef,
   type ActionId,
 } from "@/lib/actions/action-registry";
+import { seedTyped } from "@/lib/__tests__/_typed-seed";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Real editor stack
@@ -90,7 +91,7 @@ function mountFigure(captionText = "$"): Editor {
     {
       type: "figureBlock",
       attrs: { uuid: "fig-A", extras: "\\centering\\includegraphics{a.png}", label: "fig:a" },
-      content: [{ type: "figureCaption", content: [{ type: "text", text: captionText }] }],
+      content: [{ type: "figureCaption", content: captionText ? [{ type: "text", text: captionText }] : [] }],
     },
   ]);
 }
@@ -234,9 +235,11 @@ describe("posHostsBlockInsert honors the caret's container (task 229)", () => {
 
 describe("display-math $$ at a figureCaption caret does not split the figure (task 229)", () => {
   it("preserves exactly one figureBlock, inserts no displayMath, keeps the caption", () => {
-    const editor = mountFigure("$"); // caption holds a lone "$"
-    const capEnd = innerEnd(editor, "figureCaption"); // caret right after the "$"
-    placeCaretAt(editor, capEnd);
+    const editor = mountFigure(""); // an empty caption…
+    // …that the user types a lone "$" into (task 1562: a typed opener, so the
+    // CONTAINER gate is what refuses, not the file-text provenance check).
+    seedTyped(editor, innerEnd(editor, "figureCaption"), "$");
+    const capEnd = editor.state.selection.from; // caret right after the "$"
 
     fireDisplayMathDollar(editor, capEnd);
 
@@ -347,10 +350,11 @@ describe("the container gate is type-precise inside an exampleItem (task 229)", 
 describe("display-math $$ still fires in ordinary prose (task 229)", () => {
   it("inserts a displayMath block at a paragraph caret ending in $", () => {
     const editor = mount([
-      { type: "paragraph", attrs: { uuid: "p1" }, content: [{ type: "text", text: "$" }] },
+      { type: "paragraph", attrs: { uuid: "p1" }, content: [] },
     ]);
-    const end = innerEnd(editor, "paragraph");
-    placeCaretAt(editor, end);
+    // Task 1562: the first `$` is typed, not loaded — a `$` from the file is prose.
+    seedTyped(editor, innerEnd(editor, "paragraph"), "$");
+    const end = editor.state.selection.from;
 
     fireDisplayMathDollar(editor, end);
 

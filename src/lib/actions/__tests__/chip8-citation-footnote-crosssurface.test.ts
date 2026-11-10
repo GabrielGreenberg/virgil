@@ -59,6 +59,7 @@ import { buildFloatKey } from "@/floats/float-key";
 import { paragraphUuidAt } from "@/links/links";
 import { parseCiteCommand } from "@/lib/bib-parser";
 import type { ViewPrefs } from "@/hooks/useViewPrefs";
+import { seedTyped } from "@/lib/__tests__/_typed-seed";
 
 // ---------------------------------------------------------------------------
 // Real editor stack (mirrors citation-cross-surface.test.ts mountEditor)
@@ -89,15 +90,14 @@ function mountEditor(text: string, caretOffset = text.length): Editor {
         {
           type: "paragraph",
           attrs: { uuid: "para-A" },
-          content: text ? [{ type: "text", text }] : [],
+          content: [],
         },
       ],
     },
   });
-  const pos = 1 + caretOffset;
-  editor.view.dispatch(
-    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, pos)),
-  );
+  // Task 1562: the text is TYPED (the opener must lie in the typed run for a
+  // typed-LaTeX rule to complete it), not loaded content.
+  seedTyped(editor, 1, text, caretOffset);
   return editor;
 }
 

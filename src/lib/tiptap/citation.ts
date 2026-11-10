@@ -10,10 +10,10 @@ import { CITE_RE_BARE } from "@/lib/cite-commands";
 // matches with, not a description of it. (The bare `\cite ` soft-route stays on
 // its own `CITE_RE_BARE`; the row records the canonical full form.)
 import {
-  matchHasUnescapedDelimiters,
+  delimitersAreTypedSource,
   matchTypedLatexRule,
 } from "./typed-latex-input-rules";
-import { armTypedLatexRevert, typedLatexRevertSpec } from "./typed-latex-revert";
+import { armTypedLatexRevert, typedLatexRevertSpec, typedSubjectBefore } from "./typed-latex-revert";
 import { generateShortId } from "@/lib/uuid";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
 // speller (task 202) — a hand-built `citation:${id}` here was a second copy.
@@ -161,7 +161,6 @@ export const Citation = Node.create<CitationOptions>({
             if (text !== "}" && text !== " " && text !== "\n") return false;
 
             const { state } = view;
-            const $from = state.doc.resolve(from);
             // The ONE inline-atom door (task 740) — it asks BOTH halves: the
             // curated POLICY (task 061: a `titleField` greys `citation` out,
             // since its text round-trips into `\title{…}` and re-expands under
@@ -171,16 +170,11 @@ export const Citation = Node.create<CitationOptions>({
             // Caret form, deliberately (task 428): the typed match lies inside
             // ONE textblock, so `from` names every block the rule reaches.
             if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
-            const textBefore = $from.parent.textBetween(
-              Math.max(0, $from.parentOffset - 120),
-              $from.parentOffset,
-              undefined,
-              "\ufffc"
-            ) + text;
+            const subject = typedSubjectBefore(state, citationRevert.key, from, 120, text);
 
             if (text === "}") {
               // Full citation command ending with } (e.g. `\cite{key}`).
-              const match = matchTypedLatexRule("citation", textBefore);
+              const match = matchTypedLatexRule("citation", subject);
               if (match) {
                 const command = match[0];
                 const start = from + text.length - command.length;
@@ -232,11 +226,12 @@ export const Citation = Node.create<CitationOptions>({
               // Bare citation command followed by space/enter — insert an
               // empty citation atom at the cursor so the resulting card is
               // anchored, then register the card + soft-route via the bridge.
-              const beforeSpace = textBefore.slice(0, -1);
-              const match = beforeSpace.match(CITE_RE_BARE);
+              const beforeSpace = { ...subject, text: subject.text.slice(0, -1) };
+              const match = beforeSpace.text.match(CITE_RE_BARE);
               // Task 1368: `\\cite ` is a line break then text — the same
-              // escape door as the census rules.
-              if (match && matchHasUnescapedDelimiters(beforeSpace, [match.index!])) {
+              // escape door as the census rules; task 1562: and a `\cite`
+              // that came from the file is not typed source.
+              if (match && delimitersAreTypedSource(beforeSpace, [match.index!])) {
                 const partial = match[0];
                 const start = from - partial.length;
                 // Task 578: same door as the full branch.

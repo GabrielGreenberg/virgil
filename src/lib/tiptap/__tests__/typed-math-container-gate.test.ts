@@ -36,6 +36,7 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
   buildEditorExtensions,
@@ -97,12 +98,19 @@ function mountWithSeed(
         {
           type: containerType,
           attrs,
-          content: seedText ? [{ type: "text", text: seedText }] : [],
+          content: [],
         },
         { type: "paragraph", attrs: { uuid: "tail-A" }, content: [{ type: "text", text: "tail" }] },
       ],
     },
   });
+  // Task 1562: the seed is TYPED — one text insertion at the caret — not
+  // loaded content. A typed rule completes only an opener the user typed in
+  // the current run; a `$` that came from the file is prose.
+  if (seedText) {
+    const tr = editor.state.tr.insertText(seedText, 1);
+    editor.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, 1 + seedText.length)));
+  }
   // Caret at end of the seeded container text: container opens at doc pos 0, its
   // inner content starts at pos 1, so the end of `seedText` is `1 + length`.
   return { editor, caret: 1 + seedText.length };

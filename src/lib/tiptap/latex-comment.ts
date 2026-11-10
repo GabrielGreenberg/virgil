@@ -20,6 +20,7 @@ import {
   armTypedLatexRevert,
   isTypedLatexRevert,
   typedLatexRevertSpec,
+  typedSubjectBefore,
 } from "./typed-latex-revert";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
@@ -224,18 +225,19 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             // already inside a comment (typing `%`/` ` there is literal now
             // that comments hold native content).
             if ($from.parent.type.name !== "paragraph") return false;
-            const textBefore = $from.parent.textBetween(
-              0,
-              $from.parentOffset,
-              undefined,
-              "￼",
+            const subject = typedSubjectBefore(
+              state,
+              commentRevert.key,
+              from,
+              Infinity,
+              text,
             );
-            const combined = textBefore + text;
+            const combined = subject.text;
             // The trigger pattern is READ from the typed-LaTeX census (task
             // 639), which is the same object the `latex-comment` registry row
             // records as its `inputRulePattern` — the two surfaces cannot
             // recognize a different `%` vocabulary.
-            if (!matchTypedLatexRule("latex-comment", combined)) {
+            if (!matchTypedLatexRule("latex-comment", subject)) {
               return false;
             }
 

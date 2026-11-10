@@ -103,6 +103,19 @@ describe("typed-LaTeX census — the table IS the live surface", () => {
     }
   });
 
+  it("every rule builds its subject with the TYPED RUN, never a hand-made one (task 1562)", () => {
+    // The door's second refusal is provenance: a delimiter outside the user's
+    // current typed run (a `$` parsed from the file's `\$`) is not source.
+    // `typedSubjectBefore` reads the run from the rule's own plugin state; a
+    // rule that spelled `{ text, typedFrom: 0 }` itself would type-check and
+    // silently re-open task 1562.
+    for (const file of new Set(Object.values(RULE_SOURCE))) {
+      const src = read(file);
+      expect(src.includes("typedSubjectBefore("), `${file} must build its subject with typedSubjectBefore`).toBe(true);
+      expect(/typedFrom\s*:/.test(src), `${file} hand-builds a TypedSubject — use typedSubjectBefore`).toBe(false);
+    }
+  });
+
   it("holds five entries, each a RegExp, none shared between ids", () => {
     expect(TYPED_LATEX_ACTION_IDS).toEqual([
       "citation",

@@ -133,35 +133,55 @@ const DELIMITER_INDICES: Record<
 };
 
 /**
- * THE match door for every typed-LaTeX input rule (task 1368). Runs the census
- * regex against `subject`, then REFUSES the match (returns `null`) when any of
- * the rule's delimiters is escaped — the parser's own `isEscaped` (tasks
- * 206/210), so the typed surface and the parser agree on what `\$`, `\\cite`
- * and `\\footnote` mean. Without it, typing `costs \$5, or \$` made the
- * escaped dollars a math chip `5, or \` the source does not contain.
+ * What a typed-LaTeX rule matches against (task 1562): the text before the
+ * caret (plus the trigger, for rules whose pattern includes it) and the index
+ * where the user's TYPED RUN begins in it. Built by `typedSubjectBefore`
+ * (`typed-latex-revert.ts`), which reads the run from the rule's own plugin
+ * state — so no rule can hand the door a bare string.
+ */
+export interface TypedSubject {
+  readonly text: string;
+  readonly typedFrom: number;
+}
+
+/**
+ * THE match door for every typed-LaTeX input rule. Runs the census regex
+ * against `subject.text`, then REFUSES the match (returns `null`) unless every
+ * delimiter is real typed source:
  *
- * A `(?<!\\)` lookbehind in each regex cannot do this: it cannot tell an odd
- * backslash run (escaped) from an even one (`\\$x$` is a line break, then
- * real math) — the naive single-character test task 206 removed from the
- * parser. Cost: one O(backslash-run) scan per delimiter, on the trigger key.
+ *   - UNESCAPED (task 1368) — the parser's own `isEscaped` (tasks 206/210), so
+ *     the typed surface and the parser agree on what `\$`, `\\cite` and
+ *     `\\footnote` mean. Without it, typing `costs \$5, or \$` made the
+ *     escaped dollars a math chip `5, or \` the source does not contain. A
+ *     `(?<!\\)` lookbehind cannot do this: it cannot tell an odd backslash
+ *     run (escaped) from an even one (`\\$x$` is a line break, then real
+ *     math).
+ *   - TYPED (task 1562) — inside the current typed run. The model text has
+ *     already been UN-escaped by the parser, so a dollar the file holds as
+ *     `\$` sits in the model as a bare `$` the escape check cannot see; only
+ *     provenance can. A closer the user types completes only a construct
+ *     whose opener they typed too.
+ *
+ * Cost: one O(backslash-run) scan per delimiter, on the trigger key.
  */
 export function matchTypedLatexRule(
   id: TypedLatexActionId,
-  subject: string,
+  subject: TypedSubject,
 ): RegExpMatchArray | null {
-  const match = subject.match(TYPED_LATEX_INPUT_RULES[id]);
+  const match = subject.text.match(TYPED_LATEX_INPUT_RULES[id]);
   if (!match) return null;
-  return matchHasUnescapedDelimiters(subject, DELIMITER_INDICES[id](subject, match))
+  return delimitersAreTypedSource(subject, DELIMITER_INDICES[id](subject.text, match))
     ? match
     : null;
 }
 
-/** `true` when every index names a real (unescaped) delimiter in `subject`.
- *  Shared with the soft-routing `\cite ` branch, whose bare-command pattern
- *  is not a census rule but opens on the same `\`. */
-export function matchHasUnescapedDelimiters(
-  subject: string,
+/** `true` when every index names a real (unescaped) delimiter the user typed
+ *  in the current run. Shared with the soft-routing `\cite ` branch and the
+ *  bare `$$` display opener, whose patterns are not census rules but open on
+ *  the same kind of delimiter. */
+export function delimitersAreTypedSource(
+  subject: TypedSubject,
   indices: readonly number[],
 ): boolean {
-  return indices.every((i) => !isEscaped(subject, i));
+  return indices.every((i) => i >= subject.typedFrom && !isEscaped(subject.text, i));
 }

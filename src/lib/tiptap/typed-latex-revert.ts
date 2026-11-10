@@ -1,8 +1,9 @@
 import { PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import type { Slice } from "@tiptap/pm/model";
 import { ReplaceStep, type Step } from "@tiptap/pm/transform";
 import { collabReadOnly } from "./collab-read-only-gate";
-import type { TypedLatexActionId } from "./typed-latex-input-rules";
+import type { TypedLatexActionId, TypedSubject } from "./typed-latex-input-rules";
 import { isImeComposing } from "@/lib/key-intent";
 
 /**
@@ -68,6 +69,39 @@ interface ArmedRevert {
   replacedLength: number;
   /** The trigger character(s) the rule consumed instead of inserting. */
   text: string;
+}
+
+/**
+ * The TYPED RUN (task 1562): the contiguous range the user has typed, as one
+ * uninterrupted run of text input, ending at (or around) the caret.
+ *
+ * A typed-LaTeX rule reinterprets characters as SOURCE — but only characters
+ * the user TYPED as source are source. Text loaded from the file is
+ * already-interpreted prose: the parser turned `\$40` into the literal `$40`
+ * and the serializer re-escapes it on save, so the model text holds a bare
+ * `$` that the escape check (task 1368) cannot tell from a typed one. Without
+ * this, typing `, discounted to $` after a parsed `\$40 per page` made
+ * `40 per page, discounted to ` a math chip and the saved source lost its
+ * `\$`. The run is the provenance the model text lacks: a rule's OPENER must
+ * lie inside it (`matchTypedLatexRule`).
+ *
+ * Grows only by text-only replace steps inside (or contiguous with) it; a
+ * text insertion elsewhere starts a new run; paste/drop/cut, undo/redo and a
+ * typed-LaTeX revert (the user's "keep it literal") end it; any other change
+ * maps it; a caret that leaves it (arrowing away, clicking) ends it. So `$x`,
+ * arrow away and back, then `$` does NOT convert — the whole construct was not
+ * typed in one run. O(1) per transaction (one step inspected, two positions
+ * mapped).
+ */
+interface TypedRun {
+  from: number;
+  to: number;
+}
+
+/** Per-plugin state: the armed revert plus the typed run. */
+interface TypedInputState {
+  armed: ArmedRevert | null;
+  run: TypedRun | null;
 }
 
 const DISARM = "disarm";
@@ -141,9 +175,81 @@ function applyRevertState(
     : { ...prev, inverse, caret };
 }
 
+/** A slice of plain text (or nothing) — what a keystroke inserts. */
+function isTextSlice(slice: Slice): boolean {
+  if (slice.openStart !== 0 || slice.openEnd !== 0) return false;
+  for (let i = 0; i < slice.content.childCount; i += 1) {
+    if (!slice.content.child(i).isText) return false;
+  }
+  return true;
+}
+
+function applyTypedRun(tr: Transaction, prev: TypedRun | null): TypedRun | null {
+  let run = prev;
+  if (tr.docChanged) {
+    const step = tr.steps.length === 1 ? tr.steps[0] : null;
+    if (tr.getMeta("uiEvent") || tr.getMeta("history$") || isTypedLatexRevert(tr)) {
+      run = null;
+    } else if (step instanceof ReplaceStep && isTextSlice(step.slice)) {
+      const size = step.slice.size;
+      if (prev && step.from >= prev.from && step.to <= prev.to) {
+        // Typing (or deleting) inside the run, its end included.
+        run = { from: prev.from, to: prev.to - (step.to - step.from) + size };
+      } else if (size > 0) {
+        run = { from: step.from, to: step.from + size };
+      } else {
+        run = mapRun(tr, prev);
+      }
+    } else {
+      run = mapRun(tr, prev);
+    }
+  }
+  if (!run) return null;
+  const sel = tr.selection;
+  if (!sel.empty || sel.head < run.from || sel.head > run.to) return null;
+  return prev && prev.from === run.from && prev.to === run.to ? prev : run;
+}
+
+function mapRun(tr: Transaction, prev: TypedRun | null): TypedRun | null {
+  if (!prev) return null;
+  const from = tr.mapping.map(prev.from, 1);
+  const to = tr.mapping.map(prev.to, -1);
+  return from <= to ? { from, to } : null;
+}
+
+/**
+ * The subject a typed-LaTeX rule matches against: the caret's textblock text
+ * in the `window` characters before `from` (inline atoms as U+FFFC, one
+ * character per position), plus `text` — the trigger, for the rules whose
+ * pattern includes it — and the index where the TYPED RUN begins in it. A
+ * rule built from this cannot forget the provenance half of the match door.
+ */
+export function typedSubjectBefore(
+  state: EditorState,
+  key: PluginKey,
+  from: number,
+  window: number,
+  text = "",
+): TypedSubject {
+  const $from = state.doc.resolve(from);
+  const before = $from.parent.textBetween(
+    Math.max(0, $from.parentOffset - window),
+    $from.parentOffset,
+    undefined,
+    "\ufffc",
+  );
+  const start = from - before.length;
+  const run = (key.getState(state) as TypedInputState | undefined)?.run ?? null;
+  const typedFrom =
+    run && run.from <= from && from <= run.to
+      ? Math.max(0, run.from - start)
+      : before.length;
+  return { text: before + text, typedFrom };
+}
+
 /** Build the revert transaction for `state`, or null when nothing is armed. */
 export function typedLatexRevertTr(state: EditorState, key: PluginKey): Transaction | null {
-  const armed = key.getState(state) as ArmedRevert | null | undefined;
+  const armed = (key.getState(state) as TypedInputState | undefined)?.armed;
   if (!armed) return null;
   const tr = state.tr;
   if (tr.maybeStep(armed.inverse).failed) return null;
@@ -175,15 +281,23 @@ function isPlainBackspace(event: KeyboardEvent): boolean {
  * entry the plugin implements — `typed-latex-census.test.ts` asserts every
  * censused rule calls this with its own id, so a sixth rule cannot ship
  * without a revert.
+ *
+ * The same state also tracks the rule's TYPED RUN (task 1562, `TypedRun`
+ * above), which `typedSubjectBefore` hands to the match door — so a rule that
+ * installs its revert has, by the same spread, the provenance half of the door.
  */
 export function typedLatexRevertSpec(id: TypedLatexActionId, keyName: string) {
   void id;
-  const key = new PluginKey<ArmedRevert | null>(keyName);
+  const key = new PluginKey<TypedInputState>(keyName);
   return {
     key,
     state: {
-      init: (): ArmedRevert | null => null,
-      apply: (tr: Transaction, prev: ArmedRevert | null) => applyRevertState(key, tr, prev),
+      init: (): TypedInputState => ({ armed: null, run: null }),
+      apply: (tr: Transaction, prev: TypedInputState): TypedInputState => {
+        const armed = applyRevertState(key, tr, prev.armed);
+        const run = applyTypedRun(tr, prev.run);
+        return armed === prev.armed && run === prev.run ? prev : { armed, run };
+      },
     },
     handleDOMEvents: {
       keydown(view: EditorView, event: KeyboardEvent): boolean {
@@ -196,7 +310,7 @@ export function typedLatexRevertSpec(id: TypedLatexActionId, keyName: string) {
         return true;
       },
       blur(view: EditorView): boolean {
-        if (key.getState(view.state)) {
+        if (key.getState(view.state)?.armed) {
           view.dispatch(view.state.tr.setMeta(key, DISARM).setMeta("addToHistory", false));
         }
         return false;
