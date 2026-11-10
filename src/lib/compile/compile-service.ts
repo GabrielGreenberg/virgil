@@ -56,6 +56,7 @@ import {
 } from "@/lib/latex-lexer";
 import { captureNewAssets } from "@/lib/tex-assets";
 import { parseTexLog } from "@/lib/parse-tex-log";
+import { stampSourceLines } from "@/lib/latex-errors";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
 import { buildLocalPackageManifest } from "@/lib/local-packages";
@@ -370,6 +371,11 @@ class CompileService {
     // 2. Prepare files: decode text (fatal), apply requirements to the main
     //    .tex in-memory, rewrite biblatex backend, feed raw bytes for the rest.
     const prepared = this.prepareFiles(files, mainTexFilename);
+    // The main .tex exactly as the engine runs it (post-injection): the text
+    // the log's line numbers index, stamped onto each diagnostic so it can be
+    // relocated once the user edits (task 1549 — `stampSourceLines`).
+    const compiledMain = prepared.find((f) => f.path === mainTexFilename)?.data;
+    const compiledMainText = typeof compiledMain === "string" ? compiledMain : undefined;
 
     // 3. Decide the pass plan from the (injected) main + include sources.
     const passPlan = detectPassPlan(this.joinScannableSources(prepared));
@@ -503,11 +509,14 @@ class CompileService {
       // A PDF exists (status 0 for the fallback's purposes — never synthesize an
       // abort card when we have output). On a later-pass failure keep the errors;
       // on a clean run keep only warnings.
-      const diagnostics = hardFailure
-        ? parseTexLog(lastLog, lastPassStatus, { mainFile: mainTexFilename })
-        : parseTexLog(lastLog, 0, { mainFile: mainTexFilename }).filter(
-            (d) => d.severity !== "error",
-          );
+      const diagnostics = stampSourceLines(
+        hardFailure
+          ? parseTexLog(lastLog, lastPassStatus, { mainFile: mainTexFilename })
+          : parseTexLog(lastLog, 0, { mainFile: mainTexFilename }).filter(
+              (d) => d.severity !== "error",
+            ),
+        compiledMainText,
+      );
       // An offline miss makes even a produced PDF degraded (a package the doc
       // asked for was unavailable, so the output may be missing content).
       const degraded =
@@ -532,9 +541,10 @@ class CompileService {
       log: lastLog,
       ranPasses,
       bibtexStatus,
-      diagnostics: parseTexLog(lastLog, lastPassStatus || 1, {
-        mainFile: mainTexFilename,
-      }),
+      diagnostics: stampSourceLines(
+        parseTexLog(lastLog, lastPassStatus || 1, { mainFile: mainTexFilename }),
+        compiledMainText,
+      ),
       offlineMisses: misses,
       downloadFailures: failures,
     };

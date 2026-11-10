@@ -53,6 +53,24 @@ export interface LatexError {
    * asking lands a cross-file error on the wrong main-file line (task 1208).
    */
   file?: string;
+  /**
+   * COMPILE records only: the trimmed text of the main-file line `line`
+   * indexed in the source pdfTeX actually ran (stamped by `stampSourceLines`
+   * inside the compile service). A compile's line numbers are a SNAPSHOT
+   * coordinate — they index the compiled text, not the live document the user
+   * keeps editing — so this is the identity the record is relocated by
+   * (`relocateCompileDiagnostics`, task 1549). Absent ⇒ the line is trusted as
+   * live (lint, cross-file, line-less, or an undecodable main file).
+   */
+  lineText?: string;
+  /**
+   * Set ONLY by `relocateCompileDiagnostics` on a compile record whose stamped
+   * line no longer exists in the live text: the line it had at the last
+   * compile. Such a record carries `line: 0` — it is still listed (it is the
+   * last compile's word) but quotes no snippet, anchors nowhere, cannot jump
+   * and suppresses no lint.
+   */
+  compiledLine?: number;
 }
 
 /** Is this diagnostic about the file the editor shows? THE one predicate. */
@@ -75,10 +93,15 @@ export function mainFileLine(err: Pick<LatexError, "file" | "line">): number {
  * say (main file, no line).
  */
 export function diagnosticLocationLabel(
-  err: Pick<LatexError, "file" | "line" | "column">,
+  err: Pick<LatexError, "file" | "line" | "column" | "compiledLine">,
 ): string | null {
+  const col = err.column ? `:${err.column}` : "";
   const at =
-    err.line > 0 ? `line ${err.line}${err.column ? `:${err.column}` : ""}` : null;
+    err.line > 0
+      ? `line ${err.line}${col}`
+      : err.compiledLine
+        ? `line ${err.compiledLine}${col} (at last compile)`
+        : null;
   if (isMainFileDiagnostic(err)) return at;
   return at ? `${err.file} · ${at}` : (err.file ?? null);
 }
@@ -108,9 +131,110 @@ export function mergeLatexErrors(
     compile.map(mainFileLine).filter((line) => line > 0),
   );
   const keptLint = lint.filter((e) => e.line <= 0 || !compileLines.has(e.line));
+  // An unlocated compile record (line 0) keeps its last-compile place in the
+  // order rather than jumping to the top on the edit that orphaned it.
+  const at = (e: LatexError) => (e.line > 0 ? e.line : (e.compiledLine ?? 0));
   return [...keptLint, ...compile].sort(
-    (a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
+    (a, b) => at(a) - at(b) || (a.column ?? 0) - (b.column ?? 0),
   );
+}
+
+// ── Compile diagnostics across the edit gap (task 1549) ─────────────────────
+//
+// A compile's `line` indexes the text pdfTeX ran. The document moves on — a
+// paragraph inserted above, an earlier error fixed — while the record persists
+// until the next compile. Every consumer maps `line` into the LIVE source
+// (snippet, paragraph anchor, code-view jump, the lint dedup above), so the
+// snapshot coordinate must be resolved against the live text first, by the
+// line's IDENTITY (its text), never trusted by position ("addressing the live
+// document across an async gap"). `stampSourceLines` records the identity;
+// `relocateCompileDiagnostics` — THE one resolver, applied once where compile
+// records join the live list (`useDiagnostics`) — re-addresses it.
+
+/**
+ * Stamp each main-file diagnostic with the trimmed text of the line it indexes
+ * in `compiledMainText` — the main `.tex` exactly as the engine ran it
+ * (post-injection). Records without a main-file line pass through untouched.
+ */
+export function stampSourceLines(
+  diagnostics: LatexError[],
+  compiledMainText: string | undefined,
+): LatexError[] {
+  if (compiledMainText === undefined || diagnostics.length === 0) return diagnostics;
+  const lines = compiledMainText.split("\n");
+  return diagnostics.map((d) => {
+    const line = mainFileLine(d);
+    if (line <= 0 || line > lines.length) return d;
+    return { ...d, lineText: lines[line - 1].trim() };
+  });
+}
+
+/** Live-text index for `liveMainFileLine`: trimmed lines + text → line numbers. */
+export interface LiveLineIndex {
+  lines: readonly string[];
+  byText: ReadonlyMap<string, readonly number[]>;
+}
+
+export function buildLiveLineIndex(text: string): LiveLineIndex {
+  const lines = text.split("\n").map((l) => l.trim());
+  const byText = new Map<string, number[]>();
+  lines.forEach((t, i) => {
+    if (!t) return; // a blank line is no identity — never relocate onto one
+    const at = byText.get(t);
+    if (at) at.push(i + 1);
+    else byText.set(t, [i + 1]);
+  });
+  return { lines, byText };
+}
+
+/**
+ * The diagnostic's line in the LIVE main source, or 0 when it has none there.
+ * An unstamped record (lint — its line IS live; cross-file; line-less) answers
+ * `mainFileLine`. A stamped record answers its recorded line when the live
+ * line there still carries the stamped text, else the NEAREST live line that
+ * does (ties → the earlier), else 0 — unlocated.
+ */
+export function liveMainFileLine(
+  err: Pick<LatexError, "file" | "line" | "lineText">,
+  index: LiveLineIndex,
+): number {
+  const line = mainFileLine(err);
+  if (line <= 0 || err.lineText === undefined) return line;
+  if (index.lines[line - 1] === err.lineText) return line;
+  const candidates = err.lineText ? index.byText.get(err.lineText) : undefined;
+  if (!candidates) return 0;
+  let best = 0;
+  for (const c of candidates) {
+    if (best === 0 || Math.abs(c - line) < Math.abs(best - line)) best = c;
+  }
+  return best;
+}
+
+/**
+ * Re-address compile records against the live text: a record whose line moved
+ * gets its live line; one whose line is gone gets `line: 0` + `compiledLine`.
+ * Always derives from the ORIGINAL records (never compounds a prior
+ * relocation). Returns `errors` itself when nothing moved, so the steady state
+ * keeps its identity; the line split happens only when a stamped record exists.
+ */
+export function relocateCompileDiagnostics(
+  errors: readonly LatexError[],
+  liveText: string | null,
+): readonly LatexError[] {
+  if (liveText === null || !errors.some((e) => e.lineText !== undefined)) {
+    return errors;
+  }
+  const index = buildLiveLineIndex(liveText);
+  let changed = false;
+  const out = errors.map((e) => {
+    const live = liveMainFileLine(e, index);
+    if (live === mainFileLine(e)) return e;
+    changed = true;
+    return live > 0
+      ? { ...e, line: live }
+      : { ...e, line: 0, compiledLine: e.line };
+  });
+  return changed ? out : errors;
 }
 
 /**
