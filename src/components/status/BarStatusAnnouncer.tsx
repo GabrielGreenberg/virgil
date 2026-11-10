@@ -40,33 +40,55 @@ export function useBarStatusAnnounce(): BarStatusAnnounce | null {
  *  (Unsaved → Saved → Unsaved) is still a change the region announces. */
 const REPEAT_MARK = " ";
 
-export function BarStatusAnnouncer({ children }: { children: ReactNode }) {
+/**
+ * The live-region PAIR and its write door — the mechanics behind the bar's
+ * announcer, shared with any surface that must speak from outside the bar
+ * (task 1555: the in-document interruption band). The caller renders
+ * `regions` for its WHOLE life, so every sentence lands in a region assistive
+ * tech already knows about; `announce("")` clears without speaking.
+ * `marker` names the `data-*` attribute the two spans carry.
+ */
+export function useLiveAnnouncer(marker: string): {
+  announce: BarStatusAnnounce;
+  regions: ReactNode;
+} {
   const politeRef = useRef<HTMLSpanElement | null>(null);
   const assertiveRef = useRef<HTMLSpanElement | null>(null);
   // Written imperatively: the regions hold no React children, and a state
-  // write here would re-render the whole cluster for a string nobody sees.
+  // write here would re-render the owner for a string nobody sees.
   const announce = useCallback<BarStatusAnnounce>((text, politeness) => {
     const el = politeness === "assertive" ? assertiveRef.current : politeRef.current;
     if (!el) return;
-    el.textContent = el.textContent === text ? text + REPEAT_MARK : text;
+    el.textContent = text && el.textContent === text ? text + REPEAT_MARK : text;
   }, []);
-  return (
-    <BarStatusAnnouncerContext.Provider value={announce}>
-      {children}
+  const attr = `data-${marker}`;
+  const regions = (
+    <>
       <span
         ref={politeRef}
         className="sr-only"
         role="status"
         aria-live="polite"
-        data-bar-status-announcer="polite"
+        {...{ [attr]: "polite" }}
       />
       <span
         ref={assertiveRef}
         className="sr-only"
         role="alert"
         aria-live="assertive"
-        data-bar-status-announcer="assertive"
+        {...{ [attr]: "assertive" }}
       />
+    </>
+  );
+  return { announce, regions };
+}
+
+export function BarStatusAnnouncer({ children }: { children: ReactNode }) {
+  const { announce, regions } = useLiveAnnouncer("bar-status-announcer");
+  return (
+    <BarStatusAnnouncerContext.Provider value={announce}>
+      {children}
+      {regions}
     </BarStatusAnnouncerContext.Provider>
   );
 }

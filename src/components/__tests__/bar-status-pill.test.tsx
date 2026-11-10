@@ -199,9 +199,12 @@ describe("BarStatusPill · the contract", () => {
     expect(glyph.style.color).toBe(barStatusPalette("presence").edge);
   });
 
-  it("the in-document band announces through the SAME table", () => {
+  it("the in-document band takes its politeness from the SAME table, through an always-mounted region (task 1555)", () => {
     const band = read("src/components/DocumentInterruptionBanner.tsx");
-    expect(band).toContain("{...announcementForTone(view.tone)}");
+    expect(band).toContain('announcementForTone(view.tone)["aria-live"]');
+    expect(band).toContain("useLiveAnnouncer(");
+    // No live-region spread on the band body: it would be minted with its text.
+    expect(band).not.toContain("{...announcementForTone(view.tone)}");
     expect(band).not.toMatch(/role=\{view\.tone === "danger"/);
   });
 });

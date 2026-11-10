@@ -47,6 +47,8 @@ import { clearPreservationNotice, recordPreservationRefusal } from "@/lib/preser
 import { clearUnsavedWork, noteSaveBlocked, noteUnsavedEdit } from "@/lib/unsaved-work";
 import { __resetInterruptionLogForTests, interruptionEvents } from "@/lib/interruption-log";
 import { getBlockingFlowRequest, resetBlockingFlowRequests } from "@/lib/save-request";
+import { clearSidecarRefusal, recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { INTERRUPTION_BAR_SPEAKER, INTERRUPTION_TONE } from "@/lib/interruption-tone";
 
 const DOC = "doc-1";
 function hold(docId = DOC) {
@@ -76,6 +78,7 @@ afterEach(() => {
   clearCoworkPen();
   clearPreservationNotice();
   clearUnsavedWork();
+  clearSidecarRefusal(DOC);
 });
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -92,7 +95,10 @@ describe("DocumentInterruptionBanner", () => {
     act(() => hold());
     const el = band()!;
     expect(el.getAttribute("data-doc-interruption-band")).toBe("cowork-hold");
-    expect(el.getAttribute("role")).toBe("status");
+    // Task 1555: the band itself is not a live region (it would be minted
+    // holding its text); the cowork pill speaks this kind in the bar.
+    expect(el.hasAttribute("role")).toBe(false);
+    expect(el.hasAttribute("aria-live")).toBe(false);
     expect(screen.getByText("Virgil is editing this paper")).toBeTruthy();
     expect(el.textContent!.toLowerCase()).not.toContain("collaborator");
     // The breathing glyph — the "happening right now" distinction.
@@ -165,7 +171,7 @@ describe("DocumentInterruptionBanner", () => {
       recordPreservationRefusal(DOC, { source: "load", region: "body", before: 400, after: 120, lost: 280, allowed: 4 });
     });
     const el = band()!;
-    expect(el.getAttribute("role")).toBe("alert");
+    expect(el.hasAttribute("role")).toBe(false);
     expect(el.textContent).toMatch(/not saving/i);
     fireEvent.click(el.querySelector("[data-interruption-recommended]")!);
     const req = getBlockingFlowRequest();
@@ -202,6 +208,58 @@ describe("DocumentInterruptionBanner", () => {
 const ROOT = join(__dirname, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+describe("speech · announced once, into a region that predates its text (task 1555)", () => {
+  const region = (p: "polite" | "assertive") =>
+    document.querySelector(`[data-doc-interruption-announcer="${p}"]`) as HTMLElement | null;
+
+  it("the band's live regions are mounted with NO view, and survive the view's arrival as the SAME nodes", () => {
+    mount();
+    const polite = region("polite")!;
+    const assertive = region("assertive")!;
+    expect(polite.getAttribute("aria-live")).toBe("polite");
+    expect(assertive.getAttribute("role")).toBe("alert");
+    expect(polite.textContent).toBe("");
+    expect(assertive.textContent).toBe("");
+    act(() => {
+      recordSidecarRefusal({ docId: DOC, what: "AI request", reason: "read-only" });
+    });
+    expect(band()).not.toBeNull();
+    // Same element identity: the sentence was WRITTEN into a known region.
+    expect(region("assertive")).toBe(assertive);
+    expect(region("polite")).toBe(polite);
+    expect(assertive.textContent).toContain("AI request");
+    expect(polite.textContent).toBe("");
+    // The state clears: the region empties (silently) and stays mounted.
+    act(() => clearSidecarRefusal(DOC));
+    expect(band()).toBeNull();
+    expect(region("assertive")).toBe(assertive);
+    expect(assertive.textContent).toBe("");
+  });
+
+  it("a kind a bar pill already speaks is NOT spoken again by the band", () => {
+    mount();
+    act(() => hold());
+    expect(band()).not.toBeNull();
+    expect(region("polite")!.textContent).toBe("");
+    expect(region("assertive")!.textContent).toBe("");
+    act(() => {
+      recordPreservationRefusal(DOC, { source: "load", region: "body", before: 400, after: 120, lost: 280, allowed: 4 });
+    });
+    expect(region("assertive")!.textContent).toBe("");
+  });
+
+  it("every kind names its bar speaker, and each named speaker is a mounted bar pill", () => {
+    expect(Object.keys(INTERRUPTION_BAR_SPEAKER).sort()).toEqual(Object.keys(INTERRUPTION_TONE).sort());
+    const cluster = readFileSync(join(__dirname, "..", "editor-layout", "StatusCluster.tsx"), "utf8");
+    for (const name of Object.values(INTERRUPTION_BAR_SPEAKER)) {
+      if (name === null) continue;
+      expect(cluster, `${name} is mounted in the bar`).toMatch(new RegExp(`<${name}\\b`));
+      const src = readFileSync(join(__dirname, "..", `${name}.tsx`), "utf8");
+      expect(src, `${name} speaks through BarStatusPill`).toContain("<BarStatusPill");
+    }
+  });
+});
 
 describe("census · one vocabulary, one band", () => {
   it("the band is mounted in the editor pane, under the chrome header and above the prose pod", () => {
