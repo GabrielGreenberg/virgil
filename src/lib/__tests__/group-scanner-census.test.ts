@@ -77,7 +77,9 @@ const ALLOWED: Record<string, Allowed> = {
   "src/lib/syntax-check.ts": {
     depth: 1,
     bracket: 0,
-    reason: "diagnostic reader, comment-aware on its own; reports, never writes bytes",
+    reason:
+      "diagnostic reader, comment-aware on its own and inline-verbatim-aware through the " +
+      "lexer door (`matchInlineVerbAt`, task 1550); reports, never writes bytes",
   },
   "src/lib/tiptap/cmd-only-paragraph.ts": {
     depth: 1,

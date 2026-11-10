@@ -9,7 +9,10 @@
  *
  * Verbatim-style envs are skipped so their bodies don't generate spurious
  * diagnostics — membership comes from the lexer's family SSOT
- * (`isVerbatimFamilyEnv`), never a private list here.
+ * (`isVerbatimFamilyEnv`), never a private list here. Inline verbatim runs
+ * (`\verb|…|`, `\lstinline{…}`, …) are skipped WHOLE through the lexer's one
+ * inline door (`matchInlineVerbAt`, task 1550): their payload is literal bytes,
+ * so a `{`, `%` or `$` there can neither raise nor suppress a diagnostic.
  *
  * Exposed as a single function so the visual editor can later call it
  * on the rendered .tex output to flag missing refs/citations there too.
@@ -24,7 +27,7 @@ import {
   undefinedRuleId,
   type LatexRuleId,
 } from "./latex-rules";
-import { isVerbatimFamilyEnv } from "./latex-lexer";
+import { isVerbatimFamilyEnv, matchInlineVerbAt } from "./latex-lexer";
 
 export interface SyntaxCheckOptions {
   /** Bib keys known from the project's .bib files. When provided,
@@ -190,8 +193,16 @@ export function runSyntaxChecks(
       continue;
     }
 
-    // Backslash: escape, macro, or stray.
+    // Backslash: inline verbatim run, escape, macro, or stray.
     if (c === "\\") {
+      // An inline verbatim run is literal bytes to its closing delimiter —
+      // jump the whole run. An UNTERMINATED one (-1) falls through to the
+      // ordinary macro scan, so it can't swallow the rest of the document.
+      const verbEnd = matchInlineVerbAt(text, i);
+      if (verbEnd !== -1) {
+        i = verbEnd;
+        continue;
+      }
       const next = text[i + 1];
       if (next === undefined) {
         i++;
