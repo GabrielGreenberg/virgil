@@ -56,6 +56,7 @@ import type { ErrorJump } from "@/panels/Errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
 import { useCardAnchorPass } from "../contexts/card-anchor";
+import { useOmniCardRegistry } from "../contexts/omni-card-registry";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -75,6 +76,10 @@ type ReportsHook = ReturnType<typeof useReports>;
 
 export interface OmniHostProps {
   side: Side;
+  /** The side is collapsed (its width kept, its cards hidden): build and
+   *  publish the cards to the omni card registry, so the tool gutter can open
+   *  a row into one, but render none — no card mounts, no editor starts. */
+  publishOnly?: boolean;
   // Footnotes
   footnotes: FootnoteInfo[];
   orphanedFootnotes: OrphanedFootnote[];
@@ -196,7 +201,7 @@ export interface OmniHostProps {
    *  `omniDimResting` view-pref). Forwarded to OmniViewPanel as `dimResting`. */
   omniDimResting?: boolean;
   /** Only when focus is LOCKED, anchored cards outside the focused block range
-   *  are routed to the "outside focus" bin — mirroring the editor's own
+   *  are left out of the cascade — mirroring the editor's own
    *  lock-gated hide. A mere focus selection (active && !locked) confines
    *  nothing, so no card is binned. Unanchored cards are always unaffected. */
   focusState?: FocusState | null;
@@ -682,6 +687,14 @@ export function OmniHost(p: OmniHostProps) {
     // Reports handlers
   ]);
 
+  // Publish the built cards so the tool gutter's lists open a row into the
+  // SAME card (see omni-card-registry.ts). Runs when `items` changes — on
+  // data or selection, never per keystroke.
+  const omniCardRegistry = useOmniCardRegistry();
+  useEffect(() => {
+    omniCardRegistry?.set(p.side, items);
+  }, [omniCardRegistry, p.side, items]);
+
   // Container-child nesting (PHASE 1 footnotes + PHASE 2a examples). Derive the
   // `citationId → { kind, id }` container-owner map from the DocStructureObserver
   // snapshot (`nestedInContainerId`, already in the snapshot — no doc walk).
@@ -781,6 +794,7 @@ export function OmniHost(p: OmniHostProps) {
       ? p.bulkPendingChanges
       : undefined;
 
+  if (p.publishOnly) return null;
   return (
     <OmniViewPanel
       side={p.side}

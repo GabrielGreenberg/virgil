@@ -113,8 +113,7 @@ describe("OmniBinStack — zero-flow wrapper / measurement exclusion", () => {
     expect(stack.style.top).toBe("");
     expect(stack.style.inset).toBe("0px");
     // The individual bin now flows in NORMAL layout inside the wrapper (task
-    // 127) — it is NOT its own absolute sibling, so the outside-focus bin can
-    // stack below it whether it is collapsed or expanded.
+    // 127) — it is NOT its own absolute sibling.
     const bin = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
     expect(bin.style.position).not.toBe("absolute");
     // The cascade ResizeObserver measures `[data-omni-entry-wrapper]`. Neither

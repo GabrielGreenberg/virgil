@@ -222,10 +222,8 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
   });
 });
 
-describe("OmniViewPanel — two-bin stacking (task 127)", () => {
+describe("OmniViewPanel — a card outside the focus band", () => {
   const liveEditor = {} as Editor;
-  // A card anchored OUTSIDE the focus band → routes to the outside-focus bin
-  // (the split checks `item.outsideFocus` before pos, so pos is irrelevant).
   const outsideFocusNote: OmniItem = {
     id: "float:card:note:outside-1",
     pos: 20,
@@ -234,7 +232,7 @@ describe("OmniViewPanel — two-bin stacking (task 127)", () => {
     content: createElement("div", { "data-test-card": "outside-1" }, "outside"),
   };
 
-  it("both bins share the ONE absolute stack; unanchored sits above outside-focus in normal flow", () => {
+  it("is simply out of the cascade while focus is on: no bin collects it", () => {
     const { container } = render(
       <OmniViewPanel
         side="right"
@@ -243,27 +241,10 @@ describe("OmniViewPanel — two-bin stacking (task 127)", () => {
         enabledCategories={CATS}
       />,
     );
+    expect(container.querySelector('[data-test-card="outside-1"]')).toBeNull();
+    expect(container.querySelector("[data-omni-outside-focus-bin]")).toBeNull();
     const stack = container.querySelector("[data-omni-bin-stack]") as HTMLElement;
-    const unanchored = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
-    const outside = container.querySelector("[data-omni-outside-focus-bin]") as HTMLElement;
-    expect(unanchored).not.toBeNull();
-    expect(outside).not.toBeNull();
-    // Both bins live inside the single absolute wrapper — no independent
-    // absolute siblings with hand-measured offsets to fight over z-index.
-    expect(stack.style.position).toBe("absolute");
-    expect(stack.contains(unanchored)).toBe(true);
-    expect(stack.contains(outside)).toBe(true);
-    // Neither bin positions itself — they flow in the column, so the
-    // outside-focus bin is pushed below the unanchored bin whether the latter
-    // is collapsed or expanded (the fix: no static top:30 to paint over).
-    expect(unanchored.style.position).not.toBe("absolute");
-    expect(outside.style.position).not.toBe("absolute");
-    // Document order guarantees the outside-focus bin renders AFTER (below) the
-    // unanchored bin in the flex column.
-    expect(
-      unanchored.compareDocumentPosition(outside) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(stack.contains(container.querySelector("[data-omni-unanchored-bin]"))).toBe(true);
   });
 });
 

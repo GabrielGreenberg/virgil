@@ -180,11 +180,6 @@ interface EditorProps {
     onPick: (pick: HeadingTypePick) => void;
   }) => void;
   /**
-   * Confirmation for the lozenge `×` button. Resolving `false` cancels
-   * the delete. When omitted, the delete fires without prompting.
-   */
-  onConfirmHeadingDelete?: (typeName: string) => Promise<boolean>;
-  /**
    * Confirmation for the figure lozenge `×` button. Resolving `false`
    * cancels the delete. When omitted, the delete fires without prompting.
    */
@@ -251,6 +246,10 @@ export interface ExampleInfo {
   bodyContent: JSONContent | null;
   /** Top-level sub-items (one entry per `\a`). Empty for `\ex` with no items. */
   items: ExampleSubItem[];
+  /** A glossed example (`\begingl`): its first aligned tier (the source line,
+   *  cells joined by spaces) and its free translation (`\glft`, "" when none).
+   *  Absent for an example with no gloss. */
+  gloss?: { source: string; translation: string } | null;
   /** Round-trippable LaTeX source for the entire `\ex…\xe` block. */
   latex: string;
 }
@@ -274,9 +273,6 @@ export interface EditorHandle {
     newLabel: string | null,
     refCount: number,
   ) => Promise<LabelRenameChoice>;
-  /** Confirm deleting a heading (unused from floats — delete is gated off
-   *  there — but exposed for parity with the main NodeView). */
-  onConfirmHeadingDelete: (typeName: string) => Promise<boolean>;
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
   /** Re-insert an archived excerpt at the caret. Returns whether the content
@@ -441,7 +437,7 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightRange, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, anchoredUuidsRef, onBlockAbsorbedRef, onOpenHeadingTypeMenu, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   // The ONE timer scope this editor component arms through (law "a NodeView
@@ -492,8 +488,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // DOM heading node view through the standard ref-mirror pattern.
   const onOpenHeadingTypeMenuRef = useRef(onOpenHeadingTypeMenu);
   onOpenHeadingTypeMenuRef.current = onOpenHeadingTypeMenu;
-  const onConfirmHeadingDeleteRef = useRef(onConfirmHeadingDelete);
-  onConfirmHeadingDeleteRef.current = onConfirmHeadingDelete;
 
   const onConfirmFigureDeleteRef = useRef(onConfirmFigureDelete);
   onConfirmFigureDeleteRef.current = onConfirmFigureDelete;
@@ -520,7 +514,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       cardContext: false,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
         onOpenHeadingTypeMenu: onOpenHeadingTypeMenuRef,
         onConfirmFigureDelete: onConfirmFigureDeleteRef,
       },
@@ -994,10 +987,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // orphaning default (`label-rename.ts`), never a silent "leave".
       return fn ? fn(oldLabel, newLabel, refCount) : Promise.resolve("confirm");
     },
-    onConfirmHeadingDelete(typeName: string): Promise<boolean> {
-      const fn = onConfirmHeadingDeleteRef.current;
-      return fn ? fn(typeName) : Promise.resolve(true);
-    },
     getSelectedText(): string {
       if (!editor) return "";
       const sel = editor.state.selection;
@@ -1235,6 +1224,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             });
           }
         });
+        // A gloss sits beside the body paragraphs, not in them: read its first
+        // aligned tier and its free translation so a list can show the example
+        // by its source line rather than every tier run together.
+        let gloss: ExampleInfo["gloss"] = null;
+        node.forEach((child) => {
+          if (gloss || child.type.name !== "exampleGloss") return;
+          let source = "";
+          let translation = "";
+          child.forEach((row) => {
+            if (!source && row.type.name === "alignedGlossRow") {
+              const cells: string[] = [];
+              row.forEach((cell) => cells.push(cell.textContent.trim()));
+              source = cells.filter(Boolean).join(" ");
+            } else if (row.type.name === "proseGlossRow") {
+              translation = row.textContent.trim();
+            }
+          });
+          gloss = { source, translation };
+        });
         const subs = items.map((it) => it.subLabel).filter(Boolean);
         const subLabelRange =
           subs.length > 1 ? `${subs[0]}–${subs[subs.length - 1]}` : subs[0] || "";
@@ -1262,6 +1270,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           bodyText,
           bodyContent,
           items,
+          gloss,
           latex,
         });
         return false;

@@ -121,7 +121,6 @@ import { VirgilHorizontalRule } from "@/lib/tiptap/virgil-horizontal-rule";
 // mirrors the `useRef(prop)` shape in Editor.tsx exactly, so passing the
 // component's existing refs is byte-identical.
 type LabelRenameHandler = LabelRenameConfirm;
-type HeadingDeleteHandler = (typeName: string) => Promise<boolean>;
 type HeadingTypeMenuOpener = (params: {
   anchorRect: DOMRect;
   /** The chip element itself, so the menu can follow it on scroll (task 747). */
@@ -136,7 +135,6 @@ export interface HeadingCallbackRefs {
   // The prop-threaded twin was a mirror no host ever supplied — one consumer
   // (the figure lozenge) went to the SSOT and worked, three took the prop.
   onConfirmLabelRenameRef?: MutableRefObject<LabelRenameHandler | undefined>;
-  onConfirmHeadingDeleteRef?: MutableRefObject<HeadingDeleteHandler | undefined>;
   onOpenHeadingTypeMenuRef?: MutableRefObject<HeadingTypeMenuOpener | undefined>;
 }
 
@@ -1289,17 +1287,6 @@ export function createHeadingWithLabel(
             annot.appendChild(addBtn);
           }
 
-          // 4. Trailing × delete button — OMITTED in floats: deleting the
-          // heading would dissolve the float's own subject (decision 3).
-          if (!isFloat) {
-            const deleteBtn = chromeButton("heading-annotation-delete");
-            deleteBtn.dataset.action = "delete";
-            deleteBtn.setAttribute("aria-label", "Delete heading");
-            deleteBtn.title = "Delete heading";
-            deleteBtn.textContent = "×";
-            annot.appendChild(deleteBtn);
-          }
-
           if (focusedAction) {
             annot
               .querySelector<HTMLElement>(`[data-action="${focusedAction}"]`)
@@ -1361,31 +1348,6 @@ export function createHeadingWithLabel(
           nodeEditor.view.dispatch(tr);
         }
 
-        async function requestDelete() {
-          // Gated off in floats: deleting the heading would dissolve the
-          // float's own subject (decision 3). The delete × isn't rendered
-          // in floats either; this is belt-and-suspenders.
-          if (isFloat) return;
-          const p = typeof getPos === "function" ? getPos() : null;
-          if (p == null) return;
-          const headingNode = nodeEditor.state.doc.nodeAt(p);
-          if (!headingNode || headingNode.type.name !== "heading") return;
-          const typeName = headingTypeName(headingNode.attrs.level as number);
-          const confirmFn = refs.onConfirmHeadingDeleteRef?.current;
-          const ok = confirmFn ? await confirmFn(typeName) : true;
-          if (!ok) return;
-          // Re-resolve after the modal — the doc shouldn't have shifted
-          // while the user was deciding, but cheap insurance.
-          // The modal is a wait: the pen may have passed while it was open.
-          if (!chipMayWrite()) return;
-          const pos2 = typeof getPos === "function" ? getPos() : null;
-          if (pos2 == null) return;
-          const hn = nodeEditor.state.doc.nodeAt(pos2);
-          if (!hn || hn.type.name !== "heading") return;
-          const tr = nodeEditor.state.tr.delete(pos2, pos2 + hn.nodeSize);
-          nodeEditor.view.dispatch(tr);
-        }
-
         function openTypeMenu(target: HTMLElement) {
           const opener = refs.onOpenHeadingTypeMenuRef?.current;
           if (!opener) return;
@@ -1430,10 +1392,6 @@ export function createHeadingWithLabel(
             }
             if (action === "toggle-numbered") {
               toggleNumbered();
-              return;
-            }
-            if (action === "delete") {
-              void requestDelete();
               return;
             }
             cursor = cursor.parentElement;
@@ -1627,7 +1585,6 @@ type FigureDeleteHandler = () => Promise<boolean>;
 
 export interface EditorExtensionsCallbackRefs {
   onConfirmLabelRename?: MutableRefObject<LabelRenameHandler | undefined>;
-  onConfirmHeadingDelete?: MutableRefObject<HeadingDeleteHandler | undefined>;
   onOpenHeadingTypeMenu?: MutableRefObject<HeadingTypeMenuOpener | undefined>;
   onConfirmFigureDelete?: MutableRefObject<FigureDeleteHandler | undefined>;
 }
@@ -1714,7 +1671,6 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
 
   const headingRefs: HeadingCallbackRefs = {
     onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename,
-    onConfirmHeadingDeleteRef: ctx.callbacks.onConfirmHeadingDelete,
     onOpenHeadingTypeMenuRef: ctx.callbacks.onOpenHeadingTypeMenu,
   };
 

@@ -24,7 +24,7 @@
 //   4. with a column, the REAL OmniViewPanel portals its stack into the slot
 //      — the stack is NOT a flow child of the cascade pod (A5: podRect.top is
 //      untouched) and still carries no `data-omni-entry-wrapper`;
-//   5. the task-127 ordering survives the move: outside-focus below
+//   5. (retired with the outside-focus bin) outside-focus below
 //      unanchored, in one flex column;
 //   6. census: both bins are call sites of the ONE `OmniBinPill` primitive
 //      (the pill class is spelled exactly once in the file), and the retired
@@ -64,7 +64,7 @@ vi.mock("@/hooks/useInTextPositions", () => {
   };
 });
 
-import OmniViewPanel, { OmniBinStack, OmniUnanchoredBin, OmniOutsideFocusBin } from "@/panels/Omni/OmniViewPanel";
+import OmniViewPanel, { OmniBinStack, OmniUnanchoredBin } from "@/panels/Omni/OmniViewPanel";
 import { PanelColumn } from "@/components/editor-layout/panel-column";
 import { OmniBinSlotContext, DATA_OMNI_BIN_SLOT } from "@/components/editor-layout/omni-bin-slot";
 import type { OmniItem } from "@/panels/_shared/types";
@@ -85,13 +85,6 @@ const freeNote: OmniItem = {
   pos: null,
   anchorState: "free",
   content: createElement("div", { "data-test-card": "free-1" }, "free"),
-};
-const outsideNote: OmniItem = {
-  id: "float:card:note:outside-1",
-  pos: 20,
-  anchorState: "anchored",
-  outsideFocus: true,
-  content: createElement("div", { "data-test-card": "outside-1" }, "outside"),
 };
 const anchoredNote: OmniItem = {
   id: "float:card:note:anchored-1",
@@ -257,20 +250,6 @@ describe("OmniViewPanel — portals its bins into the column slot", () => {
     expect(stack.querySelector('[data-test-card="free-1"]')).not.toBeNull();
   });
 
-  it("leg 5: task-127 ordering survives — outside-focus below unanchored, one flex column", () => {
-    const { container } = renderColumn(
-      <OmniViewPanel side="right" items={[freeNote, outsideNote]} editor={liveEditor} enabledCategories={CATS} />,
-    );
-    const stack = container.querySelector("[data-omni-bin-stack]") as HTMLElement;
-    const un = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
-    const out = container.querySelector("[data-omni-outside-focus-bin]") as HTMLElement;
-    expect(stack.contains(un) && stack.contains(out)).toBe(true);
-    expect(un.parentElement).toBe(out.parentElement);
-    expect(un.compareDocumentPosition(out) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(un.style.position).not.toBe("absolute");
-    expect(out.style.position).not.toBe("absolute");
-  });
-
   it("leg 5b: without a column the panel keeps the bins in-pod, sticky (the fallback)", () => {
     const { container } = render(
       <OmniViewPanel side="right" items={[freeNote]} editor={liveEditor} enabledCategories={CATS} />,
@@ -284,15 +263,14 @@ describe("OmniViewPanel — portals its bins into the column slot", () => {
 
 describe("census — one pill primitive, no document-top posture", () => {
   const src = readFileSync(join(process.cwd(), "src/panels/Omni/OmniViewPanel.tsx"), "utf8");
-  it("leg 6: the `omni-bin-pill` class is spelled exactly once (inside OmniBinPill); both bins render through it", () => {
+  it("leg 6: the `omni-bin-pill` class is spelled exactly once (inside OmniBinPill); the bin renders through it", () => {
     expect(src.match(/omni-bin-pill/g)?.length).toBe(1);
     const { container } = render(
       <OmniBinStack host="frame">
         <OmniUnanchoredBin free={[freeNote]} orphaned={[]} />
-        <OmniOutsideFocusBin items={[outsideNote]} />
       </OmniBinStack>,
     );
-    expect(container.querySelectorAll("button.omni-bin-pill").length).toBe(2);
+    expect(container.querySelectorAll("button.omni-bin-pill").length).toBe(1);
   });
   it("leg 6c: the retired 64px toolbar clearance is gone from the column", () => {
     const col = readFileSync(

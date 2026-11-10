@@ -116,6 +116,36 @@ function verifiedChip(state: LibraryBibState | undefined) {
   );
 }
 
+/** The bib-auth state as ONE coloured dot and a word ("● Verified") — the
+ *  compact form for a tight line (the tool gutter's bibliography view). Same
+ *  tone and tooltip as the chip; nothing for `none`/undefined. */
+const STATUS_WORD: Readonly<Record<LibraryBibState, string | null>> = {
+  none: null,
+  authenticated: "Verified",
+  unverified: "Unverified",
+  failed: "Auth failed",
+  "needs-reauth": "Needs re-auth",
+  manuscript: "Manuscript",
+  canonical: "Canonical",
+};
+
+export function LibraryStatusWord({ state }: { state: LibraryBibState | undefined }) {
+  if (!state) return null;
+  const word = STATUS_WORD[state];
+  const copy = BIB_CHIP_COPY[state];
+  if (!word || !copy) return null;
+  return (
+    <span
+      className="library-status-word"
+      style={{ color: `var(--pill-${bibStateTone(state)}-fg)` }}
+      data-hint={copy.hint}
+      aria-label={copy.aria}
+    >
+      <span aria-hidden="true">●</span> {word}
+    </span>
+  );
+}
+
 /** Human-readable label for a processing tier. Exported for reuse / tests. */
 export function indexTierLabel(tier: LibraryIndexTier): string {
   switch (tier) {

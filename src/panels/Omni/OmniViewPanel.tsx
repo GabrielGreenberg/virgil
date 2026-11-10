@@ -28,6 +28,8 @@ import {
 } from "./omni-categories";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { parseAnyKey } from "@/floats/float-key";
+import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { IconAnchor } from "@/components/editor-layout/panel-icons";
 import {
   CardDisplayProvider,
   OMNI_COMPRESSED_LINES,
@@ -330,8 +332,8 @@ export function OmniFilterMenu({
 }
 
 /**
- * The ONE wrapper that hosts BOTH omni bins (the unanchored bin and the
- * outside-focus bin) as a flex COLUMN. Two hosts, one posture (task 421):
+ * The ONE wrapper that hosts the omni notices (the pending-change navigator
+ * and the unanchored bin) as a strip. Two hosts, one posture (task 421):
  *
  *   - `host="frame"` — the normal case. The stack is PORTALED into the
  *     column's bin slot (`omni-bin-slot.ts`): the last flex child of the
@@ -354,12 +356,10 @@ export function OmniFilterMenu({
  * from the top of the whole paper, gone on any scrolled document and painted
  * under a docked band at scroll 0.
  *
- * Laying the bins out in normal flow inside this strip is the task-127 fix:
- * the outside-focus bin follows the unanchored bin whether the latter is
- * collapsed or expanded, so expanding the unanchored bin can no longer paint
- * its opaque list over the outside-focus pill or swallow its clicks. The
- * applied-change navigator rides the same strip (first), so the two can't pin
- * over each other and a card can't show between them.
+ * The applied-change navigator rides the same strip (first), so the two can't
+ * pin over each other and a card can't show between them. In the gutter layout
+ * the strip sits ON the right gutter's lozenge, so it paints no ground of its
+ * own and the cards run under the lozenge (`data-gutter-strip`).
  */
 export function OmniBinStack({
   children,
@@ -381,6 +381,7 @@ export function OmniBinStack({
         data-omni-bin-stack=""
         data-omni-bin-host="frame"
         className="omni-notices"
+        data-gutter-strip={gutterLayoutOn() ? "" : undefined}
         // ON the right gutter's head row, beside the collapse toggle: at least
         // that row's height (`--omni-sticky-top`), so the cards' floor is the
         // row's bottom edge whether or not there is a notice to show.
@@ -422,19 +423,25 @@ export function OmniBinStack({
  * surface can be asked which state it announces: `"error"` is the
  * recoverable-error tier (an ORPHANED card — its anchor died; the glyph is
  * the `BadgeOrphaned` dot), `"neutral"` is everything that is not an error
- * (a deliberately parked card, a card outside the focus band). That is the
+ * (a deliberately parked card). That is the
  * `AnchorState` SSOT's own line (`free` is "a normal, non-error state (plain
  * card, no red badge)"), carried all the way to the pixel.
  *
  * Rendered as a NORMAL-FLOW block inside the shared `OmniBinStack`; carries
  * no `data-omni-entry-wrapper`, so its expand/collapse never bumps
  * `measureVersion`.
+ *
+ * `compact` is the gutter layout's button on the right lozenge: the icon and
+ * the count, keeping the full label for the accessible name. Its wrapper is
+ * `contents`, so the button stays on the lozenge's row when the list opens and
+ * the list alone takes the next line.
  */
 export function OmniBinPill({
   count,
   label,
   glyph,
   tone,
+  compact = false,
   hintCollapsed,
   hintExpanded,
   children,
@@ -450,6 +457,7 @@ export function OmniBinPill({
   label: string;
   glyph: ReactNode;
   tone: "neutral" | "error";
+  compact?: boolean;
   hintCollapsed: string;
   hintExpanded: string;
   /** The expanded list's rows. */
@@ -460,24 +468,35 @@ export function OmniBinPill({
   return (
     // An open bin takes a line of its own, so its list runs the column's width
     // and pushes what follows down (task 127).
-    <div {...rest} className={expanded ? "basis-full min-w-0" : "min-w-0"}>
+    <div {...rest} className={compact ? "contents" : expanded ? "basis-full min-w-0" : "min-w-0"}>
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
         className="omni-bin-pill flex items-center gap-1.5 px-1 py-0.5 rounded-sm text-xs focus-ring"
+        data-compact={compact ? "" : undefined}
         data-omni-bin-tone={tone}
         data-hint={expanded ? hintExpanded : hintCollapsed}
         aria-expanded={expanded}
       >
-        <span aria-hidden="true">{glyph}</span>
-        <span>{label}</span>
-        <span className="flex" aria-hidden="true"><Chevron expanded={expanded} /></span>
+        <span className="flex" aria-hidden="true">{glyph}</span>
+        {compact ? (
+          <>
+            <span aria-hidden="true">{count}</span>
+            <span className="sr-only">{label}</span>
+          </>
+        ) : (
+          <>
+            <span>{label}</span>
+            <span className="flex" aria-hidden="true"><Chevron expanded={expanded} /></span>
+          </>
+        )}
       </button>
       {expanded && (
         <div
           className="panel-scroll mt-1 space-y-2 rounded-lg bg-card shadow-[var(--card-shadow-ambient)] p-2"
           // Back out to the cards' right edge, under the head row's toggle.
           style={{
+            ...(compact ? { flex: "0 0 calc(100% + var(--omni-head-clear, 0px))", minWidth: 0 } : null),
             maxHeight: "var(--dock-slot-frame-h, 80vh)",
             marginRight: "calc(-1 * var(--omni-head-clear, 0px))",
           }}
@@ -518,10 +537,10 @@ function ParkedGlyph() {
  * is what the pod-header fallback chip has always said, so the one affordance
  * reads the same wherever it is drawn.
  *
- * It renders inside the shared `OmniBinStack` strip ahead of the outside-focus
- * bin, so expanding it pushes what follows down rather than painting over it
- * (task 127). `contents`, so the open pill's own wrapper is the strip's flex
- * item and can take the full line.
+ * It renders inside the shared `OmniBinStack` strip. `contents`, so the open
+ * pill's own wrapper is the strip's flex item and can take the full line. In
+ * the gutter layout it is the anchor button on the right lozenge (Gabriel,
+ * round 6: it should not take up much room).
  */
 export function OmniUnanchoredBin({
   free,
@@ -537,6 +556,7 @@ export function OmniUnanchoredBin({
   const count = free.length + orphaned.length + parked.length;
   if (count === 0) return null;
   const anyOrphaned = orphaned.length > 0;
+  const compact = gutterLayoutOn();
   return (
     <div data-omni-unanchored-bin="" className="contents">
       <OmniBinPill
@@ -544,8 +564,9 @@ export function OmniUnanchoredBin({
         count={count}
         label={`${count} unanchored`}
         tone={anyOrphaned ? "error" : "neutral"}
+        compact={compact}
         glyph={
-          anyOrphaned ? <BadgeOrphaned theme={CARD_THEMES.error} /> : <ParkedGlyph />
+          compact ? <IconAnchor /> : anyOrphaned ? <BadgeOrphaned theme={CARD_THEMES.error} /> : <ParkedGlyph />
         }
         hintCollapsed="Cards on this side with no place in the text — an anchor that was deleted, or a card parked without one. Click to show them; drag one onto a paragraph to place it"
         hintExpanded="Collapse unanchored cards"
@@ -589,38 +610,6 @@ export function OmniUnanchoredBin({
         ))}
       </OmniBinPill>
     </div>
-  );
-}
-
-/**
- * The "outside focus" bin. When focus view is active, cards anchored OUTSIDE
- * the focused band have a hidden in-text anchor, so they can't cascade inline.
- * Rather than drop them (silent data loss — the user's note just vanishes),
- * they collect here in a collapsed count pill, expandable to a bounded list.
- * The cards render only when expanded, so no live editors mount by default.
- * Follows the unanchored bin in the shared `OmniBinStack` strip whether that
- * bin is collapsed or expanded (task 127).
- */
-export function OmniOutsideFocusBin({
-  items,
-}: {
-  items: OmniItem[];
-}) {
-  const count = items.length;
-  return (
-    <OmniBinPill
-      data-omni-outside-focus-bin=""
-      count={count}
-      label={`${count} outside focus`}
-      tone="neutral"
-      glyph={<span className="text-2xs leading-none">◎</span>}
-      hintCollapsed="These cards are anchored outside your focus band. Switch off focus or extend the band to see them inline."
-      hintExpanded="Collapse cards outside the focus band"
-    >
-      {items.map((item) => (
-        <div key={item.id}>{item.content}</div>
-      ))}
-    </OmniBinPill>
   );
 }
 
@@ -947,14 +936,13 @@ function OmniViewPanel({
   // the cardId differs). Untying it from selection means collapse-toggling
   // a pinned card no longer snaps it back to its cascaded position — pin
   // stays put. New marker/card-jump interactions still replace cleanly.
-  // What needs a look, as one strip: both hosts hold the same three.
+  // What needs a look, as one strip: both hosts hold the same two.
   const notices = (
     <>
       {bulkPendingChanges && bulkPendingChanges.count > 0 && (
         <OmniBulkPendingHeader bulk={bulkPendingChanges} />
       )}
       <OmniUnanchoredBin free={free} orphaned={orphaned} parked={parked} />
-      <OmniOutsideFocusBin items={outsideFocus} />
     </>
   );
 

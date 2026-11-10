@@ -50,7 +50,9 @@
  */
 
 import {
+  cloneElement,
   forwardRef,
+  isValidElement,
   memo,
   useCallback,
   useEffect,
@@ -79,6 +81,7 @@ import AIWindow, {
 } from "./AIWindow";
 import {
   EditorChromeProvider,
+  useEditorChrome,
   ViewPrefProjectionProvider,
   useStableViewPrefProjection,
   useViewPrefProjectionAttrs,
@@ -348,6 +351,9 @@ import { gutterLayoutOn } from "@/lib/gutter-layout";
 import { useMarginLabelMode } from "@/lib/editor-geometry/use-margin-label-mode";
 import { useToolGutterState } from "@/lib/tool-gutter-store";
 import { ToolGutter } from "./editor-layout/tool-gutter/ToolGutter";
+import { GutterCardBody } from "./editor-layout/tool-gutter/GutterCardBody";
+import { OmniCardRegistryProvider, createOmniCardRegistry } from "./editor-layout/contexts/omni-card-registry";
+import type { ReadingListsData } from "./editor-layout/tool-gutter/ReadingLists";
 import { scrollPosToReadingLine } from "@/lib/editor-geometry/reading-line";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import FloatingPanel from "./FloatingPanel";
@@ -3229,7 +3235,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // ── Confirm-dialog instance backing the shared `deleteMarginItem` ──
   // Surfaces the "This item has text. Delete it?" warning when the user
   // deletes the last anchor on a non-empty card via the margin marker.
-  // Distinct from `confirmHeadingDelete` below so the two dialogs can
+  // Distinct from the NodeView confirm below so the two dialogs can
   // coexist independently.
   const { confirm: confirmMarginItemDelete, dialog: confirmMarginItemDeleteDialog } =
     useConfirmDialog();
@@ -4852,10 +4858,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [headingTypeTriggerEl]);
 
   // ONE confirm-dialog instance for every question a NodeView asks through
-  // `<VirgilEditor>`'s optional callbacks — the heading lozenge's ×, the
-  // figure lozenge's ×, the label-rename "Update references?", and the
-  // footnote panel-drop move. They are modal and never concurrent, so one
-  // instance serves all four; what matters is that EACH callback the editor
+  // `<VirgilEditor>`'s optional callbacks — the figure lozenge's ×, the
+  // label-rename "Update references?", and the footnote panel-drop move. They
+  // are modal and never concurrent, so one instance serves all three; what matters is that EACH callback the editor
   // consumes has a PRODUCER here. Task 534: `onConfirmLabelRename` and
   // `onConfirmFootnoteMove` had none for five months, so their consumers were
   // dead with every type green — `editor-callback-producer-census.test.ts`
@@ -4865,16 +4870,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     choose: chooseFromNodeView,
     dialog: nodeViewConfirmDialog,
   } = useConfirmDialog();
-  const handleConfirmHeadingDelete = useCallback(
-    (typeName: string) =>
-      confirmFromNodeView({
-        title: "Delete heading?",
-        message: `Remove this ${typeName} heading. The body underneath stays in place.`,
-        confirmLabel: "Delete heading",
-        tone: "danger",
-      }),
-    [confirmFromNodeView],
-  );
   const handleConfirmFigureDelete = useCallback(
     () =>
       confirmFromNodeView({
@@ -6730,6 +6725,97 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // so a fresh object per render costs nothing it didn't already pay.
   // The docked/floating panel bodies AND the tool gutter's tool bodies (task
   // 1440) render the same PaneRailBody; its props are built once here.
+  // The tool gutter's reading lists (footnotes, bibliography, examples): what
+  // they list, and the card an open row turns into — the same stores and
+  // handlers the old docked panels used.
+  const orphanedFootnotesForLists = effectiveViewPrefs?.orphanedFootnotes;
+  // The cards OmniHost builds, readable by the tool gutter (one per pane).
+  const [omniCardRegistry] = useState(createOmniCardRegistry);
+  const gutterReadingLists = useMemo<ReadingListsData>(() => {
+    const citedKeys = new Set(allEditorCitations.flatMap((c) => c.keys));
+    const firstCite = new Map<string, string>();
+    for (const c of [...allEditorCitations].sort((a, b) => a.pos - b.pos)) {
+      for (const k of c.keys) if (!firstCite.has(k)) firstCite.set(k, c.citationId);
+    }
+    return {
+      footnotes: footnoteInfos,
+      orphanedFootnotes: orphanedFootnotesForLists ?? [],
+      unanchoredFootnotes: unanchoredFootnoteRefs,
+      examples,
+      bibEntries: citationsHook.bibEntries,
+      bibSource: citationsHook.bibRaw,
+      editorCitations: allEditorCitations,
+      onActiveCitation: setBibActiveCitationId,
+      bibActions: {
+        addBibEntry: citationsHook.addBibEntry,
+        saveBibEntry: citationsHook.saveBibEntry,
+        requestReview: bibReviewHook.requestReview,
+        entryRequests: bibSettingsHook.entryRequests,
+        addEntryRequest: bibSettingsHook.addEntryRequest,
+        removeEntryRequest: bibSettingsHook.removeEntryRequest,
+        getAnnotation: annotationsHook.getAnnotation,
+      },
+      renderCard: (card) => (
+        <GutterCardBody
+          card={card}
+          footnotes={footnoteInfos}
+          orphanedFootnotes={orphanedFootnotesForLists ?? []}
+          unanchoredFootnotes={unanchoredFootnoteRefs}
+          examples={examples}
+          bibEntries={citationsHook.bibEntries}
+          citedKeys={citedKeys}
+          onEditFootnote={handleEditFootnote}
+          onEditFootnoteTitle={handleEditFootnoteTitle}
+          onDeleteFootnote={handleDeleteFootnote}
+          onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
+          onEditOrphan={effectiveViewPrefs?.onEditOrphan ?? (() => {})}
+          onEditOrphanTitle={effectiveViewPrefs?.onEditOrphanTitle ?? (() => {})}
+          onDeleteOrphan={effectiveViewPrefs?.onDeleteOrphan ?? (() => {})}
+          footnoteAiRequests={footnoteAiRequests}
+          onSetFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
+          getAnnotation={annotationsHook.getAnnotation}
+          setAnnotation={annotationsHook.setAnnotation}
+          requestBibReview={bibReviewHook.requestReview}
+          cancelBibReview={bibReviewHook.cancelRequest}
+          getBibReviewStatus={bibReviewHook.getRequestStatus}
+          getBibReviewNotes={bibReviewHook.getRequestNotes}
+          saveBibEntry={citationsHook.saveBibEntry}
+          onJumpToBibKey={(key, el) => {
+            const id = firstCite.get(key);
+            if (id) innerRef.current?.scrollToCitation(id, el);
+          }}
+        />
+      ),
+    };
+  }, [
+    footnoteInfos,
+    orphanedFootnotesForLists,
+    unanchoredFootnoteRefs,
+    examples,
+    citationsHook.bibEntries,
+    citationsHook.bibRaw,
+    citationsHook.saveBibEntry,
+    citationsHook.addBibEntry,
+    bibSettingsHook.entryRequests,
+    bibSettingsHook.addEntryRequest,
+    bibSettingsHook.removeEntryRequest,
+    allEditorCitations,
+    setBibActiveCitationId,
+    handleEditFootnote,
+    handleEditFootnoteTitle,
+    handleDeleteFootnote,
+    handleDeleteUnanchoredFootnote,
+    effectiveViewPrefs,
+    footnoteAiRequests,
+    footnotesHook.setFootnoteAiRequest,
+    annotationsHook.getAnnotation,
+    annotationsHook.setAnnotation,
+    bibReviewHook.requestReview,
+    bibReviewHook.cancelRequest,
+    bibReviewHook.getRequestStatus,
+    bibReviewHook.getRequestNotes,
+  ]);
+
   const paneRailBodyShared: Omit<PaneRailBodyProps, "side" | "panelKind"> = {
     content: outlineContentEffective,
     examples,
@@ -6848,6 +6934,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     <PaneRootContext.Provider value={paneRootId}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar, mainTextEditable: editable }}>
+    <OmniCardRegistryProvider value={omniCardRegistry}>
     <ViewPrefProjectionProvider value={viewPrefRoot}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
@@ -7126,6 +7213,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       // The side's collapse toggle leads the tools row — one
                       // row of controls, no strip column (task 1440).
                       leading={viewPrefs ? <SideCollapseToggle side="left" viewPrefs={viewPrefs} bare /> : undefined}
+                      collapsed={chrome.collapseKeepsGutterWidth === true && !!viewPrefs?.prefs.collapsedLeft}
                       renderTool={(tool) => (
                         <PaneRailBody side="left" panelKind={tool} {...paneRailBodyShared} />
                       )}
@@ -7142,6 +7230,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       cutterCards={cutterHook.cards}
                       reportCards={reportsHook.cards}
                       archivedIds={archivedIds}
+                      readingLists={gutterReadingLists}
                     />
                   ) : undefined
                 }
@@ -7260,7 +7349,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // --pod-top; CONTENT-area chrome reads --chrome-top.
                 // --chrome-top is emitted as plain px (not calc) so
                 // chrome-scroll-margin.ts parses it directly.
-                ['--pod-cap-inner' as string]: '8px',
+                // The card's top gap is the gutters' one inset, so the card's
+                // top edge and both gutter lozenges share one line.
+                ['--pod-cap-inner' as string]: 'var(--gutter-inset)',
                 ['--pod-cap-bleed' as string]: 'calc(4px + var(--pod-gap))',
                 ['--pod-cap-h' as string]:
                   'calc(var(--editor-pod-radius) + 4px + var(--pod-gap))',
@@ -7368,11 +7459,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   // The surplus 14px (= bleed) goes ABOVE the white
                   // inner. marginTop pulls the whole cap up by that
                   // 14px so the white edge stays at its original flow
-                  // position; marginBottom negates just the white inner
-                  // (--pod-cap-inner) so flow is neutral and the pod
-                  // isn't pushed. Net flow: -14 + 22 - 8 = 0.
+                  // position; marginBottom negates the white inner (the
+                  // cap's height less the bleed) so flow is neutral and
+                  // the pod isn't pushed: -bleed + h - (h - bleed) = 0.
+                  // Negating only --pod-cap-inner left the radius's excess
+                  // over it (12 - 8 since the Sand radius) in flow, so the
+                  // card sat 4px low at scroll 0 and jumped up as it stuck.
                   marginTop: 'calc(-1 * var(--pod-cap-bleed))',
-                  marginBottom: 'calc(-1 * var(--pod-cap-inner))',
+                  marginBottom: 'calc(var(--pod-cap-bleed) - var(--pod-cap-h))',
                   marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
                   marginRight: 'calc(-1 * var(--pod-cap-bleed))',
                   background: 'var(--canvas-paint)',
@@ -7383,7 +7477,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               >
                 <div
                   style={{
-                    height: 'var(--pod-cap-inner)',
+                    // From the card edge (--pod-top) to the cap's bottom.
+                    height: 'calc(var(--pod-cap-h) - var(--pod-cap-bleed))',
                     marginLeft: 'var(--pod-cap-bleed)',
                     marginRight: 'var(--pod-cap-bleed)',
                     background: 'var(--pod-editor)',
@@ -7976,7 +8071,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     anchoredUuidsRef={anchoredUuidsRef}
                     onBlockAbsorbedRef={onBlockAbsorbedRef}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
-                    onConfirmHeadingDelete={handleConfirmHeadingDelete}
                     onConfirmFigureDelete={handleConfirmFigureDelete}
                     onConfirmLabelRename={handleConfirmLabelRename}
                     onConfirmFootnoteMove={handleConfirmFootnoteMove}
@@ -8296,6 +8390,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       </CardAnchorProvider>
       </EditorRefProvider>
     </ViewPrefProjectionProvider>
+    </OmniCardRegistryProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
     </PaneRootContext.Provider>
@@ -8610,6 +8705,7 @@ function PaneRail({
   toolGutter,
 }: PaneRailProps) {
   const isLeft = side === "left";
+  const chromeConfig = useEditorChrome();
 
   // Whether this side's omni-view is currently showing ≥1 card. Reported up
   // from OmniViewPanel (post enabled-category + hideAll filter) and threaded
@@ -8746,20 +8842,37 @@ function PaneRail({
     const isCollapsed = side === "left"
       ? viewPrefs.prefs.collapsedLeft
       : viewPrefs.prefs.collapsedRight;
+    // The main editor's collapse keeps the gutter's width and hides only its
+    // contents, so the text card never moves (Gabriel, 2026-11-08); the
+    // Library Reader's chrome leaves it off and still reclaims the space.
+    const keepWidth = gutterLayout && chromeConfig.collapseKeepsGutterWidth === true;
+    const contentsHidden = keepWidth && isCollapsed;
 
     // The gutter layout runs edge to edge (task 1440): the collapse toggle
-    // lives IN the column — first in the tool gutter's tools row on the left
-    // (passed as its `leading`), on a sticky head row above the cards on the
+    // lives IN the column — first in the tool gutter's tools lozenge on the
+    // left (passed as its `leading`), in a sticky lozenge over the cards on the
     // right — so no strip column stands between the column and the window
-    // edge. The omni's own sticky chrome (navigator, bins) shares that head
-    // row, through the variables set on the rail below.
+    // edge. The omni's own sticky chrome (navigator, bin) shares that lozenge,
+    // through the variables set on the rail below.
     const omniNode: React.ReactNode =
       gutterLayout && !isLeft ? (
-        <div data-gutter-side-host={side}>
+        <div
+          data-gutter-side-host={side}
+          // With the cards hidden the host would shrink to the lozenge, and a
+          // sticky lozenge cannot travel inside its own height: keep the host
+          // as tall as the document so the lozenge stays pinned.
+          style={contentsHidden ? { minHeight: "var(--row-bound-h, 100%)" } : undefined}
+        >
           <div className="gutter-side-head" data-gutter-head={side}>
             <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
           </div>
-          {omniBody}
+          {contentsHidden
+            ? // Collapsed: the cards are hidden, but OmniHost still publishes
+              // them (rendering none) so the tool gutter can open a row.
+              isValidElement(omniBody)
+              ? cloneElement(omniBody as React.ReactElement<{ publishOnly?: boolean }>, { publishOnly: true })
+              : null
+            : omniBody}
         </div>
       ) : (
         omniBody
@@ -8769,7 +8882,7 @@ function PaneRail({
     // COLLAPSED — it is then the one control that brings the column back.
     const stripJsx = !viewPrefs.zenMode && (
       gutterLayout ? (
-        isCollapsed ? <GutterCollapseButton side={side} viewPrefs={viewPrefs} /> : null
+        isCollapsed && !keepWidth ? <GutterCollapseButton side={side} viewPrefs={viewPrefs} /> : null
       ) : (
         <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
       )
@@ -8792,7 +8905,8 @@ function PaneRail({
         onPanelPrefChange={(w) => viewPrefs.setPanelWidth(side, "omni", w)}
         isResizing={viewPrefs.isResizingPanels}
         onResizingChange={viewPrefs.setIsResizingPanels}
-        collapsed={isCollapsed}
+        collapsed={isCollapsed && !keepWidth}
+        widthLocked={contentsHidden}
         tail={tail}
         onBinSurfaceChange={(present) => onBinSurfaceChange?.(side, present)}
       />
@@ -8818,14 +8932,14 @@ function PaneRail({
           // establishing a scroll context, so descendants' sticky
           // positioning still latches to the row.
           overflow: 'clip',
-          // The right gutter's sticky head row (above): the omni's navigator
-          // and bins sit ON it, to the left of the toggle, and the cards start
-          // below it.
+          // The right gutter's sticky lozenge (above): the omni's navigator
+          // and bin sit ON it, to the left of the toggle, and the cards start
+          // below it and then run under it.
           ...(gutterLayout && !isLeft
             ? {
-                ["--omni-sticky-top" as string]: "calc(var(--pod-gap) + 42px)",
-                ["--omni-frame-z" as string]: 30,
-                ["--omni-head-clear" as string]: "28px",
+                ["--omni-sticky-top" as string]: "calc(var(--gutter-inset) + 28px)",
+                ["--omni-frame-z" as string]: 32,
+                ["--omni-head-clear" as string]: "32px",
               }
             : null),
         }}

@@ -30,7 +30,9 @@ const read = (rel: string) => readFileSync(resolve(here, rel), "utf8");
 
 // The SSOT const now lives in a shared module both consumers import.
 const sharedSource = read("../../_shared/amber-attention.ts");
-const panelSource = read("../BibliographyPanel.tsx");
+// The panel's three amber surfaces (conflict strip, request form, pending
+// requests) render from the library flow it shares with the tool gutter.
+const panelSource = read("../bib-library-flow.tsx");
 const cardSource = read("../../../components/BibEntryCard.tsx");
 // Task 981 folded the card's two hand-rolled request-note strips into ONE
 // shared control, so the card's amber strips now render from there.

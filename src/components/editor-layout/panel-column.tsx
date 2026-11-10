@@ -12,6 +12,8 @@ import { BandDivider } from "../panel-primitives";
 import { paneColumn, type PaneScope } from "./pane-dom";
 import { flexColumnGestureId, pinFlexColumn, useFlexColumnPin } from "./flex-column-pin";
 import { isPaneElementVisible } from "@/lib/keep-alive/pane-visibility";
+import { gutterLayoutOn } from "@/lib/gutter-layout";
+import { PANE_ROW_GAP_PX } from "./normal-view-rails";
 
 /** One docked band in a column's stack: a panel id plus an optional
  *  resized height (px). Absent height ⇒ content-sized (flex auto). */
@@ -250,6 +252,7 @@ export function PanelColumn({
   onResizeBottomEdge,
   onFocusBand,
   collapsed,
+  widthLocked = false,
   tail,
   onBinSurfaceChange,
 }: {
@@ -275,6 +278,9 @@ export function PanelColumn({
   /** Mark a band most-recently-used on interaction (MRU bump). */
   onFocusBand: (id: PanelId) => void;
   collapsed?: boolean;
+  /** The side is collapsed but keeps its width: the column stays as wide,
+   *  and its resize gesture is refused so the text card cannot move. */
+  widthLocked?: boolean;
   /** Optional adornment rendered inside the inner flex row, adjacent
    *  to the drag-gap on the editor-facing side (between the panel
    *  content and the drag-gap). The Library Reader uses this to mount
@@ -333,8 +339,9 @@ export function PanelColumn({
     // The right column grows as the pointer moves LEFT (toward the origin).
     direction: side === "right" ? -1 : 1,
     // A collapsed column renders `flex: 0 0 0px` — an imperative width write
-    // would silently override the collapse, so the gesture is refused.
-    disabled: collapsed,
+    // would silently override the collapse, so the gesture is refused. A
+    // width-locked one keeps the card where it is, so it is refused too.
+    disabled: collapsed || widthLocked,
     getValue: () => {
       const col = colRef.current;
       const rendered = col?.getBoundingClientRect().width ?? panelPref;
@@ -474,6 +481,7 @@ export function PanelColumn({
   // resize handle and the bin slot fell below the visible pane. The window
   // formula survives only as the pre-measure fallback, naming the bar token.
   const frameTop = 'var(--pod-gap)';
+  const gutterInboard = gutterLayoutOn();
   const frameH =
     'calc(var(--scroll-viewport-h, calc(100dvh - var(--bar-base-h))) - 2 * var(--pod-gap))';
 
@@ -514,11 +522,15 @@ export function PanelColumn({
         // below the band. The flow inset lives on the inner row instead
         // (the row just inside it), so the fade, the sticky floor and the clip
         // edge are one edge.
-        paddingLeft: collapsed ? 0 : 4,
-        paddingRight: collapsed ? 0 : 4,
+        // The gutter layout (task 1440 round 3) drops the INBOARD 4px, so the
+        // text card's gap to this column's content is the one
+        // `--gutter-inset` (row gap + the drag gap below), like its top gap.
+        paddingLeft: collapsed || (gutterInboard && side === "right") ? 0 : 4,
+        paddingRight: collapsed || (gutterInboard && side === "left") ? 0 : 4,
       }}
     >
-      <ColumnEdgeFade side={side} edge="top" ramp={STACKED_FADE_RAMP} />
+      {/* The gutter layout has no top fade: cards run under the lozenge. */}
+      {!gutterInboard && <ColumnEdgeFade side={side} edge="top" ramp={STACKED_FADE_RAMP} />}
       <div
         className="flex flex-1 min-h-0 w-full"
         // Layer A (the omni desktop, normal flow) gets a top gap only when a
@@ -653,7 +665,13 @@ export function PanelColumn({
         // toward-editor class nudges only the pill.
         className={`drag-gap drag-gap-v band-grip ${side === "left" ? "order-3 drag-gap-toward-editor-right drag-gap-grab-end" : "order-1 drag-gap-toward-editor-left drag-gap-grab-start"}`}
         {...gutterHandle}
-        style={{ ...gutterHandle.style, width: 'var(--pod-gap)' }}
+        style={{
+          ...gutterHandle.style,
+          // Painted width only — the grab keeps its --gutter-grab floor.
+          width: gutterInboard
+            ? `calc(var(--gutter-inset) - ${PANE_ROW_GAP_PX}px)`
+            : 'var(--pod-gap)',
+        }}
       />
       </div>
       <ColumnEdgeFade

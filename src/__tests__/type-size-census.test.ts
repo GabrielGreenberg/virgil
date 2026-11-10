@@ -101,10 +101,6 @@ function offLadder(rel: string, src: string): string[] {
   return hits;
 }
 
-/** The one chosen use of capitals (Gabriel, 2026-11-04): a tool's title in the
- *  left gutter, which stands above sentence-case section headings. */
-const CHOSEN_CAPITALS = /\.tool-gutter-tool \.panel-header-title \{[^}]*\}/;
-
 const CAPITALS = [/\buppercase\b/g, /\btext-transform:\s*uppercase\b/g, /\btextTransform:\s*["']uppercase["']/g];
 
 function capitals(rel: string, src: string): string[] {
@@ -130,7 +126,7 @@ describe("the five UI sizes (STYLE_GUIDE \"Typography\")", () => {
       capitals(path.relative(REPO_ROOT, f), scanView(readFileSync(f, "utf8"))),
     );
     const css = STYLESHEETS.flatMap((rel) =>
-      capitals(rel, cssView(readFileSync(path.join(REPO_ROOT, rel), "utf8")).replace(CHOSEN_CAPITALS, "")),
+      capitals(rel, cssView(readFileSync(path.join(REPO_ROOT, rel), "utf8"))),
     );
     expect([...hits, ...css]).toEqual([]);
   });

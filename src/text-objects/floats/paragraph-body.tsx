@@ -94,11 +94,6 @@ export function ParagraphBody({
     ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
     Promise.resolve("confirm");
 
-  const onConfirmHeadingDeleteRef = useRef<
-    ((typeName: string) => Promise<boolean>) | undefined
-  >(undefined);
-  onConfirmHeadingDeleteRef.current = (typeName) =>
-    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
   const spellcheckPortRef = useSpellcheckPortRef();
   const floatEditor = useEditor({
@@ -114,7 +109,6 @@ export function ParagraphBody({
       boundRoot: soleRoot("paragraph"),
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
-        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
       // cardContext figure/graphics previews render compact pills and don't
       // resolve images via docId; a paragraph float has none anyway (matches

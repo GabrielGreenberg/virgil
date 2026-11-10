@@ -58,6 +58,7 @@ const REPEAT_LEDGER: Record<string, string> = {
   "src/components/ManageStylesModal.tsx": FIELD,
   "src/panels/Outline/OutlinePanel.tsx": FIELD,
   "src/panels/Bibliography/BibliographyPanel.tsx": FIELD,
+  "src/panels/Bibliography/bib-library-flow.tsx": FIELD,
   "src/text-objects/floats/float-title-field.tsx": FIELD,
   "src/panels/_shared/PanelGoalStrip.tsx": FIELD,
   "src/components/PreferencesModal.tsx": FIELD,

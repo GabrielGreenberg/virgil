@@ -55,4 +55,10 @@ describe("FULL_CHROME — pinned main-app default (everything on)", () => {
     expect(FULL_CHROME.visiblePanelKinds).toBeUndefined();
     expect(FULL_CHROME.editableCardKinds).toBeUndefined();
   });
+  it("keeps a collapsed gutter's width in the main editor, never in the Reader", () => {
+    // Collapse hides the gutter's contents and leaves the text card where it
+    // is (Gabriel, 2026-11-08); the Reader still reclaims the space.
+    expect(FULL_CHROME.collapseKeepsGutterWidth).toBe(true);
+    expect(READER_CHROME.collapseKeepsGutterWidth).toBeUndefined();
+  });
 });

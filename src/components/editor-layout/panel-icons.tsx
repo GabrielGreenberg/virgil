@@ -91,6 +91,17 @@ export function IconX() {
 }
 
 // Outline icon: headline + two indented bullet+line sub-items
+export function IconAnchor({ size = 16 }: { size?: number }) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="5" r="2.5" />
+      <path d="M12 7.5V21" />
+      <path d="M8 11h8" />
+      <path d="M4 13a8 8 0 0 0 16 0" />
+    </svg>
+  );
+}
+
 export function IconOutline({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (

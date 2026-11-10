@@ -1,7 +1,7 @@
 /**
  * The omni BIN SLOT — where a card that cannot cascade is surfaced (task 421).
  *
- * An omni bin ("N unanchored", "N outside focus") is an affordance for a fact
+ * The omni bin ("N unanchored") is an affordance for a fact
  * that is NOT positional: a card with no live anchor has no Y in the document.
  * Task 410 stated the rule for the margin's orphan dock — such an affordance
  * "is surfaced in chrome that is visible from anywhere in the document" — and
@@ -36,10 +36,10 @@
  * the floating-window rung.
  *
  * In the gutter layout there are no docked bands. The frame's slot then sits on
- * the right gutter's head row, left of the collapse toggle: the rail's
- * `--omni-frame-z` lifts the empty frame above that row, `--omni-sticky-top`
- * holds the strip at the row's height, and `--omni-head-clear` keeps the slot
- * off the toggle.
+ * the right gutter's lozenge, left of the collapse toggle: the rail's
+ * `--omni-frame-z` lifts the empty frame above the lozenge, `--omni-sticky-top`
+ * holds the strip at the lozenge's height, and `--omni-head-clear` keeps the
+ * slot off the toggle.
  *
  * The context is `null` where no column hosts the omni view (unit fixtures,
  * any future bare mount). `OmniViewPanel` then keeps the bins inside the pod,
