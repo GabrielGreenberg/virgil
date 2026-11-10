@@ -413,14 +413,20 @@ describe("the REAL bar under compression", () => {
     // a second callback in the bar, observing ONE box. The occupancy rule's
     // own observer is still exactly three boxes through one callback, and
     // the scroller it observes is the SAME element the ladder observes.
+    // RENEGOTIATED again (task 1553): the ladder's ONE observer also watches
+    // the ACTIVE tab's wrapper — a tab that widens (a rename) overflows into
+    // scroll range without resizing the scroller — so its set is the
+    // scroller + exactly one active tab ("active-tab" below).
     mount();
     const byCb = new Map<ResizeObserverCallback, string[]>();
     for (const o of observed) {
-      const role = o.el.getAttribute("data-bar-occupant") ?? "?";
+      const role =
+        o.el.getAttribute("data-bar-occupant") ??
+        (o.el.parentElement?.closest("[data-bar-occupant='tabs']") ? "active-tab" : "?");
       byCb.set(o.cb, [...(byCb.get(o.cb) ?? []), role].sort());
     }
     const roleSets = [...byCb.values()].sort((a, b) => b.length - a.length);
-    expect(roleSets).toEqual([["status-tools", "tab-strip", "tabs"], ["tab-strip"]]);
+    expect(roleSets).toEqual([["status-tools", "tab-strip", "tabs"], ["active-tab", "tab-strip"]]);
   });
 
   it("a wide bar keeps every occupant", () => {

@@ -215,11 +215,17 @@ Nine rules it earned:
   `el.scrollIntoView()`, which centres/over-scrolls, scrolls every ANCESTOR
   too, and races a smooth scroll in flight ("Refocus is not navigation"); a
   passive effect would paint the tab off-screen for a frame and then jump. The
-  resize path is the ONE ResizeObserver here — over the scroller's own box,
-  RAF-coalesced behind a width-equality bail, PARKED on the layout-gesture
-  bus so an OS window drag costs one settle on the end edge — and it writes
-  only `scrollLeft`, which does not resize the box it observes, so it cannot
-  feed back into itself.
+  resize path is the ONE ResizeObserver here — over the scroller's own box
+  AND the ACTIVE tab's box (re-targeted on activation), RAF-coalesced behind a
+  per-box width-equality bail, PARKED on the layout-gesture bus so an OS
+  window drag costs one settle on the end edge — and it writes only
+  `scrollLeft`, which resizes neither box it observes, so it cannot feed back
+  into itself. **The follow is keyed on GEOMETRY, not identity** (task 1553):
+  the scroller is `flex-1 min-w-0`, so a tab that WIDENS — a rename, the
+  inline rename input growing as you type — overflows into scroll range with
+  the scroller's box unchanged; only the tab's own box sees it. A newly
+  targeted tab's first delivery only SEEDS its width (activation already
+  nudged).
 - **The wheel mapping is narrow, and every exclusion is the browser's own
   behaviour.** A vertical wheel over the strip scrolls it sideways (Firefox's
   tab strip and VS Code's editor tabs; a mouse user has no other way to reach

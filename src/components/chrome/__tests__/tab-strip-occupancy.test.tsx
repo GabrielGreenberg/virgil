@@ -374,6 +374,45 @@ describe("useTabStripScroller — the scroll half, wired", () => {
     await nextFrame();
     expect(s.scrollLeft).toBe(200);
   });
+
+  it("re-nudges when the ACTIVE TAB WIDENS with the scroller's box unchanged (rename / inline rename input growing) — task 1553", async () => {
+    globalThis.ResizeObserver = FakeRO as unknown as typeof ResizeObserver;
+    const tabRefs = { current: new Map<string, HTMLElement>() };
+    const a = box({ left: 0, right: 100 });
+    const c = box({ left: 150, right: 250 });
+    tabRefs.current.set("a", a);
+    tabRefs.current.set("c", c);
+    const { getByTestId, rerender } = render(<Harness activeKey="c" tabCount={2} tabRefs={tabRefs} />);
+    const s = getByTestId("scroller");
+    stubScroller(s, 300, 900, { left: 0, right: 300 });
+    expect(observed.some((o) => o.el === c), "the active tab's own box is observed").toBe(true);
+    expect(observed.filter((o) => o.el === s).length, "still ONE observer over the scroller").toBe(1);
+    // The tab's FIRST delivery only seeds its width — activation already nudged it.
+    deliverWidth(c, 100);
+    await nextFrame();
+    expect(s.scrollLeft).toBe(0);
+    // The rename input grows as you type: the tab now hangs 80px past the edge.
+    c.getBoundingClientRect = () =>
+      ({ left: 150, right: 380, width: 230, top: 0, bottom: 0, height: 0, x: 150, y: 0, toJSON() {} }) as DOMRect;
+    deliverWidth(c, 200);
+    deliverWidth(c, 230);
+    expect(s.scrollLeft, "a frame away, not synchronous").toBe(0);
+    await nextFrame();
+    expect(s.scrollLeft, "followed by the minimum delta, coalesced to one nudge").toBe(80);
+    // Same width again: the per-element equality bail schedules nothing.
+    s.scrollLeft = 0;
+    deliverWidth(c, 230);
+    await nextFrame();
+    expect(s.scrollLeft).toBe(0);
+    // Activation RE-TARGETS: the old tab is unobserved, the new one observed.
+    rerender(<Harness activeKey="a" tabCount={2} tabRefs={tabRefs} />);
+    expect(observed.some((o) => o.el === c), "the formerly active tab is no longer watched").toBe(false);
+    expect(observed.some((o) => o.el === a)).toBe(true);
+    // An inactive tab's width change is not ours to follow.
+    deliverWidth(c, 300);
+    await nextFrame();
+    expect(s.scrollLeft).toBe(0);
+  });
 });
 
 // ── The floor constant's own contract ───────────────────────────────────────
