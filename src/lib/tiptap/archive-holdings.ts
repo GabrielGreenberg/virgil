@@ -103,6 +103,11 @@ export function holdingsApplyTo(transactions: readonly Transaction[]): boolean {
  *      consulted, so an ordinary Cut of a passage an undone archive still
  *      holds orphans into nothing archive-side (task 1297 stands).
  *    - `"archive"` — the Redo of an archive (above).
+ *    - `"clipboard"` too for the two HISTORY replays of the clipboard's carry
+ *      (`archiveReplayTracker`): the Redo of a cut (it re-takes the passage
+ *      to the clipboard), and the Undo of the paste that LANDED a held cut
+ *      (it takes the landed passage back off the page — its cards return to
+ *      dormant in the holding, so a later paste carries them again).
  *    - `null` — every other removal: nothing is held.
  *
  *  O(batch). */
@@ -112,30 +117,72 @@ export function holdingsScopeOf(transactions: readonly Transaction[]): HoldingsS
   let scope: HoldingsScope | null = null;
   for (const tr of transactions) {
     if (tr.getMeta("uiEvent") === "cut") return "clipboard";
-    if (ARCHIVE_REDOS.has(tr)) scope = "archive";
+    const replayed = CARRY_REPLAYS.get(tr);
+    if (replayed === "clipboard") return "clipboard";
+    if (replayed) scope = replayed;
   }
   return scope;
 }
 
 // ---------------------------------------------------------------------------
-// The archive's history event (task 1302)
+// The carry's history events (tasks 1302, 1557)
 // ---------------------------------------------------------------------------
 
 /** Set by the archive GESTURE's transaction (`commitRangeDelete` with an
  *  archive card half) — arms the tracker on the event it lands in. */
 export const ARCHIVE_GESTURE_META = "virgilArchiveGesture";
 
-/** Where an archive's history event sits. `done` / `undone` name the stack and
+/** Set by the transaction that LANDS a held cut (`clipboard-carry.ts`'s
+ *  paste) — arms the tracker so the Undo of that paste re-carries. */
+export const CLIPBOARD_LANDING_META = "virgilClipboardLanding";
+
+/** A carry the history can replay, and which way the replay runs:
+ *
+ *    - an ARCHIVE gesture — its REDO re-removes the passage into the archive;
+ *    - a CUT (`uiEvent: "cut"`) — its REDO re-takes it to the clipboard;
+ *    - a clipboard LANDING — its UNDO takes the landed passage back off the
+ *      page, into the clipboard holding it came from.
+ *
+ *  The opposite direction of each (Undo of the archive / the cut, Redo of the
+ *  landing) brings the ids back, and dormant links revive by liveness — no
+ *  scope needed. */
+type CarryKind = "archive" | "cut" | "landing";
+
+const CARRY_SCOPE: Record<CarryKind, HoldingsScope> = {
+  archive: "archive",
+  cut: "clipboard",
+  landing: "clipboard",
+};
+const REPLAYED_BY: Record<CarryKind, "undo" | "redo"> = {
+  archive: "redo",
+  cut: "redo",
+  landing: "undo",
+};
+
+/** Where a carry's history event sits. `done` / `undone` name the stack and
  *  `depth` its eventCount WHILE the event is on top: it is still in that stack
  *  exactly as long as the stack never shrinks below `depth` (history only
  *  pops from the top, and a new edit clears the redo stack to 0). `pending` is
  *  the gesture itself, resolved on the next transaction, when the event is the
  *  top of the done stack. */
-type ArchiveEventSlot = { side: "pending" } | { side: "done" | "undone"; depth: number };
+type CarryEventSlot = { kind: CarryKind } & (
+  | { side: "pending" }
+  | { side: "done" | "undone"; depth: number }
+);
 
-/** The transactions that redo an archive. Keyed by the transaction object, so
- *  it is per-editor by construction and lets go with the batch. */
-const ARCHIVE_REDOS = new WeakSet<Transaction>();
+/** The transactions that REPLAY a carry, with the holdings scope they replay
+ *  into. Keyed by the transaction object, so it is per-editor by construction
+ *  and lets go with the batch. */
+const CARRY_REPLAYS = new WeakMap<Transaction, HoldingsScope>();
+
+/** The carry a transaction itself performs, if any. A cut that changed
+ *  nothing (an empty selection) is no event. */
+function carryKindOf(tr: Transaction): CarryKind | null {
+  if (tr.getMeta(ARCHIVE_GESTURE_META) === true) return "archive";
+  if (tr.getMeta(CLIPBOARD_LANDING_META) === true) return "landing";
+  if (tr.docChanged && tr.getMeta("uiEvent") === "cut") return "cut";
+  return null;
+}
 
 /** "undo" / "redo" for a prosemirror-history transaction, else null. Its meta
  *  is `{ redo, historyState }` under the history plugin's key, which the
@@ -152,49 +199,51 @@ function historyDirection(tr: Transaction, state: EditorState): "undo" | "redo" 
   return null;
 }
 
-/** Follow every archive's history event; mark the transaction that REDOES one
- *  (`holdingsApplyTo`). Depths are read off the OLD state of each transaction
+/** Follow every carry's history event; mark the transaction that REPLAYS one
+ *  (`holdingsScopeOf`). Depths are read off the OLD state of each transaction
  *  (fully built, whatever this plugin's order relative to history's), so every
- *  change to a stack is observed at the next transaction — before any redo
- *  can act on it. An event that leaves its stack any other way (the redo
+ *  change to a stack is observed at the next transaction — before any undo /
+ *  redo can act on it. An event that leaves its stack any other way (the redo
  *  stack cleared by a new edit, the done stack trimmed past it) is dropped:
  *  failing closed means its cards orphan, never go dormant on a guess. */
-export function archiveReplayTracker(): Plugin<readonly ArchiveEventSlot[]> {
-  return new Plugin<readonly ArchiveEventSlot[]>({
+export function archiveReplayTracker(): Plugin<readonly CarryEventSlot[]> {
+  return new Plugin<readonly CarryEventSlot[]>({
     key: new PluginKey("archiveReplayTracker"),
     state: {
       init: () => [],
-      // [cost: O(1)/tx with no archive in history; else O(archive events still in the undo/redo stacks) depth compares — two eventCount reads, no doc walk on any path] (task 1302)
+      // [cost: O(1)/tx with no carry in history; else O(carry events still in the undo/redo stacks) depth compares — two eventCount reads, no doc walk on any path] (tasks 1302, 1557)
       apply(tr, slots, oldState) {
-        const gesture = tr.getMeta(ARCHIVE_GESTURE_META) === true;
+        const gesture = carryKindOf(tr);
         if (slots.length === 0 && !gesture) return slots;
         const done = undoDepth(oldState);
         const undone = redoDepth(oldState);
         const dir = historyDirection(tr, oldState);
-        let changed = gesture;
-        const next: ArchiveEventSlot[] = [];
+        let changed = gesture !== null;
+        const next: CarryEventSlot[] = [];
         for (const slot of slots) {
-          const s = slot.side === "pending" ? { side: "done" as const, depth: done } : slot;
+          const s: CarryEventSlot =
+            slot.side === "pending" ? { kind: slot.kind, side: "done", depth: done } : slot;
           if (s !== slot) changed = true;
           if (s.side === "done") {
             if (done < s.depth) { changed = true; continue; } // trimmed away
             if (dir === "undo" && done === s.depth) {
-              next.push({ side: "undone", depth: undone + 1 }); // the archive, undone
+              if (REPLAYED_BY[s.kind] === "undo") CARRY_REPLAYS.set(tr, CARRY_SCOPE[s.kind]);
+              next.push({ kind: s.kind, side: "undone", depth: undone + 1 });
               changed = true;
               continue;
             }
-          } else {
+          } else if (s.side === "undone") {
             if (undone < s.depth) { changed = true; continue; } // redo stack cleared
             if (dir === "redo" && undone === s.depth) {
-              ARCHIVE_REDOS.add(tr); // THE redo of the archive
-              next.push({ side: "done", depth: done + 1 });
+              if (REPLAYED_BY[s.kind] === "redo") CARRY_REPLAYS.set(tr, CARRY_SCOPE[s.kind]);
+              next.push({ kind: s.kind, side: "done", depth: done + 1 });
               changed = true;
               continue;
             }
           }
           next.push(s);
         }
-        if (gesture) next.push({ side: "pending" });
+        if (gesture) next.push({ kind: gesture, side: "pending" });
         return changed ? next : slots;
       },
     },

@@ -271,4 +271,84 @@ describe("cut carries a passage's cards to its paste (task 1557)", () => {
     await flush();
     expect(uuids(editor)).toEqual(["p1", "p2", "p3"]);
   });
+
+  describe("history legs — the replays of a carry are carries", () => {
+    const archivedTo = (r: ReturnType<typeof record>) =>
+      (r.seen.archived as { snippetId: string; uuids: string[] }[]);
+
+    it("Undo of the cut brings p2 back live; Redo re-carries it (no placeholder)", async () => {
+      editor = mount();
+      rec = record();
+      const clip = new Map<string, string>();
+      cutWholeP2(editor, clip);
+      await flush();
+      const holding = archivedTo(rec)[0].snippetId;
+
+      editor.commands.undo();
+      await flush();
+      expect(uuids(editor)).toEqual(["p1", "p2", "p3"]);
+      expect(anchorIds(editor)).toEqual(["a1"]);
+      expect((rec.seen.revived as { uuids: string[] }[]).flatMap((r) => r.uuids)).toContain("p2");
+
+      const before = archivedTo(rec).length;
+      editor.commands.redo();
+      await flush();
+      expect(uuids(editor)).toEqual(["p1", "p3"]); // not resurrected
+      const again = archivedTo(rec).slice(before);
+      expect(again.flatMap((a) => a.uuids)).toEqual(["p2"]);
+      expect(new Set(again.map((a) => a.snippetId))).toEqual(new Set([holding]));
+
+      // ...and the redone cut is still pasteable as a carry.
+      caretAtEnd(editor);
+      editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+      await flush();
+      expect(uuids(editor)).toContain("p2");
+      expect(anchorIds(editor)).toEqual(["a1"]);
+    });
+
+    it("Undo of the paste returns the cards to dormant; the next paste carries them again", async () => {
+      editor = mount();
+      rec = record();
+      const clip = new Map<string, string>();
+      cutWholeP2(editor, clip);
+      await flush();
+      const holding = archivedTo(rec)[0].snippetId;
+      caretAtEnd(editor);
+      editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+      await flush();
+      expect(uuids(editor)).toContain("p2");
+
+      const before = archivedTo(rec).length;
+      editor.commands.undo();
+      await flush();
+      expect(uuids(editor)).not.toContain("p2"); // no placeholder resurrected
+      const back = archivedTo(rec).slice(before);
+      expect(back.flatMap((a) => a.uuids)).toEqual(["p2"]);
+      expect(new Set(back.map((a) => a.snippetId))).toEqual(new Set([holding]));
+      expect(rec.seen.orphan.length === 0 || rec.order.indexOf("archived") < rec.order.indexOf("orphan")).toBe(true);
+
+      caretAtEnd(editor);
+      editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+      await flush();
+      expect(uuids(editor).filter((u) => u === "p2").length).toBe(1);
+      expect(anchorIds(editor)).toEqual(["a1"]);
+    });
+
+    it("Undo of an ORDINARY paste of the passage still resurrects (only a landing replays)", async () => {
+      editor = mount();
+      rec = record();
+      const clip = new Map<string, string>();
+      editor.view.dispatch(
+        editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, posOf(editor, "p2"))),
+      );
+      editor.view.dom.dispatchEvent(clipboardEvent("copy", clip));
+      caretAtEnd(editor);
+      editor.view.dom.dispatchEvent(clipboardEvent("paste", clip));
+      await flush();
+      editor.commands.undo();
+      await flush();
+      expect(uuids(editor)).toEqual(["p1", "p2", "p3"]);
+      expect(rec.seen.archived).toEqual([]);
+    });
+  });
 });

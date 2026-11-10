@@ -28,13 +28,15 @@
  *      signature matches) in the SAME document, the HELD slice lands instead of
  *      the parsed one, so the very same uuids and marks come back — and the
  *      dormant links revive by liveness (`useDormantRevival`), exactly as a
- *      Restore's do. The holding is then retired: a second paste is a copy.
+ *      Restore's do. A second paste finds the ids live again and is a copy;
+ *      the holding is kept, because the history can take them back off the
+ *      page — an Undo of the paste (or a Redo of the cut) re-carries them
+ *      into it (`archiveReplayTracker`), and the next paste carries again.
  *
  * Identity at landing — "a move conserves identity; a copy mints it" (the
- * atom clipboard's law, `atom-clipboard.ts`): a held id that is LIVE again (an
- * Undo of the cut put the source back) means the source is back, and the
- * holding is stale — it retires and the paste falls through to the ordinary
- * copy path. A partial cut's open-edge block keeps its uuid in the document,
+ * atom clipboard's law, `atom-clipboard.ts`): a held id that is LIVE (an
+ * Undo of the cut put the source back, or a paste already landed it) makes
+ * the paste fall through to the ordinary copy path. A partial cut's open-edge block keeps its uuid in the document,
  * so a live uuid / anchorId inside the landing slice is cleared per id rather
  * than duplicated.
  *
@@ -53,6 +55,7 @@ import { Plugin, PluginKey, TextSelection, type EditorState } from "@tiptap/pm/s
 import { Fragment, Slice, type Node as PMNode } from "@tiptap/pm/model";
 import type { RefObject } from "react";
 import {
+  CLIPBOARD_LANDING_META,
   publishClipboardHoldings,
   retractArchiveHoldings,
 } from "@/lib/tiptap/archive-holdings";
@@ -280,19 +283,23 @@ export const ClipboardCarry = Extension.create<ClipboardCarryOptions>({
             if (cut.docId !== (docIdRef?.current ?? null)) return false;
             if (sliceSignature(slice) !== cut.signature) return false;
             const state = view.state;
-            // The source is back (an Undo of the cut): this is a copy now.
-            const stale =
+            // The held ids are on the page — an Undo of the cut put the source
+            // back, or an earlier paste already landed them: this is a copy.
+            // The holding is NOT retired by either: an Undo of that landing (or
+            // a Redo of the cut) takes the ids back off the page, and the next
+            // paste carries them again — liveness is the whole answer.
+            const live =
               cut.wholeUuids.some((u) => hasLiveBlock(state, u)) ||
               (cut.atomIds.size > 0 &&
                 [...collectAtomIds(state.doc)].some((a) => cut.atomIds.has(a)));
-            retire();
-            if (stale) return false;
+            if (live) return false;
             view.dispatch(
               state.tr
                 .replaceSelection(landingSlice(cut.slice, state))
                 .scrollIntoView()
                 .setMeta("paste", true)
-                .setMeta("uiEvent", "paste"),
+                .setMeta("uiEvent", "paste")
+                .setMeta(CLIPBOARD_LANDING_META, true),
             );
             return true;
           },
