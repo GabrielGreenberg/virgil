@@ -67,6 +67,28 @@ function HelperModeChipImpl({ on, onExit }: { on: boolean; onExit: () => void })
 export const HelperModeChip = memo(HelperModeChipImpl);
 
 /**
+ * Zen is on — click to turn it off (task 1552). Zen strips the bar to this
+ * chip, so unlike the other modes it shows IN zen; it reads the zen store
+ * itself, the same source the other chips' zen rule reads.
+ */
+function ZenModeChipImpl({ onExit }: { onExit: () => void }) {
+  const on = useZenMode().on;
+  const visible = useBarStatusVisible("zen", { on });
+  if (!visible) return null;
+  return (
+    <BarStatusPill
+      tone="mode"
+      label="Zen"
+      ariaLabel="Zen mode — click to turn it off"
+      hint="Exit zen mode"
+      onActivate={onExit}
+      data={{ "data-bar-mode": "zen" }}
+    />
+  );
+}
+export const ZenModeChip = memo(ZenModeChipImpl);
+
+/**
  * **Is any mode chip showing?** (task 1391) — the ONE answer, read from the
  * same policy verdicts the chips render through (`useBarStatusVisible` per
  * mode id, settle rule included) and the same sources they read (the zen
