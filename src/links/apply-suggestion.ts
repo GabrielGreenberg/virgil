@@ -26,7 +26,7 @@
  * verbatim — so the stale guard ALSO naturally refuses a marker-straddling span.
  *
  * That protects the READ span. The WRITE span is guarded by MARKER
- * CONSERVATION (task 1426, `markerConservationViolation` in latex-markers.ts —
+ * CONSERVATION (task 1426, `markerConservationViolation` in marker-conservation.ts —
  * the same predicate the script's propose and accept doors ask): the
  * replacement must carry exactly the marker calls the MATCHED span held. A
  * rewrite of a cited sentence carries its `\vcid{…}` through verbatim (the
@@ -57,7 +57,7 @@ import {
   markerConservationViolation,
   describeMarkerViolation,
   type MarkerConservationViolation,
-} from "@/lib/latex-markers";
+} from "@/lib/marker-conservation";
 import {
   parseInlineContent,
   applyLinkedAnchorBoundaries,

@@ -14,14 +14,14 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 import {
   ATOM_ID_MARKERS,
   CUT_MAY_DROP_MARKERS,
   describeMarkerViolation,
   markerConservationViolation,
-  VIRGIL_MARKER_COMMANDS,
   type MarkerConservationViolation,
-} from "@/lib/latex-markers";
+} from "@/lib/marker-conservation";
 
 interface Case {
   name: string;

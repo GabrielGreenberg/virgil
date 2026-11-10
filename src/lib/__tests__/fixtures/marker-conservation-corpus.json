@@ -1,5 +1,5 @@
 {
-  "about": "Task 1426 — marker conservation across a suggestion splice. Both markerConservationViolation (src/lib/latex-markers.ts) and marker_conservation_violation (editor/scripts/_common.py) must answer every case exactly as `expected` records. Readers: src/lib/__tests__/marker-conservation-parity.test.ts and editor/scripts/tests/test_marker_conservation.py.",
+  "about": "Task 1426 — marker conservation across a suggestion splice. Both markerConservationViolation (src/lib/marker-conservation.ts) and marker_conservation_violation (editor/scripts/_common.py) must answer every case exactly as `expected` records. Readers: src/lib/__tests__/marker-conservation-parity.test.ts and editor/scripts/tests/test_marker_conservation.py.",
   "cases": [
     {
       "name": "rewrite-carries-citation",
@@ -289,6 +289,78 @@
       "matched": "See also \\vcid{c1}\\citet[see][p.~{3}]{foo}.",
       "replacement": "",
       "wholeCut": true,
+      "expected": null
+    },
+    {
+      "name": "multicite-rewrite-drops-second-unit",
+      "why": "Task 1560: a plural \\cites takes its [pre][post]{key} unit REPEATED — the atom ends after the LAST unit, so a rewrite keeping only the first silently drops key b from the citation.",
+      "matched": "See \\vcid{c1}\\cites[p. 1]{a}[p. 2]{b} shows this.",
+      "replacement": "This is shown by \\vcid{c1}\\cites[p. 1]{a} shows this.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "multicite-rewrite-carries-every-unit",
+      "why": "Task 1560: the same plural citation carried through with all its units is a conserving rewrite.",
+      "matched": "See \\vcid{c1}\\cites[p. 1]{a}[p. 2]{b} shows this.",
+      "replacement": "As \\vcid{c1}\\cites[p. 1]{a}[p. 2]{b} shows.",
+      "wholeCut": false,
+      "expected": null
+    },
+    {
+      "name": "multicite-cut-may-strand-next-unit",
+      "why": "Task 1560: a cut ending right after a plural citation's first unit cannot know the citation ends there — another {key} unit may follow and would be stranded as prose.",
+      "matched": "x \\vcid{c1}\\cites{a}",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": {
+        "rule": "atom-left",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "multicite-cut-takes-whole-citation",
+      "why": "Task 1560: a cut that covers every unit of the plural citation, with prose after it, takes the whole atom.",
+      "matched": "x \\vcid{c1}\\cites{a}{b} y",
+      "replacement": "",
+      "wholeCut": true,
+      "expected": null
+    },
+    {
+      "name": "linebroken-citep-drops-postnote",
+      "why": "Task 1560: TeX skips one line break between a command and its arguments (task 1510), so the [p.~3]{k} on the next line belongs to the atom and may not be dropped.",
+      "matched": "See \\vcid{c1}\\citep\n[p.~3]{k} here.",
+      "replacement": "See \\vcid{c1}\\citep here.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "commented-multicite-drops-second-unit",
+      "why": "Task 1560: a %-comment line end is argument gap too — the hand-written multi-line \\cites keeps its second unit inside the atom.",
+      "matched": "See \\vcid{c1}\\cites[p. 1]{a}%\n  [p. 2]{b} end.",
+      "replacement": "See \\vcid{c1}\\cites[p. 1]{a} end.",
+      "wholeCut": false,
+      "expected": {
+        "rule": "atom-detached",
+        "command": "vcid",
+        "id": "c1"
+      }
+    },
+    {
+      "name": "singular-citep-leaves-trailing-bracket",
+      "why": "Task 1560: a SINGULAR citation stops after its one unit, so prose `[sic]` after it is not the atom's and may be rewritten.",
+      "matched": "Old \\vcid{c1}\\citep{k} [sic] more.",
+      "replacement": "New \\vcid{c1}\\citep{k} more.",
+      "wholeCut": false,
       "expected": null
     }
   ]
