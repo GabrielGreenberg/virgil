@@ -45,6 +45,7 @@ import { DocStructureObserver, diffTouchesNumberingInputs, readDiffFor } from "@
 import { rawCountersTouched } from "@/lib/tiptap/raw-counter-gate";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { AtomClipboard } from "@/lib/tiptap/atom-clipboard";
+import { ClipboardCarry } from "@/lib/tiptap/clipboard-carry";
 import { ensureAnchorUuid, mintDocUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { createViewLifetime } from "@/lib/tiptap/view-lifetime";
@@ -1938,6 +1939,10 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
             onBlockAbsorbedRef: ctx.onBlockAbsorbedRef ?? null,
             docIdRef: ctx.docIdRef ?? null,
           }),
+          // Cut = "archive to the clipboard" (task 1557): a cut's cards go
+          // dormant in a clipboard holding the guards above consult, and the
+          // paste of that cut lands its own ids so they revive.
+          ClipboardCarry.configure({ docIdRef: ctx.docIdRef ?? null }),
         ]
       : []),
     // titleField (L3j, bodyless kinds Chip 4): PROMOTED out of the main-only

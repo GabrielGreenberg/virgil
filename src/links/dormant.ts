@@ -500,6 +500,23 @@ export function releaseFromSnippet<T extends DormantCardShape>(card: T, snippetI
   return out;
 }
 
+/**
+ * The holding `snippetId` was LET GO with this card still in it (task 1557 —
+ * a cut's clipboard holding superseded before its paste landed). Unlike
+ * {@link releaseFromSnippet} the text may still come back — an Undo of the
+ * cut re-inserts the very same ids — so the dormant LINKS are kept and revive
+ * by liveness; only the card-level "archived with its text" is undone
+ * ({@link setArchivedFlag}), so the card leaves the archive and reads
+ * `parked` in its panel instead of hiding. The load reconcile settles what is
+ * still dormant there later (the holding is never an archive snippet, so it
+ * reads MISSING → released). Identity-preserving for a card not archived
+ * with that holding, and for one archived by hand.
+ */
+export function unparkFromSnippet<T extends DormantCardShape>(card: T, snippetId: string): T {
+  if (dormantSnippetOf(card) !== snippetId) return card;
+  return setArchivedFlag(card, false);
+}
+
 /** Can snippet `snippetId` still bring its text back? The CALLER answers,
  *  because only it knows: Restore's end edge knows the snippet it just
  *  retired; a later reader cannot tell a retired snippet from one the user

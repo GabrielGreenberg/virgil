@@ -320,6 +320,49 @@ and 491's Mode-A legs renegotiated in place (`archive-anchored-capture`,
 `archive-retarget-displaced-anchors`). **Owed:** a real-PWA eyeball (anchor
 class, FSA-masked) on a real paper.
 
+#### The clipboard leg: Cut is "archive to the clipboard" (task 1557)
+
+Gabriel: a cut's notes should go with the text and re-anchor where it is
+pasted. Until 1557 a cut was an ordinary delete (empty placeholder resurrected,
+span links stripped) and a paste minted fresh ids. Now the CLIPBOARD is a
+holding in the same registry, under its own scope:
+
+- **One registry, two scopes.** `archive-holdings.ts` holdings carry
+  `scope: "archive" | "clipboard"`; `holdingsScopeOf(trs)` answers `clipboard`
+  for ProseMirror's own `uiEvent: "cut"` transaction (and for the history
+  replays below), so the guards give the Redo-of-Archive answer: no
+  placeholder, ids announced dormant under the holding id (`clip:<id>`). An
+  ordinary delete or a cut of an un-held passage is unchanged.
+- **The cut** (`ClipboardCarry`, `lib/tiptap/clipboard-carry.ts`, main editor
+  only, per-editor owner) holds the cut slice with its ids intact. A TEXT
+  selection over every character of the blocks it touches is cut as those
+  WHOLE blocks (`wholeBlockCutRange`, cascade-widened), so the paragraph's uuid
+  travels instead of staying on an emptied line.
+- **The paste** lands the HELD slice when the pasted text's signature matches,
+  the doc is the SAME paper, and the held ids are not live — the same uuids and
+  marks come back and the links revive by liveness. `landingSlice` clears any id
+  live in the doc (a partial cut's surviving block or mark), never duplicating.
+- **Identity:** only a paste that finds the ids OFF the page carries. A second
+  paste is a COPY (fresh ids, marks stripped). A paste into ANOTHER paper is a
+  copy (sidecars are per-doc). Copy+paste is unchanged.
+- **History legs** (`archiveReplayTracker`, three carry kinds): Undo of the cut
+  revives by liveness; Redo of the cut re-carries into the holding; Undo of a
+  carried paste (`CLIPBOARD_LANDING_META`) re-parks into the holding, and the
+  next paste carries again.
+- **Cut and never paste — the cards are RECOVERABLE, never stripped.** While
+  the cut is on the clipboard its cards are dormant + archived with the holding
+  (out of the margin). When the holding is LET GO unpasted — a copy, a new cut,
+  the editor closing — `virgil-holding-released` makes each carrying store
+  `unparkFromSnippet`: the card leaves the archive and reads **parked** in its
+  panel, its dormant links KEPT, so an Undo of the cut still revives it. The
+  load reconcile later settles what is still dormant (a `clip:` id is never an
+  archive snippet, so it reads MISSING → released, unanchored — task 1329).
+
+Pinned by `clipboard-carry.test.ts` (real cut/paste handlers on the main
+stack: carry, double paste, copy control, whole-block text cut, Undo/Redo legs,
+release on supersede, cross-doc copy) and `dormant-links.test.tsx` (unpark).
+**Owed:** a real-PWA eyeball (FSA-masked anchor class).
+
 ### The rebuild half: a per-kind capability is DERIVED, never hand-enumerated
 
 Same law, other direction (task 233). Re-anchoring an **unanchored** card rebuilds its inline atom from scratch, so everything the atom can't regenerate must be read back from the card — and the read has to be a *derived obligation*, not a field someone remembers to add. `footnoteDropSpec.createAtom` built its atom with a hard-coded EMPTY body because the `DropCtx` sub-bag its citation twin got (`commandFor`) was never mirrored for footnotes. Re-placing an archived footnote therefore planted an empty atom, and since `getFootnotes()` re-derives BOTH the panel and the serialized `\footnote{}` from that node, the user's text was destroyed in the document. Nothing failed: the spec was registered, the dispatch worked, the node was well-formed. **A "registered and reachable" spec proves nothing about whether it can reach what it needs.**

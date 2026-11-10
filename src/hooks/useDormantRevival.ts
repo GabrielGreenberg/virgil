@@ -9,6 +9,7 @@ import {
   releaseFromSnippet,
   reviveRemapped,
   settleDormancy,
+  unparkFromSnippet,
   type AnchorLiveness,
   type CarriedKeys,
   type DormantCardShape,
@@ -16,7 +17,11 @@ import {
   type IsPassageRestorable,
   type ReturningRemap,
 } from "@/links/dormant";
-import { useAnchorsArchived, useAnchorsRevived } from "@/lib/tiptap/orphan-events";
+import {
+  useAnchorsArchived,
+  useAnchorsRevived,
+  useHoldingReleased,
+} from "@/lib/tiptap/orphan-events";
 
 /**
  * The insert-driven half of DORMANT-link revival (task 1193; the load half is
@@ -120,6 +125,13 @@ export function useDormantRevival<S, C extends DormantCardShape>(
   useAnchorsArchived(docId, ({ snippetId, uuids, anchorIds }) => {
     const keys: CarriedKeys = { pids: new Set(uuids), anchorIds: new Set(anchorIds) };
     mapEach((c) => markDormant(c, snippetId, keys));
+  });
+  // A holding let go with cards still in it (task 1557): a cut's clipboard
+  // holding superseded before its paste. The cards come back out of the
+  // archive, parked; their dormant links stay, so an Undo of the cut revives
+  // them. See `unparkFromSnippet`.
+  useHoldingReleased(docId, ({ snippetId }) => {
+    mapEach((c) => unparkFromSnippet(c, snippetId));
   });
   const carry = useCallback<CarryCard>(
     (id, snippetId, keys) =>
