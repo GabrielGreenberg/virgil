@@ -41,12 +41,12 @@ import {
   ALL_VIRGIL_MARKERS,
   emitMarker,
   markerArgStart,
-  markerConservationViolation,
   markerOpensAt,
   VIRGIL_MARKER_COMMANDS,
   VIRGIL_MARKERS,
   type VirgilMarkerId,
 } from "@/lib/latex-markers";
+import { markerConservationViolation } from "@/lib/marker-conservation";
 import { buildPreamble, SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { parseLatex } from "@/lib/latex-parser";

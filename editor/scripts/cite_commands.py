@@ -137,15 +137,16 @@ def bucket_pattern(names) -> re.Pattern[str]:
 # BLANK line is a paragraph break and ends the command. The gap is kept inside
 # the matched run, so a rewrite preserves it byte-for-byte.
 #
-# DIVERGENCE from `matchCiteCommandAt` (src/lib/cite-commands.ts), stated on
-# purpose: the editor's parser still reads a gapped spelling as prose, not as a
-# citation atom. Widening THAT grammar changes what a load turns into an atom
-# and what a save writes back — a write-path-law change that needs its own
-# measured task — whereas here the only question is "does this text name the
-# key?", and the answer for a gapped spelling is yes.
+# The editor's parser reads the same gap (`skipArgumentSpaceAt` in
+# src/lib/latex-lexer.ts, task 1510), so a gapped spelling is a citation atom on
+# both sides; `ARG_GAP_RE` publishes the filler for `bound_atom_after` in
+# `_common.py` (task 1560), which bounds a `\vcid`'s atom by this grammar.
 #
 # Read the three parts through `cite_match_parts` rather than by group number.
 _GAP = r"(?:[ \t]+|%[^\n]*\n|\n(?![ \t]*\n))*"
+#: The argument gap alone — anchored with `.match(text, pos)`, its `.end()` is
+#: where TeX looks for the next group.
+ARG_GAP_RE: re.Pattern[str] = re.compile(_GAP)
 _ARG_GROUP = _GAP + r"(?:\[[^\]]*\]" + _GAP + r"){0,2}\{[^{}]*\}"
 _SINGULAR_NAMES = [c for c in KNOWN_CITE_COMMANDS if c not in MULTI_CITE_NAMES]
 

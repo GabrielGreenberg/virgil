@@ -49,7 +49,7 @@ import {
 } from "@/links/apply-suggestion";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 import type { SuggestionStatus } from "@/cards/suggestion-status";
-import type { MarkerConservationViolation } from "@/lib/latex-markers";
+import type { MarkerConservationViolation } from "@/lib/marker-conservation";
 import { removeLinkedAnchor, type CardWithLinks } from "@/links/links";
 import {
   buildCardAnchorPass,

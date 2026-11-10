@@ -2204,7 +2204,7 @@ _MARKER_COMMENT_RE = re.compile(r"%!v(?:tex)?:[^\s]*")
 
 # ---------------------------------------------------------------------------
 # Marker conservation across a proposal splice (task 1426) — the PYTHON twin of
-# `markerConservationViolation` in src/lib/latex-markers.ts. Asked by
+# `markerConservationViolation` in src/lib/marker-conservation.ts. Asked by
 # apply_response.py's propose guard and its accept splice; the browser
 # applicator asks the TS original. Both answer the shared golden corpus
 # src/lib/__tests__/fixtures/marker-conservation-corpus.json
@@ -2253,12 +2253,38 @@ def _group_end(text: str, i: int, open_: str, close: str) -> int:
     return -1
 
 
+def _cite_may_continue(text: str, p: int, gap) -> bool:
+    """Could a PLURAL cite command whose grammar read stopped at `p` take
+    another `[pre][post]{key}` unit past the end of `text`? — the twin of
+    `citeMayContinue`."""
+    q = gap(p)
+    n = 0
+    while n < 2 and q < len(text) and text[q] == "[":
+        e = _group_end(text, q, "[", "]")
+        if e < 0:
+            return True
+        q = gap(e)
+        n += 1
+    if q >= len(text):
+        return True
+    return text[q] == "{" and _group_end(text, q, "{", "}") < 0
+
+
 def bound_atom_after(text: str, pos: int):
     """The atom an id marker ending at `pos` binds, as (bytes, complete), or
     None when it binds nothing — the twin of `boundAtomAfter` in
-    src/lib/latex-markers.ts (command token, […] optional args, one balanced
-    {…} required arg; incomplete = the atom may run past the end of `text`,
-    and the bytes are then the whole rest)."""
+    src/lib/marker-conservation.ts. A CITATION ends where the cite grammar
+    (`cite_commands.CITE_COMMAND_RE`) ends it — every unit of a plural
+    `\\cites`, and the argument gap TeX skips between groups (task 1560);
+    anything else is the command token, […] optional args and one balanced {…}
+    required arg, with the same gap between them. Incomplete = the atom may run
+    past the end of `text` (incl. right after a plural citation that could take
+    another unit), and the bytes are then the whole rest."""
+    from cite_commands import ARG_GAP_RE, CITE_COMMAND_RE  # same dir; no cycle
+
+    def gap(p: int) -> int:
+        return ARG_GAP_RE.match(text, p).end()
+
     partial = (text[pos:], False)
     if pos >= len(text):
         return partial
@@ -2268,22 +2294,26 @@ def bound_atom_after(text: str, pos: int):
     if not name:
         return partial if pos + 1 >= len(text) else None
     end = name.end()
+    cite = CITE_COMMAND_RE.match(text, pos)
+    if cite:
+        if cite.group("mname") and _cite_may_continue(text, cite.end(), gap):
+            return partial
+        return (text[pos:cite.end()], True)
     while True:
-        j = end
-        while j < len(text) and text[j] == " ":
-            j += 1
+        j = gap(end)
         if j >= len(text):
             return partial
-        if text[j] in "[{":
-            e = _group_end(text, j, text[j], "]" if text[j] == "[" else "}")
-            if e < 0:
-                return partial
-            end = e
-            if text[j] == "{":
-                break
-        else:
+        if text[j] not in "[{":
+            break
+        e = _group_end(text, j, text[j], "]" if text[j] == "[" else "}")
+        if e < 0:
+            return partial
+        end = e
+        if text[j] == "{":
             break
     return (text[pos:end], True)
+
+
 _MARKER_CALL_RE = re.compile(
     r"\\(" + "|".join(sorted(VIRGIL_MARKER_COMMANDS, key=len, reverse=True)) + r")\{([^}]*)\}"
 )
