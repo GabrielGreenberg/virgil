@@ -181,6 +181,7 @@ from _common import (
     replacement_author,
     find_bib_file,
     find_tex_file,
+    footnote_body_span,
     is_ai_request_kind,
     is_dormant_link,
     is_terminal_status,
@@ -1812,61 +1813,37 @@ def _guard_proposal_landing(doc: Path, panel: str, card: dict) -> None:
 
 
 def _strip_footnote_from_tex(text: str, fid: str) -> str | None:
-    r"""Remove a `\vfid{<fid>}\footnote{...}` (or `\thanks{...}`) span. Returns
-    the new text, or None if the `\vfid{<fid>}` marker isn't present."""
+    r"""Remove a `\vfid{<fid>}\footnote{...}` (or `\thanks{...}`, or with a
+    `[mark]` override) span. Returns the new text, or None if the `\vfid{<fid>}`
+    marker isn't present. The atom's extent is `footnote_body_span`'s (task
+    1561) — the one Python footnote reader."""
     anchor = "\\vfid{" + fid + "}"
     i = text.find(anchor)
     if i == -1:
         return None
     j = i + len(anchor)
-    m = re.match(r"\\(footnote|thanks)\{", text[j:])
-    if not m:
+    span = footnote_body_span(text, j)
+    if span is None:
         return text[:i] + text[j:]  # strip just the orphan marker
-    p = j + m.end()  # just past the opening brace
-    depth = 1
-    while p < len(text) and depth > 0:
-        ch = text[p]
-        if ch == "\\":
-            p += 2  # skip an escaped char (e.g. \{ \})
-            continue
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-        p += 1
-    return text[:i] + text[p:]
+    return text[:i] + text[span[2]:]
 
 
 def _replace_footnote_body_in_tex(text: str, fid: str, new_body: str) -> str | None:
     r"""Replace the body inside `\vfid{<fid>}\footnote{...}` (brace-matched, so a
-    `{…}` group inside the body is preserved). Returns the new text, or None if
-    the marker / `\footnote{` isn't found. A footnote's body lives in *two*
-    places — `footnotes.json` `content` and the `.tex` `\footnote{}` — so an
-    edit must patch both to keep them in sync (the one bit of footnote-specific
-    .tex knowledge the contract carries, alongside _strip_footnote_from_tex)."""
+    `{…}` group inside the body is preserved; a `[mark]` override is kept).
+    Returns the new text, or None if the marker / footnote atom isn't found. A
+    footnote's body lives in *two* places — `footnotes.json` `content` and the
+    `.tex` `\footnote{}` — so an edit must patch both to keep them in sync (the
+    one bit of footnote-specific .tex knowledge the contract carries, alongside
+    _strip_footnote_from_tex; both read the atom through `footnote_body_span`)."""
     anchor = "\\vfid{" + fid + "}"
     i = text.find(anchor)
     if i == -1:
         return None
-    j = i + len(anchor)
-    m = re.match(r"\\(footnote|thanks)\{", text[j:])
-    if not m:
+    span = footnote_body_span(text, i + len(anchor))
+    if span is None:
         return None
-    body_start = j + m.end()  # just past the opening brace
-    p = body_start
-    depth = 1
-    while p < len(text) and depth > 0:
-        ch = text[p]
-        if ch == "\\":
-            p += 2  # skip an escaped char (e.g. \{ \})
-            continue
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-        p += 1
-    body_end = p - 1  # index of the matching closing brace
-    return text[:body_start] + new_body + text[body_end:]
+    return text[:span[0]] + new_body + text[span[1]:]
 
 
 # ---------------------------------------------------------------------------
