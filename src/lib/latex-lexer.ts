@@ -1763,6 +1763,45 @@ export function projectDetectableLatex(src: string): string {
   });
 }
 
+/**
+ * The bytes the COMPILER EXECUTES — the one door for every "what does this
+ * source DECLARE" reader that has no byte-output coupling: `.bib` resource
+ * declarations (`declaredBibFiles`, which picks the file the Bibliography
+ * panel reads AND writes), the compile pass plan (`detectPassPlan`), and the
+ * live `\documentclass` / sectioning scans (`document-class.ts`).
+ *
+ * It is {@link projectDetectableLatex}'s rule at the FULL verbatim family with
+ * inline `\verb` inert: a `%`-comment, every verbatim-family body (the
+ * `comment` env included), a `\verb|…|` run, and a top-level `\iffalse` /
+ * `\if0 … \fi` block ({@link blankFalseConditionals}) are all dead. Before
+ * task 1559 these readers spelled the projection per site WITHOUT the
+ * conditional pass, so three of them missed task 1370 and an `\iffalse`'d
+ * `\bibliography{old}` made the panel load and write `old.bib` while the
+ * compiler read the live file.
+ *
+ * The detector door stays NARROW for byte-compatibility of package injection
+ * (its docstring, P3 fork F1) — that is the only reason the two differ.
+ *
+ * `preserveOffsets` blanks inert bytes to spaces instead of dropping them,
+ * so a caller holding a RAW offset can index the projection directly
+ * (`isLiveDocumentClass`). Not routed here, deliberately: the boundary door
+ * {@link projectStructuralLatex} (unterminated verbatim is TRANSPARENT there
+ * and it takes no conditional pass — its stated residual), and the figure
+ * attribute reader in `figures/parse-attrs.ts`, which asks an offset question
+ * about an excerpt, not what a document declares.
+ */
+export function projectExecutedLatex(
+  src: string,
+  opts?: { preserveOffsets?: boolean },
+): string {
+  return projectLiveLatex(src, {
+    envs: VERBATIM_ENVS_FULL,
+    inlineVerb: true,
+    inertConditionals: true,
+    preserveOffsets: opts?.preserveOffsets,
+  });
+}
+
 /** The `\begin{document}` token — the preamble/body boundary, spelled once for
  *  every reader rather than an eighth raw `indexOf`. Exported so a caller that
  *  must EMIT the canonical spelling reads it here too. */

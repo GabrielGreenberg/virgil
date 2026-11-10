@@ -10,8 +10,7 @@
 import {
   matchSectioningUseAt,
   preambleListLoadsPackage,
-  projectLiveLatex,
-  VERBATIM_ENVS_FULL,
+  projectExecutedLatex,
 } from "@/lib/latex-lexer";
 import { HEADING_TYPES, type SectioningCommand } from "@/lib/heading-types";
 
@@ -41,42 +40,41 @@ const DOCUMENTCLASS_RE_G =
   /\\documentclass(?:\s*\[([^\]]*)\])?\s*\{([^}]+)\}/g;
 
 /**
- * Whether the `\documentclass` at raw offset `matchStart` is LIVE (not inside
- * a `%`-comment or a verbatim-family environment). Determined by projecting
- * the source's comment/verbatim inertness away and checking whether a
- * `\documentclass` still begins at the projected image of `matchStart`.
+ * Whether the `\documentclass` at raw offset `matchStart` of the source that
+ * `executed` was projected from is LIVE — not inside
+ * a `%`-comment, a verbatim-family environment, or an `\iffalse` / `\if0 … \fi`
+ * block. `executed` is the OFFSET-PRESERVING executed projection
+ * (`projectExecutedLatex(latex, { preserveOffsets: true })`), so the raw offset
+ * indexes it directly: blanking inert bytes to spaces can only remove a match,
+ * never create one.
  *
- * `projectLiveLatex` only ever REMOVES bytes (comment tails, verbatim
- * contents) and preserves every live byte in order, so the live prefix length
- * is `projectLiveLatex(latex.slice(0, matchStart)).length`. If a
- * `\documentclass` starts there in the full projection, the raw match is live.
+ * Before task 1559 this projected a PREFIX slice and compared lengths. That
+ * held while the projection only dropped comment tails and verbatim bodies,
+ * but not once it also drops conditional blocks: a prefix ending inside an
+ * `\iffalse` is unterminated, so it fails OPEN (stays live) while the full
+ * projection drops the closed block — the two lengths stop describing the same
+ * bytes, and a dead match could alias onto a live one.
  */
-function isLiveDocumentClass(latex: string, matchStart: number): boolean {
-  const projected = projectLiveLatex(latex, {
-    envs: VERBATIM_ENVS_FULL,
-    inlineVerb: true,
-  });
-  const liveStart = projectLiveLatex(latex.slice(0, matchStart), {
-    envs: VERBATIM_ENVS_FULL,
-    inlineVerb: true,
-  }).length;
-  return projected.startsWith("\\documentclass", liveStart);
+function isLiveDocumentClass(executed: string, matchStart: number): boolean {
+  return executed.startsWith("\\documentclass", matchStart);
 }
 
 /**
  * Pull the first LIVE `\documentclass{...}` (with optional `[options]`) out
- * of a LaTeX source, skipping any that are commented out or inside a
- * verbatim-family environment. Returns null if none is present — e.g. a bare
+ * of a LaTeX source, skipping any that are commented out, inside a
+ * verbatim-family environment, or inside an `\iffalse … \fi` block. Returns null if none is present — e.g. a bare
  * snippet without a preamble, or one whose only `\documentclass` is
  * commented. `matchStart`/`matchEnd` are RAW byte offsets so
  * `rewriteDocumentClass` can splice the live class in place.
  */
 export function extractDocumentClass(latex: string): DocumentClassInfo | null {
   DOCUMENTCLASS_RE_G.lastIndex = 0;
+  let executed: string | null = null;
   let m: RegExpExecArray | null;
   while ((m = DOCUMENTCLASS_RE_G.exec(latex)) !== null) {
     const matchStart = m.index;
-    if (!isLiveDocumentClass(latex, matchStart)) continue;
+    executed ??= projectExecutedLatex(latex, { preserveOffsets: true });
+    if (!isLiveDocumentClass(executed, matchStart)) continue;
     return {
       className: m[2].trim(),
       options: m[1] ?? null,
@@ -237,19 +235,16 @@ function isKnownClass(name: string): boolean {
  * failure mode we care about (undefined control sequence) triggers the
  * same way regardless of where the command lives.
  *
- * Ignores commands inside `%` line comments and inside `\verb|...|` /
- * verbatim environments — those wouldn't actually be executed, so
- * flagging them would be a false positive.
+ * Ignores commands inside `%` line comments, `\verb|...|` / verbatim
+ * environments and `\iffalse … \fi` blocks — those wouldn't actually be
+ * executed, so flagging them would be a false positive.
  */
 export function findSectioningCommands(latex: string): Set<SectioningCommand> {
-  // Project comments + the FULL verbatim family + inline `\verb` away via the
-  // shared lexer. The boundary-correct inline-verb matcher fixes the former
+  // Project comments + the FULL verbatim family + inline `\verb` + `\iffalse`
+  // blocks away via the shared lexer's executed door. The boundary-correct inline-verb matcher fixes the former
   // `/\\verb\*?(.)[\s\S]*?\1/` bug that mis-lexed `\verbatim`/`\verbdef` as
   // `\verb` + delimiter and swallowed a following real `\section`.
-  const stripped = projectLiveLatex(latex, {
-    envs: VERBATIM_ENVS_FULL,
-    inlineVerb: true,
-  });
+  const stripped = projectExecutedLatex(latex);
   // The vocabulary and the "does an argument follow?" test both come from the
   // lexer's sectioning door (task 376). This regex used to be the FOURTH
   // spelling of the alternation and — being the only one that accepted the

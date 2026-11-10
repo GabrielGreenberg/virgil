@@ -12,13 +12,16 @@
  * And a third, looser spelling in the compile pass planner
  * (`reference-resolution.ts`) missed the optional-argument and spaced forms.
  *
- * The comment/verbatim rule is the lexer's (`projectLiveLatex`), not a regex's:
- * only bytes the compiler would see declare anything. The backends keep only
+ * The liveness rule is the lexer's (`projectExecutedLatex`), not a regex's:
+ * only bytes the compiler would execute declare anything — so a `%`-comment, a
+ * verbatim body, and an `\iffalse … \fi` block declare nothing (task 1559: an
+ * `\iffalse`'d `\bibliography{old}` used to win the same way the commented one
+ * did). The backends keep only
  * the step this module cannot take — "does this file exist in the doc folder"
  * — and hand it in as a probe to {@link pickDeclaredBibFile}.
  */
 
-import { projectLiveLatex, VERBATIM_ENVS_FULL } from "@/lib/latex-lexer";
+import { projectExecutedLatex } from "@/lib/latex-lexer";
 
 /** One bib-resource declaration as written in LIVE source. */
 export interface BibResourceDecl {
@@ -62,13 +65,10 @@ export function bibFilenameOf(name: string): string {
 
 /**
  * The `.bib` filenames a `.tex` source declares, in declaration order,
- * de-duplicated — comment- and verbatim-aware. Empty when it declares none.
+ * de-duplicated — comment-, verbatim- and `\iffalse`-aware. Empty when it declares none.
  */
 export function declaredBibFiles(tex: string): string[] {
-  const live = projectLiveLatex(tex, {
-    envs: VERBATIM_ENVS_FULL,
-    inlineVerb: true,
-  });
+  const live = projectExecutedLatex(tex);
   const seen = new Set<string>();
   for (const decl of listBibResourceDecls(live)) {
     for (const name of decl.names) seen.add(bibFilenameOf(name));
