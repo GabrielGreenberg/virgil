@@ -21,7 +21,7 @@ import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import SyncConflictBadge from "../SyncConflictBadge";
 import { PomodoroTimer } from "../PomodoroTimer";
-import { BarModeDivider, CompileStatusChip, FocusViewChip, HelperModeChip } from "@/components/BarModeChips";
+import { BarModeDivider, CompileStatusChip, FocusViewChip, HelperModeChip, ZenModeChip } from "@/components/BarModeChips";
 import { BarStatusAnnouncer } from "@/components/status/BarStatusAnnouncer";
 import { iconHint } from "@/components/Hint";
 import { SegmentedToggle, type SegmentedOption } from "@/components/SegmentedToggle";
@@ -249,6 +249,9 @@ function StatusClusterImpl(props: StatusClusterProps) {
         variant="badge"
       />
     ),
+    // Zen's off-switch (task 1552): zen strips the bar to it, so it is a
+    // protected mode chip, not a tool — a collapsed toolbar cannot hide it.
+    zen: <ZenModeChip onExit={onToggleZen} />,
   };
 
   // The bar's switch names what the right-hand pane shows. The pane has one
@@ -391,18 +394,10 @@ function StatusClusterImpl(props: StatusClusterProps) {
           chip is on is answered by the chips' own policy verdicts
           (`useAnyBarModeVisible`, task 1391), never re-derived here. */}
       <BarModeDivider focusActive={focusActive} helperOn={helperOn} />
-      {/* In zen the bar is stripped to its off-switch; the rest of the time
-          Zen lives in ⋯ with the other occasional tools. */}
-      {zenModeOn ? (
-        <button
-          onClick={onToggleZen}
-          className="topbarbtn"
-          aria-pressed={zenModeOn}
-          data-hint="Zen mode"
-        >
-          Zen
-        </button>
-      ) : (<>
+      {/* In zen the tools are stripped entirely — zen's off-switch is the
+          protected tier's `zen` chip (task 1552), so it survives a collapse;
+          the rest of the time Zen lives in ⋯ with the other occasional tools. */}
+      {!zenModeOn && (<>
       {/* The right-hand pane, as one choice. Reads local `codeView` / `pdfView`
           (not `vbar`) because EditorPane unmounts in code view, leaving
           paneState's mirror stale; the stale dot is the pane's live bubbled

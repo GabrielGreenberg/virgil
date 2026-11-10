@@ -158,7 +158,6 @@ describe("bar status policy · the census", () => {
  * that is itself visible while open).
  */
 const COLLAPSIBLE_TOGGLES: Record<string, string> = {
-  zenModeOn: "Zen — the stripped-chrome layout is itself the indicator.",
   aiWindowOpen: "Opens the AI window, which is visible while open.",
 };
 
@@ -188,7 +187,7 @@ describe("bar status policy · mode indicators are policy entries (task 1353)", 
 
   it("the mode chips' components are not mounted inside the collapsible group", () => {
     const slice = collapsibleSlice();
-    for (const tag of ["FocusViewChip", "HelperModeChip", "CompileStatusChip"]) {
+    for (const tag of ["FocusViewChip", "HelperModeChip", "ZenModeChip", "CompileStatusChip"]) {
       expect(slice).not.toContain(`<${tag}`);
     }
     expect(slice).not.toMatch(/variant="badge"/);
@@ -230,6 +229,9 @@ describe("bar status policy · the default answers", () => {
     ["collab", { enabled: true, zen: false }, true],
     ["collab", { enabled: true, zen: true }, false],
     ["collab", { enabled: false, zen: false }, false],
+    // Task 1552 — zen's off-switch is the one mode chip zen shows.
+    ["zen", { on: true }, true],
+    ["zen", { on: false }, false],
     ["compile", { compiling: true }, true],
     ["compile", { compiling: false }, false],
   ];
@@ -256,6 +258,7 @@ describe("bar status policy · the default answers", () => {
     ["focus-view", { active: true, zen: false }, "now"],
     ["helper-mode", { on: true, zen: false }, "now"],
     ["collab", { enabled: true, zen: false }, "now"],
+    ["zen", { on: true }, "now"],
     ["compile", { compiling: true }, "now"],
   ];
   it.each(verdicts)("verdict %s %o → %s", (id, state, want) => {

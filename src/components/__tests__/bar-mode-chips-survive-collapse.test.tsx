@@ -124,4 +124,27 @@ describe("mode chips survive the bar's collapse (task 1353)", () => {
     expect(chip("focus-view")).toBeNull();
     expect(chip("helper-mode")).toBeNull();
   });
+
+  it("zen ON + collapsed → zen's off-switch is visible, outside the collapsible group, and still exits zen (task 1552)", () => {
+    const { result } = renderHook(() => useZenMode());
+    act(() => result.current.set(true));
+    const onToggleZen = vi.fn();
+    render(<StatusCluster {...props({ zenModeOn: true, topbarRightCollapsed: true, onToggleZen })} />);
+    const el = chip("zen");
+    expect(el).toBeTruthy();
+    expect(inCollapsible(el)).toBe(false);
+    expect(el!.closest('[aria-hidden="true"]')).toBeNull();
+    const btn = el!.querySelector("button")!;
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(btn);
+    expect(onToggleZen).toHaveBeenCalledTimes(1);
+    // The stripped tools stay stripped: nothing pressed remains in the group.
+    const group = document.querySelector('[data-bar-tier="collapsible"]')!;
+    expect(group.querySelector("[aria-pressed]")).toBeNull();
+  });
+
+  it("zen OFF → no zen chip (Zen lives in ⋯)", () => {
+    render(<StatusCluster {...props({ topbarRightCollapsed: false })} />);
+    expect(chip("zen")).toBeNull();
+  });
 });

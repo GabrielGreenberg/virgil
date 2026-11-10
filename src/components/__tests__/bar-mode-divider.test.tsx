@@ -70,7 +70,11 @@ function props(over: Partial<StatusClusterProps> = {}): StatusClusterProps {
 const divider = () => document.querySelector("[data-bar-mode-divider]");
 const anyChip = () =>
   ["focus-view", "helper-mode"].some((m) => document.querySelector(`[data-bar-mode="${m}"]`)) ||
-  !!document.querySelector('[data-bar-segment="status"] [data-bar-status-label]');
+  // Zen's own off-switch (task 1552) is not one of the chips the divider
+  // separates from the tools — in zen there are no tools.
+  [...document.querySelectorAll('[data-bar-segment="status"] [data-bar-status-label]')].some(
+    (n) => !n.closest('[data-bar-mode="zen"]'),
+  );
 
 afterEach(() => {
   const { result } = renderHook(() => useZenMode());

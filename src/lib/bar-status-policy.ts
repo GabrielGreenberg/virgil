@@ -75,6 +75,12 @@ export interface BarStatusStates {
   "helper-mode": { on: boolean; zen: boolean };
   /** Collaborator mode's pen-state badge (same zen rule as `focus-view`). */
   collab: { enabled: boolean; zen: boolean };
+  /**
+   * Zen itself (task 1552) — the one mode chip zen does NOT hide: in zen the
+   * bar is stripped to this off-switch, so it is a protected occupant and
+   * survives a collapsed toolbar like every other mode the user turned on.
+   */
+  zen: { on: boolean };
   /** A compile is running — its ONE in-flight indicator (the Compile tool
    *  button only disables), so a collapsed bar still shows progress. */
   compile: { compiling: boolean };
@@ -226,6 +232,12 @@ export const BAR_STATUS_POLICY: {
     settleMs: 0,
     why: "Collaborator mode is on: who holds the pen decides whether typing lands (zen hides it by design).",
   },
+  zen: {
+    scope: "app",
+    mustSee: (s) => s.on,
+    settleMs: 0,
+    why: "In zen the bar is stripped to this one off-switch; it lived in the collapsible tools until task 1552, so a collapsed toolbar hid zen's only visible control.",
+  },
   // NO `zen` field, deliberately (task 1391): unlike the modes, a compile is
   // work in flight, not chrome the user switched on, so the spinner shows in
   // zen too — zen hides the Compile tool, and nothing else would say a
@@ -260,6 +272,7 @@ export const BAR_STATUS_ORDER: readonly BarStatusItemId[] = Object.freeze([
   "focus-view",
   "helper-mode",
   "collab",
+  "zen",
 ]);
 
 /** Is this state MUST-SEE (before the settle rule)? Pure. */
