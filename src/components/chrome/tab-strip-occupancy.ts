@@ -43,8 +43,9 @@
  *
  * ── Keystroke sanctity ────────────────────────────────────────────────────
  * Nothing here subscribes to the editor. The ONE ResizeObserver
- * ({@link useTabStripScroller}) observes the strip's own scroller box, is
- * RAF-coalesced behind a width-equality bail, and is PARKED on the
+ * ({@link useTabStripScroller}) observes the strip's own scroller box and the
+ * ACTIVE tab's box, is RAF-coalesced behind a per-box width-equality bail,
+ * and is PARKED on the
  * layout-gesture bus (settles once on the end edge). The wheel listener is
  * element-scoped and O(1). Typing leaves `__virgilBusStats().emitCount` flat.
  */
@@ -281,10 +282,17 @@ export function tabRowNaturalWidth(
  *   1. ACTIVE TAB INTO VIEW on activation / open / a neighbour's close — a
  *      LAYOUT effect, so the nudge lands before the frame paints (a passive
  *      effect would paint the tab off-screen for a frame, then jump).
- *   2. ACTIVE TAB INTO VIEW on a strip RESIZE — the ONE ResizeObserver here,
- *      over the scroller's own box: RAF-coalesced, width-equality-bailed, and
- *      PARKED on the layout-gesture bus so an OS window drag or a pane drag
- *      costs one settle on its end edge, never a nudge per frame.
+ *   2. ACTIVE TAB INTO VIEW on a RESIZE — of the strip OR of the active tab
+ *      itself. The ONE ResizeObserver here watches two boxes: the scroller's
+ *      own, and the ACTIVE tab's (re-targeted whenever the active element
+ *      changes). Both funnel into one RAF-coalesced, per-element
+ *      width-equality-bailed fire, PARKED on the layout-gesture bus so an OS
+ *      window drag or a pane drag costs one settle on its end edge, never a
+ *      nudge per frame. The tab's own box is load-bearing: the scroller is
+ *      `flex-1 min-w-0`, so a tab that WIDENS (a rename, the inline rename
+ *      input growing as you type) overflows into scroll range without the
+ *      scroller's box changing at all — a follow keyed on WHICH tab is active,
+ *      or on the strip's size, never sees it (task 1553).
  *   3. VERTICAL WHEEL → HORIZONTAL SCROLL, as a non-passive native listener
  *      ({@link wheelToStripScroll}).
  *
@@ -305,10 +313,16 @@ export function useTabStripScroller(opts: {
   // same layout effect that performs the activation nudge — never written
   // during render.
   const activeKeyRef = useRef<string | null>(activeKey);
+  // The resize path's re-target door: points the observer's TAB slot at the
+  // live active element. Installed by effect 2 (which owns the observer),
+  // called by both effects — effect 1 runs first on mount, before the
+  // observer exists, so effect 2 also targets once on creation.
+  const retargetRef = useRef<(() => void) | null>(null);
 
   // 1. Activation / open / close.
   useLayoutEffect(() => {
     activeKeyRef.current = activeKey;
+    retargetRef.current?.();
     const scroller = scrollerRef.current;
     if (!scroller || activeKey === null) return;
     const tab = tabRefs.current?.get(activeKey);
@@ -319,12 +333,16 @@ export function useTabStripScroller(opts: {
     // out of view without changing which tab is active.
   }, [scrollerRef, tabRefs, activeKey, tabCount]);
 
-  // 2. Strip resize.
+  // 2. Strip resize OR active-tab resize.
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller || typeof ResizeObserver === "undefined") return;
     let raf = 0;
-    let lastWidth = -1;
+    // Last delivered width PER observed element (the scroller + at most one
+    // tab). A newly targeted tab is seeded on its first delivery WITHOUT a
+    // fire: the activation that targeted it was already nudged by effect 1.
+    const lastWidth = new Map<Element, number>();
+    let tabTarget: HTMLElement | null = null;
     const nudge = () => {
       raf = 0;
       const key = activeKeyRef.current;
@@ -336,13 +354,35 @@ export function useTabStripScroller(opts: {
       raf = requestAnimationFrame(nudge);
     }, "tab-strip:active-into-view");
     const ro = new ResizeObserver((entries) => {
-      const w = entries[entries.length - 1]?.contentRect.width ?? -1;
-      if (w === lastWidth) return;
-      lastWidth = w;
-      park.fire();
+      let changed = false;
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        const prev = lastWidth.get(entry.target);
+        lastWidth.set(entry.target, w);
+        if (prev === w) continue;
+        // A tab's FIRST delivery only seeds its width; the scroller's first
+        // delivery fires (the strip just laid out — settle it once).
+        if (prev === undefined && entry.target !== scroller) continue;
+        changed = true;
+      }
+      if (changed) park.fire();
     });
+    const retarget = () => {
+      const key = activeKeyRef.current;
+      const next = (key === null ? undefined : tabRefs.current?.get(key)) ?? null;
+      if (next === tabTarget) return;
+      if (tabTarget) {
+        ro.unobserve(tabTarget);
+        lastWidth.delete(tabTarget);
+      }
+      tabTarget = next;
+      if (next) ro.observe(next);
+    };
     ro.observe(scroller);
+    retarget();
+    retargetRef.current = retarget;
     return () => {
+      if (retargetRef.current === retarget) retargetRef.current = null;
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       park.dispose();
