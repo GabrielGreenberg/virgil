@@ -76,7 +76,7 @@
   --bar-seam-lift: 3px;
   /* Virgil-bar occupant gap (task 1354): the space between neighbouring bar
      occupants — status pills from each other, and the status segment from the
-     tools / « chip after it. Owned by the CONTAINER (StatusCluster's status
+     tools / ⋯ after it. Owned by the CONTAINER (StatusCluster's status
      segment `gap` + trailing margin); no occupant carries its own margin.
      6px = Tailwind v4 `1.5` (--spacing 0.25rem × 1.5). */
   --bar-occupant-gap: 6px;
@@ -1532,7 +1532,7 @@ body[data-zen-mode="on"] {
   color: var(--control-selected-ink);
 }
 /* ── Topbar button utility ─────────────────────────────────────────
-   Single source of truth for buttons in the 40px Virgil bar. Covers
+   Single source of truth for buttons in the 32px Virgil bar (--bar-base-h). Covers
    icon-only, text-only, and icon+text shapes with one height, one
    hover, one press, one focus ring, one disabled rule. Toggle/"on"
    state via aria-pressed="true" (never via conditional className). */
@@ -6106,8 +6106,8 @@ body.perf-contain .static-borrowed-text {
      still seam-matches the solid theme-color strip; ONLY the 1px border-b
      moves down 1px. Still one owner, no positioned pseudo (a prior WCO
      ::after landed a SECOND line one padding-box pixel higher → the doubled
-     edge; removed). The line matches the bar by default (topbarBorder), so
-     this only shows once a user sets a colour for it. */
+     edge; removed). The line is a visible step by default (topbarBorder
+     #ddd3cb on the #f6f1ed bar), so its clipping was a real defect. */
   min-height: max(var(--bar-base-h), calc(var(--window-inset-top) + 1px));
 }
 :root[data-display-mode="window-controls-overlay"] .virgil-bar > * {

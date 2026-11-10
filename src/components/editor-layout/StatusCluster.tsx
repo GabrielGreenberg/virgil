@@ -40,7 +40,7 @@ export type StatusClusterVBar = {
 export type StatusClusterProps = {
   vbar: StatusClusterVBar;
   // Whether the bar's owning layout is in zen mode (suppresses the
-  // prefs/help/print/etc. button group). Collab is NOT a prop: every reader
+  // collapsible tool group and the status pills zen hides). Collab is NOT a prop: every reader
   // (the collab pill, the mode divider) takes the one CollabContext, so a
   // collab pen/presence tick re-renders only those leaves.
   zenModeOn: boolean;
@@ -217,7 +217,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
     // a gate holds it (blocked), naming the gate with a button into its flow.
     "save-state": <SaveStateBadge docId={currentDocId} />,
     // Skill-bundle sync FAILURE pill. A success is informational and lives on
-    // the Help menu's "Refresh skills" row below.
+    // the ⋯ menu's "Refresh skills" row (BarMoreMenu).
     "skill-sync": (
       <SkillSyncControls
         error={skillSyncError}
@@ -234,7 +234,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
     // tool below only disables, so a collapsed bar still shows the work.
     compile: <CompileStatusChip compiling={vbar.isCompiling} />,
     // MODES THE USER TURNED ON (task 1353). Each chip is its mode's off-switch
-    // (Focus from the Outline / card actions, Helper from the "?" menu,
+    // (Focus from the Outline / card actions, Helper from the ⋯ menu,
     // Collab from its icon tool), so it lives here and survives the tools'
     // collapse; zen hides them by the policy's own rule, read from the zen
     // store inside each chip. Before 1353 they sat inside the collapsible
@@ -308,7 +308,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
       {/* The STATUS SEGMENT (task 1354): neighbour spacing is the CONTAINER's,
           stated once by `--bar-occupant-gap` — no occupant carries a margin.
           `gap` spaces the pills from each other; the trailing margin spaces
-          the last one from what follows (the first tool, or the « chip when
+          the last one from what follows (the first tool, or ⋯ when
           the tools are collapsed). It sits on the segment, not as a root
           `gap`, because the collapsed tool group is a zero-width flex item a
           root gap would double around. Every hidden item returns null, so an
@@ -383,10 +383,9 @@ function StatusClusterImpl(props: StatusClusterProps) {
           somebody remembered. The measured wrapper above is deliberately
           OUTSIDE the key: its ref must stay bound, or the collapse would drop
           the measurement and the rule would fail open into a flip-flop.
-          A surface whose OPEN state lives outside the group (the help menu,
-          owned by EditorLayout) is unaffected by a remount and is gated
-          explicitly below — same behaviour as pre-395 unmounting, where the
-          prop likewise re-opened it on expand. */}
+          ⋯ sits OUTSIDE this key (below), so its own open menu is unaffected
+          by a collapse; no other surface keeps open state outside the group,
+          so there is nothing further to gate. */}
       <div key={topbarRightCollapsed ? "collapsed" : "expanded"} className="flex items-center gap-1.5">
       {(<>
       {/* Divider between the mode chips and the tools. It lives IN the

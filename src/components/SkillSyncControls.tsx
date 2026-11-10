@@ -39,8 +39,8 @@ function WarnIcon() {
  *
  * Task 1131: only the failure is must-see (`bar-status-policy.ts`). A
  * successful sync no longer puts a "Skills updated" notice on the bar — the
- * version and the restart-your-cowork-session hint live on the Help menu's
- * "Refresh skills" row (StatusCluster), which also hosts the manual re-sync.
+ * version and the restart-your-cowork-session hint live on the ⋯ menu's
+ * "Refresh skills" row (BarMoreMenu), which also hosts the manual re-sync.
  *
  * Pure presentational — no editor subscription, so it adds zero
  * per-keystroke work (keystroke-sanctity, AGENTS.md).
