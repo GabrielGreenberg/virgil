@@ -59,7 +59,7 @@ import {
 } from "@/lib/actions/action-registry";
 import { COMMAND_MAP } from "@/lib/tiptap/commands";
 import { serializeToLatex } from "@/lib/latex-serializer";
-import { pickBlockType } from "@/components/MenuBar";
+import { pickBlockType } from "@/components/BlockTypeDropdown";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Real editor stack

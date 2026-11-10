@@ -53,7 +53,7 @@ import {
 } from "@/lib/actions/action-registry";
 import { paragraphUuidAt } from "@/links/links";
 import { serializeToLatex } from "@/lib/latex-serializer";
-import { pickBlockType } from "@/components/MenuBar";
+import { pickBlockType } from "@/components/BlockTypeDropdown";
 import { headingAttrsForLevel } from "@/lib/tiptap/heading-level";
 import { walkFiles } from "../../__tests__/_source-scan";
 
@@ -492,7 +492,7 @@ describe("census: one door for every heading-level write", () => {
       .sort();
 
     expect(readers).toEqual(
-      ["components/MenuBar.tsx", "lib/actions/action-registry.ts", "lib/editor-extensions.ts"].sort(),
+      ["components/BlockTypeDropdown.tsx", "lib/actions/action-registry.ts", "lib/editor-extensions.ts"].sort(),
     );
   });
 });

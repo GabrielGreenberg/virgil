@@ -8,7 +8,7 @@ import { refusalPhrase } from "./refusal";
 import { headingLevelOptions } from "@/lib/document-class";
 
 // The ¶ block-type menu's VERDICTS (task 1199) — what its rows and its grid
-// cell offer. Its COMMIT is `pickBlockType` (MenuBar.tsx); both ask the same
+// cell offer. Its COMMIT is `pickBlockType` (BlockTypeDropdown.tsx); both ask the same
 // `headingLevelVerdict` the registry's heading rows answer, so an offered row
 // is a row the commit will run.
 

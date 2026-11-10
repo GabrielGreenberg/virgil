@@ -12,7 +12,7 @@ import { runEditorAction } from "@/lib/actions/editor-actions-bridge";
 // `\subsection`/`\subsubsection` slash commands call the registry row's `run()`
 // directly — heading is PURE ProseMirror (`setBlockType` on the view), so NO
 // bridge is needed (unlike `\cite`/`\footnote`, which need React-land
-// `cardCreation`). The dropdown ([MenuBar.tsx] BlockTypeDropdown) calls the
+// `cardCreation`). The dropdown ([BlockTypeDropdown.tsx]) calls the
 // SAME `run()`, so the two surfaces can never diverge on the verb.
 //
 // CHIP 7a: `\title`/`\author`/`\date` ALSO route through `runViewOnlyAction` —

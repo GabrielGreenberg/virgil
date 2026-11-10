@@ -86,7 +86,7 @@ export function HeadingTypeMenu({ anchorRect, trackAnchor, triggerEl = null, cur
     >
       {/* The levels are a pick-ONE set (a block is exactly one level), so
           they go through the radio door — the SAME component the ¶ block-type
-          dropdown (`MenuBar`'s BlockTypeDropdown) renders these choices with
+          dropdown (`BlockTypeDropdown`) renders these choices with
           (task 997). This list hand-built its radio rows until then: a second
           row vocabulary (leading ✓, `text-sm`, 28px) for the same choices,
           and no `role="group"` scoping the set. "No heading" is a COMMAND,

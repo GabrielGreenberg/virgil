@@ -32,7 +32,7 @@ import { blockTypeOptions, blockTypeVerdict } from "@/lib/actions/block-type";
 import { headingLevelVerdict, runHeadingLevel } from "@/lib/actions/action-registry";
 import { lightningContext } from "@/lib/actions/lightning-context";
 import { refusalPhrase } from "@/lib/actions/refusal";
-import { pickBlockType } from "@/components/MenuBar";
+import { pickBlockType } from "@/components/BlockTypeDropdown";
 
 const SURFACE_PHRASE = refusalPhrase({ cause: "surface" });
 
@@ -257,10 +257,10 @@ describe("task 1199 — every row hands focus back the same way", () => {
 });
 
 describe("task 1199 — STRUCTURAL: the dropdown holds no copy of the heading transform", () => {
-  it("MenuBar.tsx reaches every level through the registry door, never the gate or door directly", async () => {
+  it("BlockTypeDropdown.tsx reaches every level through the registry door, never the gate or door directly", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const src = readFileSync(join(process.cwd(), "src/components/MenuBar.tsx"), "utf8");
+    const src = readFileSync(join(process.cwd(), "src/components/BlockTypeDropdown.tsx"), "utf8");
     expect(src).not.toMatch(/\bsetHeadingLevelInRange\b/);
     expect(src).not.toMatch(/\bblockRangeHostsBlockInsert\b/);
     expect(src).not.toMatch(/\.run\(ctx\)/);

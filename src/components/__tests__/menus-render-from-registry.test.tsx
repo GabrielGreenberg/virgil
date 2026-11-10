@@ -30,10 +30,10 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-// ActionsMenuPanel renders a formatting grid (MenuBar's BlockTypeDropdown +
+// ActionsMenuPanel renders a formatting grid (the BlockTypeDropdown +
 // the block inserters + the color popover) that needs a live editor. Mock
 // those — they are orthogonal to the CHIP-3 action-list inversion under test.
-vi.mock("../MenuBar", () => ({
+vi.mock("../BlockTypeDropdown", () => ({
   BlockTypeDropdown: () => <div data-testid="block-type-dropdown" />,
 }));
 // Task 638: `ActionsMenuPanel` now reads the collab pen through

@@ -169,7 +169,7 @@ task 1199 — the SAME SSOT the slash/typed surfaces reach). Every cell, `\tex` 
 | Cell | Effect | Dispatch |
 |---|---|---|
 | Bold / Italic / Strike / Code / Small caps (task 808, row 4) | toggle inline mark | `runGridAction("bold")` … → registry row (`backbone: "tiptap-chain"`) |
-| BlockType | set paragraph/heading level | `<BlockTypeDropdown>` → `pickBlockType` (MenuBar.tsx) — every heading level commits through ONE door, `runHeadingLevel` (action-registry.ts, gated by `headingLevelVerdict`); rows greyed by `blockTypeOptions` / the ¶ cell by `blockTypeVerdict` ([block-type.ts](../../src/lib/actions/block-type.ts), task 1199) |
+| BlockType | set paragraph/heading level | `<BlockTypeDropdown>` → `pickBlockType` (BlockTypeDropdown.tsx) — every heading level commits through ONE door, `runHeadingLevel` (action-registry.ts, gated by `headingLevelVerdict`); rows greyed by `blockTypeOptions` / the ¶ cell by `blockTypeVerdict` ([block-type.ts](../../src/lib/actions/block-type.ts), task 1199) |
 | Bullet list / Numbered list / Blockquote | toggle block wrapper | `runGridAction("bullet-list")` … → registry row |
 | Example (`ex`) | wrap selection in an `exampleBlock` | `runGridAction("example")` → registry `exampleRun` (shared with slash `\ex`) |
 | Inline math (`$x$`) / Display math (`$$`) | wrap selection in math (seeded by `captureRangeMathText` in [capture-symmetry.ts](../../src/lib/tiptap/capture-symmetry.ts): plain text, sub/superscript TRANSLATED to `_{…}`/`^{…}` per each `WRAPPER_MARK_ROWS` row's required `inMath`, task 1272) | `runGridAction("inline-math" / "display-math")` → registry row |
@@ -227,7 +227,7 @@ a stale caret, every real consumer holds a position, and an exported one is an i
 ask the smaller question. The same gate is consulted by the slash/menu heading conversion (`headingRun` in
 [action-registry.ts](../../src/lib/actions/action-registry.ts)), the typed-math input
 rules ([math.ts](../../src/lib/tiptap/math.ts)), and the `BlockTypeDropdown`'s
-out-of-scope heading levels ([MenuBar.tsx](../../src/components/MenuBar.tsx); rendered in `ActionsMenuPanel`).
+out-of-scope heading levels ([BlockTypeDropdown.tsx](../../src/components/BlockTypeDropdown.tsx); rendered in `ActionsMenuPanel`).
 
 **Every insert ASKS, every row answers for ITSELF, and the offer matches the commit**
 (tasks 396–398, the 2026-08-21 applicability cluster). The gates above were correct and

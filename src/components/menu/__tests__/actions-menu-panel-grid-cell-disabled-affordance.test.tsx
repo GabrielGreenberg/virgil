@@ -26,7 +26,7 @@ class ResizeObserverStub {
 
 // The nested block-type trigger + block inserters need a live editor; mock them
 // (orthogonal to the disabled-affordance axis under test).
-vi.mock("../../MenuBar", () => ({
+vi.mock("../../BlockTypeDropdown", () => ({
   // Task 1017: forwards the read-only verdict the panel hands it, so the
   // wiring leg below can see what ¶ was told.
   BlockTypeDropdown: (p: { disabled?: boolean; disabledReason?: string | null }) => (

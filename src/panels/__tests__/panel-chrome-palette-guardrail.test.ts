@@ -642,7 +642,7 @@ describe("census self-checks", () => {
   });
 
   it("spares an HTML entity and a colour WORD outside a CSS-value context", () => {
-    const SITE = "src/components/MenuBar.tsx";
+    const SITE = "src/components/BlockTypeDropdown.tsx";
     const fixture = [
       '<span>&#182;</span>;',                                 // entity, not a hex
       'const t = "The quick brown fox";',                     // prose

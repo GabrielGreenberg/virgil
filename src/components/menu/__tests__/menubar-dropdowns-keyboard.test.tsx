@@ -24,7 +24,8 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, act, fireEvent } from "@testing-library/react";
-import { BlockTypeDropdown, ViewMenu } from "../../MenuBar";
+import { ViewMenu } from "../../MenuBar";
+import { BlockTypeDropdown } from "../../BlockTypeDropdown";
 import type { Editor } from "@tiptap/react";
 import type { DividerLevel } from "@/hooks/useViewPrefs";
 import { REGISTRY_DEFAULTS, type RegistryPrefs } from "@/lib/view-prefs/registry";
@@ -444,7 +445,7 @@ describe("BlockTypeDropdown — heading rows follow the document class (task 752
   });
 
   it("pickBlockType refuses a class-unsupported level even when called directly", async () => {
-    const { pickBlockType } = await import("../../MenuBar");
+    const { pickBlockType } = await import("../../BlockTypeDropdown");
     const { editor, dispatch } = makeEditor(null);
     pickBlockType(editor, "0", "letter"); // \part in a letter
     expect(dispatch).not.toHaveBeenCalled();

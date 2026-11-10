@@ -15,7 +15,8 @@
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, cleanup, act, fireEvent } from "@testing-library/react";
-import { BlockTypeDropdown, ViewMenu } from "../../MenuBar";
+import { ViewMenu } from "../../MenuBar";
+import { BlockTypeDropdown } from "../../BlockTypeDropdown";
 import type { Editor } from "@tiptap/react";
 import type { DividerLevel } from "@/hooks/useViewPrefs";
 import { REGISTRY_DEFAULTS } from "@/lib/view-prefs/registry";
