@@ -126,11 +126,9 @@ source request in place.
    # Path (a) — suggestion → L3 propose: the card lands, the Task is left
    # AWAITING REVIEW (status: in-progress), the change not applied until
    # /editor/accept-suggestion (a --range anchor still lands —
-   # _safety-levels.md). `original_text` must be verbatim from the
-   # anchored paragraph (never the %!v: marker) or NOTHING lands — the same
-   # question accept's stale guard asks; an empty replacement is refused too,
-   # and so is one that does not carry every \vcid/\vfid/\vlid marker of
-   # `original_text` through verbatim (task 1426, _latex-allowlist.md).
+   # _safety-levels.md). Copy `original_text` byte-for-byte from the .tex and
+   # carry every marker of the original through verbatim, adding none; what
+   # the door refuses (nothing lands) is create-card.md#what-the-proposal-door-refuses.
    cat > "$t/original" <<'TXT'
    <the span, verbatim from the .tex>
    TXT

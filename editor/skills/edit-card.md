@@ -95,9 +95,9 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
   *Reserved fields* below. An edit of `original_text` / `suggested_text` /
   `user_text` re-poses the proposal (task 1109): on an `applied` card it is
   refused (Keep or Revert it in the editor first), and on an open one the
-  merged card must pass the same check a new proposal does — `original_text`
-  verbatim in the anchored paragraph, and a non-empty replacement unless it is
-  a Cutter cut — or nothing is written.
+  merged card must pass the same check a new proposal does —
+  [create-card.md → "What the proposal door refuses"](create-card.md#what-the-proposal-door-refuses),
+  markers conserved included — or nothing is written.
 - **Refused** — `citation` (its `command`/`keys` are coupled to the `.tex` cite
   **and** `references.bib`; change a cite via [`find-citation`](find-citation.md),
   or rename its citekey via the `renameCitekey` contract op —

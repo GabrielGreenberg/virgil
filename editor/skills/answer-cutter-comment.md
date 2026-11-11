@@ -78,7 +78,10 @@ once — see step 5).
 3. **Compose.** Identify the slice of the anchored paragraph(s) you'd
    cut or rewrite. Mode B: if `selectedText` is set on the comment,
    that's already the target span. Mode A: pick a coherent subspan
-   from the paragraph to address the comment.
+   from the paragraph to address the comment. A shortened rewrite must
+   carry every marker of the original through verbatim and add none (a
+   `\vcid{…}\cite…` / `\vfid{…}\footnote{…}` atom stays whole); a whole cut
+   may take a citation, never a footnote.
 
 4. **Land the proposal — one call** (task 1044). The `CutterSuggestionCard`
    is built by the door, not by you: `create_card.py --kind=suggestion` reads
@@ -117,10 +120,8 @@ once — see step 5).
    misses it is refused; an inherited span that misses it degrades to the whole
    paragraph (result `anchorDegraded`, task 1235).
 
-5. **What the door guarantees.** Nothing lands when `original_text` is not
-   verbatim in the anchored paragraph (no paraphrase, never the `%!v:`
-   marker — accept's stale guard asks the same question through the same
-   locator). On success the card is `pending`, the Task **awaiting review**
+5. **What the door guarantees.** What it refuses — nothing lands — is
+   [create-card.md → "What the proposal door refuses"](create-card.md#what-the-proposal-door-refuses). On success the card is `pending`, the Task **awaiting review**
    (`status: in-progress`), the change not applied until
    `/editor/accept-suggestion` (a `--range` anchor still lands —
    [_safety-levels.md](_safety-levels.md)), and the source comment's `aiRequest` lowered.

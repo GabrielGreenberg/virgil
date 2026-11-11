@@ -121,9 +121,9 @@ documents a call that dies. Three tiers:
   citekey, and the call dies.
   `suggestion` takes three texts in place of `--body` — `--original` (the
   span, VERBATIM from the paragraph you already hold; never the `%!v:`
-  marker), `--suggested`, `--explanation` — and lands as an L3 proposal; the
-  door refuses a non-verbatim span or an empty revision before any write
-  (task 1044, [`create-card.md`](create-card.md)). Same one hop:
+  marker), `--suggested`, `--explanation` — and lands as an L3 proposal; carry
+  every marker of the original through verbatim and add none — what the door
+  refuses is [create-card.md → "What the proposal door refuses"](create-card.md#what-the-proposal-door-refuses). Same one hop:
   `create_card.py <docPath> <requestId> --kind=suggestion --anchor <uuid> --accept-task-kind
   <the Task's kind> --original "@$t/original" --suggested "@$t/suggested"
   --explanation "@$t/explanation"`.

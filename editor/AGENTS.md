@@ -52,9 +52,8 @@ The skill set turns those signals into responses:
   anchor copied, ids / self-link / `aiOriginRequestId` minted), which lands it
   via `complete-task --propose` (the card lands, the Task is left awaiting
   review, the `.tex` untouched) — directly consumable by chip 13's `accept`.
-  The write door refuses a proposal whose `original_text` is not verbatim in
-  its anchored paragraph, or whose revision replacement is empty, before any
-  byte lands — the same questions accept asks. `answer-revision-request`'s
+  The write door refuses, before any byte lands, every proposal accept would
+  refuse — the ONE list is [skills/create-card.md → "What the proposal door refuses"](skills/create-card.md#what-the-proposal-door-refuses) (task 1577). `answer-revision-request`'s
   sibling reply is `--kind=comment`, a terminal create.
 - `/editor/accept-suggestion`, `/editor/reject-suggestion` — the **L3
   consummation** (chip 13). A drafted suggestion proposal (revision- or
