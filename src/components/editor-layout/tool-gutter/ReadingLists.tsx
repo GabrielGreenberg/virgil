@@ -55,6 +55,7 @@ import {
   type GutterListRow,
   type GutterSectionHead,
 } from "./gutter-lists";
+import { leaseCardExpansion } from "./open-lease";
 
 export type ReadingListKind = "footnotes" | "bibliography" | "examples";
 
@@ -271,16 +272,23 @@ export function ReadingList({
     [byKey, sel, editorRef, data],
   );
 
-  const onOpenChange = useCallback(
-    (card: GutterCardRef, open: boolean) => {
+  // The bib key selected NOW, for a release that runs later.
+  const selectedBibKeyRef = useRef(selectedBibKey);
+  useEffect(() => {
+    selectedBibKeyRef.current = selectedBibKey;
+  }, [selectedBibKey]);
+
+  const openLease = useCallback(
+    (card: GutterCardRef) => {
       if (card.kind === "bib") {
-        // A bibliography card is open while its entry is selected.
-        sel.setSelectedBibKey(open ? card.key : null);
-        return;
+        // A bibliography card is open while its entry is selected — and its
+        // close clears only its OWN selection, never one made since.
+        sel.setSelectedBibKey(card.key);
+        return () => {
+          if (selectedBibKeyRef.current === card.key) sel.setSelectedBibKey(null);
+        };
       }
-      const ref = { kind: card.kind === "example" ? "example" : "footnote", id: card.id } as const;
-      if (open) cardStore.expand(ref);
-      else cardStore.collapse(ref);
+      return leaseCardExpansion(cardStore, { kind: card.kind === "example" ? "example" : "footnote", id: card.id });
     },
     [sel, cardStore],
   );
@@ -396,7 +404,7 @@ export function ReadingList({
         onJump={onJump}
         renderCard={renderCard}
         leadingToggle={kind === "bibliography" ? (row) => !!row.bibKey : undefined}
-        onOpenChange={onOpenChange}
+        openLease={openLease}
         canDrag={kind === "bibliography" ? (row) => !!rowEntry(row) : undefined}
         onRowDragStart={(row, e) => {
           const entry = rowEntry(row);

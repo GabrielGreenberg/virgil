@@ -56,7 +56,13 @@ const GROUPS: GutterListGroup[] = [
 function mount(over: Partial<Parameters<typeof GutterList>[0]> = {}) {
   const onSelect = vi.fn();
   const onJump = vi.fn();
-  const onOpenChange = vi.fn();
+  // Each acquire returns its own release spy, recorded by card id.
+  const releases: Record<string, ReturnType<typeof vi.fn>> = {};
+  const openLease = vi.fn((card: { kind: string; id?: string; key?: string }) => {
+    const release = vi.fn();
+    releases[card.id ?? card.key ?? ""] = release;
+    return release;
+  });
   const utils = render(
     <CitationDisplayProvider
       value={{
@@ -71,13 +77,13 @@ function mount(over: Partial<Parameters<typeof GutterList>[0]> = {}) {
         selectedIds={new Set()}
         onSelect={onSelect}
         onJump={onJump}
-        onOpenChange={onOpenChange}
+        openLease={openLease}
         renderCard={(card) => <div data-testid="card">card {card.kind === "bib" ? card.key : card.id}</div>}
         {...over}
       />
     </CitationDisplayProvider>,
   );
-  return { ...utils, onSelect, onJump, onOpenChange };
+  return { ...utils, onSelect, onJump, openLease, releases };
 }
 
 const rowEl = (c: HTMLElement, id: string) => c.querySelector<HTMLElement>(`[data-gutter-list-row="fn:${id}"]`)!;
@@ -110,17 +116,17 @@ describe("GutterList — the row model", () => {
   });
 
   it("opens one card at a time, in place, and closes on ⌃ or Escape", () => {
-    const { container, onOpenChange } = mount();
+    const { container, openLease, releases } = mount();
     fireEvent.click(rowEl(container, "1").querySelector('[data-gutter-act="open"]')!);
     expect(screen.getAllByTestId("card")).toHaveLength(1);
     expect(screen.getByTestId("card").textContent).toBe("card 1");
-    expect(onOpenChange).toHaveBeenLastCalledWith({ kind: "footnote", id: "1" }, true);
+    expect(openLease).toHaveBeenLastCalledWith({ kind: "footnote", id: "1" });
 
     // Opening another closes the first.
     fireEvent.click(rowEl(container, "2").querySelector('[data-gutter-act="open"]')!);
     expect(screen.getAllByTestId("card")).toHaveLength(1);
     expect(screen.getByTestId("card").textContent).toBe("card 2");
-    expect(onOpenChange).toHaveBeenCalledWith({ kind: "footnote", id: "1" }, false);
+    expect(releases["1"]).toHaveBeenCalledTimes(1);
 
     fireEvent.keyDown(screen.getByTestId("card"), { key: "Escape" });
     expect(screen.queryByTestId("card")).toBeNull();
@@ -128,6 +134,67 @@ describe("GutterList — the row model", () => {
     fireEvent.click(rowEl(container, "1").querySelector('[data-gutter-act="open"]')!);
     fireEvent.click(container.querySelector("[data-gutter-list-close]")!);
     expect(screen.queryByTestId("card")).toBeNull();
+  });
+
+  it("releases an open row's lease exactly once, however it stops being open (task 1571)", () => {
+    // Closed.
+    let m = mount();
+    fireEvent.click(rowEl(m.container, "1").querySelector('[data-gutter-act="open"]')!);
+    fireEvent.click(m.container.querySelector("[data-gutter-list-close]")!);
+    expect(m.releases["1"]).toHaveBeenCalledTimes(1);
+    m.unmount();
+
+    // Its item went away.
+    m = mount();
+    fireEvent.click(rowEl(m.container, "1").querySelector('[data-gutter-act="open"]')!);
+    const without1: GutterListGroup[] = [{ ...GROUPS[0], rows: GROUPS[0].rows.filter((r) => r.entityId !== "1") }];
+    m.rerender(
+      <CitationDisplayProvider
+        value={{ getCitationDisplayText: () => "", onCitationCreated: () => ({ id: "x", displayText: "" }), getRefDisplayText: () => null }}
+      >
+        <GutterList
+          list="footnotes"
+          groups={without1}
+          selectedIds={new Set()}
+          onSelect={vi.fn()}
+          onJump={vi.fn()}
+          openLease={m.openLease}
+          renderCard={() => <div data-testid="card" />}
+        />
+      </CitationDisplayProvider>,
+    );
+    expect(m.releases["1"]).toHaveBeenCalledTimes(1);
+    m.unmount();
+    expect(m.releases["1"]).toHaveBeenCalledTimes(1);
+
+    // The list unmounted with the row open (switching lists).
+    m = mount();
+    fireEvent.click(rowEl(m.container, "2").querySelector('[data-gutter-act="open"]')!);
+    expect(m.openLease).toHaveBeenCalledTimes(1);
+    m.unmount();
+    expect(m.releases["2"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("a re-render of the same open row acquires nothing again", () => {
+    const m = mount();
+    fireEvent.click(rowEl(m.container, "1").querySelector('[data-gutter-act="open"]')!);
+    m.rerender(
+      <CitationDisplayProvider
+        value={{ getCitationDisplayText: () => "", onCitationCreated: () => ({ id: "x", displayText: "" }), getRefDisplayText: () => null }}
+      >
+        <GutterList
+          list="footnotes"
+          groups={[...GROUPS]}
+          selectedIds={new Set(["1"])}
+          onSelect={vi.fn()}
+          onJump={vi.fn()}
+          openLease={m.openLease}
+          renderCard={() => <div data-testid="card" />}
+        />
+      </CitationDisplayProvider>,
+    );
+    expect(m.openLease).toHaveBeenCalledTimes(1);
+    expect(m.releases["1"]).not.toHaveBeenCalled();
   });
 
   it("an Escape a card's own field already handled does not close it", () => {
