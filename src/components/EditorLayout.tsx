@@ -898,7 +898,7 @@ export default function EditorLayout() {
     if (!editorInstance) return;
     const want = collab.canEditMainText;
     if (editorInstance.isEditable !== want) {
-      editorInstance.setEditable(want);
+      editorInstance.setEditable(want, false);
     }
   }, [editorInstance, collab.canEditMainText]);
 

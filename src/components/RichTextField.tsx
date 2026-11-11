@@ -724,7 +724,7 @@ function RichTextFieldImpl({
   useEffect(() => {
     if (!editor) return;
     if (editor.isEditable !== editable) {
-      editor.setEditable(editable);
+      editor.setEditable(editable, false);
     }
   }, [editor, editable]);
 
