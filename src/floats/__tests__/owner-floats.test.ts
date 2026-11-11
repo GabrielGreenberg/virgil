@@ -154,9 +154,17 @@ describe("Cmd-W target — frontmostOnScreen", () => {
     expect(frontmostOnScreen([fa], null)).toBeUndefined();
   });
 
-  it("panel floats are window-wide and stay eligible", () => {
+  it("panel floats are window-wide across docs while a doc pane is showing", () => {
     const p: Ref = { kind: "panel", id: "outline" };
     expect(frontmostOnScreen([fa, p, nb], "A")).toBe(p);
+    expect(frontmostOnScreen([p, nb], "B")).toBe(nb);
+    expect(frontmostOnScreen([p], "B")).toBe(p);
+  });
+
+  it("a panel float is not the target when no doc pane is showing (task 1567)", () => {
+    const p: Ref = { kind: "panel", id: "outline" };
+    expect(frontmostOnScreen([p], null)).toBeUndefined();
+    expect(frontmostOnScreen([fa, p], null)).toBeUndefined();
   });
 });
 
