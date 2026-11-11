@@ -221,7 +221,11 @@ export function ReadingList({
   }, [selected, selectedBibKey]);
 
   const byKey = useMemo(() => citationsByKey(cites), [cites]);
-  const [occurrence, setOccurrence] = useState<Record<string, number>>({});
+  // The current citation per key, by IDENTITY (task 1573): an index into
+  // `byKey` would silently point at another citation once a cite of that key
+  // is inserted or deleted ahead of it. Every gesture that lands on a citation
+  // — a step, a line click, a row jump — records which one.
+  const [occurrence, setOccurrence] = useState<Record<string, string>>({});
 
   const onSelect = useCallback(
     (row: GutterListRow) => {
@@ -229,7 +233,8 @@ export function ReadingList({
       if (row.bibKey) {
         sel.setSelectedBibKey(row.bibKey);
         const ids = byKey.get(row.bibKey) ?? [];
-        data.onActiveCitation?.(ids[occurrence[row.bibKey] ?? 0] ?? ids[0] ?? null);
+        const cur = occurrence[row.bibKey];
+        data.onActiveCitation?.(cur !== undefined && ids.includes(cur) ? cur : (ids[0] ?? null));
         return;
       }
       if (!c) return;
@@ -251,6 +256,8 @@ export function ReadingList({
         sel.setSelectedExampleId(j.id);
         handle?.scrollToExample(j.id, el);
       } else if (j.kind === "bib" && j.citationId) {
+        const id = j.citationId;
+        setOccurrence((o) => (o[j.key] === id ? o : { ...o, [j.key]: id }));
         sel.setSelectedBibKey(j.key);
         handle?.scrollToCitation(j.citationId, el);
         data.onActiveCitation?.(j.citationId);
@@ -259,12 +266,11 @@ export function ReadingList({
     [editorRef, sel, data],
   );
 
-  /** Jump to the `i`th citation of `key` and make it the current one. */
+  /** Jump to citation `id` of `key` and make it the current one. */
   const goTo = useCallback(
-    (key: string, i: number, el: HTMLElement | null) => {
-      const id = (byKey.get(key) ?? [])[i];
-      if (!id) return;
-      setOccurrence((o) => ({ ...o, [key]: i }));
+    (key: string, id: string, el: HTMLElement | null) => {
+      if (!(byKey.get(key) ?? []).includes(id)) return;
+      setOccurrence((o) => (o[key] === id ? o : { ...o, [key]: id }));
       sel.setSelectedBibKey(key);
       editorRef.current?.scrollToCitation(id, el);
       data.onActiveCitation?.(id);
@@ -301,8 +307,8 @@ export function ReadingList({
           bibKey={card.key}
           close={close}
           citationIds={byKey.get(card.key) ?? []}
-          current={occurrence[card.key] ?? -1}
-          goTo={(i, el) => goTo(card.key, i, el)}
+          current={occurrence[card.key] ?? null}
+          goTo={(id, el) => goTo(card.key, id, el)}
           cites={cites}
           bibEntries={data.bibEntries}
           sections={sections}

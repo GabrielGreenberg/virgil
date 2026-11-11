@@ -71,7 +71,7 @@ function mount(over: Partial<Parameters<typeof BibOpenView>[0]> = {}) {
       bibKey="jackson2001"
       close={close}
       citationIds={["c1", "c2"]}
-      current={-1}
+      current={null}
       goTo={goTo}
       cites={[
         { citationId: "c1", keys: ["jackson2001"], pos: posOfCite(0) },
@@ -103,16 +103,34 @@ describe("BibOpenView", () => {
   });
 
   it("shows one line per citation, steps ‹ n / N ›, and a line click jumps there", () => {
-    const { goTo } = mount({ current: 1 });
+    const { goTo } = mount({ current: "c2" });
     const lines = document.querySelectorAll(".gutter-bib-cited-line");
     expect(lines).toHaveLength(2);
     expect(lines[1].hasAttribute("data-current")).toBe(true);
     expect(lines[0].querySelector("b")).not.toBeNull();
     expect(document.querySelector(".gutter-bib-stepper-count")!.textContent).toBe("2 / 2");
     fireEvent.click(document.querySelector('[data-gutter-act="next"]')!);
-    expect(goTo).toHaveBeenLastCalledWith(0, expect.anything());
+    expect(goTo).toHaveBeenLastCalledWith("c1", expect.anything());
     fireEvent.click(lines[0]);
-    expect(goTo).toHaveBeenLastCalledWith(0, expect.anything());
+    expect(goTo).toHaveBeenLastCalledWith("c1", expect.anything());
+  });
+
+  // Task 1573: the current occurrence is a citation, not a slot in the list.
+  it("keeps the same citation current when a cite is inserted ahead of it", () => {
+    const { goTo } = mount({ current: "c2", citationIds: ["c0", "c1", "c2"] });
+    expect(document.querySelector(".gutter-bib-stepper-count")!.textContent).toBe("3 / 3");
+    const current = document.querySelector(".gutter-bib-cited-line[data-current]");
+    expect(current?.textContent).toBe(document.querySelectorAll(".gutter-bib-cited-line")[1].textContent);
+    fireEvent.click(document.querySelector('[data-gutter-act="prev"]')!);
+    expect(goTo).toHaveBeenLastCalledWith("c1", expect.anything());
+  });
+
+  it("a deleted current citation reads as none, never past the end", () => {
+    const { goTo } = mount({ current: "gone" });
+    expect(document.querySelector(".gutter-bib-stepper-count")!.textContent).toBe("– / 2");
+    expect(document.querySelector(".gutter-bib-cited-line[data-current]")).toBeNull();
+    fireEvent.click(document.querySelector('[data-gutter-act="next"]')!);
+    expect(goTo).toHaveBeenLastCalledWith("c1", expect.anything());
   });
 
   it("offers no PDF ↗ when the library does not hold the paper", () => {
