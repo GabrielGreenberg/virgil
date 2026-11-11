@@ -7,10 +7,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import {
-  subscribeToStorageKey,
-  writeStorageIfChanged,
-} from "@/lib/cross-window-storage";
+import { createStorageSnapshot, subscribeToStorageKey } from "@/lib/cross-window-storage";
 import { ALL_CATEGORIES, type Category } from "@/lib/word-count-core";
 
 // Category vocabulary lives in the shared word-count core (the SSOT walker);
@@ -45,10 +42,8 @@ const STORAGE_KEY = "virgil-wordcount-config";
  * word-count-core applies, so a checkbox can never show ON for a category the
  * total excludes (task 1224).
  */
-function loadConfig(): WordCountConfig {
-  if (typeof window === "undefined") return DEFAULT_WORD_COUNT_CONFIG;
+function parseConfig(raw: string | null): WordCountConfig {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_WORD_COUNT_CONFIG;
     const parsed = JSON.parse(raw) as { include?: Record<string, unknown> } | null;
     const stored = parsed?.include;
@@ -71,14 +66,16 @@ function loadConfig(): WordCountConfig {
  * sibling component mid-render. Now the value lives here, a write updates it
  * once, persists once and notifies every reader; React reads it through
  * `useSyncExternalStore`. The cross-window leg rides `subscribeToStorageKey`
- * and re-reads through the same `loadConfig`.
+ * and re-reads through the same `parseConfig` — through a snapshot keyed by
+ * the raw string on disk, so a read is fresh whether or not the storage
+ * listener is attached at that moment (task 1572).
  */
-let snapshot: WordCountConfig | null = null;
+const snapshot = createStorageSnapshot(STORAGE_KEY, parseConfig);
 const listeners = new Set<() => void>();
 let offStorage: (() => void) | null = null;
 
 function getSnapshot(): WordCountConfig {
-  return (snapshot ??= loadConfig());
+  return snapshot.get();
 }
 
 function getServerSnapshot(): WordCountConfig {
@@ -91,18 +88,12 @@ function notify(): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  offStorage ??= subscribeToStorageKey(STORAGE_KEY, () => {
-    snapshot = loadConfig();
-    notify();
-  });
+  offStorage ??= subscribeToStorageKey(STORAGE_KEY, notify);
   return () => {
     listeners.delete(listener);
     if (listeners.size > 0) return;
     offStorage?.();
     offStorage = null;
-    // Nobody is listening for peer writes any more, so the cache may go
-    // stale — drop it; the next reader re-hydrates from storage.
-    snapshot = null;
   };
 }
 
@@ -111,9 +102,8 @@ function setInclude(cat: Category, value: boolean): void {
   const prev = getSnapshot();
   if (prev.include[cat] === value) return;
   const next: WordCountConfig = { include: { ...prev.include, [cat]: value } };
-  snapshot = next;
   // Idempotent write: no storage event for peers when nothing changed on disk.
-  writeStorageIfChanged(STORAGE_KEY, JSON.stringify(next));
+  snapshot.set(next, JSON.stringify(next));
   notify();
 }
 

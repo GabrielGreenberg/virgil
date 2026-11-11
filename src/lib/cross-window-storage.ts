@@ -240,6 +240,78 @@ export function writeStorageIfChanged(key: string, value: string): boolean {
   }
 }
 
+/** The raw string under `key`; absence and a throwing storage both read `null`. */
+function peekStorage(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** A module-level parsed snapshot of one `localStorage` key — see {@link createStorageSnapshot}. */
+export interface StorageSnapshot<T> {
+  /** The current value: re-parsed iff the raw string on disk changed since the last read. */
+  get(): T;
+  /** Adopt `value` as current and persist `serialized` (idempotently) under the key. */
+  set(value: T, serialized: string): void;
+  /** Forget the cache; the next `get` re-parses. (Test seam.) */
+  reset(): void;
+}
+
+/**
+ * A parsed snapshot of `key` that cannot go stale (task 1572).
+ *
+ * ## The hazard
+ *
+ * The `useSyncExternalStore` stores attach their {@link subscribeToStorageKey}
+ * listener LAZILY — on the first subscriber — and detach it when the last one
+ * leaves. A module cache that outlives that listener is blind for the gap: a
+ * peer window writes while nothing here is mounted, the next mount reads the
+ * pre-gap cache, and that window's next write serializes it back OVER the
+ * peer's change. Non-React readers (`getToolGutterState`,
+ * `globalDictionary()`) hit the same gap whenever no component is subscribed.
+ *
+ * ## The fix, by construction
+ *
+ * The cache is keyed by the RAW STRING it was parsed from: every `get` peeks
+ * storage (one `getItem`) and re-parses only when the string differs. So the
+ * value is correct whatever the listener is doing — the listener only decides
+ * WHEN readers are told, never WHETHER the next read is fresh — and identity
+ * is stable while the string is (the `useSyncExternalStore` contract).
+ * A `set` whose write fails (quota, private mode) records what IS on disk as
+ * its key, so the in-memory value still holds until disk actually changes.
+ */
+export function createStorageSnapshot<T>(
+  key: string,
+  parse: (raw: string | null) => T,
+): StorageSnapshot<T> {
+  let read = false;
+  let raw: string | null = null;
+  let value!: T;
+  return {
+    get() {
+      const now = peekStorage(key);
+      if (!read || now !== raw) {
+        raw = now;
+        value = parse(now);
+        read = true;
+      }
+      return value;
+    },
+    set(next, serialized) {
+      writeStorageIfChanged(key, serialized);
+      raw = peekStorage(key);
+      value = next;
+      read = true;
+    },
+    reset() {
+      read = false;
+    },
+  };
+}
+
 /**
  * Read `key` as a plain string, with absence and a throwing `localStorage`
  * (private mode, disabled site data, SSR) both reading as `""`. The mirror's

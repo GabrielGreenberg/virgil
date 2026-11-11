@@ -27,10 +27,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { PanelKind } from "@/panels/_shared/types";
-import {
-  subscribeToStorageKey,
-  writeStorageIfChanged,
-} from "@/lib/cross-window-storage";
+import { createStorageSnapshot, subscribeToStorageKey } from "@/lib/cross-window-storage";
 
 export const TOOL_GUTTER_STORAGE_KEY = "virgil:tool-gutter";
 
@@ -133,22 +130,15 @@ export function parseToolGutterState(raw: string | null): ToolGutterState {
   };
 }
 
-function readStored(): ToolGutterState {
-  if (typeof window === "undefined") return DEFAULT_TOOL_GUTTER_STATE;
-  try {
-    return parseToolGutterState(localStorage.getItem(TOOL_GUTTER_STORAGE_KEY));
-  } catch {
-    return DEFAULT_TOOL_GUTTER_STATE;
-  }
-}
-
-let snapshot: ToolGutterState | null = null;
+// Keyed by the raw string on disk, so a read is fresh even across the gap
+// between the last unsubscribe and the next subscribe, when no storage
+// listener is attached (task 1572).
+const snapshot = createStorageSnapshot(TOOL_GUTTER_STORAGE_KEY, parseToolGutterState);
 const listeners = new Set<() => void>();
 let unsubscribeStorage: (() => void) | null = null;
 
 function current(): ToolGutterState {
-  if (snapshot === null) snapshot = readStored();
-  return snapshot;
+  return snapshot.get();
 }
 
 function emit(): void {
@@ -168,21 +158,16 @@ function sameState(a: ToolGutterState, b: ToolGutterState): boolean {
 function commit(next: ToolGutterState): void {
   const prev = current();
   if (sameState(prev, next)) return;
-  snapshot = next;
-  writeStorageIfChanged(TOOL_GUTTER_STORAGE_KEY, JSON.stringify(next));
+  snapshot.set(next, JSON.stringify(next));
   emit();
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (!unsubscribeStorage) {
-    // A peer window wrote — re-read through the one parse path.
-    unsubscribeStorage = subscribeToStorageKey(TOOL_GUTTER_STORAGE_KEY, () => {
-      const next = readStored();
-      if (snapshot && sameState(snapshot, next)) return;
-      snapshot = next;
-      emit();
-    });
+    // A peer window wrote. Readers re-read through the snapshot, whose
+    // identity holds while the raw string does, so an echo re-renders nothing.
+    unsubscribeStorage = subscribeToStorageKey(TOOL_GUTTER_STORAGE_KEY, emit);
   }
   return () => {
     listeners.delete(listener);
@@ -281,6 +266,6 @@ export function routePanelOpenToGutter(id: string, mode: "open" | "toggle"): boo
 
 /** Test seam: drop the cached snapshot so the next read re-parses storage. */
 export function __resetToolGutterStoreForTests(): void {
-  snapshot = null;
+  snapshot.reset();
   emit();
 }

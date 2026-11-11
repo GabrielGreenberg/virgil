@@ -19,19 +19,16 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { subscribeToStorageKey, writeStorageIfChanged } from "@/lib/cross-window-storage";
+import { createStorageSnapshot, subscribeToStorageKey } from "@/lib/cross-window-storage";
 import { withAcceptedTerm, withoutAcceptedTerm } from "@/lib/spell/accepted-words";
 
 export const GLOBAL_DICTIONARY_KEY = "virgil:spell-dictionary";
 
-let cached: readonly string[] | null = null;
 const listeners = new Set<() => void>();
 
 /** Parse + validate — the ONE path, shared by the hydrate and the peer sync. */
-function readFromStorage(): readonly string[] {
-  if (typeof window === "undefined") return [];
+function parseDictionary(raw: string | null): readonly string[] {
   try {
-    const raw = window.localStorage.getItem(GLOBAL_DICTIONARY_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -43,22 +40,24 @@ function readFromStorage(): readonly string[] {
   }
 }
 
+// Keyed by the raw string on disk, so a read is fresh even while no
+// subscriber holds the storage listener (task 1572).
+const cached = createStorageSnapshot(GLOBAL_DICTIONARY_KEY, parseDictionary);
+
 function emit(): void {
   for (const l of listeners) l();
 }
 
 /** The current list. Stable by identity until it actually changes. */
 export function globalDictionary(): readonly string[] {
-  if (!cached) cached = readFromStorage();
-  return cached;
+  return cached.get();
 }
 
 /** Replace the list — the ONE write, under both the add and the remove door
  *  (and tests). */
 export function setGlobalDictionary(words: readonly string[]): void {
   const next = Object.freeze([...new Set(words.map((w) => w.trim()).filter(Boolean))]);
-  cached = next;
-  writeStorageIfChanged(GLOBAL_DICTIONARY_KEY, JSON.stringify(next));
+  cached.set(next, JSON.stringify(next));
   emit();
 }
 
@@ -87,7 +86,7 @@ export function removeFromGlobalDictionary(word: string): void {
 
 /** Test seam: forget the module snapshot so the next read re-hydrates. */
 export function __resetGlobalDictionaryForTest(): void {
-  cached = null;
+  cached.reset();
   emit();
 }
 
@@ -96,10 +95,7 @@ let unsubscribeStorage: (() => void) | null = null;
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (!unsubscribeStorage) {
-    unsubscribeStorage = subscribeToStorageKey(GLOBAL_DICTIONARY_KEY, () => {
-      cached = readFromStorage();
-      emit();
-    });
+    unsubscribeStorage = subscribeToStorageKey(GLOBAL_DICTIONARY_KEY, emit);
   }
   return () => {
     listeners.delete(listener);
