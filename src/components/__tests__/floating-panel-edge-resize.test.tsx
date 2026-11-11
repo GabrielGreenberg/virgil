@@ -461,3 +461,54 @@ describe("unmount mid-resize (task 1095)", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe("pressing any part of a float brings it forward (task 1567)", () => {
+  function renderFocusable() {
+    const onFocus = vi.fn();
+    render(
+      <FloatingPanel
+        cardKey="note:n1"
+        mode="floating"
+        surface="card"
+        initialX={INIT.x}
+        initialY={INIT.y}
+        initialWidth={INIT.width}
+        initialHeight={INIT.height}
+        zIndex={1200}
+        onChange={vi.fn()}
+        onFocus={onFocus}
+      >
+        <div data-testid="body">float body</div>
+        <button data-testid="stopper" onMouseDown={(e) => e.stopPropagation()}>
+          x
+        </button>
+      </FloatingPanel>,
+    );
+    const shell = document.querySelector<HTMLDivElement>(
+      '[data-floating-panel="true"]',
+    )!;
+    return { shell, onFocus };
+  }
+
+  for (const edge of ["left", "right", "bottom", "bottom-left", "bottom-right"]) {
+    it(`a press on the ${edge} zone records focus and still arms the resize`, () => {
+      const { shell, onFocus } = renderFocusable();
+      fireEvent.mouseDown(zone(shell, edge), { button: 0, clientX: 300, clientY: 300 });
+      expect(onFocus).toHaveBeenCalledTimes(1);
+      expect(document.body.style.userSelect).toBe("none");
+      release(300, 300);
+    });
+  }
+
+  it("a descendant that stops its own press cannot opt out", () => {
+    const { shell, onFocus } = renderFocusable();
+    fireEvent.mouseDown(shell.querySelector('[data-testid="stopper"]')!, { button: 0 });
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it("a press on the body records focus exactly once", () => {
+    const { shell, onFocus } = renderFocusable();
+    fireEvent.mouseDown(shell.querySelector('[data-testid="body"]')!, { button: 0 });
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+});

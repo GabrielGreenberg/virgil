@@ -194,15 +194,18 @@ export function legacyFlatToCardFloats(
 }
 
 /** The Cmd-W target: the most recent entry of the window's MRU float stack
- *  that is ON SCREEN — a panel float (window-wide), or a card float owned by
- *  `ownerOnScreen` (the doc in front; `null` when no doc pane is showing).
- *  A hidden doc's float is never the target (task 1400). */
+ *  that is ON SCREEN — a card float owned by `ownerOnScreen` (the doc in
+ *  front; `null` when no doc pane is showing), or a panel float while ANY doc
+ *  pane is showing. Panel floats are window-wide across docs, but each doc's
+ *  EditorPane paints them, so with no doc pane in front (Library, Reader)
+ *  they are hidden too. A float the user cannot see is never the target
+ *  (tasks 1400, 1567). */
 export function frontmostOnScreen<
   R extends { kind: "panel" } | { kind: "card"; owner: string },
 >(stack: readonly R[], ownerOnScreen: string | null): R | undefined {
   for (let i = stack.length - 1; i >= 0; i--) {
     const r = stack[i];
-    if (r.kind === "panel" || (r as { owner: string }).owner === ownerOnScreen) return r;
+    if (r.kind === "panel" ? ownerOnScreen !== null : r.owner === ownerOnScreen) return r;
   }
   return undefined;
 }

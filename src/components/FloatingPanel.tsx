@@ -1265,7 +1265,9 @@ function FloatingPanelInner({
   // beginResize({...}) with the edges it controls; the handler captures the
   // full original geometry (origX/Y/W/H) — left-edge resize needs origX +
   // origW to keep the right edge pinned — and sets the matching body cursor.
-  // stopPropagation keeps the header move/undock gesture from co-firing.
+  // stopPropagation keeps the press out of the React ancestors a portaled float
+  // still bubbles through; the root records focus on CAPTURE, so it cannot stop
+  // that (task 1567).
   const beginResize = (edges: ResizeEdges) => (e: React.MouseEvent) => {
     if (!isPrimaryDragStart(e)) return;
     dragStateRef.current = {
@@ -1429,7 +1431,10 @@ function FloatingPanelInner({
           ? ({ ...containerStyle, "--link-anchor-color": accentTint } as React.CSSProperties)
           : containerStyle
       }
-      onMouseDown={onFocus}
+      // CAPTURE, not bubble (task 1567): pressing ANY part of a float brings it
+      // forward, and a descendant that stops its own press (the edge zones, a
+      // header control) must not be able to opt out of that.
+      onMouseDownCapture={onFocus}
     >
       <div
         onMouseDown={onHeaderMouseDown}
