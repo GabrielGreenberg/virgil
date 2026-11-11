@@ -46,6 +46,7 @@ import { Extension } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { RefObject } from "react";
 import { surfaceIsEditable } from "./surface-editable";
 import {
@@ -172,6 +173,8 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
       pos: number;
       /** The grabbed atom's entity id, or null for the id-less kinds. */
       atomId: string | null;
+      /** The grabbed node at mousedown — the id-less kinds' identity (task 1574). */
+      atomNode: PMNode;
       atomEl: HTMLElement;
       startX: number;
       startY: number;
@@ -319,6 +322,10 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         // captured `pos` is an address in a document that can move under the
         // gesture; the id is the same atom whatever the document did.
         atomId: pending.atomId,
+        // ...and, for the kinds with NO id, the node's CONTENT (task 1574):
+        // without it the commit can only check kind, which a same-kind
+        // neighbour shifted into this position passes.
+        atomNode: pending.atomNode,
         editor,
         pos: pending.pos,
       });
@@ -462,10 +469,13 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
               if (!meta) return false;
               const pos = resolveAtomPos(view, atomEl, meta);
               if (pos == null) return false;
+              const atomNode = view.state.doc.nodeAt(pos);
+              if (!atomNode) return false;
               pending = {
                 meta,
                 pos,
                 atomId: atomIdOf(view, pos, meta),
+                atomNode,
                 atomEl,
                 startX: event.clientX,
                 startY: event.clientY,

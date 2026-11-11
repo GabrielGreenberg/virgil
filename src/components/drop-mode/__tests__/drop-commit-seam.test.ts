@@ -75,6 +75,16 @@ function schemaWithAtoms() {
         attrs: { citationId: { default: "" }, command: { default: "" } },
         toDOM: () => ["span", { "data-type": "citation" }, "c"],
       },
+      // An id-less kind (`ATOM_REGISTRY.ref.idAttr: null`) — its identity is
+      // its content (task 1574).
+      labelRef: {
+        group: "inline",
+        inline: true,
+        atom: true,
+        selectable: false,
+        attrs: { label: { default: "" }, refCommand: { default: "ref" } },
+        toDOM: () => ["span", { "data-type": "label-ref" }, "r"],
+      },
     },
   });
 }
@@ -373,6 +383,7 @@ describe("two adjacent same-kind atoms — the one you grab is the one that move
       kind: "citation",
       nodeName: "citation",
       atomId: "c-b",
+      atomNode: harness.getDoc().nodeAt(CITE_B_POS)!,
       editor: harness.editor,
       pos: CITE_B_POS,
     });
@@ -397,6 +408,94 @@ describe("two adjacent same-kind atoms — the one you grab is the one that move
       "c-b",
       "c-a",
     ]);
+  });
+});
+
+// ── 3b. An id-less atom is named by CONTENT (task 1574) ─────────────────────
+
+/** `<p>alpha omega[ref b]</p>` — one id-less atom. */
+function docWithRef(label: string) {
+  return MAIN.node("doc", null, [
+    MAIN.node("paragraph", null, [
+      MAIN.text("alpha omega"),
+      MAIN.nodes.labelRef.create({ label }),
+    ]),
+  ]);
+}
+
+const REF_POS = 12;
+
+function refLabels(doc: PMNode): string[] {
+  return atomIds(doc, "labelRef", "label");
+}
+
+function stashRef(harness: ReturnType<typeof mockEditor>, token: string) {
+  stashInlineAtomSource({
+    token,
+    kind: "ref",
+    nodeName: "labelRef",
+    atomId: null,
+    atomNode: harness.getDoc().nodeAt(REF_POS)!,
+    editor: harness.editor,
+    pos: REF_POS,
+  });
+}
+
+describe("an id-less atom (\\ref) — the one you grab is the one that moves", () => {
+  it("control: an unmutated doc resolves the captured atom on the fast path", () => {
+    const harness = mockEditor(MAIN, docWithRef("b"));
+    const ctx = { mainEditor: harness.editor } as unknown as DropCtx;
+    stashRef(harness, "r0");
+    try {
+      inTextAtomGrabSpec.applyDrop(inlineCursor(harness.editor, 1), "atom-grab:r0", ctx);
+    } finally {
+      clearInlineAtomSource();
+    }
+    const first = harness.getDoc().firstChild!.firstChild!;
+    expect(first.type.name).toBe("labelRef");
+    expect(first.attrs.label).toBe("b");
+  });
+
+  it("an edit that lands a DIFFERENT-label ref at the captured position moves the captured one", () => {
+    const harness = mockEditor(MAIN, docWithRef("b"));
+    const ctx = { mainEditor: harness.editor } as unknown as DropCtx;
+    stashRef(harness, "r1");
+    // A peer inserts "x\ref{c}" just before \ref{b} — so the captured
+    // position now holds \ref{c}: the same kind, a different atom.
+    harness.editor.view.dispatch(
+      harness.editor.state.tr.insert(REF_POS - 1, [
+        MAIN.text("x"),
+        MAIN.nodes.labelRef.create({ label: "c" }),
+      ]),
+    );
+    expect(harness.getDoc().nodeAt(REF_POS)?.attrs.label).toBe("c");
+
+    try {
+      inTextAtomGrabSpec.applyDrop(inlineCursor(harness.editor, 1), "atom-grab:r1", ctx);
+    } finally {
+      clearInlineAtomSource();
+    }
+
+    // \ref{b} moved to the head; \ref{c} stayed put.
+    expect(refLabels(harness.getDoc())).toEqual(["b", "c"]);
+  });
+
+  it("refuses (silent no-op) when no content-equal atom remains", () => {
+    const harness = mockEditor(MAIN, docWithRef("b"));
+    const ctx = { mainEditor: harness.editor } as unknown as DropCtx;
+    stashRef(harness, "r2");
+    // A peer REWRITES the ref's label in place: same kind, same position, a
+    // different atom — and the grabbed one is gone.
+    harness.editor.view.dispatch(
+      harness.editor.state.tr.setNodeMarkup(REF_POS, undefined, { label: "z" }),
+    );
+    const before = harness.getDoc();
+    try {
+      inTextAtomGrabSpec.applyDrop(inlineCursor(harness.editor, 1), "atom-grab:r2", ctx);
+    } finally {
+      clearInlineAtomSource();
+    }
+    expect(harness.getDoc().eq(before)).toBe(true);
   });
 });
 

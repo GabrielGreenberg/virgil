@@ -689,9 +689,9 @@ function locateAtom(
  * gesture; the id is the same atom whatever the document did.
  *
  * Only the Card-bearing kinds have an id to ask by (`ATOM_REGISTRY.idAttr` —
- * footnote / citation). `ref` and `inline-math` own no Card and no id, so their
- * only address IS the captured position, and their callers keep the position
- * form with a node-kind check. That asymmetry is the registry's, not a gap here.
+ * footnote / citation). `ref`, `inline-math` and `dynamic` own no Card and no
+ * id; their identity is their CONTENT, asked by {@link findAtomByContent}
+ * (task 1574). The rule: id where the registry has one, content otherwise.
  */
 export function findAtomById(
   editor: Editor,
@@ -705,6 +705,46 @@ export function findAtomById(
     if (node.type.name !== nodeName) return true;
     if (node.attrs?.[idAttr] !== id) return true;
     found = { editor, node, from: pos, to: pos + node.nodeSize };
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Is `node` the same id-less atom as `captured`, by CONTENT (task 1574)? Same
+ * type, same attrs (the `\ref` label, the math source, the dynamic command),
+ * same content. Marks are deliberately NOT compared: a peer bolding the run
+ * around an atom has not made it a different atom.
+ */
+export function atomContentEquals(node: PMNode, captured: PMNode): boolean {
+  return (
+    node.hasMarkup(captured.type, captured.attrs, node.marks) &&
+    node.content.eq(captured.content)
+  );
+}
+
+/**
+ * The id-less atom content-equal to `captured`, in THIS editor's document,
+ * NEAREST to `nearPos` (the position it was captured at) — the id-less kinds'
+ * answer to {@link findAtomById} (task 1574). Content-equal atoms are
+ * interchangeable, so among several the nearest is the one the gesture meant;
+ * none at all means the atom is gone, and the caller refuses.
+ */
+export function findAtomByContent(
+  editor: Editor,
+  captured: PMNode,
+  nearPos: number,
+): AtomLocation | null {
+  let found: AtomLocation | null = null;
+  let bestDist = Infinity;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type !== captured.type) return true;
+    if (!atomContentEquals(node, captured)) return false;
+    const dist = Math.abs(pos - nearPos);
+    if (dist < bestDist) {
+      bestDist = dist;
+      found = { editor, node, from: pos, to: pos + node.nodeSize };
+    }
     return false;
   });
   return found;
