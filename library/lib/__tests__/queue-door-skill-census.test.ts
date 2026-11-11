@@ -22,6 +22,15 @@
  *      the app refused the user's re-file as "already being processed",
  *      merge-bibs counted a phantom writer, and the failure was never
  *      charged toward poisoning.
+ *   6. in every skill that CLAIMS, each terminal exit names its queue verb
+ *      (task 1576): a skill that declares a closed exit vocabulary
+ *      (`**Permitted exits`, one `` - `KEYWORD` `` bullet each) maps every
+ *      keyword to `retire` or `release` in ONE `**Exit → queue verb` table,
+ *      and every bold-labelled `…short-circuit…` paragraph — an early exit
+ *      that skips the work — names `retire` or `release` itself. The
+ *      deep-index converged-resume short-circuit named neither, so a
+ *      re-requested finished paper sat `running` and was re-dispatched by
+ *      every drain, forever.
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
@@ -115,5 +124,35 @@ describe("CENSUS: skills retire queue requests only through the claimed door (ta
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("every terminal exit of a claiming skill names its queue verb (task 1576)", () => {
+    const offenders: string[] = [];
+    let tables = 0;
+    for (const { name, text } of all) {
+      if (!/queue_slot\.py claim --kind/.test(text)) continue;
+      const body = prose(text);
+      const exits = body.match(/\*\*Permitted exits[\s\S]*?(?=\n\n(?!- ))/)?.[0] ?? "";
+      const keywords = [...exits.matchAll(/^- `([A-Z][A-Z_]+)`/gm)].map((m) => m[1]);
+      if (keywords.length) {
+        const table = body.match(/\*\*Exit → queue verb[\s\S]*?(?=\n\n(?!\|))/)?.[0];
+        if (!table) offenders.push(`${name}: declares exits ${keywords.join(", ")} but no "Exit → queue verb" table`);
+        else {
+          tables++;
+          for (const k of keywords) {
+            const row = table.split("\n").find((l) => l.startsWith("|") && l.includes(`\`${k}\``));
+            if (!row || !/`(retire|release)`/.test(row)) offenders.push(`${name}: exit ${k} names no queue verb`);
+          }
+        }
+      }
+      for (const para of body.split(/\n\s*\n/)) {
+        const label = para.match(/^\*\*([^*]+)\*\*/)?.[1];
+        if (label && /short-circuit/i.test(label) && !/\b(retire|release)[sd]?\b/.test(para)) {
+          offenders.push(`${name}: "${label}" exits early but names no queue verb`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+    expect(tables).toBeGreaterThan(0);
   });
 });

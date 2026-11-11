@@ -151,6 +151,22 @@ refuses to start. Released, the request is `failed`: re-fileable at once,
 re-dispatched by the next `/library/index-pending`, `poisoned` after three
 failures. Only §7 retires; a stalled pass never does.
 
+**Exit → queue verb, stated once** (task 1576). The terminal keyword
+(§Output format) is the authority for what happens to the claim, so an
+early exit that re-emits a keyword inherits that keyword's verb:
+
+| Exit | Queue verb |
+|---|---|
+| `DEEP_INDEX_RESOLVED` | `retire` (§7) |
+| `DEEP_INDEX_NARROW_RESIDUAL` | `retire` (§7) |
+| `DEEP_INDEX_STALLED` | `release` (above) |
+| any error that ends the run before §7 | `release` (above) |
+
+§7 is reached from the end of a converged pass OR straight from the
+converged-resume short-circuit below — a converged paper is a successful
+completion, never a release (released, a re-request of a finished paper
+would be charged as a failure and `poisoned` on the third).
+
 ### Preflight: Resume vs. fresh
 
 **Default is resume.** Before doing anything else, check the catalog
@@ -172,9 +188,13 @@ Read:
 with `DEEP_INDEX_RESOLVED` or `DEEP_INDEX_NARROW_RESIDUAL` AND a
 fresh preflight (re-running `audit_deepindex.py --exit-on-suppressed`
 and `pgmark_validate.py --baseline-from-catalog`) reproduces an
-identical punch-list fingerprint, emit a one-line addendum log
-("carried over, no work this pass") and re-emit the same terminal
-keyword. Don't dispatch the §3 subskills. The haugeland1991representational
+identical punch-list fingerprint, AND the request claimed in §Claim
+carries no `note` and no `paper-review` was claimed alongside it (either
+is new direction the old fingerprint cannot answer — run the pass), emit
+a one-line addendum log ("carried over, no work this pass"), re-emit the
+same terminal keyword, then run §7 — `retire` the claim (and nothing
+else) per the exit table in §Claim — and stop. Don't dispatch the §3
+subskills. The haugeland1991representational
 memo flagged 5 consecutive identical resume passes generating
 near-duplicate streamlining memos; this short-circuit stops that
 churn.
@@ -263,7 +283,8 @@ is already `@book` with a matching title → skip". Nothing here needs a
 "have we preflighted?" flag.
 
 **Skipped when the converged-resume short-circuit above fired** — that
-branch dispatches no subskills at all and re-emits the prior keyword.
+branch dispatches no subskills at all, re-emits the prior keyword and
+retires its claim (§7).
 
 **If di-preflight reports `PREFLIGHT_BLOCKED reason=<token>`**, stop the
 pass: leave `indexed.state` untouched, append ONE `deep-index-blocked`
