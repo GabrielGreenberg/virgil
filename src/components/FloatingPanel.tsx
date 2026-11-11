@@ -486,6 +486,12 @@ function FloatingPanelInner({
         // hover-offers-what-the-commit-accepts law on the one path that exists
         // to end the gesture safely (task 330 review).
         lastCursor: { x: number; y: number } | null;
+        // Has the pointer left the press point at any time in this gesture?
+        // Latched by the one move handler; the end edge reads it, because a
+        // press and release in one place is a click, and a click decides
+        // nothing (task 1568). True from the start for a card-lift hand-off:
+        // that drag began on the card, before this shell existed.
+        moved: boolean;
       }
     | {
         mode: "resize";
@@ -506,6 +512,8 @@ function FloatingPanelInner({
         bounds: FloatViewportBounds;
         /** As above — the shared end edge reads this whichever kind it ends. */
         lastCursor: { x: number; y: number } | null;
+        /** As above. */
+        moved: boolean;
       }
     | null
   >(null);
@@ -773,6 +781,10 @@ function FloatingPanelInner({
       // Remember what we SAW, so an end edge with no coordinate of its own can
       // probe where the outline last did instead of guessing.
       s.lastCursor = { x: e.clientX, y: e.clientY };
+      // Compared with the press point, not "a move fired": the browser can
+      // re-report a still cursor, which is the same reason the undock below
+      // asks dx/dy rather than acting on the event.
+      if (e.clientX !== s.startX || e.clientY !== s.startY) s.moved = true;
       if (s.mode === "move") {
         const dx = e.clientX - s.startX;
         const dy = e.clientY - s.startY;
@@ -968,6 +980,12 @@ function FloatingPanelInner({
      * that is going away has nothing to commit, and under the Escape/cancel
      * doctrine an ending the user did not perform must not decide a move.
      *
+     * A release of a gesture that never moved ends the same way: it is a click,
+     * and the release tests below answer from where the float RESTS. A float
+     * left over the StackIcon or near a dock would otherwise be captured or
+     * redocked by a press on its header, and a rect the viewport clamp has
+     * narrowed would be stored as though the user had chosen it (task 1568).
+     *
      * A release's `cursor` is the release coordinate, or NULL when it was never
      * observed (the missed-release bail). A null cursor is not "the cursor is
      * at 0,0": the cursor-based hit-tests are skipped and the rect-based ones
@@ -993,7 +1011,7 @@ function FloatingPanelInner({
       // never ran still persist where the user dragged to.
       cancelTranslate();
       cancelResize();
-      if (ending.kind === "cancel") {
+      if (ending.kind === "cancel" || !s.moved) {
         clearGestureChrome(s);
         return;
       }
@@ -1060,9 +1078,9 @@ function FloatingPanelInner({
       //
       // Answered from the SAME snapshot the hover asked (never a second, live
       // sweep): what the outline OFFERED and what the release ACCEPTS must
-      // come from one table, so they cannot disagree — and a gesture that
-      // never moved has no snapshot to ask, which is right, since a release
-      // without a move can't have been offered anything either.
+      // come from one table, so they cannot disagree. (`geometry()` captures on
+      // demand; a gesture that never moved returned above, having been offered
+      // nothing.)
       let dropTarget: DockDragTarget | null = null;
       if (wasFloatingMove) {
         const dock = geometry().dock;
@@ -1206,6 +1224,7 @@ function FloatingPanelInner({
       dockedHeight: pendingUndock && primaryRect ? primaryRect.height : null,
       canCapture: cardKey != null && canCaptureToStack(cardKey),
       lastCursor: { x: e.clientX, y: e.clientY },
+      moved: false,
     };
     // Arm the move gesture's locals: no live position yet (the shell is where
     // React rendered it) and no geometry snapshot — the first move captures
@@ -1239,6 +1258,7 @@ function FloatingPanelInner({
           return key != null && canCaptureToStack(key);
         })(),
         lastCursor: { x: clientX, y: clientY },
+        moved: true,
       };
       liveMoveRef.current = null;
       liveResizeRef.current = null;
@@ -1281,6 +1301,7 @@ function FloatingPanelInner({
       origH: pos.height,
       bounds: readFloatViewportBounds(),
       lastCursor: { x: e.clientX, y: e.clientY },
+      moved: false,
     };
     // Arm the resize gesture's locals: nothing live yet, and no frame queued.
     liveResizeRef.current = null;

@@ -555,12 +555,15 @@ describe("the pointer invariants (imported from the engine's SSOT)", () => {
     );
     const header = document.querySelector<HTMLElement>('[data-testid="tall"]')!;
     fireEvent.mouseDown(header, { clientX: 1000, clientY: 100, ...HELD });
-    move(1000, 100); // no displacement; cursor y = 100 → above band0's midpoint
+    // Cursor y = 100 → above band0's midpoint. The 1px nudge is what makes this
+    // a drag: a gesture that never left its press point is a click and redocks
+    // nothing (task 1568).
+    move(1001, 100);
     flushFrame();
     const previewed = getDockDragTarget();
     expect(previewed?.index, "the outline previews the cursor's band").toBe(0);
 
-    move(1000, 100, /* buttons */ 0); // the release we never saw
+    move(1001, 100, /* buttons */ 0); // the release we never saw
     expect(onMaybeRedock).toHaveBeenCalledTimes(1);
     expect(onMaybeRedock.mock.calls[0][0]).toEqual({
       side: previewed!.side,
