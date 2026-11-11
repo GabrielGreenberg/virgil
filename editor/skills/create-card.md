@@ -56,10 +56,37 @@ PANEL is derived from the Task: a Cutter thread → `cutter.json`, else
 `revisions.json`) and lands it as an L3 **proposal**; `--kind=comment` builds a
 Revisions thread's sibling reply (`revision-comment`, a direct create). The
 door copies the source card's anchor, mints ids / timestamps / the self-link,
-stamps `instructions` + `aiOriginRequestId`, and refuses before any write if
-`original_text` is not verbatim in the anchored paragraph or a revision's
-replacement is empty. These are the answer-* / `draft-suggestion` skills'
-outputs — they decide WHETHER to propose; this script only builds.
+stamps `instructions` + `aiOriginRequestId`, and refuses on the contract below.
+These are the answer-* / `draft-suggestion` skills' outputs — they decide
+WHETHER to propose; this script only builds.
+
+### What the proposal door refuses
+
+The ONE statement of `--kind=suggestion`'s refusals (task 1577) — every
+proposing skill cites this block instead of restating it, so a refusal added to
+the door is documented once. The door asks accept's own questions at propose
+time (`apply_response._guard_proposal_landing`), and on any of them **nothing
+is written**; the error names the cause:
+
+1. **No anchor / no `original_text`** — the proposal must name the paragraph
+   and the span it replaces.
+2. **`original_text` not verbatim** in the anchored paragraph — copy it
+   byte-for-byte from the `.tex` (no paraphrase, never the trailing `%!v:`
+   marker). It is accept's stale-guard search key.
+3. **Empty replacement** — refused unless the family means deletion (a Cutter
+   cut may be empty; a revision draft may not — task 957).
+4. **Markers not conserved** (task 1426, [_latex-allowlist.md](_latex-allowlist.md)) —
+   the replacement must carry every `\vcid{…}` / `\vfid{…}` / `\vlid{…}`…`\vlidend{…}`
+   in `original_text` through verbatim, with its id, and add none; a
+   `\vfid`/`\vcid` stays glued to the atom right after it (task 1484 — move the
+   pair, never split it or edit the footnote/citation). A whole cut may take a
+   citation or a range lying wholly inside it, never a footnote.
+5. **`--range` misses the span** — an explicit `--range` must contain
+   `--original` (an inherited span that misses it degrades to the whole
+   paragraph, result `anchorDegraded`, task 1235).
+
+**Authoring rule** (the one that changes what you write): when composing the
+replacement, carry every marker of the original through verbatim and add none.
 
 **Not create-card kinds** (don't route them here): `cutter-comment` (the
 user's own Cutter thread); and the system/derived kinds `ai` (the Task itself), `error` (lint-derived, unpersisted),

@@ -187,9 +187,11 @@ two paths:
    suggestion card (task 1044): the door anchors it to the source note's own
    anchor, files it in `revisions.json`, mints the id / self-link, stamps
    `instructions` and `aiOriginRequestId` (not for a `virtual:` id), and
-   refuses before any write if `original_text` is not verbatim in the
-   anchored paragraph (exclude the `%!v:` marker) or the replacement is
-   empty. Texts go through `@` scratch files ([`_op-json.md`](_op-json.md)):
+   refuses before any write on [create-card.md → "What the proposal door refuses"](create-card.md#what-the-proposal-door-refuses).
+   Copy `original_text` byte-for-byte from the `.tex`, and **carry every
+   marker of the original through verbatim and add none** — a rewritten
+   sentence keeps its `\vcid{…}\cite…` / `\vfid{…}\footnote{…}` atoms
+   whole. Texts go through `@` scratch files ([`_op-json.md`](_op-json.md)):
    ```bash
    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/original" <<'TXT'

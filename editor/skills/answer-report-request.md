@@ -130,9 +130,11 @@ to the prose rather than a report ([_ask-shape.md](_ask-shape.md)), answer it
 responder lands proposals through (task 1044). The door anchors the card to
 the Report Request's own anchor, files it in `revisions.json`, mints the id /
 self-link, stamps `instructions` and `aiOriginRequestId`, leaves the Task
-awaiting review, and refuses before any write if `original_text` is not
-verbatim in the anchored paragraph (exclude the `%!v:` marker) or the
-replacement is empty:
+awaiting review, and refuses before any write on
+[create-card.md → "What the proposal door refuses"](create-card.md#what-the-proposal-door-refuses). Copy `original_text`
+byte-for-byte from the `.tex`, and **carry every marker of the original through
+verbatim and add none** — a rewritten sentence keeps its `\vcid{…}\cite…` /
+`\vfid{…}\footnote{…}` atoms whole:
 ```bash
 t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
 cat > "$t/original" <<'TXT'

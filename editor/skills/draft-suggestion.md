@@ -157,11 +157,8 @@ this skill.
    misses it is refused; an inherited span that misses it degrades to the whole
    paragraph (result `anchorDegraded`, task 1235).
 
-6. **What the door guarantees** (so don't restate it). The write is refused —
-   nothing lands — when `original_text` is not found verbatim in the anchored
-   paragraph (a paraphrase, or a span that swallowed the `%!v:` marker: the
-   same locator accept's stale guard splices through), or when a revision's
-   replacement is empty (task 957; only a Cutter cut may be empty). On success
+6. **What the door guarantees** (so don't restate it). What it refuses —
+   nothing lands — is [create-card.md → "What the proposal door refuses"](create-card.md#what-the-proposal-door-refuses). On success
    the card lands `pending`, the Task is left **awaiting review** (`status:
    in-progress`, `resultId` → the card), the replacement is not applied (a `--range` anchor still lands —
    [_safety-levels.md](_safety-levels.md)), and the
