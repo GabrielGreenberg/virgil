@@ -64,6 +64,8 @@ export interface BibOpenViewProps {
   cites: readonly GutterCitation[];
   bibEntries: readonly BibEntry[];
   sections: readonly GutterSectionHead[];
+  /** The doc `cites` and `sections` were read from — ONE snapshot, never the
+   *  live doc beside positions read earlier (task 1570). */
   doc: PMNode | null;
   annotation?: string;
   /** One part of the entry's own card. */
@@ -222,6 +224,9 @@ export function sentencePartsAt(
   bibEntries: readonly BibEntry[],
   citeText?: (command: string) => string,
 ): { lead: string; before: string; cite: string; after: string } {
+  // `pos` must come from the read `doc` came from (the reading lists'
+  // snapshot, task 1570); one from any other revision is refused, not resolved.
+  if (pos < 0 || pos >= doc.content.size) return { lead: "", before: "", cite: "", after: "" };
   const at = doc.nodeAt(pos);
   if (at?.type.name === "footnote") {
     const t = readableInline(richJsonToPlainText(at.attrs.content), bibEntries).replace(/\s+/g, " ").trim();

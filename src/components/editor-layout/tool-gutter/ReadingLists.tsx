@@ -25,7 +25,6 @@ import {
   useBibLibraryFlow,
   type BibLibraryFlow,
 } from "@/panels/Bibliography/bib-library-flow";
-import { readDocStructure } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { countLabelRefs } from "@/lib/tiptap/label-rename";
@@ -42,6 +41,7 @@ import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { GutterList } from "./GutterList";
+import { readReadingSnapshot, type ReadingSnapshot } from "./reading-snapshot";
 import { BibOpenView } from "./BibOpenView";
 import {
   bibliographyGroups,
@@ -49,7 +49,6 @@ import {
   exampleGroups,
   footnoteGroups,
   referenceParts,
-  topSections,
   type GutterCardRef,
   type GutterCitation,
   type GutterListGroup,
@@ -97,6 +96,8 @@ export interface ReadingListsData {
 const NO_SAVE = (() => Promise.resolve(undefined)) as unknown as SaveBibEntry;
 const NO_REVIEW = (() => Promise.resolve(undefined)) as unknown as RequestBibReview;
 const NO_REQUEST = () => {};
+const NO_SECTIONS: readonly GutterSectionHead[] = [];
+const NO_ROWS: readonly never[] = [];
 
 export function ReadingList({
   kind,
@@ -111,13 +112,26 @@ export function ReadingList({
   const sel = useSelectionsContext();
   const cardStore = useCardStore();
   const rev = useStructuralRevisions(editorInstance);
-  // Headings only change on a structural edit (`rev.headings`), never on a
-  // keystroke, so the sections are re-read at that pace.
-  const sections = useMemo<GutterSectionHead[]>(
-    () => (editorInstance && !editorInstance.isDestroyed ? topSections(readDocStructure(editorInstance.state).headings, (pos) => editorInstance.state.doc.nodeAt(pos)?.textContent ?? "") : []),
+  // ONE positions snapshot for everything the lists file or resolve —
+  // sections, every row's `pos`, and the doc they address (task 1570). Re-read
+  // on a structural change or new rows, never per keystroke: typing shifts
+  // positions but cannot reorder a row against a heading.
+  const snap = useMemo<ReadingSnapshot | null>(
+    () =>
+      editorInstance && !editorInstance.isDestroyed
+        ? readReadingSnapshot(editorInstance.state, {
+            footnotes: data.footnotes,
+            examples: data.examples,
+            citations: data.editorCitations,
+          })
+        : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editorInstance, rev.headings],
+    [editorInstance, data, rev.headings, rev.footnotes, rev.citations, rev.examples, rev.blocks],
   );
+  const sections: readonly GutterSectionHead[] = snap?.sections ?? NO_SECTIONS;
+  const footnotes = snap?.footnotes ?? NO_ROWS;
+  const examples = snap?.examples ?? NO_ROWS;
+  const cites = snap?.citations ?? NO_ROWS;
 
   const { getView } = useCardArchiveView();
   const fnView = getView("footnotes");
@@ -159,21 +173,20 @@ export function ReadingList({
   const groups = useMemo<GutterListGroup[]>(() => {
     switch (kind) {
       case "footnotes":
-        return footnoteGroups(data.footnotes, data.orphanedFootnotes, data.unanchoredFootnotes, sections, fnView);
+        return footnoteGroups(footnotes, data.orphanedFootnotes, data.unanchoredFootnotes, sections, fnView);
       case "examples": {
-        const doc = editorInstance && !editorInstance.isDestroyed ? editorInstance.state.doc : null;
-        return exampleGroups(data.examples, (label) => (doc ? countLabelRefs(doc, label) : 0));
+        const doc = snap?.doc ?? null;
+        return exampleGroups(examples, (label) => (doc ? countLabelRefs(doc, label) : 0));
       }
       case "bibliography":
         return filterBib(
-          bibliographyGroups(data.bibEntries, data.editorCitations, sections, bibMode, citedOnly),
+          bibliographyGroups(data.bibEntries, cites, sections, bibMode, citedOnly),
           scope === "local" ? query : null,
         );
     }
     // `rev.labels`-free on purpose: example ref counts refresh with the
     // examples list itself (a `\ref` edit is a structural change upstream).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, data, sections, fnView, bibMode, citedOnly, query, scope, editorInstance]);
+  }, [kind, data, snap, sections, footnotes, examples, cites, fnView, bibMode, citedOnly, query, scope]);
 
   const count = useMemo(() => {
     if (kind === "bibliography") return new Set(data.bibEntries.map((e) => e.key)).size;
@@ -188,14 +201,13 @@ export function ReadingList({
   // browser reports crossings, and nothing here reads layout.
   const targets = useMemo(() => {
     const out: { id: string; pos: number }[] = [];
-    if (kind === "footnotes") for (const f of data.footnotes) out.push({ id: f.footnoteId, pos: f.pos });
-    else if (kind === "examples") for (const e of data.examples) out.push({ id: e.exampleId, pos: e.pos });
-    else for (const c of data.editorCitations) for (const k of c.keys) out.push({ id: k, pos: c.pos });
+    if (kind === "footnotes") for (const f of footnotes) out.push({ id: f.footnoteId, pos: f.pos });
+    else if (kind === "examples") for (const e of examples) out.push({ id: e.exampleId, pos: e.pos });
+    else for (const c of cites) for (const k of c.keys) out.push({ id: k, pos: c.pos });
     return out;
-    // Positions are read once per structural revision: plain typing shifts
-    // them, but the observed DOM nodes are the same nodes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, rev.footnotes, rev.citations, rev.examples, editorInstance]);
+    // Positions come from the snapshot, read at structural pace: plain typing
+    // shifts them, but the observed DOM nodes are the same nodes.
+  }, [kind, footnotes, examples, cites]);
   const hereIds = useOnScreenIds(editorInstance, targets);
 
   // ── Selection, jumps, stepping ──────────────────────────────────────────
@@ -207,7 +219,7 @@ export function ReadingList({
     return s;
   }, [selected, selectedBibKey]);
 
-  const byKey = useMemo(() => citationsByKey(data.editorCitations), [data.editorCitations]);
+  const byKey = useMemo(() => citationsByKey(cites), [cites]);
   const [occurrence, setOccurrence] = useState<Record<string, number>>({});
 
   const onSelect = useCallback(
@@ -283,17 +295,17 @@ export function ReadingList({
           citationIds={byKey.get(card.key) ?? []}
           current={occurrence[card.key] ?? -1}
           goTo={(i, el) => goTo(card.key, i, el)}
-          cites={data.editorCitations}
+          cites={cites}
           bibEntries={data.bibEntries}
           sections={sections}
-          doc={editorInstance && !editorInstance.isDestroyed ? editorInstance.state.doc : null}
+          doc={snap?.doc ?? null}
           annotation={data.bibActions?.getAnnotation?.(card.key)}
           renderSection={data.renderCard}
         />
       ) : (
         data.renderCard(card)
       ),
-    [data, byKey, occurrence, goTo, sections, editorInstance],
+    [data, byKey, occurrence, goTo, sections, cites, snap],
   );
 
   return (
