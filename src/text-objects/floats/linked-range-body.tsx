@@ -80,6 +80,7 @@ import {
   planLinkedRangeWriteBack,
   type LinkedRangeRefusal,
 } from "@/lib/linked-range-writeback";
+import { anyContent } from "@/lib/tiptap/bound-root";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { TextObjectFloatBodyProps } from "../types";
@@ -165,6 +166,8 @@ export function LinkedRangeBody({
       surface: "float",
       editable: floatEditable,
       cardContext: true,
+      // Select-all means the range's text, never the doc (task 1565).
+      boundRoot: anyContent,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
       },
@@ -214,6 +217,7 @@ export function LinkedRangeBody({
         r,
         floatEd.getJSON(),
         floatEd.schema,
+        anchorId,
       );
     } catch (err) {
       // A stale range (positions past the doc end) — nothing was written.
@@ -221,10 +225,19 @@ export function LinkedRangeBody({
       return;
     }
     if (!plan.ok) {
-      reportRefusal(floatEd, plan);
+      if ("editRefused" in plan) {
+        reportWrite({ status: "refused", reason: plan.editRefused });
+      } else {
+        reportRefusal(floatEd, plan);
+      }
       return;
     }
-    if (!plan.tr) return;
+    // An unchanged echo means float and paper agree, so a banner from an
+    // earlier refused edit (now undone) has nothing left to describe.
+    if (!plan.tr) {
+      reportWrite({ status: "unchanged" });
+      return;
+    }
     plan.tr.setMeta("addToHistory", false);
     plan.tr.setMeta(FLOAT_WRITE_META, floatId);
     // Measured, not assumed (task 1546): main's read-only enforcer drops the

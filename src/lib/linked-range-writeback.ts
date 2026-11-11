@@ -23,13 +23,24 @@
  * REFUSES — no dispatch — rather than skipping. Pure (no React, no view): the
  * body dispatches what this returns, and the tests drive it directly.
  *
+ * A third loss is the float's own (task 1565): the write can erase the
+ * `linkedAnchor` mark that addresses the range. Typing over the whole range
+ * drops the mark, because it is `inclusive: false` and the selection reaches the
+ * run's end. The door measures the planned write: text that lost its anchor is
+ * re-stamped with the source's mark, and a write with no text left to carry it
+ * is refused, recoverably, since the float can still undo or retype.
+ *
  * Cost: one slice + one `nodeFromJSON` of the RANGE per float edit — the same
  * order as the `getJSON` the write-back already pays; never document-sized.
  */
 import type { JSONContent } from "@tiptap/core";
-import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import type { Mark, Node as PMNode, Schema } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
-import { blocksToRangeSlice, rangeSliceToBlocks } from "./linked-anchor-range";
+import {
+  blocksToRangeSlice,
+  findLinkedAnchorRange,
+  rangeSliceToBlocks,
+} from "./linked-anchor-range";
 import {
   canMountInSchema,
   invalidContentNodes,
@@ -70,6 +81,17 @@ export interface LinkedRangeRefusal {
    *  node types whose content it cannot hold in that shape. May be empty. */
   constructs: string[];
 }
+
+/** The edit would leave the range with no text to anchor to. Unlike a
+ *  `LinkedRangeRefusal` this says nothing about the float's fitness: the float
+ *  stays editable, and undoing or retyping lands normally. */
+export interface LinkedRangeEditRefusal {
+  ok: false;
+  editRefused: string;
+}
+
+export const LINKED_RANGE_EMPTIED_REASON =
+  "This edit couldn't be saved — a linked range can't be left empty. Type new text, or undo.";
 
 function refusal(schema: Schema, json: unknown, reason: string): LinkedRangeRefusal {
   const missing = unsupportedConstructs(schema, json);
@@ -112,7 +134,8 @@ export function planLinkedRangeWriteBack(
   range: { from: number; to: number },
   floatDoc: JSONContent,
   floatSchema: Schema,
-): { ok: true; tr: Transaction | null } | LinkedRangeRefusal {
+  anchorId: string,
+): { ok: true; tr: Transaction | null } | LinkedRangeRefusal | LinkedRangeEditRefusal {
   // 1. Did the float hold everything the replace would remove?
   const held = checkLinkedRangeRepresentable(
     floatSchema,
@@ -132,10 +155,67 @@ export function planLinkedRangeWriteBack(
   // unedited round-trip is byte-identical and an edited one preserves the
   // boundary paragraphs (the L3f-7 bug was replacing with closed blocks).
   const slice = blocksToRangeSlice(state.doc, range, blocks);
+  const anchor = anchorMarkIn(state.doc, range, anchorId);
   const tr = state.tr.replace(range.from, range.to, slice);
+  // The anchor must survive the write. Fails open: a range that resolved no
+  // anchor to begin with has nothing to keep.
+  if (anchor) {
+    const written = {
+      from: tr.mapping.map(range.from, -1),
+      to: tr.mapping.map(range.to, 1),
+    };
+    if (!findLinkedAnchorRange(tr.doc, anchorId, undefined, written)) {
+      restampAnchor(tr, written, anchor);
+      if (!findLinkedAnchorRange(tr.doc, anchorId, undefined, written)) {
+        return { ok: false, editRefused: LINKED_RANGE_EMPTIED_REASON };
+      }
+    }
+  }
   // A replace step counts as `docChanged` even when it rebuilds the same
   // content; an unedited round trip must not reach main as a write at all.
   return { ok: true, tr: tr.docChanged && !tr.doc.eq(state.doc) ? tr : null };
+}
+
+function anchorMarkIn(
+  doc: PMNode,
+  range: { from: number; to: number },
+  anchorId: string,
+): Mark | null {
+  let found: Mark | null = null;
+  doc.nodesBetween(range.from, range.to, (node) => {
+    if (found) return false;
+    found =
+      node.marks.find(
+        (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
+      ) ?? null;
+    return !found;
+  });
+  return found;
+}
+
+/** Stamp `anchor` onto the written text. Text under ANOTHER anchor is left
+ *  alone: `linkedAnchor` excludes itself, so stamping it would erase that card's
+ *  anchor to save this one's. */
+function restampAnchor(
+  tr: Transaction,
+  written: { from: number; to: number },
+  anchor: Mark,
+): void {
+  const free: { from: number; to: number }[] = [];
+  tr.doc.nodesBetween(written.from, written.to, (node, pos, parent) => {
+    if (
+      node.isText &&
+      parent?.type.allowsMarkType(anchor.type) &&
+      !anchor.type.isInSet(node.marks)
+    ) {
+      free.push({
+        from: Math.max(pos, written.from),
+        to: Math.min(pos + node.nodeSize, written.to),
+      });
+    }
+    return true;
+  });
+  for (const run of free) tr.addMark(run.from, run.to, anchor);
 }
 
 /** The noun phrase a refusal names: its constructs, else a generic phrase. */

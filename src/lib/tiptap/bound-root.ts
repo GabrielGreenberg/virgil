@@ -28,6 +28,12 @@
  *     the moment the surface re-seeds. A refused gesture leaves the surface and
  *     the paper AGREEING — the silent divergence is what was destroying text.
  *
+ * A MULTI-BLOCK float binds the same way (task 1565). What addresses a section
+ * float is its leading heading (`leadingBlock("heading")`), and rule 2 holds
+ * that heading in place. A linked-range float has no shape to hold, so it
+ * takes rule 1 alone (`anyContent`): its anchor is measured at the write door,
+ * `planLinkedRangeWriteBack`, because the check is O(range), not O(1).
+ *
  * Fail open: the guard binds only a doc that IS bound. A surface seeded with
  * some other shape (a disconnected placeholder) is never frozen by it.
  *
@@ -53,18 +59,27 @@ export function soleRoot(...types: string[]): BoundRootPredicate {
     doc.childCount === 1 && types.includes(doc.firstChild!.type.name);
 }
 
+/** The doc may hold several blocks, but the first must be one of `types`. */
+export function leadingBlock(...types: string[]): BoundRootPredicate {
+  return (doc) => !!doc.firstChild && types.includes(doc.firstChild.type.name);
+}
+
+/** No shape to hold: the surface takes rule 1 (select-all) and nothing else. */
+export const anyContent: BoundRootPredicate = () => true;
+
 export const boundRootKey = new PluginKey("boundRoot");
 
-/** The selection "select all" means on a bound surface: the root's content.
+/** The selection "select all" means on a bound surface: the content, from the
+ *  first text position to the last (across every block of a multi-block doc).
  *  Null when the root offers no such selection (then the AllSelection
  *  stands — the filter still protects the root). */
 export function rootContentSelection(doc: PMNode): Selection | null {
   const root = doc.firstChild;
   if (!root) return null;
-  if (root.isLeaf) {
+  if (root.isLeaf && doc.childCount === 1) {
     return NodeSelection.isSelectable(root) ? NodeSelection.create(doc, 0) : null;
   }
-  const end = root.nodeSize; // position just after the root
+  const end = doc.content.size; // position just after the last block
   const first = Selection.findFrom(doc.resolve(1), 1, true);
   const last = Selection.findFrom(doc.resolve(end - 1), -1, true);
   if (!first || !last) return null;

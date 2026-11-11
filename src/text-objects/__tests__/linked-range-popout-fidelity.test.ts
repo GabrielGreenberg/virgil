@@ -203,6 +203,8 @@ describe("linkedRange float schema (buildEditorExtensions surface:'float')", () 
 describe("planLinkedRangeWriteBack — never delete what the float did not hold", () => {
   const mainSchema = getSchema(buildEditorExtensions(mainCtx()));
   const floatSchema = getSchema(buildEditorExtensions(floatCtx()));
+  // These ranges hold no anchor, so the write door's anchor check fails open.
+  const ANCHOR_ID = "unanchored";
 
   const para = (text: string) => ({
     type: "paragraph",
@@ -237,7 +239,7 @@ describe("planLinkedRangeWriteBack — never delete what the float did not hold"
   it("an unedited round trip writes nothing (byte-identical)", () => {
     const s = mainState();
     const seed = linkedRangeAsDoc(s.doc, wholeRange(s))!;
-    const plan = planLinkedRangeWriteBack(s, wholeRange(s), seed, floatSchema);
+    const plan = planLinkedRangeWriteBack(s, wholeRange(s), seed, floatSchema, ANCHOR_ID);
     expect(plan.ok).toBe(true);
     expect(plan.ok && plan.tr).toBeNull();
   });
@@ -249,7 +251,7 @@ describe("planLinkedRangeWriteBack — never delete what the float did not hold"
       ...seed,
       content: [...seed.content!.slice(0, -1), para("second, edited")],
     };
-    const plan = planLinkedRangeWriteBack(s, wholeRange(s), edited, floatSchema);
+    const plan = planLinkedRangeWriteBack(s, wholeRange(s), edited, floatSchema, ANCHOR_ID);
     expect(plan.ok && plan.tr).toBeTruthy();
     const next = plan.ok && plan.tr ? plan.tr.doc : null;
     const types: string[] = [];
@@ -265,9 +267,9 @@ describe("planLinkedRangeWriteBack — never delete what the float did not hold"
       ...seed,
       content: [...seed.content!, { type: "noSuchNode" }],
     };
-    const plan = planLinkedRangeWriteBack(s, wholeRange(s), planted, floatSchema);
+    const plan = planLinkedRangeWriteBack(s, wholeRange(s), planted, floatSchema, ANCHOR_ID);
     expect(plan.ok).toBe(false);
-    expect(!plan.ok && plan.constructs).toEqual(["noSuchNode"]);
+    expect("constructs" in plan && plan.constructs).toEqual(["noSuchNode"]);
   });
 
   it("a range the FLOAT schema cannot hold → REFUSED (the blank-seed overwrite)", () => {
@@ -281,9 +283,10 @@ describe("planLinkedRangeWriteBack — never delete what the float did not hold"
       wholeRange(s),
       { type: "doc", content: [para("typed into a blank float")] },
       narrow,
+      ANCHOR_ID,
     );
     expect(plan.ok).toBe(false);
-    expect(!plan.ok && plan.constructs).toContain("maketitleMarker");
+    expect("constructs" in plan && plan.constructs).toContain("maketitleMarker");
     expect(
       checkLinkedRangeRepresentable(narrow, linkedRangeAsDoc(s.doc, wholeRange(s))).ok,
     ).toBe(false);
