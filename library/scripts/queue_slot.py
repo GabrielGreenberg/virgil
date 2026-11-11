@@ -64,7 +64,11 @@ The contract, stated once:
    the claimed request (`same_request`: kind + `requestedAt`), so a request
    the user queues mid-run stays queued instead of being copied into `.done`
    unworked. A claim older than `RUNNING_TTL_SECONDS` is abandoned and
-   re-claimable. "Is there a live request?" is ONE predicate in both silos:
+   re-claimable — a backstop for a KILLED worker only: a skill run that
+   STOPS releases its claim (`queue_slot.py release`, task 1575; census
+   `queue-door-skill-census.test.ts`), so the request is `failed` at once —
+   re-fileable from the app, re-claimable (`claim` addresses
+   `CLAIM_ADDRESS_STATUSES`), and charged an attempt. "Is there a live request?" is ONE predicate in both silos:
    `LIVE_STATUSES` over `slot_kinds` (`index` ≈ `reindex`), pinned by
    `queue-slot-parity.test.ts`.
 
@@ -198,6 +202,14 @@ RUNNING_TTL_SECONDS = 60 * 60
 # Statuses a worker may claim: a fresh request and a failed one it retries.
 CLAIMABLE_STATUSES: tuple[str, ...] = (PENDING_STATUS, "failed")
 
+# What `claim` ADDRESSES (task 1575): every live request plus a `failed` one
+# awaiting its retry — the request a released skill run left behind must be
+# the one the next run claims, not a slot `claim` cannot see (the writers'
+# `LIVE_STATUSES` question is unchanged: a failed entry is replaceable).
+CLAIM_ADDRESS_STATUSES: tuple[str, ...] = LIVE_STATUSES + tuple(
+    s for s in CLAIMABLE_STATUSES if s not in LIVE_STATUSES
+)
+
 # Kinds `drain_queue.py` processes itself; every other kind is deferred to a
 # skill (index-pending.md step 2).
 DRAIN_NATIVE_KINDS: tuple[str, ...] = ("index", "reindex")
@@ -314,21 +326,23 @@ def triage_slot_filename(filename: Optional[str]) -> str:
 
 def request_path(
     library: Path, kind: str, *, citekey: Optional[str] = None, filename: Optional[str] = None,
+    statuses: tuple[str, ...] = LIVE_STATUSES,
 ) -> Optional[Path]:
     """The file holding the LIVE request a skill addresses: by `filename`
     for a triage request (contract item 10), by `citekey` for every other
-    kind (`find_request`). None when nothing live is there."""
+    kind (`find_request`). None when nothing live is there. `statuses`
+    widens "live" — `claim` passes `CLAIM_ADDRESS_STATUSES`."""
     if normalize_kind(kind) == TRIAGE_KIND:
         if not filename:
             raise ValueError("a triage request is addressed by --file <unsorted filename>")
         path = queue_dir(library) / triage_slot_filename(filename)
         cur = _read(path) if path.exists() else None
-        if cur and cur.get("kind") == TRIAGE_KIND and cur.get("status") in LIVE_STATUSES:
+        if cur and cur.get("kind") == TRIAGE_KIND and cur.get("status") in statuses:
             return path
         return None
     if not citekey:
         raise ValueError(f"a {kind!r} request is addressed by --citekey")
-    return find_request(library, kind, citekey)
+    return find_request(library, kind, citekey, statuses=statuses)
 
 
 def slot_suffixes() -> tuple[str, ...]:
@@ -578,7 +592,9 @@ def write_deep_index(
     )
 
 
-def find_request(library: Path, kind: str, citekey: str) -> Optional[Path]:
+def find_request(
+    library: Path, kind: str, citekey: str, *, statuses: tuple[str, ...] = LIVE_STATUSES,
+) -> Optional[Path]:
     """The file holding a LIVE (`LIVE_STATUSES`) request of `kind` — or of any
     kind sharing its slot (`slot_kinds`: a `reindex` answers for `index`) —
     for `citekey`, looking in the per-kind slot, (for legacy kinds) the bare
@@ -596,7 +612,7 @@ def find_request(library: Path, kind: str, citekey: str) -> Optional[Path]:
         if (
             cur
             and normalize_kind(str(cur.get("kind") or "")) in kinds
-            and cur.get("status") in LIVE_STATUSES
+            and cur.get("status") in statuses
         ):
             return p
     return None
@@ -771,6 +787,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     r.add_argument("--requested-at", default=None,
                    help="retire only the request `claim` returned (its requestedAt); "
                         "\"\" = this run claimed nothing, so retire nothing")
+    rel = sub.add_parser("release", help="release a claimed request whose run STOPPED "
+                                         "without finishing it (charges one attempt)")
+    rel.add_argument("--kind", required=True)
+    rel.add_argument("--citekey", default=None)
+    rel.add_argument("--file", default=None,
+                     help="triage only: the dropped file's name in unsorted/")
+    rel.add_argument("--library", default=None)
+    rel.add_argument("--requested-at", required=True,
+                     help="release only the request `claim` returned (its requestedAt); "
+                          "\"\" = this run claimed nothing, so release nothing")
+    rel.add_argument("--error", required=True,
+                     help="one line saying why the run stopped (stored as lastError)")
     for name, help_ in (
         ("pending", "list (or count) the requests waiting to be picked up"),
         ("outstanding", "list (or count) the work not yet finished: "
@@ -819,11 +847,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 3 if result in REFUSED_RESULTS else 0
 
     try:
-        path = request_path(library, args.kind, citekey=args.citekey, filename=args.file)
+        path = request_path(
+            library, args.kind, citekey=args.citekey, filename=args.file,
+            statuses=CLAIM_ADDRESS_STATUSES if args.cmd == "claim" else LIVE_STATUSES,
+        )
     except ValueError as e:
         ap.error(str(e))
     if args.cmd == "claim":
         return claim(path)
+    if args.cmd == "release":
+        return release(path, requested_at=args.requested_at, error=args.error)
 
     return retire(library, args.kind, args.citekey, path, requested_at=args.requested_at)
 
@@ -885,6 +918,39 @@ def retire(
             out = {"result": "superseded", "file": path.name}
     if normalize_kind(kind) == REVIEW_KIND and citekey and not left_live:
         out["manifest"] = remove_pending_review(library, citekey)
+    print(json.dumps(out))
+    return 0
+
+
+def release(path: Optional[Path], *, requested_at: str, error: str) -> int:
+    """CLI half of `release_claimed` (task 1575): the ONE non-retire exit of
+    a claimed skill run. Every STOP branch after a `claim` ends here, so the
+    request is never stranded `running` until `RUNNING_TTL_SECONDS`: it
+    becomes `failed` (claimable again, and app-overwritable — the user's
+    re-file lands at once) with `attempts` bumped, or `poisoned` on the
+    third failure. Prints `{"result": "failed"|"poisoned"|"superseded"|
+    "not-claimed"|"nothing-queued"}`:
+
+    - `requested_at == ""` — the run claimed nothing; a request found there
+      is someone else's and is left alone (`not-claimed`).
+    - the slot no longer holds the claimed request, or holds it but not as
+      a live claim (already released) — `superseded`, entry untouched, so a
+      newer request is never charged with this run's failure and a
+      repeated release never double-charges.
+    Always exits 0: the skill is stopping either way."""
+    out: dict[str, Any]
+    if path is None:
+        out = {"result": "nothing-queued"}
+    elif requested_at == "":
+        out = {"result": "not-claimed", "file": path.name}
+    else:
+        cur = _read(path) if path.exists() else None
+        status = None
+        if isinstance(cur, dict) and cur.get("status") == RUNNING_STATUS:
+            status = release_claimed(
+                path, {"kind": cur.get("kind"), "requestedAt": requested_at}, error,
+            )
+        out = {"result": status or "superseded", "file": path.name}
     print(json.dumps(out))
     return 0
 

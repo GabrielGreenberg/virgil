@@ -14,7 +14,14 @@
  *   2. no prose line tells the reader to delete a queue file/entry;
  *   3. no skill globs the triage requests (`_triage-*`);
  *   4. every `queue_slot.py retire` names the request it claimed
- *      (`--requested-at`), and the same skill CLAIMS that kind.
+ *      (`--requested-at`), and the same skill CLAIMS that kind;
+ *   5. every skill that CLAIMS a kind also spells the claim's third verb,
+ *      `queue_slot.py release` for that kind, naming its claim and its
+ *      reason (`--requested-at`, `--error`) — task 1575. Without it every
+ *      STOP after the claim stranded the request `running` for an hour:
+ *      the app refused the user's re-file as "already being processed",
+ *      merge-bibs counted a phantom writer, and the failure was never
+ *      charged toward poisoning.
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
@@ -88,6 +95,23 @@ describe("CENSUS: skills retire queue requests only through the claimed door (ta
         if (!claimed.has(m[1])) {
           offenders.push(`${name}: retires ${m[1]} but never claims it`);
         }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("every skill that claims a kind can release that claim (task 1575)", () => {
+    const offenders: string[] = [];
+    for (const { name, text } of all) {
+      const released = new Set(
+        [...text.matchAll(/queue_slot\.py release --kind (\S+)/g)].map((m) => m[1]),
+      );
+      for (const m of text.matchAll(/queue_slot\.py claim --kind (\S+)/g)) {
+        if (!released.has(m[1])) offenders.push(`${name}: claims ${m[1]} but never releases it`);
+      }
+      for (const m of text.matchAll(/queue_slot\.py release --kind (\S+)[^\n]*/g)) {
+        if (!m[0].includes("--requested-at")) offenders.push(`${name}: ${m[0]} (no --requested-at)`);
+        if (!m[0].includes("--error")) offenders.push(`${name}: ${m[0]} (no --error)`);
       }
     }
     expect(offenders).toEqual([]);

@@ -842,6 +842,108 @@ def test_retire_with_nothing_claimed_retires_nothing(tmp_path, capsys):
         "result": "nothing-queued", "manifest": "removed"}
 
 
+# ── release: the claim's third verb at the CLI (task 1575) ────────────
+
+
+def _claim_cli(lib: Path, capsys, kind="authenticate", citekey="a") -> dict:
+    capsys.readouterr()
+    assert _cli(["claim", "--kind", kind, "--citekey", citekey,
+                 "--library", str(lib)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["result"] == "claimed"
+    return out
+
+
+def _release_cli(lib: Path, capsys, requested_at, kind="authenticate", citekey="a") -> dict:
+    assert _cli(["release", "--kind", kind, "--citekey", citekey,
+                 "--requested-at", requested_at, "--error", "master.bib unreadable",
+                 "--library", str(lib)]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_release_frees_a_stopped_claim_and_charges_one_attempt(tmp_path, capsys):
+    """A skill that claims and then STOPs releases: the entry is `failed`
+    at once — claimable, no `startedAt`, one attempt charged — never left
+    `running` for RUNNING_TTL_SECONDS (the app's re-file would be refused
+    as in flight and merge-bibs would count a phantom writer)."""
+    q = _qdir(tmp_path)
+    slot = q / "a-auth.json"
+    _put(slot, kind="authenticate", status="requested", citekey="a",
+         requestedAt="x", attempts=0)
+    claimed = _claim_cli(tmp_path, capsys)
+    assert queue_slot.in_flight_requests(q) == [slot]
+    out = _release_cli(tmp_path, capsys, claimed["requestedAt"])
+    assert out == {"result": "failed", "file": "a-auth.json"}
+    cur = _read(slot)
+    assert cur["status"] == "failed" and cur["attempts"] == 1
+    assert "startedAt" not in cur and cur["lastError"] == "master.bib unreadable"
+    assert queue_slot.is_claimable(cur)
+    assert queue_slot.in_flight_requests(q) == []
+    # A repeated release (the claim is no longer live) charges nothing.
+    assert _release_cli(tmp_path, capsys, "x")["result"] in ("superseded", "nothing-queued")
+    assert _read(slot)["attempts"] == 1
+
+
+def test_third_release_poisons(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    slot = q / "a-auth.json"
+    _put(slot, kind="authenticate", status="requested", citekey="a",
+         requestedAt="x", attempts=0)
+    results = []
+    for _ in range(3):
+        claimed = _claim_cli(tmp_path, capsys)
+        results.append(_release_cli(tmp_path, capsys, claimed["requestedAt"])["result"])
+    assert results == ["failed", "failed", "poisoned"]
+    assert not queue_slot.is_claimable(_read(slot))
+    # The poisoned request is not claimed a fourth time.
+    assert _cli(["claim", "--kind", "authenticate", "--citekey", "a",
+                 "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["result"] == "nothing-claimable"
+
+
+def test_release_of_a_stale_claim_leaves_the_newer_request(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    slot = q / "a-auth.json"
+    _put(slot, kind="authenticate", status="requested", citekey="a",
+         requestedAt="x", attempts=0)
+    _claim_cli(tmp_path, capsys)
+    # The user re-filed mid-run: a NEW request (still live-claimed shape is
+    # irrelevant — its identity differs).
+    _put(slot, kind="authenticate", status="running", citekey="a",
+         requestedAt="y", attempts=0, startedAt="2026-11-11T00:00:00Z")
+    before = slot.read_text()
+    assert _release_cli(tmp_path, capsys, "x") == {"result": "superseded", "file": "a-auth.json"}
+    assert slot.read_text() == before
+
+
+def test_release_with_nothing_claimed_releases_nothing(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    slot = q / "a-auth.json"
+    _put(slot, kind="authenticate", status="running", citekey="a",
+         requestedAt="x", attempts=0, startedAt="2026-11-11T00:00:00Z")
+    before = slot.read_text()
+    capsys.readouterr()
+    assert _release_cli(tmp_path, capsys, "") == {"result": "not-claimed", "file": "a-auth.json"}
+    assert slot.read_text() == before
+
+
+def test_release_triage_by_file(tmp_path, capsys):
+    q = _qdir(tmp_path)
+    _as_library(tmp_path)
+    capsys.readouterr()
+    slot = q / queue_slot.triage_slot_filename("a.pdf")
+    _put(slot, kind="triage", status="requested", file="a.pdf",
+         requestedAt="x", attempts=0)
+    assert _cli(["claim", "--kind", "triage", "--file", "a.pdf",
+                 "--library", str(tmp_path)]) == 0
+    claimed = json.loads(capsys.readouterr().out)
+    assert _cli(["release", "--kind", "triage", "--file", "a.pdf",
+                 "--requested-at", claimed["requestedAt"], "--error", "unreadable PDF",
+                 "--library", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["result"] == "failed"
+    assert _read(slot)["status"] == "failed"
+
+
 if __name__ == "__main__":
     from _standalone import main
 

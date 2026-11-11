@@ -138,6 +138,19 @@ If a coexisting `paper-review` request will be incorporated in this pass
 (§2), claim it the same way (`--kind paper-review`) and keep its
 `requestedAt` too.
 
+**Every STOP after this claim RELEASES it** (task 1575) — a
+`PREFLIGHT_BLOCKED` stop, a validator abort, any `DEEP_INDEX_STALLED`
+pass, any error that ends the run before §7. Report first, then:
+```bash
+python3 .virgil/scripts/library/queue_slot.py release --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>" --error "<one line: the stall reason or error>"
+```
+(and the same for a claimed `paper-review`, `--kind paper-review` with its
+own `requestedAt`). A claim left behind stays `running` for an hour — the
+app refuses the user's re-file as "already being processed" and merge-bibs
+refuses to start. Released, the request is `failed`: re-fileable at once,
+re-dispatched by the next `/library/index-pending`, `poisoned` after three
+failures. Only §7 retires; a stalled pass never does.
+
 ### Preflight: Resume vs. fresh
 
 **Default is resume.** Before doing anything else, check the catalog
@@ -255,8 +268,8 @@ branch dispatches no subskills at all and re-emits the prior keyword.
 **If di-preflight reports `PREFLIGHT_BLOCKED reason=<token>`**, stop the
 pass: leave `indexed.state` untouched, append ONE `deep-index-blocked`
 notification (this orchestrator is its only appender for a Step 0 block),
-and emit the §Output-format stalled banner with `Reason: <token>` copied
-verbatim. The tokens are the STALLED vocabulary in
+emit the §Output-format stalled banner with `Reason: <token>` copied
+verbatim, and release the claim (§Claim) with `--error "<token>"`. The tokens are the STALLED vocabulary in
 [_doctrine.md](_doctrine.md) §0; di-preflight's producers today are Step
 0.0 (`extraction-empty-body`) and Step 0.2 (`metadata-lock`). Do not run
 §1 — a preprocessing pass over an empty body produces a clean-looking log
@@ -437,7 +450,7 @@ violations are always blockers; continuity findings block only when
 "new vs. baseline." See [di-validate.md](di-validate.md) for full
 narrative. Three iterations failing → abort (leave `indexed.state`
 untouched, append `deep-index-blocked` notification, emit
-`DEEP_INDEX_STALLED` per §Output format).
+`DEEP_INDEX_STALLED` per §Output format, release the claim per §Claim).
 
 ### 4. Write output
 

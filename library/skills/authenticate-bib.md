@@ -95,6 +95,18 @@ It prints `{"result": "claimed", "requestedAt": …}` — keep that
 directly with nothing queued, or another worker holds it: carry on, and
 pass `""` there, which retires nothing).
 
+**Every STOP after this claim RELEASES it** (task 1575) — every "stop"
+below means: report, then
+```bash
+python3 .virgil/scripts/library/queue_slot.py release --kind authenticate --citekey <citekey> --requested-at "<requestedAt from the claim, or empty>" --error "<one line: why you stopped>"
+```
+then stop. A claim left behind stays `running` for an hour: the app
+refuses the user's re-file as "already being processed" and merge-bibs
+refuses to start. Released, the request is `failed` — re-fileable from
+the app at once, retried by the next run, `poisoned` after three failures
+(the loud signal for a failure that needs a human). The release leaves the
+review-manifest row in place: the request is still live.
+
 1. **Read the citekey's current fields** from `master.bib`, and keep the
    block you read as the **base** for step 5's write. The lookups below take
    minutes; a manual bib edit (`/library/apply-bib-edit`) can land in that
@@ -115,11 +127,11 @@ pass `""` there, which retires nothing).
    owns three answers (task 1229):
    - `read=0` — found; `base.bib` holds the entry's block. Read the fields
      from that same file and continue.
-   - `read=3` — the entry is not in master.bib. Stop and report it; there is
-     nothing to authenticate.
+   - `read=3` — the entry is not in master.bib. Report it, release, and
+     stop; there is nothing to authenticate.
    - `read=2` — the entry IS there but cannot be read (its braces never
-     balance, or master.bib itself is unreadable). Stop and report the
-     script's stderr message **verbatim** — never as "not in master.bib";
+     balance, or master.bib itself is unreadable). Report the script's
+     stderr message **verbatim**, release, and stop — never as "not in master.bib";
      the file needs a human, and its fields are a guess.
 
 2. **Coherence pre-flight — ADVISORY, never a gate.** Run the cross-field
@@ -142,7 +154,8 @@ pass `""` there, which retires nothing).
      `reason` says which. `"absent"` — not in `master.bib` (a wrong citekey,
      or an entry nobody has written yet). `"unreadable"` — the entry is there
      but its braces never balance (or master.bib cannot be read): report the
-     `error` **verbatim**, never as "not in master.bib". Either way stop:
+     `error` **verbatim**, never as "not in master.bib". Either way release
+     and stop:
      step 3's `--citekey` reads through the same door and refuses the same
      way, so there is nothing further to run.
    - **`"findings": []`** — nothing to say. Continue, silently.
@@ -194,7 +207,8 @@ pass `""` there, which retires nothing).
    `--citekey` reads through the same door as step 1, with the same codes
    (task 1293): **3** — the entry is absent; **2** — it is unreadable
    (braces never balance, master.bib missing or undecodable), stderr names
-   the entry — report that verbatim and stop, never authenticate a guess.
+   the entry — report that verbatim, release, and stop; never authenticate a
+   guess.
 
    **Don't hand-marshal the seed values.** The entry must reach the helper
    exactly as it appears in `master.bib` — verbatim, no cleanup, no
@@ -491,8 +505,8 @@ pass `""` there, which retires nothing).
    - **2** (bad invocation — fix the command and re-run it), **4** (the
      write would drop fields — you left out `--merge-existing`), **7**
      (master.bib's entry has unbalanced braces — needs a human repair),
-     or **anything else** — nothing written. Report stderr verbatim and
-     **STOP**: do not run steps 6–9. The catalog must not record a state
+     or **anything else** — nothing written. Report stderr verbatim,
+     **release**, and **STOP**: do not run steps 6–9. The catalog must not record a state
      or field change that never reached master.bib, and the queued
      request must stay queued so it runs again after the fix.
 
@@ -539,8 +553,9 @@ pass `""` there, which retires nothing).
    ```
    - `settle=0` — settled; stdout carries the `settled state:` line.
    - `settle=2` — nothing settled (the verdict file or master.bib's entry
-     can't be read). Report stderr verbatim and **STOP before steps 8–9**,
-     so the queued request stays queued and runs again after the repair.
+     can't be read). Report stderr verbatim, **release**, and **STOP before
+     steps 8–9**, so the queued request stays queued and runs again after
+     the repair.
 
    **`settled state:` is the state this run ENDED with — use it, not
    `<final_state>`, from here on** (step 8's toast, the Reply). The helper
@@ -711,7 +726,8 @@ If step 2 found none:
 > `Pre-flight: coherent (@<entry_type>).`
 
 If step 2 could not read the entry (`{"error": …}`), that is the whole reply
-— report the message verbatim and stop; the auth step reads the same file.
+— report the message verbatim, release, and stop; the auth step reads the
+same file.
 
 Then, for the settled state step 7 printed (when it differs from step 4b's
 verdict, the door held — say so: `kept authenticated; this run found only

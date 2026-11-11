@@ -87,6 +87,16 @@ All paths below are relative to the library root.
    directly with nothing queued, or another worker holds it: carry on, and
    pass `""` there, which retires nothing).
 
+   **Every STOP after this claim RELEASES it** (task 1575) — report first,
+   then:
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py release --kind bib-edit --citekey <citekey> --requested-at "<requestedAt from step 1>" --error "<one line: why you stopped>"
+   ```
+   A claim left behind stays `running` for an hour: the app refuses the
+   user's re-save as "already being processed" and merge-bibs refuses to
+   start. Released, the edit is `failed` — re-saveable from the app at once,
+   retried by the next run, `poisoned` after three failures.
+
    Then read the entry at `.virgil/queue/<citekey>-bibedit.json`. It has
    shape:
    ```json
@@ -110,7 +120,7 @@ All paths below are relative to the library root.
    `baseRaw`/`baseType` the entry as the Edit modal read it. Every field the
    user did not touch is absent — and must stay exactly as it is on disk now,
    including any field another skill added after the modal opened. If the
-   file is missing or malformed, stop and report the error.
+   file is missing or malformed, report the error, release (above), and stop.
 
    **Legacy shape.** An edit queued before task 763 carries
    `"bibEdit": { "type": "...", "fields": { ... } }` — a whole entry whose
@@ -166,13 +176,14 @@ All paths below are relative to the library root.
      legacy edit (no base) on a deleted entry lands here too: a change-set
      never re-creates an entry.
    - **2** — BAD INVOCATION: the command was mis-built (argparse's own
-     code). Nothing written. Report it and **STOP without step 7** — the
-     user's edit stays queued; retiring it here would discard it for a typo.
+     code). Nothing written. Report it, **release** (step 1), and **STOP
+     without step 7** — the user's edit stays queued; retiring it here would
+     discard it for a typo.
    - **7** — master.bib's entry has unbalanced braces; nothing written.
-     Report stderr verbatim and **STOP without step 7** (it needs a human
-     repair; the edit runs again after).
-   - **anything else** — nothing written; report it verbatim and stop
-     (without step 7).
+     Report stderr verbatim, **release** (step 1), and **STOP without step
+     7** (it needs a human repair; the edit runs again after).
+   - **anything else** — nothing written; report it verbatim, release
+     (step 1), and stop (without step 7).
 
    **Do not** pass `--bib-state`: a manual edit doesn't invalidate
    prior authentication. The existing `% bib.state = ...` comment is
@@ -319,5 +330,6 @@ For a reference-only entry (step 4 exited 1), say so on the same line:
 > `Applied bib edit for <citekey>: <N> field changes (reference-only — no catalog row).`
 
 If the queue entry was malformed or the citekey was missing, paste the
-relevant traceback / explanation in a fenced block and stop. Don't
+relevant traceback / explanation in a fenced block, release the claim
+(step 1), and stop. Don't
 attempt heuristic reconstruction of garbled fields.

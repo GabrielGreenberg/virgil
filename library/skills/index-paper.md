@@ -136,12 +136,23 @@ It prints `{"result": "claimed", "requestedAt": …}` — keep that
 directly with nothing queued, or another worker holds it: carry on, and
 pass `""` there, which retires nothing).
 
+**Every STOP after this claim RELEASES it** (task 1575) — every "stop"
+below means: report, then
+```bash
+python3 .virgil/scripts/library/queue_slot.py release --kind index --citekey <citekey> --requested-at "<requestedAt from the claim, or empty>" --error "<one line: why you stopped>"
+```
+then stop. A claim left behind stays `running` for an hour (the app refuses
+the user's re-file as "already being processed"). Released, the request is
+`failed` — re-fileable at once, retried by the next drain, `poisoned` after
+three failures — and the drain's own claim is untouched (you claimed
+nothing then, so the release is a no-op).
+
 1. **Confirm setup.** Check that:
    - `papers/<citekey>/<citekey>.pdf` **or** `papers/<citekey>/<citekey>.docx` (or `.tex`) exists relative to the library root
    - `<citekey>` appears in `master.bib`
 
    If either is missing, append a `failed` notification via the locked
-   CLI shim and stop:
+   CLI shim, release the claim, and stop:
    ```bash
    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-index-paper.XXXXXX")
    cat > "$t/setup-failed.json" <<'EOF'
@@ -176,7 +187,8 @@ pass `""` there, which retires nothing).
    ```
    (append `--re-extract` only if the invocation carried it — see **Args**.
    A `REFUSED: … --re-extract` exit means the paper's `main.tex` holds
-   deep-index work; report that to the user and stop rather than retrying.)
+   deep-index work; report that to the user, release, and stop rather than
+   retrying.)
 
    For PDF sources, this:
    - classifies scanned vs digital; if scanned, OCRs via ocrmypdf (FAILS LOUDLY if ocrmypdf or tesseract are missing — install them via `/library/setup` + `brew install tesseract`)
@@ -559,5 +571,6 @@ Three lines:
 2. `Source: <ext>; blocks: <block_count>; bib: <auth_state>`
 3. `Output: papers/<citekey>/main.tex`
 
-If anything went wrong, paste the relevant traceback in a fenced block and
-stop — don't try to patch broken extraction by hand.
+If anything went wrong, paste the relevant traceback in a fenced block,
+release the claim (§Steps), and stop — don't try to patch broken extraction
+by hand.
