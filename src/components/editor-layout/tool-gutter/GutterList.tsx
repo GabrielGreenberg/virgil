@@ -20,9 +20,10 @@
  * The groups and rows are `gutter-lists.ts`'s pure projection.
  */
 
-import { useCallback, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { StaticBorrowedText } from "@/components/StaticBorrowedText";
 import { iconHint } from "@/components/Hint";
+import { useViewLifetime } from "@/hooks/useViewLifetime";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import {
   referenceParts,
@@ -53,8 +54,12 @@ export interface GutterListProps {
   /** Rows that open from a ⌄ at their LEFT edge and show no hover buttons —
    *  their open view carries the jump and its own close (the bibliography). */
   leadingToggle?: (row: GutterListRow) => boolean;
-  /** Opening / closing a row also expands / collapses its card. */
-  onOpenChange?: (card: GutterCardRef, open: boolean) => void;
+  /** An open row LEASES its card's expansion: called when a row becomes
+   *  open, it returns the release, which runs exactly once whenever that row
+   *  stops being open — closed, another opened, its item gone, the list
+   *  unmounted. The acquirer decides what the release undoes (a card it found
+   *  already expanded it leaves expanded). */
+  openLease?: (card: GutterCardRef) => (() => void) | void;
   /** A row that can be dragged into the text (a bibliography entry, as a
    *  `\cite`) — returns false when this row can't. */
   canDrag?: (row: GutterListRow) => boolean;
@@ -67,21 +72,32 @@ export interface GutterListProps {
 export function GutterList(p: GutterListProps) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const lifetime = useViewLifetime();
   const rows = p.groups.flatMap((g) => g.rows);
   const openRow = openKey ? rows.find((r) => r.key === openKey) ?? null : null;
 
   // An open row whose item went away (deleted, archived, filtered out) is
-  // simply not open: `openRow` is null, so nothing below renders it open.
+  // simply not open: `openRow` is null, so nothing below renders it open —
+  // and its lease below is released.
+  const openCard = openRow?.card ?? null;
+  const leaseKey = openCard ? cardLeaseKey(openCard) : null;
+  const openCardRef = useRef(openCard);
+  const openLeaseRef = useRef(p.openLease);
+  useLayoutEffect(() => {
+    openCardRef.current = openCard;
+    openLeaseRef.current = p.openLease;
+  });
+  // The lease: ONE acquire per open card, its release on every ending. Keyed
+  // on the card's identity, so a re-render of the same open row re-acquires
+  // nothing.
+  useEffect(() => {
+    const card = openCardRef.current;
+    if (!leaseKey || !card) return;
+    const release = openLeaseRef.current?.(card);
+    return release ?? undefined;
+  }, [leaseKey]);
 
-  const setOpen = useCallback(
-    (row: GutterListRow | null) => {
-      const prev = openRow;
-      if (prev?.card && prev.key !== row?.key) p.onOpenChange?.(prev.card, false);
-      if (row?.card) p.onOpenChange?.(row.card, true);
-      setOpenKey(row?.key ?? null);
-    },
-    [openRow, p],
-  );
+  const setOpen = (row: GutterListRow | null) => setOpenKey(row?.key ?? null);
 
   const focusRow = (key: string) =>
     listRef.current
@@ -90,7 +106,7 @@ export function GutterList(p: GutterListProps) {
 
   const close = (row: GutterListRow) => {
     setOpen(null);
-    requestAnimationFrame(() => focusRow(row.key));
+    lifetime.requestAnimationFrame(() => focusRow(row.key));
   };
 
   const onListKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -405,6 +421,11 @@ export function Snippet({ snippet: s }: { snippet: GutterSnippet }) {
       );
     }
   }
+}
+
+/** A card's identity, for keying its lease. */
+function cardLeaseKey(c: GutterCardRef): string {
+  return c.kind === "bib" ? `bib:${c.key}:${c.section ?? ""}` : `${c.kind}:${c.id}`;
 }
 
 /** `referenceParts`, or null when an entry can't be read. */

@@ -84,6 +84,7 @@ import { READING_LISTS, ReadingList, type ReadingListKind, type ReadingListsData
 import { GutterList } from "./GutterList";
 import { cardListGroups, type GutterCardRef, type GutterListRow } from "./gutter-lists";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { leaseCardExpansion, leaseErrorExpansion } from "./open-lease";
 import { useOmniCard, useOmniCardRegistry } from "../contexts/omni-card-registry";
 import type { CardKind } from "@/cards/types";
 
@@ -516,20 +517,16 @@ function CardList({
   const cardStore = useCardStore();
   const registry = useOmniCardRegistry();
   const diagnostics = useDiagnosticsContext();
-  const onOpenChange = useCallback(
-    (card: GutterCardRef, open: boolean) => {
+  const openLease = useCallback(
+    (card: GutterCardRef) => {
       if (card.kind !== "omni") return;
       const hit = registry?.find(card.id);
       if (!hit) return;
       // An error card opens through the diagnostics owner; every other card
-      // through the doc's card store, like the right gutter's chevron.
-      if (hit.kind === "error") {
-        if (open && !diagnostics.expandedErrorIds?.has(card.id)) diagnostics.expandError?.(card.id);
-        return;
-      }
-      const ref = { kind: hit.kind as CardKind, id: card.id };
-      if (open) cardStore.expand(ref);
-      else cardStore.collapse(ref);
+      // through the doc's card store, like the right gutter's chevron. A card
+      // already expanded before the open stays expanded after it.
+      if (hit.kind === "error") return leaseErrorExpansion(diagnostics, card.id);
+      return leaseCardExpansion(cardStore, { kind: hit.kind as CardKind, id: card.id });
     },
     [registry, cardStore, diagnostics],
   );
@@ -548,7 +545,7 @@ function CardList({
         onSelect={(r: GutterListRow) => r.jump && select(r.jump)}
         onJump={(r: GutterListRow, el) => r.jump && onActivate(r.jump, el)}
         renderCard={(card) => <OmniCardSlot card={card} />}
-        onOpenChange={onOpenChange}
+        openLease={openLease}
         onToggleTodo={onToggleTodo}
       />
     </section>

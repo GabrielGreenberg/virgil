@@ -111,6 +111,8 @@ export interface UseDiagnostics {
   dismissError: (id: string) => void;
   expandedErrorIds: Set<string>;
   expandError: (id: string) => void;
+  /** The release of `expandError` — a no-op when the id isn't expanded. */
+  collapseError: (id: string) => void;
   toggleErrorExpanded: (id: string) => void;
   errorSnippets: Map<string, string>;
   paragraphByErrorId: Map<string, string>;
@@ -175,6 +177,14 @@ export function useDiagnostics({
 
   const expandError = useCallback((id: string) => {
     setExpandedErrorIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const collapseError = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
   const toggleErrorExpanded = useCallback((id: string) => {
     setExpandedErrorIds((prev) => {
@@ -357,6 +367,7 @@ export function useDiagnostics({
       dismissError,
       expandedErrorIds,
       expandError,
+      collapseError,
       toggleErrorExpanded,
       errorSnippets,
       paragraphByErrorId,
@@ -373,6 +384,7 @@ export function useDiagnostics({
       dismissError,
       expandedErrorIds,
       expandError,
+      collapseError,
       toggleErrorExpanded,
       errorSnippets,
       paragraphByErrorId,
