@@ -151,6 +151,35 @@ describe("cross-window", () => {
       split: 0.5,
     });
   });
+
+  // Task 1572: the storage listener detaches with the last subscriber, so a
+  // peer's write during that gap fires nothing here. The remount must still
+  // show it, and this window's next toggle must build on it, not undo it.
+  it("a remount after a peer's write in the unsubscribed gap shows the peer's state", async () => {
+    const { useToolGutterState } = await import("@/lib/tool-gutter-store");
+    const { renderHook } = await import("@testing-library/react");
+    toggleGutterTool("search");
+    const first = renderHook(() => useToolGutterState());
+    expect(first.result.current.tool).toBe("search");
+    first.unmount();
+
+    // The peer window writes; no event reaches a window with no listener.
+    localStorage.setItem(
+      TOOL_GUTTER_STORAGE_KEY,
+      JSON.stringify({ tool: "outline", sections: ["errors"], folded: [] }),
+    );
+    expect(getToolGutterState().tool).toBe("outline");
+
+    const second = renderHook(() => useToolGutterState());
+    expect(second.result.current.tool).toBe("outline");
+    expect(second.result.current.sections).toEqual(["errors"]);
+
+    toggleGutterSectionFold("errors");
+    const stored = JSON.parse(localStorage.getItem(TOOL_GUTTER_STORAGE_KEY)!);
+    expect(stored.tool).toBe("outline");
+    expect(stored.sections).toEqual(["errors"]);
+    second.unmount();
+  });
 });
 
 describe("the split gutter's bottom half (round 3)", () => {

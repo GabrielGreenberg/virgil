@@ -33,7 +33,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { subscribeToStorageKey } from "../cross-window-storage";
+import { createStorageSnapshot, subscribeToStorageKey } from "../cross-window-storage";
 import { commentsStripped, trackedFiles, REPO_ROOT, walkFiles } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -214,8 +214,29 @@ const READS_LS = /\blocalStorage\s*\.\s*getItem\s*\(/;
 const WRITES_LS = /\blocalStorage\s*\.\s*setItem\s*\(|\bwriteStorageIfChanged\s*\(/;
 const SUBSCRIBES = /\b(?:subscribeToStorageKeys?|useStorageKeySync)\s*\(/;
 
+// A raw-keyed snapshot both reads and writes its key (task 1572), so a file
+// that holds one is a store as surely as one calling `localStorage` directly.
+const SNAPSHOT_DOOR = /\bcreateStorageSnapshot\s*\(/;
+
 export function isStore(code: string): boolean {
-  return READS_LS.test(code) && WRITES_LS.test(code);
+  return SNAPSHOT_DOOR.test(code) || (READS_LS.test(code) && WRITES_LS.test(code));
+}
+
+/**
+ * Task 1572: a store that DETACHES its storage listener when its last
+ * subscriber leaves is blind for the gap — a module cache it holds itself
+ * outlives the listener and serves a pre-gap value on the next mount. Such a
+ * store must cache through `createStorageSnapshot`, which re-parses whenever
+ * the raw string on disk changed, listener or no listener.
+ */
+const DETACHES_ON_LAST = /\.size\s*(?:===\s*0|>\s*0|<\s*1)/;
+export function gapBlindStores(files: readonly string[], read: (rel: string) => string): string[] {
+  return files
+    .filter((rel) => {
+      const code = read(rel);
+      return SUBSCRIBES.test(code) && DETACHES_ON_LAST.test(code) && !SNAPSHOT_DOOR.test(code);
+    })
+    .sort();
 }
 
 function shippedSources(): string[] {
@@ -656,5 +677,74 @@ describe("cross-window storage guardrail — debounced-mirror census (task 629)"
     // The door + the one ledgered peer. A collapse here means the population
     // query broke, not that the app stopped deferring storage writes.
     expect(deferred.sort()).toEqual(Object.keys(MIRROR_LEDGER).sort());
+  });
+});
+
+describe("cross-window storage guardrail — the listener gap (task 1572)", () => {
+  it("no lazily-attached store holds a cache of its own", () => {
+    // EXTRA file here: it subscribes on the first listener, detaches on the
+    // last, and caches the parsed value itself — so a peer write in between is
+    // never seen. Cache through `createStorageSnapshot` instead.
+    expect(gapBlindStores(shippedSources(), codeOf)).toEqual([]);
+  });
+
+  it("the census sees the shape it exists for", () => {
+    const FIX: Record<string, string> = {
+      "blind.ts": `let snapshot = null;
+        function subscribe(l) { listeners.add(l); off ??= subscribeToStorageKey(K, emit);
+          return () => { listeners.delete(l); if (listeners.size === 0) off(); }; }`,
+      "keyed.ts": `const snapshot = createStorageSnapshot(K, parse);
+        function subscribe(l) { listeners.add(l); off ??= subscribeToStorageKey(K, emit);
+          return () => { listeners.delete(l); if (listeners.size === 0) off(); }; }`,
+      "effect-hook.ts": `useEffect(() => subscribeToStorageKey(K, reread), []);`,
+    };
+    expect(gapBlindStores(Object.keys(FIX), (r) => FIX[r])).toEqual(["blind.ts"]);
+    // And the real population is not vacuous: the stores that detach do exist.
+    const detaching = shippedSources().filter((f) => {
+      const c = codeOf(f);
+      return SUBSCRIBES.test(c) && DETACHES_ON_LAST.test(c);
+    });
+    expect(detaching).toEqual(
+      expect.arrayContaining([
+        "src/lib/tool-gutter-store.ts",
+        "src/lib/spell/global-dictionary.ts",
+        "src/hooks/useWordCountConfig.ts",
+      ]),
+    );
+  });
+
+  describe("createStorageSnapshot", () => {
+    const KEY = "virgil:test-snapshot";
+    const parse = (raw: string | null) => ({ v: raw ?? "none" });
+
+    it("is fresh after a write it never heard about, and stable while the string is", () => {
+      localStorage.removeItem(KEY);
+      const snap = createStorageSnapshot(KEY, parse);
+      const a = snap.get();
+      expect(a).toEqual({ v: "none" });
+      expect(snap.get()).toBe(a); // identity holds — the useSyncExternalStore contract
+      localStorage.setItem(KEY, "peer"); // no event, no listener
+      expect(snap.get()).toEqual({ v: "peer" });
+      localStorage.removeItem(KEY);
+    });
+
+    it("set persists, adopts the value by identity, and holds it if the write fails", () => {
+      localStorage.removeItem(KEY);
+      const snap = createStorageSnapshot(KEY, parse);
+      const mine = { v: "mine" };
+      snap.set(mine, "mine");
+      expect(localStorage.getItem(KEY)).toBe("mine");
+      expect(snap.get()).toBe(mine);
+
+      const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+      const unsaved = { v: "unsaved" };
+      snap.set(unsaved, "unsaved");
+      setItem.mockRestore();
+      expect(localStorage.getItem(KEY)).toBe("mine");
+      expect(snap.get()).toBe(unsaved); // disk unchanged → the in-memory value stands
+      localStorage.removeItem(KEY);
+    });
   });
 });
