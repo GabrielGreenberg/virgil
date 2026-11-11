@@ -305,7 +305,7 @@ function ExampleCardEditor({
   // collapsed preview's forced read-only rides through `effectiveEditable`.
   useEffect(() => {
     if (editor && editor.isEditable !== effectiveEditable) {
-      editor.setEditable(effectiveEditable);
+      editor.setEditable(effectiveEditable, false);
     }
   }, [editor, effectiveEditable]);
 

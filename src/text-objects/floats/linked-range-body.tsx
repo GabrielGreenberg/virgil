@@ -228,7 +228,7 @@ export function LinkedRangeBody({
       if ("editRefused" in plan) {
         reportWrite({ status: "refused", reason: plan.editRefused });
       } else {
-        reportRefusal(floatEd, plan);
+        reportRefusal(plan);
       }
       return;
     }
@@ -256,13 +256,16 @@ export function LinkedRangeBody({
     // that knows.
   }
 
-  function reportRefusal(floatEd: Editor, r: LinkedRangeRefusal) {
+  // Setting the refusal is all it takes to go read-only: it is the static half
+  // of `floatEditable`, and `useFloatMainSync` keeps the editor at that gate.
+  // Calling `setEditable` here would be a second door, and one that emits
+  // `update` — re-entering `onUpdate`, this refusal, and the stack (task 1569).
+  function reportRefusal(r: LinkedRangeRefusal) {
     console.warn(
       "[linkedRange] refused — the popout cannot represent this range; the " +
         "document was NOT modified.",
       { reason: r.reason, constructs: r.constructs, anchorId },
     );
-    floatEd.setEditable(false);
     setRefusal((prev) => prev ?? r);
   }
 
@@ -272,7 +275,7 @@ export function LinkedRangeBody({
   useEffect(() => {
     if (!floatEditor || seed.missing) return;
     const held = checkLinkedRangeRepresentable(floatEditor.schema, seed.doc);
-    if (!held.ok) reportRefusal(floatEditor, held);
+    if (!held.ok) reportRefusal(held);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floatEditor, seed]);
 
