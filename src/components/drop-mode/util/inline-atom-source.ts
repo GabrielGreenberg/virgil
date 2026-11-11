@@ -21,11 +21,18 @@
  * carries the atom's durable `atomId` where its kind has one, and the spec
  * re-resolves by IDENTITY at commit (task 648, the "addressing the live
  * document across an async gap" law). The id-less kinds (`ref`,
- * `inline-math` — no Card, `ATOM_REGISTRY.idAttr: null`) keep the position
- * form with a node-kind check, which for them is the whole question.
+ * `inline-math`, `dynamic` — no Card, `ATOM_REGISTRY.idAttr: null`) have no
+ * id, so the capture carries the grabbed NODE itself and the commit confirms
+ * by CONTENT (task 1574): two content-equal id-less atoms are interchangeable,
+ * so content equality is exactly the identity a position hint needs. A kind
+ * check alone is not — `\ref{c}` landing where `\ref{b}` was passes it.
+ *
+ * The rule, stated once: **id where the registry has one, content fingerprint
+ * otherwise.**
  */
 
 import type { Editor } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { AtomKind } from "@/lib/tiptap/atom-registry";
 
 export interface CapturedAtomSource {
@@ -55,6 +62,13 @@ export interface CapturedAtomSource {
    * moved under the gesture.
    */
   atomId: string | null;
+  /**
+   * The grabbed node as it stood at mousedown — the CONTENT fingerprint the
+   * commit confirms an id-less kind against (task 1574). Captured for every
+   * kind (it is the node already in hand), but only READ where `atomId` is
+   * null: an id-bearing atom whose attrs a peer edited is still the same atom.
+   */
+  atomNode: PMNode;
 }
 
 let current: CapturedAtomSource | null = null;

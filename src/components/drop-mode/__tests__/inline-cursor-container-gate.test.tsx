@@ -476,6 +476,7 @@ describe("every inline splice refuses rather than tear the block", () => {
       kind: "citation",
       nodeName: "citation",
       atomId: "c-1",
+      atomNode: atom,
       editor,
       pos: at,
     });

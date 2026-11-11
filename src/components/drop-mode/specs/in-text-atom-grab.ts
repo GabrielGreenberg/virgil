@@ -14,6 +14,8 @@
  */
 
 import {
+  atomContentEquals,
+  findAtomByContent,
   findAtomById,
   inlineAtomMoveSpec,
   type AtomLocation,
@@ -23,25 +25,26 @@ import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
 /**
  * Resolve the grabbed atom from the source captured at mousedown — by
- * IDENTITY where the kind has one, by position otherwise.
+ * IDENTITY: the id where the kind has one, the content fingerprint otherwise.
  *
  * The captured `pos` is the FAST path and is right for every ordinary gesture
  * (nothing mutates the document between mousedown and mouseup). It is not right
- * across a collab peer's edit, which is an async gap the gesture does not own:
- * the atom may have SHIFTED, and at the old position sits whatever the edit put
- * there — including, in the shape that bites, a same-kind neighbour
- * (`\cite{a}\cite{b}`, two footnote markers). A kind check alone accepts that
- * neighbour and the commit moves the wrong atom.
+ * across a collab peer's edit (or an agent writeback landing mid-drag), which is
+ * an async gap the gesture does not own: the atom may have SHIFTED, and at the
+ * old position sits whatever the edit put there — including, in the shape that
+ * bites, a same-kind neighbour (`\cite{a}\cite{b}`, two footnote markers,
+ * `\ref{b}` displaced by an inserted `\ref{c}`). A kind check alone accepts
+ * that neighbour and the commit moves the wrong atom.
  *
- * So the position is treated as a HINT and confirmed against the captured id;
- * when it fails, the atom is re-found by that id (task 648 — the "addressing
- * the live document across an async gap" law: name the target by durable
- * identity, resolve it against the LIVE document at apply time). Only when the
- * atom is genuinely gone does this refuse, and a refusal is a silent no-op.
- *
- * `ref` / `inline-math` carry no id (`ATOM_REGISTRY.idAttr: null`), so for them
- * the position + kind check IS the whole answer — the asymmetry is the
- * registry's, and it is why this cannot be an unconditional id lookup.
+ * So the position is treated as a HINT and confirmed against the captured
+ * identity; when it fails, the atom is re-found by that identity (task 648, the
+ * "addressing the live document across an async gap" law). The id-bearing kinds
+ * confirm by `atomId`; the id-less kinds (`ref` / `inline-math` / `dynamic`,
+ * `ATOM_REGISTRY.idAttr: null`) confirm by CONTENT against the captured node and
+ * re-find the nearest content-equal one (task 1574) — content-equal id-less
+ * atoms are interchangeable, so content is exactly the identity they have. Only
+ * when the atom is genuinely gone does this refuse, and a refusal is a silent
+ * no-op.
  */
 function resolveCapturedSource(cardKey: string): AtomLocation | null {
   const sep = cardKey.indexOf(":");
@@ -49,10 +52,14 @@ function resolveCapturedSource(cardKey: string): AtomLocation | null {
   const src = readInlineAtomSource(token);
   if (!src) return null;
   const idAttr = atomMetaForNodeName(src.nodeName)?.idAttr ?? null;
+  const byId = !!idAttr && !!src.atomId;
   const node = src.editor.state.doc.nodeAt(src.pos);
   if (node && node.type.name === src.nodeName) {
     // The hint holds unless identity says otherwise.
-    if (!idAttr || !src.atomId || node.attrs?.[idAttr] === src.atomId) {
+    const confirmed = byId
+      ? node.attrs?.[idAttr!] === src.atomId
+      : atomContentEquals(node, src.atomNode);
+    if (confirmed) {
       return {
         editor: src.editor,
         node,
@@ -61,8 +68,8 @@ function resolveCapturedSource(cardKey: string): AtomLocation | null {
       };
     }
   }
-  if (!idAttr || !src.atomId) return null;
-  return findAtomById(src.editor, src.nodeName, idAttr, src.atomId);
+  if (byId) return findAtomById(src.editor, src.nodeName, idAttr!, src.atomId!);
+  return findAtomByContent(src.editor, src.atomNode, src.pos);
 }
 
 // Invariant: this spec's `classifyDrop` (via inlineAtomMoveSpec) must only
