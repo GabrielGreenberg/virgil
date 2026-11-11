@@ -1,4 +1,4 @@
-<!-- last-verified: 9ac1f766 2026-11-10 -->
+<!-- last-verified: e2b5a6ce 2026-11-11 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -235,7 +235,11 @@ elsewhere. An expex
   — so a commented-out `% \usepackage{biblatex}` or an `\includegraphics` inside
   a `\begin{verbatim}` no longer injects a package the document never runs
   (tasks 344 / 345); a top-level `\iffalse`/`\if0 … \fi` block and the
-  `comment` env are inert too (task 1370; an unmatched `\fi` fails OPEN). The declaration side reads the same vocabulary
+  `comment` env are inert too (task 1370; an unmatched `\fi` fails OPEN). The "what is
+  DECLARED" readers (`declaredBibFiles`, `detectPassPlan`, `extractDocumentClass`,
+  `findSectioningCommands`) ask the lexer's offset-preserving `projectExecutedLatex`
+  (task 1559), so an `\iffalse`'d `\bibliography` / `\documentclass` / `\chapter`
+  no longer counts. The declaration side reads the same vocabulary
   (`PACKAGE_DETECTORS`, `src/lib/latex-requirement-collector.ts`).
   "Does the preamble load package P?" has ONE reader (task 781): the lexer's
   wrapper-aware `preambleListLoadsPackage`, read by bib-family detection,

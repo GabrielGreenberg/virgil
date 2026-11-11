@@ -1,4 +1,4 @@
-<!-- last-verified: 9ac1f766 2026-11-10 -->
+<!-- last-verified: e2b5a6ce 2026-11-11 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 

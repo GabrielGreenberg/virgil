@@ -1,4 +1,4 @@
-<!-- last-verified: 9ac1f766 2026-11-10 -->
+<!-- last-verified: e2b5a6ce 2026-11-11 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -244,7 +244,12 @@ one (task 1254). Since task 1269 a carried mark is placed on Restore by its WORD
 too: the guards ask `archive-holdings.ts` (published by `useArchive`) whether a
 departing uuid/anchorId is held by an un-retired snippet — and since task 1302 only
 for the Redo of the archive's OWN history event (`archiveReplayTracker`), so an Undo
-of the paste that made a held passage, or a Redo of a plain Cut, orphans as usual. Task 1270: ONE travel
+of the paste that made a held passage orphans as usual. Since task 1557 a CUT is
+"archive to the clipboard" ([clipboard-carry.ts](../../src/lib/tiptap/clipboard-carry.ts)):
+the cut slice is held under `scope: "clipboard"`, its cards go dormant, a same-doc paste of
+that text lands the held slice (same uuids + marks, so the cards revive), a cross-doc paste
+is a copy, a holding let go unpasted unparks its cards, and Redo of a cut / Undo of a
+carried paste re-park them. Task 1270: ONE travel
 predicate (`isCarriedLink` / `splitCarried` in `dormant.ts`) — a Mode-A link
 travels PER PID, splitting into a dormant and a live half. Task 1271: the four
 dormant doors (carry / returnRemapped / release / reinstate) read ONE carrying-store
