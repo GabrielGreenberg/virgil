@@ -107,6 +107,19 @@ REQ="$(python3 .virgil/scripts/library/queue_slot.py claim --kind import-bib --c
   | python3 -c 'import json,sys; print(json.load(sys.stdin).get("requestedAt") or "")')"
 ```
 
+**A run that STOPS without finishing RELEASES the claim** (task 1575) —
+the merge engine exiting non-zero, or any error that ends the run before
+step 4. Report first, then:
+
+```bash
+python3 .virgil/scripts/library/queue_slot.py release --kind import-bib --citekey "$CK" --requested-at "$REQ" --error "<one line: why you stopped>"
+```
+
+A claim left behind stays `running` for an hour (the app refuses the
+user's re-file as "already being processed", and merge-bibs refuses to
+start); released, the request is `failed` — re-fileable at once, retried
+by the next drain, `poisoned` after three failures.
+
 ## Steps
 
 1. **Confirm there is something to import.**
@@ -130,6 +143,8 @@ REQ="$(python3 .virgil/scripts/library/queue_slot.py claim --kind import-bib --c
    ```bash
    python3 .virgil/scripts/library/merge_paper_references.py "${CK}"
    ```
+   A non-zero exit is a stop: report its stderr verbatim, release the
+   claim (above), and stop — never retire a fold that did not run.
    Where a bump happens the frontend's catalog-version poll handles the
    UI refresh within ~6s — no extra bump needed from you, ever.
 

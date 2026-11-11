@@ -116,6 +116,17 @@ directory).
    (invoked directly with nothing queued: carry on, and pass `""` in
    step 10).
 
+   **A run that STOPS short of step 10 RELEASES the claim** (task 1575) —
+   an error that ends the run (step 8's refused master.bib write, an
+   unreadable source, anything else). Report first, then:
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py release --kind triage --file "<filename>" --requested-at "<requestedAt from step 0, or empty>" --error "<one line: why you stopped>"
+   ```
+   A claim left behind stays `running` for an hour; released, the request
+   is `failed` — re-triaged by the next drain, `poisoned` after three
+   failures. A COMPLETED path (variant, whole-handbook, `.tex`, `.bib`
+   fan-out) is not a stop: it retires at step 10.
+
 1. **Read metadata.** Branch on extension:
 
    For `.pdf`:
@@ -245,7 +256,7 @@ directory).
       rm -rf "$t"
       python3 .virgil/scripts/library/bump_catalog_version.py
       ```
-      Then stop.
+      Then skip to step 10 (retire this file's request) and stop.
    3. If `<base>.<ext>` exists on disk but no catalog entry maps to
       it, fall through to the four cases below (mint a new citekey
       with `a`/`b` suffix as needed).
@@ -367,8 +378,8 @@ directory).
    citekey exists and your fields would drop some of its fields: it is
    already in master.bib, so leave it and continue. **2** (mis-built
    command), **7** (unbalanced braces — needs a human repair) or anything
-   else — nothing was written: report stderr verbatim and stop before
-   queueing the paper.
+   else — nothing was written: report stderr verbatim, release the claim
+   (step 0), and stop before queueing the paper.
 
    First, determine the entry type from the source content. If step 6
    flagged a preprint, its verdict wins: `@unpublished` with its `note`

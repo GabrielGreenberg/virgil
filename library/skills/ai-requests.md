@@ -122,6 +122,18 @@ A queue entry is an AI request when **any** of these is true:
    `requestedAt` for step 3 — or `{"result": "nothing-claimable"}`
    (another worker holds it: skip this request).
 
+   **A claimed request you cannot finish is RELEASED, never left
+   claimed** (task 1575) — every "do not retire" below means: report,
+   then
+   ```bash
+   python3 .virgil/scripts/library/queue_slot.py release --kind <kind> --citekey <citekey> --requested-at "<requestedAt from the step-2 claim>" --error "<one line: why it stopped>"
+   ```
+   and go on to the next request. A claim left behind stays `running` for
+   an hour (the app refuses the user's re-file as "already being
+   processed", and merge-bibs refuses to start); released, it is `failed`
+   — re-fileable at once, retried by the next run, `poisoned` after three
+   failures.
+
    Print a clearly-delimited block before doing anything else:
 
    ```
@@ -169,7 +181,8 @@ A queue entry is an AI request when **any** of these is true:
 
      `read=` is `master_entry.py`'s own table (its docstring): **0** found —
      continue; **3** absent or **2** unreadable — report its stderr
-     verbatim, write nothing (`rm -rf "$t"`), and do not retire the request.
+     verbatim, write nothing (`rm -rf "$t"`), and release the request (do not
+     retire it).
      On 0, write the change-set in the same `$t`:
 
      ```bash
@@ -198,10 +211,11 @@ A queue entry is an AI request when **any** of these is true:
        disk since you read the entry); report them in your reply.
      - **6** — refused, nothing written (the entry is gone). Report stderr
        verbatim; skip the resync and catalog steps below.
-     - **2** — bad invocation, nothing written. Report it and do **not**
-       retire the request — the user's ask is still unanswered.
+     - **2** — bad invocation, nothing written. Report it and **release**
+       the request (do not retire it) — the user's ask is still unanswered.
      - **7** — the entry has unbalanced braces, nothing written. Report
-       stderr verbatim and do **not** retire; it needs a human repair.
+       stderr verbatim and **release** (do not retire); it needs a human
+       repair.
 
      Do not pass `--bib-state` or `--allow-field-drop`. Then run that skill's step 3
      (`resync_paper_bib.py`) and step 4 (catalog `fieldChanges`, with
