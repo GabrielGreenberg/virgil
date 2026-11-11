@@ -13,6 +13,8 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, cleanup, act } from "@testing-library/react";
 import FloatingPanel, {
   clampFloatPos,
+  FLOAT_MIN_H,
+  maxFloatHeight,
   readFloatViewportBounds,
 } from "@/components/FloatingPanel";
 
@@ -27,7 +29,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function Float({ x, y, mode = "floating" }: { x: number; y: number; mode?: "floating" | "docked" }) {
+function Float({
+  x,
+  y,
+  height = 200,
+  mode = "floating",
+  onChange = vi.fn(),
+}: {
+  x: number;
+  y: number;
+  height?: number;
+  mode?: "floating" | "docked";
+  onChange?: () => void;
+}) {
   return (
     <FloatingPanel
       cardKey="note:n1"
@@ -36,9 +50,9 @@ function Float({ x, y, mode = "floating" }: { x: number; y: number; mode?: "floa
       initialX={x}
       initialY={y}
       initialWidth={300}
-      initialHeight={200}
+      initialHeight={height}
       zIndex={1000}
-      onChange={vi.fn()}
+      onChange={onChange}
     >
       <div>float body</div>
     </FloatingPanel>
@@ -49,6 +63,7 @@ const shell = () =>
   document.querySelector('[data-floating-panel="true"]') as HTMLElement;
 const left = () => parseFloat(shell().style.left);
 const top = () => parseFloat(shell().style.top);
+const height = () => parseFloat(shell().style.height);
 
 describe("clampFloatPos — the one placement rule", () => {
   it("keeps the header reachable on every edge and is identity-preserving in bounds", () => {
@@ -59,6 +74,34 @@ describe("clampFloatPos — the one placement rule", () => {
     expect(clampFloatPos({ x: 10, y: -50, width: 300 }, { ...b, insetTop: 32 })).toMatchObject({ y: 32 });
     const inside = { x: 100, y: 100, width: 300 };
     expect(clampFloatPos(inside, b)).toBe(inside);
+  });
+
+  it("caps a rect taller than the room between the top strip and the bottom margin", () => {
+    const b = { maxX: 1220, maxY: 760, insetTop: 32 };
+    expect(maxFloatHeight(b)).toBe(728);
+    expect(clampFloatPos({ x: 10, y: 100, width: 300, height: 1300 }, b)).toEqual({
+      x: 10,
+      y: 100,
+      width: 300,
+      height: 728,
+    });
+    const fits = { x: 10, y: 100, width: 300, height: 728 };
+    expect(clampFloatPos(fits, b)).toBe(fits);
+  });
+
+  it("only ever caps: a short float keeps its height, and a tiny window stops at the minimum", () => {
+    const tiny = { maxX: 1220, maxY: 120, insetTop: 0 };
+    expect(maxFloatHeight(tiny)).toBe(FLOAT_MIN_H);
+    expect(clampFloatPos({ x: 10, y: 10, width: 300, height: 900 }, tiny)).toMatchObject({
+      height: FLOAT_MIN_H,
+    });
+    const short = { x: 10, y: 10, width: 300, height: 90 };
+    expect(clampFloatPos(short, tiny)).toBe(short);
+  });
+
+  it("adds no height to a rect that carries none (the move gesture's)", () => {
+    const moved = clampFloatPos({ x: 5000, y: 100, width: 300 }, { maxX: 1220, maxY: 760, insetTop: 0 });
+    expect(moved).toEqual({ x: 1220, y: 100, width: 300 });
   });
 
   it("reads the live viewport", () => {
@@ -105,6 +148,32 @@ describe("FloatingPanel — placement is clamped at mount, re-seed and resize se
     });
     expect(left()).toBe(740);
     expect(top()).toBe(460);
+  });
+
+  it("a restored rect taller than the window mounts with its bottom edge reachable", () => {
+    const onChange = vi.fn();
+    render(<Float x={200} y={0} height={1300} onChange={onChange} />);
+    expect(height()).toBe(760);
+    expect(top() + height()).toBeLessThanOrEqual(800);
+    // The stored size waits for the user's next real commit.
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("a window shrink caps the height without writing the stored rect", () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    render(<Float x={200} y={50} height={700} onChange={onChange} />);
+    expect(height()).toBe(700);
+    act(() => {
+      setViewport(1280, 500);
+      window.dispatchEvent(new Event("resize"));
+    });
+    // A resize close behind the previous test's counts as a burst and parks.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(height()).toBe(460);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("a continuous window resize settles ONCE on its end edge, not per frame", () => {

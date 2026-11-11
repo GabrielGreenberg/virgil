@@ -31,6 +31,8 @@ import FloatingPanel, {
   FLOAT_MIN_W,
   FLOAT_MAX_W,
   FLOAT_MIN_H,
+  maxFloatHeight,
+  readFloatViewportBounds,
 } from "@/components/FloatingPanel";
 
 /* ── RAF control (mirrors float-move-gesture-cost.test.tsx) ─────────────── */
@@ -251,6 +253,12 @@ describe("FloatingPanel edge-resize math", () => {
     const { shell } = renderFloat();
     dragEdge(shell, "bottom", 999, 450, 999, 450 - 5000);
     expect(geom(shell).height).toBe(FLOAT_MIN_H);
+  });
+
+  it("bottom-edge drag stops at the height the placement clamp would keep", () => {
+    const { shell } = renderFloat();
+    dragEdge(shell, "bottom", 999, 450, 999, 450 + 5000);
+    expect(geom(shell).height).toBe(maxFloatHeight(readFloatViewportBounds()));
   });
 
   it("bottom-right corner combines both axes (width + height grow, top-left fixed)", () => {

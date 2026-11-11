@@ -56,9 +56,9 @@ import {
  * Floating-shell resize clamps — the single source of truth for how small
  * or large a floating pop-out may be dragged. Consumed by EVERY edge/corner
  * resize zone AND by the undock lift-off clamp (which used to duplicate these
- * magic numbers inline). Height has no fixed max — it's clamped against the
- * live viewport (`window.innerHeight - FLOAT_VIEWPORT_MARGIN`) so a window
- * can't grow taller than the screen leaves room for.
+ * magic numbers inline). Height has no fixed max — it's bounded by the live
+ * viewport (`maxFloatHeight`) so a window can't grow taller than the screen
+ * leaves room for.
  */
 export const FLOAT_MIN_W = 240;
 export const FLOAT_MAX_W = 900;
@@ -67,15 +67,6 @@ export const FLOAT_MIN_H = 200;
 export const FLOAT_VIEWPORT_MARGIN = 40;
 
 const clampW = (v: number) => Math.max(FLOAT_MIN_W, Math.min(FLOAT_MAX_W, v));
-const clampH = (v: number) =>
-  Math.max(
-    FLOAT_MIN_H,
-    Math.min(
-      typeof window !== "undefined" ? window.innerHeight - FLOAT_VIEWPORT_MARGIN : Infinity,
-      v,
-    ),
-  );
-
 /** Which edges a resize gesture is dragging. Corners set two flags. Top is
  *  never resizable — the header strip owns it for move/undock. */
 type ResizeEdges = { left?: boolean; right?: boolean; bottom?: boolean };
@@ -137,22 +128,44 @@ export function readFloatViewportBounds(): FloatViewportBounds {
 }
 
 /**
+ * THE float height bound (task 1566): what fits between the OS-reserved strip
+ * and the bottom margin, never below `FLOAT_MIN_H`. The resize and lift-off
+ * gestures clamp to it and the placement clamp caps to it, so a size a gesture
+ * allows is a size the next mount keeps.
+ */
+export function maxFloatHeight(b: FloatViewportBounds): number {
+  return Math.max(FLOAT_MIN_H, b.maxY - b.insetTop);
+}
+
+const clampH = (v: number, b: FloatViewportBounds) =>
+  Math.max(FLOAT_MIN_H, Math.min(maxFloatHeight(b), v));
+
+/**
  * THE float placement clamp (task 1221) — one rule for every site that places
  * a floating shell: the mount seed (a persisted rect restored into a smaller
  * window, a spawn cascade walked past the edge), a re-seed from new props, the
  * window-resize settle, and every frame of the move gesture. The header stays
  * reachable: at least `FLOAT_REACHABLE_W` px of the shell remains inside the
  * viewport horizontally, and its top sits between the OS-reserved strip and
- * `FLOAT_VIEWPORT_MARGIN` above the bottom edge. Pure; identity-preserving
- * when nothing moves, so callers can equality-bail on the result.
+ * `FLOAT_VIEWPORT_MARGIN` above the bottom edge. So is the bottom edge: the top
+ * has no resize zone and cannot pass `insetTop`, so a rect taller than
+ * `maxFloatHeight` could never bring its bottom on-screen, and the height is
+ * capped (task 1566; a move-gesture rect carries no height and pays nothing).
+ * Width needs no such cap, because `x` may go negative and either side can be
+ * moved into view. Pure; identity-preserving when nothing changes, so callers
+ * can equality-bail on the result.
  */
-export function clampFloatPos<P extends { x: number; y: number; width: number }>(
+export function clampFloatPos<
+  P extends { x: number; y: number; width: number; height?: number },
+>(
   pos: P,
   b: FloatViewportBounds,
 ): P {
   const x = Math.max(-pos.width + FLOAT_REACHABLE_W, Math.min(b.maxX, pos.x));
   const y = Math.max(b.insetTop, Math.min(b.maxY, pos.y));
-  return x === pos.x && y === pos.y ? pos : { ...pos, x, y };
+  const height = pos.height === undefined ? undefined : Math.min(pos.height, maxFloatHeight(b));
+  if (x === pos.x && y === pos.y && height === pos.height) return pos;
+  return height === undefined ? { ...pos, x, y } : { ...pos, x, y, height };
 }
 
 /** THE move gesture's geometry sweep. Gesture edges only — never per move. */
@@ -488,6 +501,9 @@ function FloatingPanelInner({
         origY: number;
         origW: number;
         origH: number;
+        // The viewport snapshot the height clamp reads, per gesture rather
+        // than per move (see `readFloatViewportBounds`).
+        bounds: FloatViewportBounds;
         /** As above — the shared end edge reads this whichever kind it ends. */
         lastCursor: { x: number; y: number } | null;
       }
@@ -779,7 +795,7 @@ function FloatingPanelInner({
             x: s.origX + dx,
             y: s.origY + dy,
             width: clampW(rawW),
-            height: clampH(rawH),
+            height: clampH(rawH, geometry()),
           };
           // Flip the gesture into a normal floating-move: from now on,
           // origX/Y stay anchored to the docked rect's top-left and the
@@ -920,7 +936,7 @@ function FloatingPanelInner({
         }
         if (s.edges.bottom) {
           // Bottom edge follows the cursor; top (y) stays fixed.
-          height = clampH(s.origH + dy);
+          height = clampH(s.origH + dy, s.bounds);
         }
         liveResizeRef.current = { x, y, width, height };
         scheduleResize();
@@ -1261,6 +1277,7 @@ function FloatingPanelInner({
       origY: pos.y,
       origW: pos.width,
       origH: pos.height,
+      bounds: readFloatViewportBounds(),
       lastCursor: { x: e.clientX, y: e.clientY },
     };
     // Arm the resize gesture's locals: nothing live yet, and no frame queued.
