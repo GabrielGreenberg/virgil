@@ -3887,3 +3887,16 @@ rendered (`WriteRefusedBanner` for floats, the card's EX-F5-03 banner), cleared
 by the next landed write or a re-seed. Never a bare `return` or a swallowed
 `catch`. CI: `bound-root.test.ts` (incl. the whole-block write-back CENSUS),
 `ExampleCardEditor.test.tsx` → "bound root (task 1170)".
+
+**The addressing half (task 1565).** A float's own write may not erase the
+identity its next write and its undo are addressed by. The two multi-block
+floats are addressed by something inside their own doc: a section float by its
+leading heading's uuid, a linked-range float by its `linkedAnchor` mark. The
+section float binds `leadingBlock("heading")` and `planSectionWrite` refuses a
+write with no leading heading. The linked-range float takes select-all only
+(`anyContent`), and `planLinkedRangeWriteBack` measures the planned write. A
+retyped range drops the mark, which is `inclusive: false`, even under a text
+selection, so the door re-stamps the source's mark on the written text, leaving
+text under another anchor alone. A write with no text left to carry the mark is
+refused through the float's write-refused banner, which keeps the float
+editable. CI: `float-addressing-identity.test.ts`.

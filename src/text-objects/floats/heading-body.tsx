@@ -51,13 +51,16 @@ import {
   useFloatMainSync,
   type SourceRange,
 } from "@/lib/float-sync";
-import { landFloatWrite, refuseWrite, wrongRootReason } from "@/lib/float-write-back";
+import { landFloatWrite, planSectionWrite } from "@/lib/float-write-back";
+import { leadingBlock } from "@/lib/tiptap/bound-root";
 import type { TextObjectFloatBodyProps } from "../types";
 import {
   FLOAT_PROSE_EDITOR_CLASS,
   FloatBodyFrame,
   useRegistryHeaderLabel,
 } from "./float-body-frame";
+
+const SECTION_ROOT = leadingBlock("heading");
 
 export function HeadingBody({
   cardKey,
@@ -127,6 +130,9 @@ export function HeadingBody({
       surface: "float",
       editable: floatEditable,
       cardContext: true,
+      // The heading addresses this float (task 1565): select-all means the
+      // section's text, and no gesture may leave it without a leading heading.
+      boundRoot: SECTION_ROOT,
       callbacks: {
         onConfirmLabelRename: onConfirmLabelRenameRef,
       },
@@ -157,11 +163,10 @@ export function HeadingBody({
 
   function writeBackToMain(doc: JSONContent) {
     // One door (task 1170): a refusal reaches `WriteRefusedBanner`, never a
-    // bare return / swallowed catch. A section holds several blocks, so this
-    // float binds no root; but it no longer filters out blocks that fail to
-    // build either — writing the REST of the section while silently dropping
+    // bare return / swallowed catch. It no longer filters out blocks that fail
+    // to build either — writing the REST of the section while silently dropping
     // one block was the same loss in miniature. Any unbuildable block now
-    // refuses the whole write.
+    // refuses the whole write, as does losing the heading (task 1565).
     const outcome = landFloatWrite(ref.current?.getEditor(), floatId, (ed) => {
       // The live section range doubles as this write's position hint (task
       // 140), so the float→main direction stops re-scanning the doc's top
@@ -172,26 +177,7 @@ export function HeadingBody({
         sourceRangeRef.current,
       );
       if (!range) return null;
-      const incoming = doc.content ?? [];
-      if (incoming.length === 0) return refuseWrite(wrongRootReason("section"));
-      const newNodes: PMNode[] = incoming.map((j) =>
-        ed.state.schema.nodeFromJSON(j),
-      );
-      const sourceHeading = range.nodes[0];
-      if (
-        sourceHeading?.type.name === "heading" &&
-        newNodes[0]?.type.name === "heading"
-      ) {
-        newNodes[0] = ed.state.schema.nodes.heading.create(
-          {
-            ...sourceHeading.attrs,
-            level: newNodes[0].attrs.level ?? sourceHeading.attrs.level,
-          },
-          newNodes[0].content,
-          newNodes[0].marks,
-        );
-      }
-      return { from: range.start, to: range.end, content: newNodes };
+      return planSectionWrite(ed.state.schema, range, doc.content ?? []);
     }, writtenRangeRef.current);
     reportWrite(outcome);
   }

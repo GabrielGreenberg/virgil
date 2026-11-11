@@ -31,8 +31,9 @@
  * the builder resolves its own source through its hinted resolver, so the
  * door is O(edit) per keystroke like the code it replaced.
  */
+import type { JSONContent } from "@tiptap/core";
 import type { Editor } from "@tiptap/react";
-import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 import { dispatchLanded } from "@/components/drop-mode/commit-seam";
 import type { SourceRange } from "@/lib/float-source-range";
@@ -70,6 +71,36 @@ export const MAIN_REFUSED_WRITE_REASON =
  *  surface words the same failure the same way. */
 export function wrongRootReason(expected: string): string {
   return `This edit couldn't be saved — it no longer forms a single ${expected}.`;
+}
+
+/** The reason a section float's edit is refused when it would leave the
+ *  section without the heading that addresses it (task 1565). */
+export const SECTION_LOST_HEADING_REASON =
+  "This edit couldn't be saved — a section has to begin with its heading.";
+
+/**
+ * The section float's write, or its refusal. The float's first block must still
+ * be a heading: the section is ADDRESSED by that heading's uuid, so a write
+ * without it would erase the identity every later write and undo resolves
+ * through (task 1565). The source heading's attrs, uuid included, carry over;
+ * only the level and content come from the float.
+ */
+export function planSectionWrite(
+  schema: Schema,
+  range: { start: number; end: number; nodes: readonly PMNode[] },
+  incoming: readonly JSONContent[],
+): FloatWritePlan | FloatWriteRefusal {
+  if (incoming.length === 0) return refuseWrite(wrongRootReason("section"));
+  const newNodes = incoming.map((j) => schema.nodeFromJSON(j));
+  const [written] = newNodes;
+  if (written.type.name !== "heading") return refuseWrite(SECTION_LOST_HEADING_REASON);
+  const sourceHeading = range.nodes[0];
+  newNodes[0] = schema.nodes.heading.create(
+    { ...sourceHeading.attrs, level: written.attrs.level ?? sourceHeading.attrs.level },
+    written.content,
+    written.marks,
+  );
+  return { from: range.start, to: range.end, content: newNodes };
 }
 
 function contentSize(content: PMNode | readonly PMNode[]): number {
