@@ -244,7 +244,10 @@ export function citationsByKey(cites: readonly GutterCitation[]): Map<string, st
   for (const c of [...cites].sort((a, b) => a.pos - b.pos)) {
     for (const k of c.keys) {
       const list = out.get(k) ?? [];
-      list.push(c.citationId);
+      // `\cite{a,a}` names one key twice in ONE citation: it is one occurrence
+      // (a list entry twice would duplicate React keys and make a step land
+      // where it started — task 1573). Pos-sorted, so a repeat is always last.
+      if (list[list.length - 1] !== c.citationId) list.push(c.citationId);
       out.set(k, list);
     }
   }

@@ -10,6 +10,7 @@ import type { FootnoteInfo, ExampleInfo } from "@/components/Editor";
 import type { BibEntry, FootnoteRef, OrphanedFootnote } from "@/lib/types";
 import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import {
+  citationsByKey,
   cardListGroups,
   bibliographyGroups,
   exampleGroups,
@@ -186,5 +187,17 @@ describe("cardListGroups", () => {
     ]);
     expect(g.rows[0].snippet.kind).toBe("rich");
     expect(g.rows[1]).toMatchObject({ snippet: { kind: "text", text: "Do it" }, todo: { id: "t1", done: false } });
+  });
+});
+
+describe("citationsByKey (task 1573)", () => {
+  it("lists each key's citations in document order, once per citation", () => {
+    const m = citationsByKey([
+      { citationId: "late", keys: ["a"], pos: 30 },
+      { citationId: "twice", keys: ["a", "b", "a"], pos: 10 },
+      { citationId: "mid", keys: ["a"], pos: 20 },
+    ]);
+    expect(m.get("a")).toEqual(["twice", "mid", "late"]);
+    expect(m.get("b")).toEqual(["twice"]);
   });
 });

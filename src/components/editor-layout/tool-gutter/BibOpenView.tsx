@@ -57,10 +57,12 @@ export interface BibOpenViewProps {
   bibKey: string;
   close: () => void;
   citationIds: readonly string[];
-  /** The occurrence the list is pointing at (−1: none yet). */
-  current: number;
-  /** Jump to occurrence `i` and make it current. */
-  goTo: (i: number, el: HTMLElement | null) => void;
+  /** The citation the list is pointing at, by IDENTITY (null: none yet). Its
+   *  position in `citationIds` is derived here from the live list, so an
+   *  inserted or deleted cite cannot shift it onto another (task 1573). */
+  current: string | null;
+  /** Jump to citation `id` and make it current. */
+  goTo: (id: string, el: HTMLElement | null) => void;
   cites: readonly GutterCitation[];
   bibEntries: readonly BibEntry[];
   sections: readonly GutterSectionHead[];
@@ -84,20 +86,22 @@ export function BibOpenView(p: BibOpenViewProps) {
   const lines = useMemo(() => {
     if (!p.doc) return [];
     const posOf = new Map(p.cites.map((c) => [c.citationId, c.pos]));
-    return p.citationIds.flatMap((id, i) => {
+    return p.citationIds.flatMap((id) => {
       const pos = posOf.get(id);
       if (pos == null) return [];
       const s = sectionIndexAt(p.sections, pos);
       const where = s < 0 ? "" : p.sections[s].number ? `§${p.sections[s].number}` : "";
-      return [{ id, i, where, ...sentencePartsAt(p.doc!, pos, p.bibEntries, display?.getCitationDisplayText) }];
+      return [{ id, where, ...sentencePartsAt(p.doc!, pos, p.bibEntries, display?.getCitationDisplayText) }];
     });
   }, [p.doc, p.cites, p.citationIds, p.sections, p.bibEntries, display]);
 
   const n = p.citationIds.length;
+  // −1 when nothing is current OR the current citation has since been deleted.
+  const at = p.current === null ? -1 : p.citationIds.indexOf(p.current);
   const step = (delta: 1 | -1, el: HTMLElement | null) => {
     if (n === 0) return;
-    const next = (((Math.max(p.current, delta === 1 ? -1 : 0) + delta) % n) + n) % n;
-    p.goTo(next, el);
+    const next = (((Math.max(at, delta === 1 ? -1 : 0) + delta) % n) + n) % n;
+    p.goTo(p.citationIds[next], el);
   };
 
   const openPdf = async () => {
@@ -156,7 +160,7 @@ export function BibOpenView(p: BibOpenViewProps) {
                   <Caret dir="left" />
                 </button>
                 <span className="gutter-bib-stepper-count">
-                  {p.current >= 0 ? p.current + 1 : "–"} / {n}
+                  {at >= 0 ? at + 1 : "–"} / {n}
                 </span>
                 <button
                   type="button"
@@ -176,8 +180,8 @@ export function BibOpenView(p: BibOpenViewProps) {
                 <button
                   type="button"
                   className="gutter-bib-cited-line hover-on-light"
-                  data-current={l.i === p.current ? "" : undefined}
-                  onClick={(e) => p.goTo(l.i, e.currentTarget)}
+                  data-current={l.id === p.current ? "" : undefined}
+                  onClick={(e) => p.goTo(l.id, e.currentTarget)}
                 >
                   <span className="gutter-bib-cited-where">{l.where}</span>
                   <span className="gutter-bib-cited-text">
