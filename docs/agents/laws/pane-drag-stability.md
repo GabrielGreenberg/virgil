@@ -342,6 +342,15 @@ localStorage). Narrow the window until the Library list track visibly clamps,
 click the list divider once without moving, widen the window, and confirm the
 list returns to its stored width.
 
+**The bespoke float gesture owes the same rule (task 1568).** `FloatingPanel`'s
+move and edge-resize are not on the engine, so its end edge states the rule
+itself: `moved` is latched by the one move handler when the pointer leaves the
+press point, and a release without it ends as a cancel. There it guards more
+than a stored rect: the Stack and redock tests answer from where the float
+RESTS, so a click could capture or redock it. A card lift (`beginDragAt`) starts
+with `moved: true`, because that drag began on the card before the shell
+existed. CI: `float-click-commits-nothing.test.tsx`.
+
 ### The begin-edge half: a PIN is geometry, never a store write
 
 Task 470 made the COMMIT edge the only door a gesture persists through — and
