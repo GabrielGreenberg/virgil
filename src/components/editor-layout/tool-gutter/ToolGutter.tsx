@@ -216,7 +216,7 @@ export function ToolGutter(p: ToolGutterProps) {
     return (
       <div className="tool-gutter" data-tool-gutter="" data-collapsed="">
         <div className="tool-gutter-half" data-gutter-half="top">
-          <div className="tool-gutter-tools" role="toolbar" aria-label="Tools">
+          <div className="gutter-lozenge tool-gutter-tools" role="toolbar" aria-label="Tools">
             {p.leading}
           </div>
         </div>
@@ -236,7 +236,7 @@ export function ToolGutter(p: ToolGutterProps) {
     >
       <div ref={topRef} className="tool-gutter-half" data-gutter-half="top">
         {(tools.length > 0 || p.leading) && (
-          <div className="tool-gutter-tools" role="toolbar" aria-label="Tools">
+          <div className="gutter-lozenge tool-gutter-tools" role="toolbar" aria-label="Tools">
             {p.leading}
             {tools.map((t) => {
               const on = activeTool === t;
@@ -274,7 +274,7 @@ export function ToolGutter(p: ToolGutterProps) {
       )}
 
       <div ref={bottomRef} className="tool-gutter-half" data-gutter-half="bottom">
-        <div className="tool-gutter-tools tool-gutter-lists-row" role="toolbar" aria-label="Lists">
+        <div className="gutter-lozenge tool-gutter-tools tool-gutter-lists-row" role="toolbar" aria-label="Lists">
           {sections.map((s) => {
             const on = activeList === s;
             return (

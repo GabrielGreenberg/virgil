@@ -196,11 +196,16 @@
      away — so without this the matte bites the inboard 2px off every card
      border, selection ring and lozenge. +2px clears a ring or outline. */
   --gutter-matte-clear: calc(var(--pod-gap) - var(--gutter-inset) + 2px);
-  /* The gutter's toolbar lozenges: a step between the panel paper and the
-     canvas/Virgil-bar midpoint, ringed a little harder than the resting depth
-     so they stay legible on the sand at this pale a fill. */
+  /* The gutter's toolbar lozenges (`.gutter-lozenge`): a step between the
+     panel paper and the canvas/Virgil-bar midpoint, ringed a little harder
+     than the resting depth so they stay legible on the sand at this pale a
+     fill. The depth IS the resting step (read, not copied — task 1586); only
+     the firmer 1px ring is the lozenge's own. `--gutter-lozenge-h` is its one
+     height: an icon button (`--iconbtn-md`) plus the 3px padding each side. */
   --gutter-lozenge-bg: color-mix(in srgb, var(--pod-panel) 50%, color-mix(in srgb, var(--background) 50%, var(--topbar-bg)));
-  --gutter-lozenge-shadow: 0 0 0 1px rgba(70,50,30,0.12), 0 1px 3px rgba(70,50,30,0.07);
+  --gutter-lozenge-ring: rgba(70,50,30,0.12);
+  --gutter-lozenge-shadow: 0 0 0 1px var(--gutter-lozenge-ring), var(--card-shadow-ambient);
+  --gutter-lozenge-h: calc(var(--iconbtn-md) + 6px);
   /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
      `--pod-gap` was answering two different questions, and only one of them
      is a gutter. (a) How wide is the resize gutter / how far is a pod inset
@@ -7027,6 +7032,19 @@ body.perf-contain .static-borrowed-text {
   height: var(--gutter-split-gap);
   flex: 0 0 auto;
 }
+/* The gutter lozenge (task 1586): ONE recipe for both gutters' icon rows —
+   the left gutter's `.tool-gutter-tools` and the right gutter's
+   `.gutter-side-head`, which each keep only their own placement. Its height
+   is `--gutter-lozenge-h`, the one number the omni's sticky offsets derive
+   from (EditorPane). */
+.gutter-lozenge {
+  box-sizing: border-box;
+  height: var(--gutter-lozenge-h);
+  padding: 3px; /* aligns: a 24px icon button in the lozenge */
+  background: var(--gutter-lozenge-bg);
+  border-radius: var(--pod-radius);
+  box-shadow: var(--gutter-lozenge-shadow);
+}
 .tool-gutter-tools {
   display: flex;
   align-items: center;
@@ -7036,14 +7054,11 @@ body.perf-contain .static-borrowed-text {
      ring is the lozenge's own shadow, so it is never clipped by it). */
   min-width: 0;
   overflow: hidden;
-  flex-shrink: 0; /* `overflow` drops the auto min-height: keep the 30px */
+  /* `overflow` drops the auto min-height: keep `--gutter-lozenge-h`. */
+  flex-shrink: 0;
   gap: 2px;
-  padding: 3px; /* aligns: a 24px icon button in the 30px lozenge */
   /* Keeps the ring clear of the drag gap, which paints over the gutter's edge. */
   margin-right: 2px;
-  background: var(--gutter-lozenge-bg);
-  border-radius: var(--pod-radius);
-  box-shadow: var(--gutter-lozenge-shadow);
 }
 /* A lit gutter toggle reads at a glance: the azure wash PLUS a thin azure
    ring (Gabriel, round 3: "not just the highlight color"). */
@@ -7078,12 +7093,7 @@ body.perf-contain .static-borrowed-text {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  height: 30px;
   margin: var(--gutter-inset) 4px 0 var(--gutter-matte-clear);
-  padding: 3px; /* aligns: a 24px icon button in the 30px lozenge */
-  background: var(--gutter-lozenge-bg);
-  border-radius: var(--pod-radius);
-  box-shadow: var(--gutter-lozenge-shadow);
 }
 /* ── Reading lists (Gabriel, 2026-11-08) ─────────────────────────────
    Footnotes, bibliography and examples as lists a person reads. A row is

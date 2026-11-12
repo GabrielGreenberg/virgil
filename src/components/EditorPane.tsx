@@ -8862,7 +8862,7 @@ function PaneRail({
           // as tall as the document so the lozenge stays pinned.
           style={contentsHidden ? { minHeight: "var(--row-bound-h, 100%)" } : undefined}
         >
-          <div className="gutter-side-head" data-gutter-head={side}>
+          <div className="gutter-lozenge gutter-side-head" data-gutter-head={side}>
             <SideCollapseToggle side={side} viewPrefs={viewPrefs} bare />
           </div>
           {contentsHidden
@@ -8933,10 +8933,14 @@ function PaneRail({
           overflow: 'clip',
           // The right gutter's sticky lozenge (above): the omni's navigator
           // and bin sit ON it, to the left of the toggle, and the cards start
-          // below it and then run under it.
+          // below it and then run under it. The strip's top is the lozenge's
+          // height less 2px — the value it has carried since the head-row era
+          // (task 1586 derived it from `--gutter-lozenge-h` without moving
+          // it). `--omni-head-clear` is a WIDTH, not a height: the room the
+          // collapse toggle takes at the lozenge's right end.
           ...(gutterLayout && !isLeft
             ? {
-                ["--omni-sticky-top" as string]: "calc(var(--gutter-inset) + 28px)",
+                ["--omni-sticky-top" as string]: "calc(var(--gutter-inset) + var(--gutter-lozenge-h) - 2px)",
                 ["--omni-frame-z" as string]: 32,
                 ["--omni-head-clear" as string]: "32px",
               }
