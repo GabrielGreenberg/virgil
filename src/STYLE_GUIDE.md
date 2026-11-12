@@ -2009,9 +2009,13 @@ passage is restored. Its card says so in the **archive-relation row**.
 card body — `text-[11px]`, `--muted` — holding **chips** (`rounded-sm`,
 1px `--border`, `hover-on-light`): on an Archive card, "Archived with this
 passage: N <kind nouns>" then one chip per travelled card (registry `label`
-+ title); on a travelled card, "Archived with passage" (or the parked
-re-attach sentence) then one chip naming the passage. Kind nouns come from
-`CARD_REGISTRY` labels, never hand-typed. It is a SHELL slot
++ title); on a travelled card, the SAME "Archived with this passage" (or the
+parked re-attach sentence) then one chip holding the passage's bare title, in
+both states (task 1581: one spelling, `ARCHIVED_WITH_PASSAGE_COPY`). Kind
+nouns come from `cardKindNoun` (`panel-registry.ts`, the one pluralizer),
+never hand-typed; where two PRESENT kinds share a label ("Request",
+"Revision"), both the summary noun and the chip label are qualified by the
+hosting panel ("1 Revisions request, 1 Cutter request"). It is a SHELL slot
 (`archiveRelation`, supplied by `useAnchoredCardShell`) — a kind never opts
 in, so every kind that can travel shows it.
 

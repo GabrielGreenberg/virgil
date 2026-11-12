@@ -233,13 +233,49 @@ export function cardBodyPlaceholder(kind: CardKind): string {
   return CARD_REGISTRY[kind].bodyPlaceholder ?? `${CARD_TYPE_LABELS[kind]} text…`;
 }
 
+/** THE noun for a card kind (task 1581): its registry label, lower-cased,
+ *  pluralized with a plain `s` when `count !== 1` — "note"/"notes", "report
+ *  request"/"report requests". Every sentence that counts or names cards by
+ *  kind reads this; there is no second pluralizer. NOTE: two pairs of kinds
+ *  share a label ("Request", "Revision"), so a noun is not a kind — a
+ *  sentence that may mix both families must qualify (see
+ *  `qualifiedCardKindNouns`). */
+export function cardKindNoun(kind: CardKind, count: number): string {
+  const noun = CARD_TYPE_LABELS[kind].toLowerCase();
+  return count === 1 ? noun : `${noun}s`;
+}
+
+/** The hosting-panel qualifier for each kind in `kinds` whose NOUN is shared
+ *  with another kind ALSO in `kinds` (task 1581) — e.g. `revision-comment` +
+ *  `cutter-comment` → "Revisions" / "Cutter", so a row reads "1 Revisions
+ *  request, 1 Cutter request" rather than "1 request, 1 request". A kind
+ *  whose noun is unambiguous within the set is absent (no qualifier). */
+export function cardKindQualifiers(kinds: Iterable<CardKind>): Map<CardKind, string> {
+  const byNoun = new Map<string, Set<CardKind>>();
+  for (const k of kinds) {
+    const noun = cardKindNoun(k, 1);
+    const set = byNoun.get(noun) ?? new Set<CardKind>();
+    set.add(k);
+    byNoun.set(noun, set);
+  }
+  const out = new Map<CardKind, string>();
+  for (const set of byNoun.values()) {
+    if (set.size < 2) continue;
+    for (const k of set) {
+      const panel = CARD_REGISTRY[k].panel;
+      out.set(k, panel ? PANEL_REGISTRY[panel].label : CARD_TYPE_LABELS[k]);
+    }
+  }
+  return out;
+}
+
 /** The NOUN half of a card panel's empty state (task 1526) — "No requests or
  *  revisions yet." — derived from the kinds the panel HOSTS (each
  *  `CARD_REGISTRY` entry whose `panel` is this one, in registry order), so the
  *  sentence names exactly the labels the panel's "+" menu, overline and
- *  kind-chevron already show. Each label is lower-cased and pluralized with a
- *  plain `s`; two nouns join with "or", three or more as "a, b, or c". Before
- *  this the sentence was hand-spelled per panel, and Cutter's "No comments or
+ *  kind-chevron already show. Each noun is `cardKindNoun`'s plural (task
+ *  1581); two nouns join with "or", three or more as "a, b, or c". Before this
+ *  the sentence was hand-spelled per panel, and Cutter's "No comments or
  *  suggestions yet." named neither of its kinds' labels. The way-in half stays
  *  `<CreationHint>`'s (task 727). */
 export function panelEmptySentence(panelKind: PanelKind): string {
@@ -247,7 +283,7 @@ export function panelEmptySentence(panelKind: PanelKind): string {
     ...new Set(
       (Object.keys(CARD_REGISTRY) as CardKind[])
         .filter((k) => CARD_REGISTRY[k].panel === panelKind)
-        .map((k) => `${CARD_TYPE_LABELS[k].toLowerCase()}s`),
+        .map((k) => cardKindNoun(k, 2)),
     ),
   ];
   if (nouns.length === 0) {
