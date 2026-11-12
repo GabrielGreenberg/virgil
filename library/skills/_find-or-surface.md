@@ -134,8 +134,9 @@ Internet Archive
 **4. If still not found, surface the gap — never fake it.** Take the
 failure path the skill provides, rather than inventing content:
 
-- **`find-citation`** → mark the request complete/failed with a note
-  explaining what was searched (no `.bib` / card write).
+- **`find-citation`** → close the request as a failure (`--result
+  impossible`, status `failed` — editor `_request-load.md` rule 3) with a
+  note explaining what was searched (no `.bib` / card write).
 - **`authenticate-bib`** → the terminal state (`unverified` / `failed` /
   `canonical`) *is* the surfaced gap; leave junk fields for a human, do
   not "authenticate" a guess.

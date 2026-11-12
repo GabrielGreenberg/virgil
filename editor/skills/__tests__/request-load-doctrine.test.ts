@@ -251,4 +251,36 @@ describe("could-not-act rule (SSOT + every skill, task 1408)", () => {
     const replies = read(file).match(/could not act[^\n]*/g) ?? [];
     for (const r of replies) expect(r).not.toMatch(/marked done|\bdone with\b/i);
   });
+
+  // Task 1578: the legs above read only `complete-only` LANDINGS, so the
+  // PROSE that teaches a can't-act close drifted unseen — the shared
+  // `_ask-shape.md` table, answer-todo-request's Safety line and
+  // find-citation's not-found sentence all still said "complete with a note"
+  // (status `complete`, the success outcome). Over every skill AND include, a
+  // sentence or table cell that teaches closing "with a note" must name the
+  // failure close or cite the SSOT that does.
+  const TEACHES_NOTE_CLOSE = /\b(?:mark|close)\b[^.;|]{0,50}\bwith a note\b|\bcomplete(?:\/\w+)? with a note\b/i;
+  const NAMES_FAILURE = /--result\s+impossible|\[_request-load\.md\]/;
+  const ALL_DOCS = readdirSync(join(repoRoot, "editor/skills"))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => `editor/skills/${f}`);
+
+  it("the census flags every spelling the drift actually took", () => {
+    for (const drifted of [
+      "| a stated limit | complete with a note; don't pretend |", // _ask-shape.md
+      "If the todo's intent is unclear, mark complete with a note rather than guessing.",
+      "**mark the request complete with a note explaining why** rather than fabricating a citation.",
+      "- **`find-citation`** → mark the request complete/failed with a note explaining what was searched",
+    ]) {
+      expect(drifted).toMatch(TEACHES_NOTE_CLOSE);
+      expect(drifted).not.toMatch(NAMES_FAILURE);
+    }
+  });
+
+  it.each(ALL_DOCS)("%s: a 'close with a note' sentence names the failure close", (file) => {
+    for (const unit of flat(file).split(/(?<=[.;|])\s+(?=[A-Z*`|-])|\s\|\s/)) {
+      if (!TEACHES_NOTE_CLOSE.test(unit)) continue;
+      expect(unit, `teaches a success close for a can't-act path:\n${unit}`).toMatch(NAMES_FAILURE);
+    }
+  });
 });

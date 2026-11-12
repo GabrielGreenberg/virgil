@@ -274,8 +274,9 @@ writer's `noop: true` is the belt — never a `status` test of your own.
   `draft-footnote` / `create-card` use) — don't hand-build the note JSON or call
   `apply_response.py` directly for it. `--accept-task-kind todo` is what lets a
   `note` answer a `todo` Task.
-- Don't fabricate completed todos. If the todo's intent is unclear,
-  mark complete with a note rather than guessing.
+- Don't fabricate completed todos. If the todo's intent is unclear, close
+  the Task as a failure rather than guessing — `--result impossible` per
+  [_request-load.md](_request-load.md) rule 3, never a success close.
 - **Never edit `ai-requests.json` with a file-editing tool.** There is no door
   that files a *pending* follow-up Task (see [_ask-shape.md](_ask-shape.md) §4),
   and a raw write bypasses the pen, the version bump and the notification that
