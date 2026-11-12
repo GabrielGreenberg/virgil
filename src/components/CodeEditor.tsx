@@ -3,7 +3,7 @@
 import { localPackagesFor } from "@/lib/local-packages";
 import { useState, useEffect, useMemo, useRef } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
-import { latex } from "codemirror-lang-latex";
+import { virgilLatex } from "@/lib/codemirror/virgil-cm-language";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import type { Editor as TipTapEditor } from "@tiptap/react";
@@ -381,7 +381,7 @@ export default function CodeEditor({
       <CodeMirror
         value={value}
         extensions={[
-          latex(),
+          virgilLatex("code-view"),
           search(),
           highlightSelectionMatches(),
           virgilTheme,

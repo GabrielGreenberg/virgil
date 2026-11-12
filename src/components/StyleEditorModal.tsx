@@ -34,7 +34,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
-import { latex } from "codemirror-lang-latex";
+import { virgilLatex } from "@/lib/codemirror/virgil-cm-language";
 import { EditorState } from "@codemirror/state";
 import SystemDialog, {
   SystemDialogBody,
@@ -246,7 +246,7 @@ export default function StyleEditorModal({
                 value={preamble}
                 onChange={setPreamble}
                 extensions={[
-                  latex(),
+                  virgilLatex("style-editor"),
                   editorTheme,
                   EditorView.lineWrapping,
                   EditorState.tabSize.of(2),
