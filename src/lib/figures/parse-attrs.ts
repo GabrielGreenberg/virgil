@@ -207,12 +207,35 @@ export function readGraphicsWidth(options: string): GraphicsWidth {
   };
 }
 
+/** The width range the figure chrome edits and `formatWidthFraction` writes,
+ *  as a percentage of `\linewidth`/`\textwidth` (task 1592: stated once, here,
+ *  beside the `widthPercent` round-trip — the NodeView imports it). */
+export const MIN_WIDTH_PERCENT = 10;
+export const MAX_WIDTH_PERCENT = 100;
+/** The width the chrome's STEPPERS seed from when the source carries no width
+ *  at all (a bare `\includegraphics{a.png}` renders at its natural size). This
+ *  is a fact about the chrome's first press — `−` gives 40, `+` gives 60 — and
+ *  NEVER a value the width box displays: a figure with no width shows an empty
+ *  box, because printing a number the document does not contain is how the box
+ *  came to display the one value it could not commit (task 537). */
+export const DEFAULT_SCALE_PERCENT = 50;
+
+/** Round and clamp a percentage into [MIN_WIDTH_PERCENT, MAX_WIDTH_PERCENT];
+ *  a non-finite input yields `DEFAULT_SCALE_PERCENT`. */
+export function clampWidthPercent(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_SCALE_PERCENT;
+  const i = Math.round(n);
+  if (i < MIN_WIDTH_PERCENT) return MIN_WIDTH_PERCENT;
+  if (i > MAX_WIDTH_PERCENT) return MAX_WIDTH_PERCENT;
+  return i;
+}
+
 /** Parse a width=… directive into a CSS percentage. Returns null if the
  *  width is absolute (cm, in, pt), unmodeled, or absent. */
 export function parseWidthSpec(options: string): number | null {
   const w = readGraphicsWidth(options);
   if (w.kind !== "relative" || !(w.factor > 0)) return null;
-  return Math.min(100, w.factor * 100);
+  return Math.min(MAX_WIDTH_PERCENT, w.factor * 100);
 }
 
 /** One `\includegraphics` as TeX reads it — the verbatim command plus the
@@ -845,9 +868,10 @@ export function extractGraphicsAttrs(command: string): GraphicsAttrs | null {
 // source of truth for LaTeX round-trip.
 // ---------------------------------------------------------------------------
 
-/** Format a percentage in [10, 100] as a LaTeX fraction string. */
+/** Format a percentage in [MIN_WIDTH_PERCENT, MAX_WIDTH_PERCENT] as a LaTeX
+ *  fraction string. */
 function formatWidthFraction(percent: number): string {
-  if (percent === 100) return "1.0";
+  if (percent === MAX_WIDTH_PERCENT) return "1.0";
   // Two decimals max; strip trailing zero (so 50 → "0.5", 35 → "0.35").
   const fixed = (percent / 100).toFixed(2);
   return fixed.replace(/0$/, "").replace(/\.$/, "");

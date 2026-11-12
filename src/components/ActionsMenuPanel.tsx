@@ -38,6 +38,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { emitFigureClick } from "@/lib/figures/popover-target";
 import { useLiveEditorSignature } from "@/lib/tiptap/use-live-editor-signature";
 import type { Editor } from "@tiptap/react";
 import { trackRange, type TrackedRange } from "@/lib/tiptap/tracked-pos";
@@ -501,12 +502,7 @@ export function ActionsMenuPanel({
       // — but the DECISION to open now lives in the React surface, not in the
       // pure `figure-block.ts` creator (which no longer emits on insert). The
       // EDIT listener (marker-clicks.ts) consumes the same event, unchanged.
-      openFigurePopover: (figure) => {
-        if (typeof window === "undefined") return;
-        window.dispatchEvent(
-          new CustomEvent("virgil-figure-click", { detail: figure }),
-        );
-      },
+      openFigurePopover: emitFigureClick,
       // The text-color popover seam (CHIP 6b). The `text-color` row's `run()`
       // calls this with the cell's bounding rect; we stash the live selection
       // (so the native color picker's focus theft can't lose it) and open the

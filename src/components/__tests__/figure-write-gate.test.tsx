@@ -16,6 +16,7 @@ import type { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { render, cleanup, act, fireEvent } from "@testing-library/react";
 import { registerEditRefusalVoice, type EditRefusalNotice } from "@/lib/edit-refusal";
+import { TexUnsafeAssetPathError } from "@/lib/figures/asset-import";
 
 const pick = vi.hoisted(() => ({
   importFigureFile: vi.fn(async () => "figures/new.png"),
@@ -240,6 +241,25 @@ describe("the gate is re-asked after every await", () => {
     expect(notices[0].message).toContain("no free name");
     expect(notices[0].draft).toBe("new.png");
     err.mockRestore();
+  });
+
+  it("an unsafe file name is announced through the same refusal voice (task 1592)", async () => {
+    // No dialog host is mounted: the old branch fell back to console.warn and
+    // the user heard nothing.
+    const { container } = await mount();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    pick.importFigureFile.mockImplementationOnce(async () => {
+      throw new TexUnsafeAssetPathError("figures/a%b.png");
+    });
+    await clickAndSettle(container.querySelector('[aria-label="Pick image file"]')!);
+    expect(figure()!.attrs.extras).toBe(EXTRAS);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].title).toBe("Image not added");
+    expect(notices[0].message).toContain("“figures/a%b.png” contains “%”");
+    expect(notices[0].message).toContain("Rename the file");
+    expect(notices[0].draft).toBe("new.png");
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("a cancelled pick says nothing", async () => {

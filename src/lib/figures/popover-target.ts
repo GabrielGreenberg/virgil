@@ -55,6 +55,41 @@ export interface ActiveFigure extends ClickedFigure {
   editor: Editor;
 }
 
+/** The window event that opens the figure/graphics source popover — the EDIT
+ *  click on a page/float figure AND the insert-time fallback. Consumed by the
+ *  ONE listener in `marker-clicks.ts`. */
+export const FIGURE_CLICK_EVENT = "virgil-figure-click";
+
+/** The event's detail: the clicked identity, plus where (in the OWNING
+ *  editor's pos-space — EX-F4-02) and the anchor rect. The listener converts
+ *  `pos` to a tracker at once (task 1314). */
+export interface FigureClickDetail extends ClickedFigure {
+  pos: number;
+  rect: DOMRect;
+  editor: Editor;
+}
+
+/** The clicked identity of a figure/graphics node (task 1592): kind, uuid and
+ *  the ONE seed `figurePopoverRaw`. Every click site builds its detail from
+ *  this, so a new identity field (as `uuid` was in task 1082) is added once.
+ *  `raw` may be passed when the caller already memoized the seed. */
+export function clickedFigureOf(node: PMNode, raw?: string): ClickedFigure | null {
+  const kind = node.type.name;
+  if (!isFigurePopoverKind(kind)) return null;
+  return {
+    kind,
+    uuid: (node.attrs.uuid as string | null | undefined) || null,
+    raw: raw ?? figurePopoverRaw(node),
+  };
+}
+
+/** Open the figure source popover — the ONE emitter of `FIGURE_CLICK_EVENT`
+ *  (task 1592; census: `figure-click-emitter-census.test.ts`). */
+export function emitFigureClick(detail: FigureClickDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(FIGURE_CLICK_EVENT, { detail }));
+}
+
 /** The tex-mode popover seed for a figure/graphics node — the faithful env body
  *  (figureBlock: exactly the bytes the serializer writes) or the verbatim
  *  `\includegraphics` command (graphicsBlock). Shared by EVERY opening path
