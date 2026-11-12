@@ -34,12 +34,14 @@ import { resolveCardAnchor, type ResolveIndex } from "@/links/resolve-card-ancho
 import { buildOmniAnchorRows } from "@/panels/_shared/omni-anchor-rows";
 import { NO_JUMP } from "@/links/card-anchor-rows";
 import {
+  ARCHIVED_WITH_PASSAGE_COPY,
   ArchiveRelationRow,
   ArchivedWithProvider,
   PARKED_WITH_PASSAGE_COPY,
   buildArchivedWithApi,
   passageDeleteMessage,
   travelledSummary,
+  type ArchivedWithApi,
 } from "@/panels/_shared/archived-with";
 import { useDormantRevival } from "@/hooks/useDormantRevival";
 import type { CardKind } from "@/cards/types";
@@ -330,7 +332,7 @@ describe("the archive-relation row", () => {
         <ArchiveRelationRow kind="note" id="n1" />
       </ArchivedWithProvider>,
     );
-    expect(getByText("Archived with passage")).toBeTruthy();
+    expect(getByText(ARCHIVED_WITH_PASSAGE_COPY)).toBeTruthy();
     const row = container.querySelector("[data-archive-passage]")!;
     expect(row.getAttribute("data-archive-passage-state")).toBe("archived");
     fireEvent.click(container.querySelector("[data-archive-passage-jump]")!);
@@ -364,6 +366,73 @@ describe("the archive-relation row", () => {
       travelledSummary([{ kind: "report-request", id: "r", archived: true, title: "" }]),
     ).toBe("1 report request");
   });
+
+  // Task 1581 — two kind pairs share a registry label; no sentence or chip row
+  // may show the same noun twice for different kinds.
+  const mixed = [
+    { kind: "revision-comment", id: "rc", archived: true, title: "Rev ask" },
+    { kind: "cutter-comment", id: "cc", archived: true, title: "Cut ask" },
+    { kind: "revision-suggestion", id: "rs", archived: true, title: "Rev draft" },
+    { kind: "cutter-suggestion", id: "cs", archived: true, title: "Cut draft" },
+    { kind: "note", id: "n", archived: true, title: "N" },
+  ] as const satisfies readonly { kind: CardKind; id: string; archived: boolean; title: string }[];
+
+  it("a shared noun is qualified by its hosting panel, never repeated", () => {
+    const summary = travelledSummary(mixed);
+    expect(summary).toBe(
+      "1 Revisions request, 1 Cutter request, 1 Revisions revision, 1 Cutter revision, 1 note",
+    );
+    const msg = passageDeleteMessage(mixed)!;
+    expect(msg).toContain(summary);
+    const parts = summary.split(", ").map((p) => p.replace(/^\d+ /, ""));
+    expect(new Set(parts).size).toBe(parts.length);
+  });
+
+  it("one family stays unqualified and counts together", () => {
+    expect(
+      travelledSummary([
+        { kind: "cutter-comment", id: "a", archived: true, title: "" },
+        { kind: "cutter-comment", id: "b", archived: true, title: "" },
+      ]),
+    ).toBe("2 requests");
+  });
+
+  it("chips qualify an ambiguous label and leave the rest alone", () => {
+    const value: ArchivedWithApi = {
+      travelledWith: () => mixed,
+      passageOf: () => null,
+      openCard: () => {},
+      openPassage: () => {},
+    };
+    const { container } = render(
+      <ArchivedWithProvider value={value}>
+        <ArchiveRelationRow kind="archive" id="snip" />
+      </ArchivedWithProvider>,
+    );
+    const labels = [...container.querySelectorAll("[data-archive-travelled-chip] .font-medium")].map(
+      (el) => el.textContent,
+    );
+    expect(labels).toEqual([
+      "Revisions request",
+      "Cutter request",
+      "Revisions revision",
+      "Cutter revision",
+      "Note",
+    ]);
+  });
+
+  it("the passage chip is the bare title in both states", () => {
+    for (const id of ["n1", "n2"]) {
+      const { container, unmount } = render(
+        <ArchivedWithProvider value={api(() => {})}>
+          <ArchiveRelationRow kind="note" id={id} />
+        </ArchivedWithProvider>,
+      );
+      const jump = container.querySelector("[data-archive-passage-jump]")!;
+      expect(jump.textContent).not.toMatch(/^Passage:/);
+      unmount();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -372,6 +441,28 @@ describe("the archive-relation row", () => {
 
 describe("archived-with CENSUS", () => {
   const read = (rel: string) => codeOnly(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+
+  it("card-kind nouns have ONE owner (task 1581): no second pluralizer under src/panels", () => {
+    const owner = read("src/panels/panel-registry.ts");
+    expect(owner).toMatch(/export function cardKindNoun\(/);
+    const panelsDir = path.join(REPO_ROOT, "src/panels");
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+          if (ent.name !== "__tests__") walk(full);
+        } else if (/\.tsx?$/.test(ent.name)) {
+          const code = codeOnly(fs.readFileSync(full, "utf8"));
+          const n = (code.match(/toLowerCase\(\)\}s`/g) ?? []).length;
+          if (n > 0 && !full.endsWith(path.join("panels", "panel-registry.ts"))) offenders.push(full);
+        }
+      }
+    };
+    walk(panelsDir);
+    expect(offenders).toEqual([]);
+    expect(read("src/panels/_shared/archived-with.tsx")).toMatch(/cardKindNoun/);
+  });
 
   it("every carrying hook's setArchived writes through setArchivedFlag", () => {
     for (const f of ["useNotes", "useTodos", "useCutter", "useReports", "useRevisions"]) {

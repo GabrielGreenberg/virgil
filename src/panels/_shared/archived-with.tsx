@@ -22,14 +22,21 @@
  * second write. Both rows are ONE shell slot (`archiveRelation`) supplied by
  * `useAnchoredCardShell`, so every card kind inherits it (task 822's lesson:
  * a shared affordance is never opted into per component). Kind nouns come
- * from `CARD_REGISTRY`, never hand-typed.
+ * from `cardKindNoun` (the ONE noun owner, `panel-registry.ts`), never
+ * hand-typed — and because two kind pairs share a label, a noun that two
+ * PRESENT kinds share is qualified by its hosting panel (task 1581).
  */
 
 import { createContext, useContext, type ReactNode } from "react";
 import type { CardKind } from "@/cards/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { cardKindNoun, cardKindQualifiers } from "@/panels/panel-registry";
 import { makeCompressedSummary } from "@/components/panel-primitives";
 import type { TravelledCard } from "@/links/dormant";
+
+/** The passage-link sentence — ONE spelling for both sides (task 1581): the
+ *  Archive card's chip row and a travelled card's passage line. */
+export const ARCHIVED_WITH_PASSAGE_COPY = "Archived with this passage";
 
 /** The parked copy — the SSOT for the card line and the omni bin row. */
 export const PARKED_WITH_PASSAGE_COPY =
@@ -88,17 +95,35 @@ export function useArchivedWith(): ArchivedWithApi {
   return useContext(ArchivedWithContext);
 }
 
-/** Lower-case kind noun from the registry, pluralised by count. */
-export function kindNoun(kind: CardKind, count: number): string {
-  const label = CARD_REGISTRY[kind].label.toLowerCase();
-  return count === 1 ? label : `${label}s`;
+/** Each present kind's noun phrase, qualified by its hosting panel only when
+ *  another PRESENT kind shares its noun: `(kind, count) → "revisions
+ *  request"`-style text. One row, one qualification — the summary, the chips
+ *  and the chip hints all read it (task 1581). */
+function rowNouns(entries: readonly ArchivedWithEntry[]) {
+  const qualifiers = cardKindQualifiers(entries.map((e) => e.kind));
+  return (kind: CardKind, count: number): string => {
+    const q = qualifiers.get(kind);
+    const noun = cardKindNoun(kind, count);
+    return q ? `${q} ${noun}` : noun;
+  };
 }
 
-/** "2 notes, 1 task" — counts per kind, in first-seen order. */
+/** "2 notes, 1 task" — counts per kind, in first-seen order; a noun two
+ *  present kinds share reads "1 Revisions request, 1 Cutter request". */
 export function travelledSummary(entries: readonly ArchivedWithEntry[]): string {
+  const noun = rowNouns(entries);
   const counts = new Map<CardKind, number>();
   for (const e of entries) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
-  return [...counts].map(([k, n]) => `${n} ${kindNoun(k, n)}`).join(", ");
+  return [...counts].map(([k, n]) => `${n} ${noun(k, n)}`).join(", ");
+}
+
+/** A chip's bold label — the registry label, or "Revisions request" when the
+ *  row also holds another kind with the same label. */
+function chipLabel(noun: (kind: CardKind, count: number) => string, kind: CardKind): string {
+  const phrase = noun(kind, 1);
+  return phrase === cardKindNoun(kind, 1)
+    ? CARD_REGISTRY[kind].label
+    : phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 /** The delete-confirm sentence for a passage carrying cards (decision 5). */
@@ -134,7 +159,7 @@ export function travelledCardTitle(kind: CardKind, card: object): string {
     const body = makeCompressedSummary(rec[bodyField], 1);
     if (body) return clip(body);
   }
-  return `Untitled ${kindNoun(kind, 1)}`;
+  return `Untitled ${cardKindNoun(kind, 1)}`;
 }
 
 /** A passage's display title: its own title, else its opening words. */
@@ -194,10 +219,11 @@ export function ArchiveRelationRow({ kind, id }: { kind: CardKind; id: string })
   if (kind === "archive") {
     const entries = api.travelledWith(id);
     if (entries.length === 0) return null;
+    const noun = rowNouns(entries);
     return (
       <div className={ROW} data-archive-travelled="" onClick={(e) => e.stopPropagation()}>
         <span data-archive-travelled-summary="">
-          Archived with this passage: {travelledSummary(entries)}
+          {ARCHIVED_WITH_PASSAGE_COPY}: {travelledSummary(entries)}
         </span>
         {entries.map((e) => (
           <button
@@ -205,10 +231,10 @@ export function ArchiveRelationRow({ kind, id }: { kind: CardKind; id: string })
             type="button"
             className={CHIP}
             data-archive-travelled-chip={`${e.kind}:${e.id}`}
-            data-hint={`Open this ${kindNoun(e.kind, 1)}${e.archived ? " in its archive" : ""}`}
+            data-hint={`Open this ${noun(e.kind, 1)}${e.archived ? " in its archive" : ""}`}
             onClick={() => api.openCard(e.kind, e.id)}
           >
-            <span className="font-medium">{CARD_REGISTRY[e.kind].label}</span>
+            <span className="font-medium">{chipLabel(noun, e.kind)}</span>
             <span className="truncate">{e.title}</span>
           </button>
         ))}
@@ -225,7 +251,7 @@ export function ArchiveRelationRow({ kind, id }: { kind: CardKind; id: string })
       onClick={(e) => e.stopPropagation()}
     >
       {passage.archived ? (
-        <span>Archived with passage</span>
+        <span>{ARCHIVED_WITH_PASSAGE_COPY}</span>
       ) : (
         <span>{PARKED_WITH_PASSAGE_COPY}</span>
       )}
@@ -236,7 +262,7 @@ export function ArchiveRelationRow({ kind, id }: { kind: CardKind; id: string })
         data-hint="Open the archived passage"
         onClick={() => api.openPassage(passage.snippetId)}
       >
-        <span className="truncate">{passage.archived ? passage.title : `Passage: ${passage.title}`}</span>
+        <span className="truncate">{passage.title}</span>
       </button>
     </div>
   );
