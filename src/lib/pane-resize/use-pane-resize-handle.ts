@@ -134,7 +134,8 @@ export interface PaneResizeHandleProps {
   /** The divider's SEMANTIC surface — owned HERE, not improvised per consumer
    *  (task 189). A gutter is a pointer-only affordance today: the engine emits
    *  no `tabIndex` and no arrow-key handler, so nothing about it is reachable
-   *  without a mouse. `aria-hidden` states that once, for all ten consumers,
+   *  without a mouse. `aria-hidden` states that once, for every consumer
+   *  (the population is `pane-drag-guardrail.test.ts`'s chrome census),
    *  instead of four of them hand-rolling `role="separator"` + `aria-label`
    *  ("Resize My Papers pod") — a NAMED, valueless, non-operable splitter that
    *  promises an AT user an interaction the app cannot honor. Not a stub for

@@ -184,6 +184,11 @@
      gutter's content (the left gutter's lists, the right gutter's cards). The
      gutter heads' controls sit on the card's top edge, this far down. */
   --gutter-inset: 8px;
+  /* The GUTTER SPLIT GAP: the painted thickness of the tool gutter's top/bottom
+     split divider (task 1583). A different question from `--pod-gap` (the gap
+     BETWEEN pods): this is the seam between two lozenges INSIDE one gutter,
+     chosen live at 12px during the gutter rounds (task 1440). */
+  --gutter-split-gap: 12px;
   /* How far a gutter's content keeps off its INBOARD edge so nothing reaches
      under the text card's matte: the pod frame (`data-pod-frame`, sticky,
      z-31) rings the card with a solid `--pod-gap` of canvas to mask what
@@ -6300,9 +6305,11 @@ body.perf-contain .static-borrowed-text {
 }
 
 /* ── Shared resize-gutter grip (`.band-grip`) — orientation-agnostic ──
-   ONE grip-pill chrome consumed by every resizer in the app: the panel-band
-   dividers + bottom-band/omni edge (horizontal), the panel↔editor gutters,
-   and code splitter (vertical), AND the three library resizers.
+   ONE grip-pill chrome consumed by every resizer in the app — every
+   `usePaneResizeHandle` handle. The population is not listed here (a list is
+   what went stale when the tool-gutter divider arrived, task 1583): its one
+   owner is `pane-drag-guardrail.test.ts`'s per-handle chrome census, which
+   also carries the sole unchromed exception.
    The gutter strip itself is the hover/hit zone; the centered pill is HIDDEN
    at rest (bug sweep #2: a persistent lozenge cluttered the quiet gutter) and
    fades in on hover/drag (`--drag-highlight` + growing on the LONG axis).
@@ -7017,7 +7024,7 @@ body.perf-contain .static-borrowed-text {
    pill on hover/drag). It paints nothing at rest; the lozenge under it is
    the seam. */
 .tool-gutter-divider {
-  height: 12px;
+  height: var(--gutter-split-gap);
   flex: 0 0 auto;
 }
 .tool-gutter-tools {

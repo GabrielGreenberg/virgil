@@ -287,7 +287,7 @@ narrower than 792px on the defaults — a laptop, not an edge case.
 > **A gesture that produced no NET change has nothing to persist: the engine
 > calls `restore()` and commits ZERO times. The engine holds both halves the
 > rule needs — `startValue` and `spec.restore` — so the rule is its own, not
-> ten consumers'.**
+> every consumer's.**
 
 Five rules it earned:
 
