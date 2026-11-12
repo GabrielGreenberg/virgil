@@ -107,9 +107,9 @@ card:
      paragraph holding its `\vfid{}` marker, which the drain carries for a
      bridged row and a `virtual:footnotes:<cardId>` row alike, and refreshes
      when the footnote moves. Pass it every time ([_ask-shape.md](_ask-shape.md)
-     §4's one call shape). An empty `paragraphIds` now means the footnote's
-     marker sits in no paragraph (it was deleted) — halt (step 4) rather than
-     guessing.
+     §4's one call shape). An empty `paragraphIds` means the footnote's
+     marker sits in no paragraph (its `\vfid{}` was deleted) — halt with the
+     deleted-marker template (step 4) rather than guessing.
 
      That one call drains the Task, so emit the report **instead of** a
      footnote, never alongside one ([_ask-shape.md](_ask-shape.md) §4), and name both kinds in the `Done:`
@@ -145,7 +145,11 @@ E1. **Resolve the footnote.** The `cardId` is `linkedTo.cardId` (real request) o
    An id shared across panels REFUSES as ambiguous — re-run with `--panel <panel>`
    and carry `"panel"` in the op ([_card-resolve.md](_card-resolve.md)).
    `{found:false}` → halt (the flagged footnote no longer exists; reply with the
-   halt template). Note its current `content` and the paragraph it sits in.
+   footnote-gone halt template, step 4). Found but the row's `paragraphIds` is
+   empty → the card survives but its `\vfid{}` marker was deleted from the
+   `.tex`, so there is nothing in the text to revise (the E3 `update` would
+   refuse: `could not find \vfid{…}\footnote{…} in the .tex to edit`) — halt
+   with the deleted-marker template (step 4). Note its current `content`.
 
 E2. **Load context + compose the revision.** Read the existing footnote body, the
    request `text` (what the user wants done — expand, tighten, answer a question,
@@ -154,7 +158,8 @@ E2. **Load context + compose the revision.** Read the existing footnote body, th
    python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=1
    ```
    (`<uuid>` from `paragraphIds` — the paragraph holding the footnote's
-   `\vfid{}` marker, for a bridged row and a virtual row alike.) Compose the
+   `\vfid{}` marker, for a bridged row and a virtual row alike; E1 already
+   halted if it is empty.) Compose the
    **revised** footnote body in the same plain-LaTeX
    style as step 2 below (same citation rules apply). Build on the existing
    content; don't discard the user's text unless they asked for a rewrite.
@@ -258,12 +263,13 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    omitted a citation in step 2, after the footnote lands, track the hole as a
    **todo** through the contract's Workflow B (no `requestId`; `--anchor`
    supplies the paragraph and the contract synthesizes + completes its own
-   Task). Carry the trail back to the footnote so whoever picks it up can
-   splice the `\citet` deterministically:
+   Task). Carry the trail back to the footnote, and name no citation command —
+   the right one depends on the paper's bibliography family (natbib's `\citet`
+   is undefined under biblatex):
    ```bash
    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX")
    cat > "$t/body" <<'TXT'
-   Add a bib entry for <author/year>; once in references.bib, splice \citet{<bibkey>} into footnote <footnoteId>.
+   Find a source for <author/year> and add it to references.bib; then cite it in footnote <footnoteId>.
    TXT
    python3 editor/scripts/create_card.py <docPath> --kind=todo \
        --anchor <uuid> \
@@ -284,7 +290,10 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
    with no version bump and no notification. A todo card is strictly better
    besides: it is VISIBLE in the Todos panel, and flagging it for AI mints a
    real bridged `todo` Task that `/editor/review` dispatches to
-   `/editor/find-citation` — which is how the loop actually closes.
+   `/editor/find-citation`. That lands the bib entry and an **unanchored**
+   citation card; nothing splices the cite into the footnote — the user drags
+   the card into it (or flags the footnote for a revision). Say so in your
+   reply rather than promising the footnote will fix itself.
 
 4. **Reply.** Per branch:
    - Ask-shape re-route (step 0a — a report emitted instead of a footnote; name
@@ -300,9 +309,10 @@ E3. **Land it — ONE `update` op that also closes the request.** Rewrite the
      ```
      Done: revised footnote <cardId> for request <requestId>. Output: footnotes.json + document.tex (+ ai-requests.json complete/auto-applied or the virtual flag lowered, footnotes.json aiRequest cleared, notifications, version).
      ```
-   If a missing-bibkey todo was filed: `Filed todo <todoId> for missing bibkey <bibkey> — flag it for AI to route it to /editor/find-citation.`
+   If a missing-bibkey todo was filed: `Filed todo <todoId> for the missing source (<author/year>) — flag it for AI to route it to /editor/find-citation, which adds the bib entry and a citation card to drag into footnote <footnoteId>.`
    On halt (direct create, no `paragraphIds`): `Halted: request <requestId> has no paragraphIds; needs anchor before drafting.`
    On halt (act-on-existing, footnote gone): `Halted: footnote <cardId> for request <requestId> no longer exists.`
+   On halt (footnote card present, marker deleted — step 0a or E1, empty `paragraphIds`): `Halted: footnote <cardId> for request <requestId> has no marker in the text (its \vfid was deleted); nothing was written.`
 
 ## Idempotency
 
@@ -330,6 +340,9 @@ writer's `noop: true` (or `apply_response.py`'s terminal refusal) is the belt
   don't fabricate a `\citet{key}` for a bibkey not in `references.bib` — write
   the prose without it and file a missing-bibkey **todo card** instead
   (step 3) — never a hand-written `ai-requests.json` row.
-- If `paragraphIds` is empty (direct-create branch only), halt (don't guess an
-  anchor from the text). The act-on-existing branch does NOT need `paragraphIds`
-  on the request — it resolves the footnote by `cardId` and edits it in place.
+- Both branches need `paragraphIds` — one rule, the drain's: it names the
+  paragraph holding the footnote's `\vfid{}` marker (or, for a direct create,
+  the anchor). Empty on a direct create → halt (don't guess an anchor from the
+  text). Empty on a footnote row → the marker is gone from the `.tex` → halt
+  with the deleted-marker template; the act-on-existing `update` could not
+  find it to edit anyway.
