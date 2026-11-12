@@ -28,19 +28,95 @@
  * (`onFinish` restores it — called on every ending EXCEPT disposal, whose
  * view is gone), and the surface's own extras (the heading strip's sizer and
  * focus keeper, released through `onEnd`).
+ *
+ * ## The core and its two adapters (task 1591)
+ *
+ * The figure lozenge (`FigureAnnotation`, a React NodeView) was a THIRD copy
+ * of this session — its own snapshot, refusal and rename call — and it had
+ * drifted exactly as the expex pods had: no refocus after a rename. So the
+ * framework-neutral half is split out as the CORE, which both adapters enter:
+ *
+ *   - `planLabelCommit` — the ONE commit decision (refuse a key another
+ *     declaration owns / nothing changed / write), asked at Enter and at blur;
+ *   - `writeLabelRename` — the rename against the write target, then
+ *     `refocusEditor` once the door reports `"renamed"`.
+ *
+ * The adapters own only their framework's mechanics: the vanilla one below
+ * (input listeners, `ViewLifetime`, `LABEL_BLUR_ARM_MS`) and the React one,
+ * `useLabelEditSession` (`src/hooks/useLabelEditSession.ts`, riding
+ * `useFieldEditSession`'s end-once ref).
  */
 
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { collectLabelKeys, labelKeyProblem } from "@/lib/labels";
+import { collectLabelKeys, labelKeyProblem, type LabelKeyProblem } from "@/lib/labels";
 import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
-import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
+import {
+  renameLabelWithRefs,
+  type LabelRenameConfirm,
+  type LabelRenameOutcome,
+} from "@/lib/tiptap/label-rename";
 import { answerFieldKeys } from "@/lib/tiptap/field-keys";
 import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import type { ViewLifetime } from "@/lib/tiptap/view-lifetime";
 
 /** A blur inside this window after opening is a focus steal, not a leave. */
 export const LABEL_BLUR_ARM_MS = 200;
+
+/** What a commit of `draft` over a node carrying `oldLabel` should do. */
+export type LabelCommitPlan =
+  | { kind: "refuse"; problem: LabelKeyProblem }
+  | { kind: "unchanged" }
+  | { kind: "write"; newLabel: string | null };
+
+/**
+ * The ONE commit decision, shared by both adapters. A candidate ANOTHER
+ * declaration already claims (or one TeX cannot read back, task 1435) is
+ * REFUSED — the rename door asks the same predicate, but it is asked here
+ * first so Enter can keep the field OPEN (warning lit) while leaving the field
+ * abandons the conflicting draft (a blur that re-focused the input would trap
+ * focus). O(1) beyond the predicate's own lookup.
+ */
+export function planLabelCommit(
+  target: Editor,
+  draft: string,
+  oldLabel: string | null,
+): LabelCommitPlan {
+  const newLabel = draft.trim() || null;
+  if (newLabel === oldLabel) return { kind: "unchanged" };
+  const problem = newLabel ? labelKeyProblem(target, newLabel, oldLabel) : null;
+  if (problem) return { kind: "refuse", problem };
+  return { kind: "write", newLabel };
+}
+
+export interface LabelRenameWrite {
+  /** The write target: main in a float, the view's own editor otherwise. */
+  target: Editor;
+  /** Resolve the declaring node in `target`, at write time. */
+  locate: () => { pos: number; node: PMNode } | null;
+  newLabel: string | null;
+  confirm: LabelRenameConfirm | null;
+  /** The editor the surface lives in — refocused after a rename. */
+  editorToRefocus: Editor;
+}
+
+/**
+ * The WRITE half of the core: ONE door for every label rename (task 534) —
+ * moves the declaration and every `\ref` naming the old key in ONE
+ * transaction — then hands focus back. Task 486: the edit happened AT A NODE;
+ * the caret is wherever the user left it, so a bare `focus()`'s deferred
+ * scroll would drag the document to a stale caret. The refocus door leaves the
+ * document where it is.
+ */
+export async function writeLabelRename(w: LabelRenameWrite): Promise<LabelRenameOutcome> {
+  const outcome = await renameLabelWithRefs(w.target, {
+    locate: w.locate,
+    newLabel: w.newLabel,
+    confirm: w.confirm,
+  });
+  if (outcome === "renamed") refocusEditor(w.editorToRefocus);
+  return outcome;
+}
 
 export interface LabelEditSessionOptions {
   /** The label `<input>`, already in the DOM. */
@@ -96,15 +172,10 @@ export function beginLabelEditSession(opts: LabelEditSessionOptions): void {
 
   const commit = async (via: "enter" | "blur"): Promise<void> => {
     if (ended) return;
-    const newLabel = input.value.trim() || null;
-    const oldLabel = getLabel();
     const target = getTarget();
+    const plan = planLabelCommit(target, input.value, getLabel());
 
-    // A candidate ANOTHER declaration already claims is REFUSED — the door
-    // asks the same predicate, but it is asked here first so the input can
-    // stay OPEN on Enter (warning lit), while leaving the field abandons the
-    // conflicting draft (a blur that re-focused the input would trap focus).
-    if (newLabel && newLabel !== oldLabel && labelKeyProblem(target, newLabel, oldLabel)) {
+    if (plan.kind === "refuse") {
       if (via === "enter") {
         warning.refresh();
         input.focus();
@@ -120,20 +191,14 @@ export function beginLabelEditSession(opts: LabelEditSessionOptions): void {
     // at a stale editable input behind it; the NodeView's `update()`
     // re-renders from the committed attr once the door dispatches.
     onFinish();
-    if (newLabel === oldLabel) return;
-
-    // ONE door for every label rename (task 534): moves the declaration and
-    // every `\ref` naming the old key in ONE transaction.
-    const outcome = await renameLabelWithRefs(target, {
+    if (plan.kind === "unchanged") return;
+    await writeLabelRename({
+      target,
       locate: () => locate(target),
-      newLabel,
+      newLabel: plan.newLabel,
       confirm: confirm(),
+      editorToRefocus: opts.editorToRefocus,
     });
-    if (outcome !== "renamed") return;
-    // Task 486: the edit happened AT A NODE; the caret is wherever the user
-    // left it, so a bare `focus()`'s deferred scroll would drag the document
-    // to a stale caret. The refocus door leaves the document where it is.
-    refocusEditor(opts.editorToRefocus);
   };
 
   input.addEventListener("mousedown", (e) => e.stopPropagation());

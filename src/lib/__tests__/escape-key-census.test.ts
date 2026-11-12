@@ -44,7 +44,7 @@ const MENU = "menu-door population: repeat is answered by useMenuDismiss (task 1
 const REPEAT_LEDGER: Record<string, string> = {
   "src/components/SizeStepper.tsx": FIELD,
   "src/components/FigureBlockNodeView.tsx": FIELD,
-  "src/components/FigureAnnotation.tsx": FIELD,
+  "src/hooks/useLabelEditSession.ts": FIELD,
   "src/components/PanelTextSizeRow.tsx": FIELD,
   "src/components/SourcePodNodeView.tsx": FIELD,
   "src/hooks/useTabIndent.ts": FIELD,

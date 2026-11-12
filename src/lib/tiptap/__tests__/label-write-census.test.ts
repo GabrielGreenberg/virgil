@@ -203,4 +203,24 @@ describe("label write census (task 553)", () => {
       expect(src, `${rel} restates the label session`).not.toMatch(/\bcreateLabelKeyWarning\(|\brenameLabelWithRefs\(/);
     }
   });
+
+  it("the React label editors enter the session CORE too — no third copy (task 1591)", () => {
+    const SESSION = "src/lib/tiptap/label-edit-session.ts";
+    const session = codeOnlyLines(fs.readFileSync(path.join(REPO_ROOT, SESSION), "utf8"));
+    // The core both adapters share: one commit decision, one write+refocus.
+    expect(session).toMatch(/export function planLabelCommit\(/);
+    expect(session).toMatch(/export async function writeLabelRename\(/);
+    const HOOK = "src/hooks/useLabelEditSession.ts";
+    const hook = codeOnlyLines(fs.readFileSync(path.join(REPO_ROOT, HOOK), "utf8"));
+    expect(hook).toMatch(/\bplanLabelCommit\(/);
+    expect(hook).toMatch(/\bwriteLabelRename\(/);
+    expect(hook, "the React adapter restates the rename door").not.toMatch(/\brenameLabelWithRefs\(/);
+    const fig = codeOnlyLines(
+      fs.readFileSync(path.join(REPO_ROOT, "src/components/FigureAnnotation.tsx"), "utf8"),
+    );
+    expect(fig, "FigureAnnotation left the session").toMatch(/\buseLabelEditSession\(/);
+    expect(fig, "FigureAnnotation restates the label session").not.toMatch(
+      /\brenameLabelWithRefs\(|\bcollectLabelKeys\(|\blabelKeyProblem\(/,
+    );
+  });
 });

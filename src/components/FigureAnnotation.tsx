@@ -1,21 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import type { Editor } from "@tiptap/react";
-import {
-  collectLabelKeys,
-  labelKeyProblem,
-  labelKeyProblemIn,
-  labelKeyProblemText,
-  type LabelKeyProblem,
-} from "@/lib/labels";
-import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
+import { labelKeyProblemText } from "@/lib/labels";
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import { chromeOnly } from "@/lib/view-only-chrome";
-import { useFieldEditSession } from "@/lib/field-edit-session";
+import { useLabelEditSession } from "@/hooks/useLabelEditSession";
 import { iconHint } from "@/components/Hint";
 import { figureDeleteLabel, requestFigureDelete } from "@/lib/figures/delete-figure";
-import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 // Blue label lozenge for figureBlock — mirrors the heading annotation in
 // `src/components/Editor.tsx` (vanilla-DOM extension) but built as a React
@@ -55,37 +48,6 @@ export default function FigureAnnotation({
   onConfirmDelete,
   readOnly = false,
 }: Props) {
-  const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [draft, setDraft] = useState(label);
-  // The live problem with the draft — a key ANOTHER declaration claims, or
-  // one TeX cannot read back (task 1435) — or null. One state, one strip.
-  const [conflict, setConflict] = useState<LabelKeyProblem | null>(null);
-  // The keys declared elsewhere, SNAPSHOTTED when the edit opens (task 553):
-  // the live warning is an O(1) membership test per keystroke over this set,
-  // never a document walk. The commit re-asks the live `isLabelTaken`, so a
-  // stale snapshot can only delay the warning, never admit a duplicate.
-  const keysRef = useRef<ReadonlySet<string> | null>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      if (label) {
-        inputRef.current.selectionStart = inputRef.current.selectionEnd =
-          label.length;
-      } else {
-        inputRef.current.select();
-      }
-    }
-  }, [editing, label]);
-
-  const checkConflict = useCallback(
-    (candidate: string) => {
-      setConflict(labelKeyProblemIn(keysRef.current, candidate, label || null));
-    },
-    [label],
-  );
-
   // Task 1083: ONE write gate for every lozenge verb (`#`, label edit/add,
   // ×) — the figure's twin of the heading chip's `chipMayWrite` (task 1017).
   // The `readOnlyEnforcer` would drop the write anyway, but only AFTER the
@@ -94,80 +56,25 @@ export default function FigureAnnotation({
   // can be taken while a modal is up. O(1).
   const mayWrite = useCallback(() => !!editor && surfaceEditableNow(editor), [editor]);
 
-  const enterEdit = useCallback(() => {
-    if (!mayWrite()) return;
-    keysRef.current = editor ? collectLabelKeys(editor) : null;
-    setDraft(label);
-    setConflict(null);
-    setEditing(true);
-  }, [editor, label, mayWrite]);
-
-  const cancel = useCallback(() => {
-    setEditing(false);
-    setDraft(label);
-    setConflict(null);
-  }, [label]);
-
-  // 529's door. This field's `commit` is ASYNC — it awaits the host's rename
-  // confirm — and a dialog FOCUSES its cued default (task 389), which blurs an
-  // input that is still mounted. Pre-555 `commit` opened with
-  // `if (!editing) return`, a captured render-closure read that is PERMANENTLY
-  // TRUE for every `commit` the mounted input can reach (the input renders only
-  // while `editing`), so the guard its author wrote to stop a second commit
-  // could never fire. MEASURED through the real stack: one Enter on a rename
-  // with refs to carry produced TWO confirm dialogs and two rename attempts.
-  // The door reads a REF — "the live value" the dead guard was reaching for.
-  const session = useFieldEditSession();
-
-  /** Would the current draft collide with a key ANOTHER declaration owns?
-   *  ONE predicate, asked by the keydown (which must keep the session OPEN so
-   *  the user can fix it) and by the blur (which abandons the draft) — the two
-   *  endings want opposite answers to the same question, and a second copy is
-   *  how they come to disagree. Task 534: pre-534 the warning was advisory and
-   *  the commit never read `conflict`, so a duplicate `\label` — always a
-   *  LaTeX error ("Label multiply defined") — was committed anyway. */
-  const candidateConflicts = useCallback((): LabelKeyProblem | null => {
-    if (!editor) return null;
-    const newLabel = draft.trim() || null;
-    const oldLabel = label || null;
-    if (!newLabel || newLabel === oldLabel) return null;
-    // Task 1435: the SAME question the door asks — unsafe OR taken.
-    return labelKeyProblem(editor, newLabel, oldLabel);
-  }, [draft, editor, label]);
-
-  /** The WRITE. Called only once the session has already ended, so it never
-   *  decides whether the session ends — that decision is SYNCHRONOUS and lives
-   *  at the two endings below, which is what lets `commitAndBlur` blur before
-   *  the first `await` yields. */
-  const commitRename = useCallback(async () => {
-    if (!editor || !getFigurePos) return;
-    const newLabel = draft.trim() || null;
-    const oldLabel = label || null;
-    if (newLabel === oldLabel) return;
-
-    // ONE door for every label rename (task 534): collects the `\ref`s
-    // naming the old key over the whole document, asks the host's confirm
-    // (`onConfirmRename`, produced by `EditorPane`), and moves the
-    // declaration and every ref in ONE transaction. The heading strip and
-    // the Outline's label editor enter the same door.
-    const outcome = await renameLabelWithRefs(editor, {
-      locate: () => {
-        const pos = getFigurePos();
-        if (pos == null) return null;
-        const node = editor.state.doc.nodeAt(pos);
-        return node && node.type.name === "figureBlock" ? { pos, node } : null;
-      },
-      newLabel,
-      confirm: onConfirmRename ?? null,
-    });
-    // Nothing written (cancelled, stale, conflict, unresolved, read-only —
-    // the door asks the write gate itself, task 1083): the field's
-    // draft goes back to the committed label rather than holding a key the
-    // document never took (task 876). A refusal AFTER the user answered the
-    // question is announced by the door itself, the typed key handed back
-    // (task 1436), so resetting the field loses nothing silently.
-    if (outcome !== "renamed") setDraft(label);
-  }, [draft, editor, label, getFigurePos, onConfirmRename]);
+  // Task 1591: the label edit is the ONE label-edit session (the heading
+  // strip and the expex pods ride its vanilla adapter; this lozenge its React
+  // one) — the key snapshot, the duplicate refusal, the end-once latch (task
+  // 555), the rename door and the refocus after a rename all live there.
+  const locate = useCallback(() => {
+    const pos = getFigurePos?.();
+    if (!editor || pos == null) return null;
+    const node = editor.state.doc.nodeAt(pos);
+    return node && node.type.name === "figureBlock" ? { pos, node } : null;
+  }, [editor, getFigurePos]);
+  const labelEdit = useLabelEditSession({
+    editor,
+    label: label || null,
+    locate,
+    confirm: onConfirmRename ?? null,
+    mayWrite,
+  });
+  const { editing, draft, problem: conflict, inputRef } = labelEdit;
+  const enterEdit = labelEdit.begin;
 
   const toggleNumbered = useCallback(() => {
     if (!editor || !getFigurePos || !mayWrite()) return;
@@ -292,43 +199,9 @@ export default function FigureAnnotation({
             className={`figure-label-input${conflict ? " has-conflict" : ""}`}
             value={draft}
             placeholder="label key"
-            onChange={(e) => {
-              setDraft(e.target.value);
-              checkConflict(e.target.value.trim());
-            }}
-            onKeyDown={(e) => {
-              if (isCommitEnter(e)) {
-                e.preventDefault();
-                // The conflict REFUSAL keeps the session open, so it is asked
-                // BEFORE the door: `commitAndBlur` always blurs, which would
-                // undo the refocus this branch exists to perform.
-                const problem = candidateConflicts();
-                if (problem) {
-                  setConflict(problem);
-                  inputRef.current?.focus();
-                  return;
-                }
-                session.commitAndBlur(e.currentTarget, () => {
-                  setEditing(false);
-                  void commitRename();
-                });
-              } else if (isCancelEscape(e)) {
-                e.preventDefault();
-                session.cancel(e.currentTarget, cancel);
-              }
-            }}
-            onBlur={() =>
-              session.commit(() => {
-                // Leaving the field abandons a conflicting draft — refocusing
-                // it here would trap focus in the input.
-                if (candidateConflicts()) {
-                  cancel();
-                  return;
-                }
-                setEditing(false);
-                void commitRename();
-              })
-            }
+            onChange={labelEdit.onChange}
+            onKeyDown={labelEdit.onKeyDown}
+            onBlur={labelEdit.onBlur}
             size={Math.max(draft.length, 8)}
           />
           {conflict && (
