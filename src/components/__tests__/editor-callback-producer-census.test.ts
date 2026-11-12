@@ -226,8 +226,10 @@ describe("the label predicate has ONE home and the rename has ONE door", () => {
     // RENEGOTIATED (task 1588): the heading strip and the expex pods no
     // longer call the door themselves — both enter the ONE vanilla
     // label-edit session, which is the door's single vanilla producer.
+    // RENEGOTIATED (task 1591): the figure lozenge was a THIRD copy of the
+    // session (React) and called the door itself; it now enters the
+    // session's core through its React adapter, `useLabelEditSession`.
     expect(callers.sort()).toEqual([
-      "src/components/FigureAnnotation.tsx",
       "src/components/editor-layout/card-actions/editor-ops.ts",
       "src/lib/tiptap/label-edit-session.ts",
       "src/lib/tiptap/label-rename.ts",

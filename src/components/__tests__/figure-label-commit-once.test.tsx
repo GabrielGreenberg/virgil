@@ -27,6 +27,8 @@
  * second attempt has nothing to announce itself with.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
+
+vi.mock("@/lib/tiptap/refocus-editor", () => ({ refocusEditor: vi.fn() }));
 import { render, cleanup, fireEvent, act } from "@testing-library/react";
 
 vi.mock("@/lib/storage", async () =>
@@ -38,8 +40,12 @@ import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-ex
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import FigureAnnotation from "@/components/FigureAnnotation";
 import type { LabelRenameChoice } from "@/lib/tiptap/label-rename";
+import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.mocked(refocusEditor).mockClear();
+});
 
 const FIG = "uuid-fig";
 
@@ -220,6 +226,40 @@ describe("figure label — the edit session ends exactly ONCE (task 555)", () =>
       expect(confirm).not.toHaveBeenCalled();
       expect(figureOf(editor)?.node.attrs.label).toBe("fig:a");
       expect(container.querySelector("input")).toBeNull();
+    } finally {
+      teardown();
+    }
+  });
+
+  it("a rename via Enter hands focus back to the editor through the refocus door (task 1591)", async () => {
+    const { editor, teardown } = mount();
+    try {
+      const { input } = openLabelInput(editor, async () => "confirm" as const);
+      fireEvent.change(input, { target: { value: "fig:renamed" } });
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Enter" });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(figureOf(editor)?.node.attrs.label).toBe("fig:renamed");
+      // Pre-1591 the lozenge blurred and focus fell to <body>.
+      expect(refocusEditor).toHaveBeenCalledTimes(1);
+      expect(refocusEditor).toHaveBeenCalledWith(editor);
+    } finally {
+      teardown();
+    }
+  });
+
+  it("an unchanged or refused commit does not refocus (nothing was renamed)", async () => {
+    const { editor, teardown } = mount();
+    try {
+      const { input } = openLabelInput(editor, async () => "confirm" as const);
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Enter" });
+        await Promise.resolve();
+      });
+      expect(figureOf(editor)?.node.attrs.label).toBe("fig:a");
+      expect(refocusEditor).not.toHaveBeenCalled();
     } finally {
       teardown();
     }

@@ -277,6 +277,15 @@ function keydownHandlers(src: string): { body: string; index: number }[] {
  * call site hands it. The hook's `cancel` is the door; a call that omits it on
  * a blur-commit field reads exactly like a bare `.blur()` in the handler. */
 const TAB_INDENT_HOOK = "src/hooks/useTabIndent.ts";
+/** Hooks whose RESULT carries a field's keydown handler, read through the same
+ *  way `useTabIndent` is. Task 1591: the figure lozenge's label field takes
+ *  `onKeyDown={labelEdit.onKeyDown}` from the React adapter of the ONE label
+ *  session — without this row the field would silently LEAVE the population
+ *  (task 404's rule: a census must not go green by emptying itself). */
+const HANDLER_HOOKS: Record<string, string> = {
+  useTabIndent: TAB_INDENT_HOOK,
+  useLabelEditSession: "src/hooks/useLabelEditSession.ts",
+};
 
 function declarationOf(src: string, name: string): string {
   const re = new RegExp(`\\bconst\\s+${name.replace(/\$/g, "\\$")}\\s*(?::[^=]+)?=`);
@@ -302,8 +311,11 @@ function resolveNamedHandler(src: string, attr: string): string {
     const decl = declarationOf(src, name);
     if (!decl) continue;
     out += "\n" + decl;
+    for (const [hook, rel] of Object.entries(HANDLER_HOOKS)) {
+      if (!new RegExp(`\\b${hook}\\s*(?:<[^>]*>)?\\s*\\(`).test(decl)) continue;
+      out += "\n" + strip(readFileSync(path.join(REPO, rel), "utf8"), true);
+    }
     if (/\buseTabIndent\s*(?:<[^>]*>)?\s*\(/.test(decl)) {
-      out += "\n" + strip(readFileSync(path.join(REPO, TAB_INDENT_HOOK), "utf8"), true);
       const cancel = /\bcancel\s*:\s*([A-Za-z_$][\w$]*)/.exec(decl);
       if (cancel) out += "\n" + declarationOf(src, cancel[1]);
     }
@@ -416,6 +428,10 @@ describe("CENSUS — a cancelling field takes the door", () => {
     // (`CardTitleInput`, the todo's title, was the other half of that bug — it
     // shares `panel-primitives.tsx` with `CardBodyTitle`, so it is pinned by
     // the per-handler `doored` check below, not by a new row.)
+    //
+    // HELD (task 1591): `FigureAnnotation`'s keydown now comes from the label
+    // session's React adapter (`labelEdit.onKeyDown`); the field stays a
+    // member because the resolver reads through `useLabelEditSession`.
     const found = cancellingFields();
     const rels = [...new Set(found.map((h) => h.rel))].sort();
     expect(rels).toEqual([
