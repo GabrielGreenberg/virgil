@@ -45,6 +45,15 @@
  *   - elevation is never keyed on a STATE: a ternary on an
  *     active/selected/… condition whose branches differ in an elevation read
  *     is a selected row that lifts (AIWindow's nav row did).
+ *
+ * Task 1586 closes the MINT site the first leg exempts. Skipping every
+ * custom-property definition let any token define its own blurred layers, so
+ * `--gutter-lozenge-shadow` hand-copied the resting step's drop as a fourth
+ * value. The mint leg: every CSS custom property whose OWN value (its `var()`
+ * reads blanked) carries a blurred, non-inset, OFFSET layer must be one of the
+ * three ladder steps or annotated. A zero-offset blurred layer (`0 0 8px …`) is
+ * a GLOW — the drag halos — which casts no depth, so it is not a mint. An alias (`var(--pod-shadow)`) or a composition
+ * (zero-blur ring + `var(--card-shadow-ambient)`) mints nothing and passes.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -129,6 +138,39 @@ export function scanShadowSource(src: string, file: string): ShadowViolation[] {
       out.push({ line: i + 1, kind: "literal-layer", text: m[0].trim() });
     }
   });
+  return out;
+}
+
+/** The closed elevation ladder (STYLE_GUIDE → "Depth — three levels"). */
+export const LADDER_STEPS: ReadonlySet<string> = new Set(["--card-shadow-ambient", "--pod-shadow", "--shadow-float"]);
+
+/** Annotated tokens that may mint a blurred layer off the ladder. */
+const MINT_ALLOWLIST: ReadonlyArray<{ token: string; why: string }> = [
+  {
+    token: "--shadow-drag-ghost-filter",
+    why: "a `filter: drop-shadow()` for the drag ghost, not a box-shadow tier (STYLE_GUIDE elevation paragraph)",
+  },
+];
+
+/**
+ * Custom properties in a CSS source whose own value (bracket-balanced `var()`
+ * spans blanked) carries a blurred, non-inset, offset layer — i.e. MINTS
+ * elevation. A zero-offset blur is a glow (a halo), not a depth.
+ */
+export function scanShadowMints(css: string): Array<{ line: number; token: string }> {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  const out: Array<{ line: number; token: string }> = [];
+  for (const m of text.matchAll(/(?<![\w-])(--[\w-]+)\s*:([^;{}]*)/g)) {
+    const judged = stripVarSpans(m[2]);
+    for (const layer of judged.split(",")) {
+      const l = LAYER.exec(layer);
+      LAYER.lastIndex = 0;
+      if (!l || parseFloat(l[3]) <= 0 || /\binset\b/.test(layer)) continue;
+      if (parseFloat(l[1]) === 0 && parseFloat(l[2]) === 0) continue; // a glow
+      out.push({ line: text.slice(0, m.index).split("\n").length, token: m[1] });
+      break;
+    }
+  }
   return out;
 }
 
@@ -321,6 +363,38 @@ describe("shadow-tier census (task 818)", () => {
     expect(stale, "remove allowlist entries that no longer match").toEqual([]);
   });
 
+  it("no custom property mints a fourth elevation value (task 1586)", () => {
+    const offenders: string[] = [];
+    const usedAllow = new Set<number>();
+    const steps = new Set<string>();
+    for (const dir of SCAN_DIRS) {
+      for (const abs of walk(path.join(ROOT, dir))) {
+        if (!abs.endsWith(".css")) continue;
+        const rel = path.relative(ROOT, abs).split(path.sep).join("/");
+        for (const v of scanShadowMints(fs.readFileSync(abs, "utf8"))) {
+          if (LADDER_STEPS.has(v.token)) {
+            steps.add(v.token);
+            continue;
+          }
+          const ai = MINT_ALLOWLIST.findIndex((a) => a.token === v.token);
+          if (ai >= 0) {
+            usedAllow.add(ai);
+            continue;
+          }
+          offenders.push(`${rel}:${v.line} ${v.token}`);
+        }
+      }
+    }
+    // The leg must actually see the ladder, or it is vacuous.
+    expect([...steps].sort()).toEqual([...LADDER_STEPS].sort());
+    expect(
+      offenders,
+      "take a ladder step, or compose: a zero-blur ring + var(<step>) (STYLE_GUIDE → Depth — three levels)",
+    ).toEqual([]);
+    const stale = MINT_ALLOWLIST.filter((_, i) => !usedAllow.has(i)).map((a) => a.token);
+    expect(stale, "remove allowlist entries that no longer match").toEqual([]);
+  });
+
   it("no shadow token is read with a fallback (dead — :root defines it — and driftable)", () => {
     const tokens = definedShadowTokens(fs.readFileSync(GLOBALS_CSS, "utf8"));
     expect(tokens.has("--menu-shadow") && tokens.has("--card-shadow-ambient")).toBe(true);
@@ -427,6 +501,19 @@ describe("shadow-tier census (task 818)", () => {
       expect(hits('const s = { boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)" };')).toEqual([]);
       expect(hits(":root {\n  --shadow-float: 0 6px 16px rgba(0,0,0,0.10),\n    0 1px 3px rgba(0,0,0,0.06);\n}", "x.css")).toEqual([]);
       expect(hits("// was `shadow-lg` and 0 4px 16px rgba(0,0,0,.1)\n/* shadow-md */")).toEqual([]);
+    });
+
+    it("the mint leg fails a fourth blurred value, passes an alias and a ring composition", () => {
+      const toks = (css: string) => scanShadowMints(css).map((v) => v.token);
+      expect(toks(":root {\n  --foo-shadow: 0 2px 6px rgba(0,0,0,.1);\n}")).toEqual(["--foo-shadow"]);
+      expect(toks(":root {\n  --foo-shadow:\n    0 0 0 1px red,\n    0 8px 24px rgba(0,0,0,.1);\n}")).toEqual(["--foo-shadow"]);
+      // The old lozenge: a hand copy of the resting drop is still a mint.
+      expect(toks(":root { --l: 0 0 0 1px rgba(70,50,30,0.12), 0 1px 3px rgba(70,50,30,0.07); }")).toEqual(["--l"]);
+      expect(toks(":root {\n  --l: 0 0 0 1px var(--ring), var(--card-shadow-ambient);\n  --menu-shadow: var(--pod-shadow);\n}")).toEqual([]);
+      expect(toks(":root { --seam: inset 0 1px 2px rgba(0,0,0,.2); --ring: 0 0 0 2px rgba(0,0,0,.2); }")).toEqual([]);
+      expect(toks(":root { --x: var(--y, 0 2px 6px rgba(0,0,0,.1)); }")).toEqual([]);
+      expect(toks(":root { --glow: 0 0 10px color-mix(in oklab, var(--a) 45%, transparent); }")).toEqual([]);
+      expect(toks("/* --c: 0 2px 6px rgba(0,0,0,.1); */")).toEqual([]);
     });
 
     it("fails a dead fallback on a defined shadow token, passes the bare read", () => {

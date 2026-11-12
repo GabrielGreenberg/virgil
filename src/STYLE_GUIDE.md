@@ -869,7 +869,12 @@ rather than a drawn outline. Pick by what the surface IS:
 | Raised | `--pod-shadow` | the page, menus (through `--menu-shadow`) |
 | Floating | `--shadow-float` | floating panels, dialogs |
 
-A new surface takes one of these; it does not get a fourth value.
+A new surface takes one of these; it does not get a fourth value. A surface
+that needs a firmer edge COMPOSES one: a zero-blur ring over a step read through
+`var()` — `--gutter-lozenge-shadow` is `0 0 0 1px var(--gutter-lozenge-ring),
+var(--card-shadow-ambient)` — so retuning a step retunes it too. The
+shadow-tier census fails any custom property that mints its own blurred layer
+outside the three steps (task 1586).
 
 ## Typography
 
@@ -2052,8 +2057,9 @@ Under the default cards-right / tools-left layout, the LEFT gutter is not a
 panel and wears none of the panel vocabulary below: **no pod, no card frame,
 no shadow, no border** — its tools and lists are written straight onto the
 manila (`--background`). Its one raised layer is each half's icon row, a lozenge
-(`--gutter-lozenge-bg` with `--gutter-lozenge-shadow`, a firmer 1px ring over the
-resting depth's soft drop), so the controls read as chrome and each half starts
+(`.gutter-lozenge`, the one rule both gutters' icon rows wear: `--gutter-lozenge-bg`
+with `--gutter-lozenge-shadow`, a firmer 1px ring composed over the resting step,
+`--gutter-lozenge-h` tall), so the controls read as chrome and each half starts
 where a lozenge does. Headings are one voice in both halves: 12px/600 sentence case,
 `--foreground`; rows are the UI sans at
 `text-sm` (the Outline's voice), two-line clamped, `--muted` when settled (a
