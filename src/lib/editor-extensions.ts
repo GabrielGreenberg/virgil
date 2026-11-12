@@ -797,8 +797,8 @@ export interface HeadingSurfaceOpts {
    *    structural writes to the host editor it lives in.
    *  - "float" (FCU Chip B): OMITS the numberer + folding (the float must
    *    not renumber its lone section — its number rides in via the synced
-   *    node attrs), HIDES the fold chevron, gates off demote-to-paragraph +
-   *    delete (they'd dissolve the float's own subject), and PROXIES the
+   *    node attrs), HIDES the fold chevron, gates off demote-to-paragraph
+   *    (it would dissolve the float's own subject), and PROXIES the
    *    label-rename / toggle-numbered / change-level writes to
    *    `host.getMainEditor()` (= MAIN), resolving the heading there by uuid. */
   surface: "main" | "float";
@@ -1294,7 +1294,7 @@ export function createHeadingWithLabel(
           e.preventDefault();
           e.stopPropagation();
           // Task 1017: a read-only surface opens no type menu, starts no
-          // label edit, asks no delete confirm — every verb below writes.
+          // or label edit — every verb below writes.
           if (!chipMayWrite()) return;
           const start = e.target as HTMLElement;
           let cursor: HTMLElement | null = start;
@@ -1666,9 +1666,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // `---` input rule — `---` is an em-dash in LaTeX.
     VirgilHorizontalRule,
     // ── Borrowed-schema atoms (backlog #11) ──────────────────────────────
-    // The block-atom previews (TexBlock/FigureBlock/FigureCaption/
-    // GraphicsBlock + the LatexComment/Citation/LabelRef/Footnote/InlineMath/
-    // DisplayMath inline atoms below) are the SAME set the card surfaces share
+    // The block-atom previews (TexBlock/ForestBlock/FigureBlock/FigureCaption/
+    // GraphicsBlock/LatexComment + the Citation/LabelRef/Footnote/InlineMath/
+    // LatexDynamic/DisplayMath inline atoms below) are the SAME set the card surfaces share
     // via `buildBorrowedAtomSchema` (src/lib/tiptap/borrowed-schema.ts). They
     // are NOT spread from that module here on purpose: on MAIN they carry
     // main-only config (isPoppedRef / docIdRef / figure callbacks / figureFloat
@@ -1893,10 +1893,6 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     ...(isMain
       ? [
           PgMarkChip,
-          // Emits `data-uuid` decorations on every anchorable block's outer
-          // DOM element. The marginalia registry + drag hit-test depend on
-          // these attributes being present in the live DOM. See uuid-attr.ts
-          // for why this needs to be a decoration and not renderHTML.
           // Paints every TRANSIENT view-only signal over the document, one
           // channel each: the text-range bands (search result, diagnostics
           // error range, revision/suggestion text, AI-request wash) as inline

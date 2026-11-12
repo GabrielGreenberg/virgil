@@ -131,8 +131,7 @@ export function LinkedRangeBody({
   // into the factory's `callbacks` exactly as the paragraph/list floats. Unlike
   // the paragraph float (whose doc holds only a paragraph), a text range can
   // hold a heading, list, or figure, so these are not purely inert — they let
-  // an embedded heading's label-rename / heading-delete confirm resolve against
-  // MAIN. `.current` is reassigned each render so the closures see the live
+  // an embedded heading's label-rename confirm resolve against MAIN. `.current` is reassigned each render so the closures see the live
   // main handle.
 
   const onConfirmLabelRenameRef = useRef<LabelRenameConfirm | undefined>(undefined);
