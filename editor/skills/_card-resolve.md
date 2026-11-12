@@ -8,8 +8,10 @@ it was handed:
 python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
 ```
 
-It prints `{found, cardId, panel, filename, listKey, archived, cardKind, card}`
-(exit 0), or `{found: false, cardId}` (exit 1) when no sidecar holds the id.
+It prints `{found, cardId, panel, filename, listKey, archived, archivedWith,
+cardKind, card}` (exit 0) — `archivedWith` names the archive snippet a card
+was archived WITH its text (task 1193), else null — or
+`{found: false, cardId}` (exit 1) when no sidecar holds the id.
 
 **An id resolves to ONE card or the script REFUSES** (task 1112). Two panels
 can hold cards sharing an id — a footnote and the citation minted beside it are

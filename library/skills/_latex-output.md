@@ -64,8 +64,12 @@ but absent from the block is a needle the guard cannot see.
 - `\documentclass{article}`, `\title`, `\author`, `\date`, `\maketitle`
 - `\section`, `\subsection`, `\subsubsection`
 - `\pgmark{N}` (preserved from extraction)
-- `\begin{quote}…\end{quote}` for captions (italicize the body with
-  `\textit{…}` per [_latex-allowlist.md](_latex-allowlist.md))
+- `\begin{quote}\textit{…}\end{quote}` for captions — THE caption
+  encoding, owned here: the extractor emits it (`tex_emit.py`'s
+  `caption` kind) and every deep-index pass that keeps caption text
+  re-encodes to it (never `\textbf{}`, never a heading). `\textit` is
+  the allowlist's italic mark ([_latex-allowlist.md](_latex-allowlist.md));
+  the `quote` environment is this extraction-structure list's own entry.
 - `\begin{itemize}` ... `\end{itemize}` with `\item` entries (used for
   the bibliography section and any source-document lists)
 - Plain text paragraphs

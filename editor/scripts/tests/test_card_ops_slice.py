@@ -139,6 +139,16 @@ check(out_of(r).get("archived") is True and out_of(r).get("panel") == "archive",
       "an archived snippet resolves with archived=true")
 r = run(CBID, str(sb), "totally-not-a-real-id")
 check(r.returncode == 1 and out_of(r).get("found") is False, "unknown id → found:false, exit 1")
+# The shared include teaches the found-shape by listing its keys; it must list
+# EVERY key the script prints (task 1579: `archivedWith` was printed but untaught).
+import re  # noqa: E402
+_resolve_md = (ROOT / "editor/skills/_card-resolve.md").read_text()
+_m = re.search(r"It prints `\{([^}]*)\}`", _resolve_md)
+_taught = {k.strip() for k in _m.group(1).split(",")} if _m else set()
+_printed = set(out_of(run(CBID, str(sb), NOTE)).keys())
+check(_m is not None and _taught == _printed,
+      f"_card-resolve.md lists exactly card_by_id's keys (missing={sorted(_printed - _taught)}, "
+      f"extra={sorted(_taught - _printed)})")
 
 
 # ───────────────────────────────── edit-card (update op) ──────────────────
