@@ -223,11 +223,13 @@ describe("the label predicate has ONE home and the rename has ONE door", () => {
     // as long as they existed, and this leg could not see them because it
     // asks who CALLS the door, never who WRITES the attr. That question is
     // `label-write-census.test.ts` (task 404's rule: discover by the QUESTION).
+    // RENEGOTIATED (task 1588): the heading strip and the expex pods no
+    // longer call the door themselves — both enter the ONE vanilla
+    // label-edit session, which is the door's single vanilla producer.
     expect(callers.sort()).toEqual([
       "src/components/FigureAnnotation.tsx",
       "src/components/editor-layout/card-actions/editor-ops.ts",
-      "src/lib/editor-extensions.ts",
-      "src/lib/tiptap/expex.ts",
+      "src/lib/tiptap/label-edit-session.ts",
       "src/lib/tiptap/label-rename.ts",
     ]);
     // RENEGOTIATED (task 550). The pre-550 exemption here was the ref

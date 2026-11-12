@@ -184,6 +184,23 @@ describe("label write census (task 553)", () => {
   it("the expex pods spell NO label write of their own any more — they enter the door", () => {
     const expex = fs.readFileSync(path.join(REPO_ROOT, "src/lib/tiptap/expex.ts"), "utf8");
     expect(labelWriteSites("src/lib/tiptap/expex.ts", expex)).toEqual([]);
-    expect(codeOnlyLines(expex)).toMatch(/\brenameLabelWithRefs\(/);
+    // Since task 1588 the pods reach `renameLabelWithRefs` through the ONE
+    // vanilla label-edit session, shared with the heading strip.
+    expect(codeOnlyLines(expex)).toMatch(/\bbeginLabelEditSession\(/);
+  });
+
+  it("the inline label-edit session is ONE door — both vanilla surfaces enter it, neither restates it (task 1588)", () => {
+    const SESSION = "src/lib/tiptap/label-edit-session.ts";
+    const session = codeOnlyLines(fs.readFileSync(path.join(REPO_ROOT, SESSION), "utf8"));
+    expect(session).toMatch(/\brenameLabelWithRefs\(/);
+    expect(session).toMatch(/\brefocusEditor\(/);
+    expect(session).toMatch(/\.onDispose\(/);
+    for (const rel of ["src/lib/editor-extensions.ts", "src/lib/tiptap/expex.ts"]) {
+      const src = codeOnlyLines(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+      expect(src, `${rel} left the session door`).toMatch(/\bbeginLabelEditSession\(/);
+      // A surface that snapshots its own warning or calls the rename door
+      // directly has re-copied the session.
+      expect(src, `${rel} restates the label session`).not.toMatch(/\bcreateLabelKeyWarning\(|\brenameLabelWithRefs\(/);
+    }
   });
 });

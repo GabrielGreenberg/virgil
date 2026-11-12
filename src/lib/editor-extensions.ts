@@ -27,11 +27,9 @@ import type { MutableRefObject, RefObject } from "react";
 import { buildRefTargetIndexPM, resolveRefDisplay } from "@/lib/ref-display";
 import { stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { setAttrIfChanged, setDataIfChanged } from "@/lib/tiptap/idempotent-dom";
-import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import { headingAttrsForLevel, setParagraphInRange } from "@/lib/tiptap/heading-level";
-import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { labelKeyProblem, collectLabelKeys } from "@/lib/labels";
-import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
+import { beginLabelEditSession } from "@/lib/tiptap/label-edit-session";
 import {
   DEFERRING_PARENTS,
   MAIN_STARTERKIT_NODE_ATTRS,
@@ -112,7 +110,6 @@ import {
 import { stampCmdOnly } from "@/lib/tiptap/cmd-only-paragraph";
 import { paintFoldChevron, buildFoldChevronSvg, FOLD_CHEVRON_CLASS, FOLD_SUBJECT_SECTION } from "@/lib/fold-chevron";
 import { proxiedSurfaceEditableNow, type SurfaceEditableStorage } from "@/lib/tiptap/surface-editable";
-import { answerFieldKeys } from "@/lib/tiptap/field-keys";
 import { BoundRoot, type BoundRootPredicate } from "@/lib/tiptap/bound-root";
 import { VirgilHorizontalRule } from "@/lib/tiptap/virgil-horizontal-rule";
 
@@ -1089,106 +1086,22 @@ export function createHeadingWithLabel(
             lifetime.clear(keeperExpiry);
           };
 
-          input.addEventListener("mousedown", (ev) => ev.stopPropagation());
-
-          // Live "label already in use" warning — ONE helper for every vanilla
-          // label editor (task 553), over a key set SNAPSHOTTED here at edit
-          // start against the write target (main in a float). Pre-553 this
-          // strip re-walked the WHOLE document on every character typed
-          // (`isLabelTaken` → `collectLabelKeys` per `input` event); the set
-          // cannot change while this chrome input holds focus, and the commit
-          // below still asks the LIVE predicate, so the warning and the commit
-          // cannot disagree. Task 534 retired the `isLabelTakenRef` mirror: it
-          // was a prop no host supplied, so this warning could never fire.
-          const warning = createLabelKeyWarning({
+          // The session — warning, latch, refusal, rename door, armed blur,
+          // keys, framed focus, dispose end, refocus — is ONE vanilla door
+          // shared with the expex label pod (task 1588). The write TARGET is
+          // MAIN in a float, where the labelRef rewrite walk runs over the
+          // whole doc and the heading is found by uuid.
+          beginLabelEditSession({
             input,
             container: annot,
-            keys: collectLabelKeys(getTarget()),
-            own: (currentNode.attrs.label as string | null) || null,
-          });
-
-          let committed = false;
-          const commit = async (via: "enter" | "blur") => {
-            if (committed) return;
-            const newLabel = input.value.trim() || null;
-            const oldLabel = (currentNode.attrs.label as string | null) || null;
-
-            // Resolve against the write TARGET — MAIN in a float, where the
-            // labelRef rewrite walk must run over the whole doc (the float
-            // only holds this one section) and the heading is found by uuid.
-            const target = getTarget();
-
-            // A candidate ANOTHER declaration already claims is REFUSED — the
-            // door below asks the same predicate, but it is asked here first
-            // so the input can stay OPEN: Enter keeps the user editing with the
-            // warning showing, while leaving the field abandons the conflicting
-            // draft (a blur that re-focused the input would trap focus in it).
-            // Task 534: pre-534 the warning was advisory and the duplicate was
-            // committed anyway — a duplicate `\label` is always a LaTeX error.
-            if (newLabel && newLabel !== oldLabel && labelKeyProblem(target, newLabel, oldLabel)) {
-              if (via === "enter") {
-                warning.refresh();
-                input.focus();
-                return;
-              }
-              committed = true;
-              cleanupSizer();
-              finish();
-              return;
-            }
-
-            committed = true;
-            cleanupSizer();
-
-            if (oldLabel === newLabel) {
-              finish();
-              return;
-            }
-
-            // Restore the annotation display before awaiting a modal so
-            // the user isn't staring at a stale editable input behind it.
-            finish();
-
-            // ONE door for every label rename (task 534): collects the `\ref`s
-            // naming the old key over the WHOLE target document, asks the
-            // host's confirm (`onConfirmLabelRenameRef`, produced by
-            // `EditorPane`), and moves the declaration and every ref in ONE
-            // transaction. The figure lozenge and the Outline's label editor
-            // enter the same door.
-            const outcome = await renameLabelWithRefs(target, {
-              locate: () => resolveHeadingInTarget(target),
-              newLabel,
-              confirm: refs.onConfirmLabelRenameRef?.current ?? null,
-            });
-            if (outcome !== "renamed") return;
-            // Focus the editor the NodeView lives in (the float in float
-            // mode, main in main mode) — keeps the user in the popout.
-            // Task 486: through the refocus DOOR, never a bare `focus()`. This
-            // edit happened AT A NODE resolved by uuid; the caret is wherever
-            // the user last left it, so the default deferred `scrollIntoView`
-            // would drag the document to a stale caret the instant the label
-            // commits — the reported scroll jump.
-            refocusEditor(nodeEditor);
-          };
-
-          // Claims the keys it answers (task 1441, `answerFieldKeys`).
-          answerFieldKeys(input, {
-            commit: () => void commit("enter"),
-            cancel: () => { committed = true; cleanupSizer(); finish(); },
-          });
-
-          let armed = false;
-          input.addEventListener("blur", () => { if (armed) void commit("blur"); });
-          lifetime.setTimeout(() => { armed = true; }, 200);
-
-          lifetime.requestAnimationFrame(() => {
-            input.focus();
-            if (currentNode.attrs.label) {
-              // Place cursor at end for existing labels
-              input.selectionStart = input.selectionEnd = input.value.length;
-            } else {
-              input.select();
-            }
+            lifetime,
+            getTarget,
+            getLabel: () => (currentNode.attrs.label as string | null) || null,
+            locate: (target) => resolveHeadingInTarget(target),
+            confirm: () => refs.onConfirmLabelRenameRef?.current ?? null,
+            onFinish: finish,
+            onEnd: cleanupSizer,
+            editorToRefocus: nodeEditor,
           });
           }
         }

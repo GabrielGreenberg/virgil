@@ -36,7 +36,19 @@ vi.mock("@/lib/storage", async () =>
   (await import("@/lib/__tests__/_mock-storage")).mockStorageModule(),
 );
 
+// Pass-through spies (task 1588): the shared label-edit session must enter the
+// refocus door after a rename, and a destroyed view must reach no rename.
+vi.mock("@/lib/tiptap/refocus-editor", async (orig) => {
+  const actual = await orig<typeof import("@/lib/tiptap/refocus-editor")>();
+  return { ...actual, refocusEditor: vi.fn(actual.refocusEditor) };
+});
+vi.mock("@/lib/tiptap/label-rename", async (orig) => {
+  const actual = await orig<typeof import("@/lib/tiptap/label-rename")>();
+  return { ...actual, renameLabelWithRefs: vi.fn(actual.renameLabelWithRefs) };
+});
+
 import { Editor, type Content } from "@tiptap/core";
+import { refocusEditor } from "@/lib/tiptap/refocus-editor";
 import type { MutableRefObject, RefObject } from "react";
 import {
   buildEditorExtensions,
@@ -850,9 +862,11 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
       expect(confirm).toHaveBeenCalledWith(old, next, 1);
       expect(labelOf(editor, uuid)).toBe(next);
       expect(refLabels(editor)).toEqual(refs);
-      // ONE user-facing dispatch: declaration + ref in the same transaction
-      // (the numberer's appendTransaction rides it, not a second dispatch).
-      expect(spy).toHaveBeenCalledTimes(1);
+      // ONE document-changing dispatch: declaration + ref in the same
+      // transaction (the numberer's appendTransaction rides it, not a second
+      // dispatch). The refocus after the rename (task 1588) is a focus, not a
+      // write, so only doc-changing transactions are counted.
+      expect(spy.mock.calls.filter(([tr]) => tr.docChanged)).toHaveLength(1);
       // Pre-553 the numberer DID fire on the bare write — an example label
       // change is a `LabelEntry` change — and re-resolved the stranded ref
       // to `??`, which is what the compiled PDF printed. Carried, no ref is
@@ -862,6 +876,37 @@ describe.each(EXAMPLE_CASES)("the $kind pod's label input enters the door (task 
       expect(podOf(el, uuid, kind).querySelector(".heading-label-text")?.textContent).toBe(next);
       spy.mockRestore();
     } finally { c(); }
+  });
+
+  it("DEFECT (task 1588): a rename hands focus back through the refocus door, as the heading strip does", async () => {
+    const { editor, el, cleanup: c } = mount({ current: async () => "confirm" as const });
+    try {
+      vi.mocked(refocusEditor).mockClear();
+      const input = openPodInput(el, uuid, kind);
+      input.value = next;
+      pressEnter(input);
+      await settle();
+      expect(labelOf(editor, uuid)).toBe(next);
+      // Pre-1588 the pod's private copy of the session never refocused:
+      // DOM focus fell to <body> once the input was replaced by the pod.
+      expect(refocusEditor).toHaveBeenCalledTimes(1);
+      expect(refocusEditor).toHaveBeenCalledWith(editor);
+    } finally { c(); }
+  });
+
+  it("DEFECT (task 1588): a view destroyed with the input open ends the session — a later blur commits nothing", async () => {
+    const { editor, el } = mount({ current: async () => "confirm" as const });
+    try {
+      const input = openPodInput(el, uuid, kind);
+      // Let the blur commit ARM (200 ms), so only the dispose end can stop it.
+      await new Promise<void>((r) => setTimeout(r, 230));
+      input.value = next;
+      vi.mocked(renameLabelWithRefs).mockClear();
+      editor.destroy();
+      input.dispatchEvent(new FocusEvent("blur"));
+      await settle();
+      expect(renameLabelWithRefs).not.toHaveBeenCalled();
+    } finally { el.remove(); }
   });
 
   it("…and leaves the ref when the confirm says no — the numberer then reports the orphan honestly", async () => {

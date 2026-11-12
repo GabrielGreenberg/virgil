@@ -72,10 +72,11 @@ describe("chrome-input key-claim CENSUS (task 1441)", () => {
   });
 
   it("the three label/title inputs answer their keys through the one door", () => {
+    // Since task 1588 the heading strip's and the expex pods' label inputs
+    // are ONE session (`label-edit-session.ts`); the title inputs are the other.
     for (const rel of [
-      "lib/tiptap/expex.ts",
+      "lib/tiptap/label-edit-session.ts",
       "lib/tiptap/title-edit-session.ts",
-      "lib/editor-extensions.ts",
     ]) {
       expect(readFileSync(path.join(SRC, rel), "utf8"), rel).toMatch(/\banswerFieldKeys\(/);
     }

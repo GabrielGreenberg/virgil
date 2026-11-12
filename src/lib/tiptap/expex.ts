@@ -1,9 +1,8 @@
 import { Node, Extension, mergeAttributes, type Editor } from "@tiptap/react";
 import type { MutableRefObject } from "react";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { renameLabelWithRefs, type LabelRenameConfirm } from "@/lib/tiptap/label-rename";
-import { labelKeyProblem, collectLabelKeys } from "@/lib/labels";
-import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
+import type { LabelRenameConfirm } from "@/lib/tiptap/label-rename";
+import { beginLabelEditSession } from "@/lib/tiptap/label-edit-session";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
@@ -25,7 +24,6 @@ import {
   setDataIfChanged,
   setTextIfChanged,
 } from "@/lib/tiptap/idempotent-dom";
-import { answerFieldKeys } from "@/lib/tiptap/field-keys";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -79,11 +77,12 @@ export type ExampleLabelHost = { getMainEditor: () => Editor | null };
  * The pod owns the annotation's render, the inline `<input>` session (the
  * task-529 commit/cancel latch, the blur guard armed after 200 ms through the
  * view's lifetime), the live "already in use" warning over a key set
- * snapshotted at edit start, and the COMMIT — which is the heading strip's
- * byte for byte: a candidate another declaration claims is REFUSED (Enter
- * keeps the input open with the warning lit; leaving the field abandons the
- * draft), everything else enters `renameLabelWithRefs` against the write
- * TARGET (main in a float).
+ * snapshotted at edit start, and the COMMIT. Since task 1588 the session is
+ * not a copy of the heading strip's but the SAME door —
+ * `beginLabelEditSession` (`label-edit-session.ts`): a candidate another
+ * declaration claims is REFUSED (Enter keeps the input open with the warning
+ * lit; leaving the field abandons the draft), everything else enters
+ * `renameLabelWithRefs` against the write TARGET (main in a float).
  */
 function createExampleLabelPod(params: {
   labelAnnot: HTMLElement;
@@ -105,8 +104,11 @@ function createExampleLabelPod(params: {
    *  its await) — the defect was the OFFER: a read-only surface opened an
    *  input whose Enter was refused and discarded with no feedback. */
   mayWrite: () => boolean;
+  /** The editor this NodeView lives in (the float in a float) — refocused
+   *  through the refocus door after a rename (task 1588). */
+  getEditor: () => Editor;
 }): { render: () => void; sync: () => void } {
-  const { labelAnnot, typeText, getLabel, lifetime, getTarget, locate, confirm, mayWrite } =
+  const { labelAnnot, typeText, getLabel, lifetime, getTarget, locate, confirm, mayWrite, getEditor } =
     params;
   labelAnnot.className = chromeOnly(params.className);
   labelAnnot.contentEditable = "false";
@@ -164,82 +166,21 @@ function createExampleLabelPod(params: {
     input.placeholder = "label key";
     replaceTarget.replaceWith(input);
 
-    // Live warning over a key set snapshotted ONCE, here, against the write
-    // target — O(1) per keystroke; the commit re-asks the live predicate.
-    const warning = createLabelKeyWarning({
+    // The session is the ONE vanilla label door, shared with the heading
+    // strip (task 1588) — warning, latch, refusal, rename door, armed blur,
+    // keys, framed focus, dispose end, and the refocus after a rename that
+    // this pod's private copy had dropped.
+    beginLabelEditSession({
       input,
       container: labelAnnot,
-      keys: collectLabelKeys(getTarget()),
-      own: getLabel(),
+      lifetime,
+      getTarget,
+      getLabel,
+      locate,
+      confirm,
+      onFinish: render,
+      editorToRefocus: getEditor(),
     });
-
-    let committed = false;
-    const commit = async (via: "enter" | "blur") => {
-      if (committed) return;
-      const newLabel = input.value.trim() || null;
-      const oldLabel = getLabel();
-      const target = getTarget();
-
-      // A candidate ANOTHER declaration already claims is REFUSED — the door
-      // asks the same predicate, but it is asked here first so the input can
-      // stay OPEN on Enter (warning lit), while leaving the field abandons
-      // the conflicting draft rather than trapping focus in it.
-      if (newLabel && newLabel !== oldLabel && labelKeyProblem(target, newLabel, oldLabel)) {
-        if (via === "enter") {
-          warning.refresh();
-          input.focus();
-          return;
-        }
-        committed = true;
-        warning.dispose();
-        render();
-        return;
-      }
-
-      committed = true;
-      warning.dispose();
-      if (newLabel === oldLabel) {
-        render();
-        return;
-      }
-      // Restore the pod before awaiting a modal so the user is not staring
-      // at a stale editable input behind it; the NodeView's `update()`
-      // re-renders from the committed attr once the door dispatches.
-      render();
-      await renameLabelWithRefs(target, {
-        locate: () => locate(target),
-        newLabel,
-        confirm: confirm(),
-      });
-    };
-
-    input.addEventListener("mousedown", (e) => e.stopPropagation());
-    // Delay arming the blur-commit so focus transitions inside the popover /
-    // editor don't swallow the intended edit — the heading strip's pattern.
-    let armed = false;
-    input.addEventListener("blur", () => {
-      if (armed) void commit("blur");
-    });
-    // Claims the keys it answers (task 1441, `answerFieldKeys`).
-    answerFieldKeys(input, {
-      commit: () => void commit("enter"),
-      cancel: () => {
-        committed = true;
-        warning.dispose();
-        render();
-      },
-    });
-    lifetime.requestAnimationFrame(() => {
-      input.focus();
-      if (getLabel()) {
-        input.selectionStart = input.selectionEnd = input.value.length;
-      } else {
-        input.select();
-      }
-    });
-    lifetime.setTimeout(() => {
-      armed = true;
-    }, 200);
   };
 
   labelAnnot.addEventListener("mousedown", (e) => {
@@ -1143,6 +1084,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           ),
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
         mayWrite: () => proxiedSurfaceEditableNow(editor, getTarget()),
+        getEditor: () => editor,
       });
 
       const commitTitle = (next: string | null) => {
@@ -1625,6 +1567,7 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
           ),
         confirm: () => opts.onConfirmLabelRenameRef?.current ?? null,
         mayWrite: () => proxiedSurfaceEditableNow(editor, getTarget()),
+        getEditor: () => editor,
       });
 
       return {
