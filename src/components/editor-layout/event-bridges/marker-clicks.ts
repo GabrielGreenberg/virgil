@@ -37,7 +37,11 @@ import {
   trackAtomPos,
   type ActiveMath,
 } from "@/lib/tiptap/atom-edit-target";
-import { isFigurePopoverKind, type ActiveFigure } from "@/lib/figures/popover-target";
+import {
+  FIGURE_CLICK_EVENT,
+  isFigurePopoverKind,
+  type ActiveFigure,
+} from "@/lib/figures/popover-target";
 import { toRefCommand } from "@/lib/ref-commands";
 import {
   CITATION_CLICK_EVENT,
@@ -494,8 +498,8 @@ export function useMarkerClickBridges(deps: {
         editor: owner,
       });
     };
-    window.addEventListener("virgil-figure-click", handler);
-    return () => window.removeEventListener("virgil-figure-click", handler);
+    window.addEventListener(FIGURE_CLICK_EVENT, handler);
+    return () => window.removeEventListener(FIGURE_CLICK_EVENT, handler);
   }, [setActiveFigure]);
 
   // Generic anchor-click bridge (R15) — `useTextHoverBridge` dispatches

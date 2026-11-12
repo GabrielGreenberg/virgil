@@ -169,6 +169,7 @@ import {
 // The popover's `raw` seed comes from the ONE env-body builder the serializer
 // uses (tasks 318/319) — a pure leaf over `figures/parse-attrs`, no React.
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import { emitFigureClick, type FigureClickDetail } from "@/lib/figures/popover-target";
 // Type-only (erased at compile time): the React-land APIs an action's
 // `run()` reaches for. Importing the TYPES does NOT instantiate them and
 // does NOT pull React into this module's runtime.
@@ -738,15 +739,7 @@ export interface ActionContext {
    * saves identically whether opened via this callback (insert) or the
    * `virgil-figure-click` listener (edit).
    */
-  openFigurePopover?: (figure: {
-    kind: "figureBlock" | "graphicsBlock";
-    raw: string;
-    /** The block's uuid — the identity the save resolves (task 1082). */
-    uuid: string | null;
-    pos: number;
-    rect: DOMRect;
-    editor: Editor;
-  }) => void;
+  openFigurePopover?: (figure: FigureClickDetail) => void;
   /**
    * Open the text-color popover (CHIP 6b). The `text-color` format row is the
    * one format action that is NOT a fire-and-forget `editor.chain()` toggle —
@@ -3096,13 +3089,7 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
  *  listener is the same event and stays wired). */
 function openInsertPopover(
   ctx: ActionContext,
-  seed: {
-    kind: "figureBlock" | "graphicsBlock";
-    raw: string;
-    uuid: string | null;
-    pos: number;
-    rect: DOMRect;
-  },
+  seed: Omit<FigureClickDetail, "editor">,
 ): void {
   // EX-F4-02: carry the OWNING editor — the one figureRun/graphicsRun just
   // inserted the block into (`ctx.editor`). The popover's save routes back to
@@ -3113,8 +3100,8 @@ function openInsertPopover(
   const detail = { ...seed, editor: ctx.editor };
   if (ctx.openFigurePopover) {
     ctx.openFigurePopover(detail);
-  } else if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("virgil-figure-click", { detail }));
+  } else {
+    emitFigureClick(detail);
   }
 }
 

@@ -14,10 +14,18 @@ import {
   withInsertedFigureGraphics,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
+  clampWidthPercent,
+  DEFAULT_SCALE_PERCENT,
+  MAX_WIDTH_PERCENT,
+  MIN_WIDTH_PERCENT,
 } from "@/lib/figures/parse-attrs";
 import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import { figureDeleteLabel, requestFigureDelete } from "@/lib/figures/delete-figure";
-import { figurePopoverRaw } from "@/lib/figures/popover-target";
+import {
+  clickedFigureOf,
+  emitFigureClick,
+  figurePopoverRaw,
+} from "@/lib/figures/popover-target";
 import {
   applyFigureExtrasEdit,
   applyGraphicsCommandEdit,
@@ -30,7 +38,6 @@ import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
 import { pickFigureFile, toIncludableFigure } from "@/lib/figures/pick-file";
 import { announceEditRefused, editRefusalNotice, errorText } from "@/lib/edit-refusal";
 import { TexUnsafeAssetPathError } from "@/lib/figures/asset-import";
-import { useOptionalSystemDialog } from "@/components/system-dialog-host";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { watchChromeBeside } from "./figure-chrome-beside";
@@ -42,16 +49,9 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { describedHint, iconHint } from "@/components/Hint";
 import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
-const MIN_PERCENT = 10;
-const MAX_PERCENT = 100;
+// The width range + clamp are owned by `parse-attrs.ts`, which owns the
+// `widthPercent` round-trip (task 1592).
 const STEP_PERCENT = 10;
-/** The width the STEPPERS seed from when the source carries no width at all
- *  (a bare `\includegraphics{a.png}` renders at its natural size). This is a
- *  fact about the chrome's first press — `−` gives 40, `+` gives 60 — and
- *  NEVER a value the width box displays: a figure with no width shows an
- *  empty box, because printing a number the document does not contain is how
- *  the box came to display the one value it could not commit (task 537). */
-const DEFAULT_SCALE_PERCENT = 50;
 
 
 // Stable no-op refresh registrar for the read-only card-preview figure panels
@@ -284,21 +284,12 @@ function FigureFloatView({ node, getPos, editor, extension }: NodeViewProps) {
     if (pos == null) return;
     const rect = wrapperRef.current?.getBoundingClientRect();
     if (!rect) return;
-    window.dispatchEvent(
-      new CustomEvent("virgil-figure-click", {
-        detail: {
-          kind: node.type.name,
-          raw: figurePopoverRaw(node),
-          // Task 1082: the clicked identity — the save refuses unless the
-          // node at `pos` is still THIS block.
-          uuid: (node.attrs.uuid as string | null | undefined) ?? null,
-          pos,
-          rect,
-          // The owning editor — the save MUST target this float, not MAIN.
-          editor,
-        },
-      }),
-    );
+    // Task 1082: the clicked identity — the save refuses unless the node at
+    // `pos` is still THIS block. The owning editor — the save MUST target this
+    // float, not MAIN.
+    const clicked = clickedFigureOf(node);
+    if (!clicked) return;
+    emitFigureClick({ ...clicked, pos, rect, editor });
   };
 
   // The wrapper inherits the float's editability (no `contentEditable` prop) so
@@ -338,7 +329,6 @@ function FigureFloatView({ node, getPos, editor, extension }: NodeViewProps) {
 
 function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   const opts = extension.options as FigureBlockOptions;
-  const dialog = useOptionalSystemDialog();
   const docId = opts.docIdRef?.current ?? null;
   const isFigure = node.type.name === "figureBlock";
 
@@ -435,7 +425,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   // showing: typing 50 dispatched nothing while typing 60 worked. The chrome
   // and the renderer must agree about the same figure.
   const currentPercent: number | null =
-    firstSource?.widthPercent != null ? clampPercent(firstSource.widthPercent) : null;
+    firstSource?.widthPercent != null ? clampWidthPercent(firstSource.widthPercent) : null;
 
   // ---- mutation helpers (close over editor + node + getPos) ----
 
@@ -505,7 +495,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   };
 
   const applyScale = (newPercent: number): boolean => {
-    const clamped = clampPercent(newPercent);
+    const clamped = clampWidthPercent(newPercent);
     // The task-470 zero-move rule: a gesture that produced no NET change
     // persists nothing (a redundant `setNodeMarkup` is an undo step and an
     // autosave arm). A source with NO width is never "unchanged" — every
@@ -629,16 +619,16 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     } catch (err) {
       // Task 1081: a file inside the paper folder whose path LaTeX would
       // misread is refused before anything is dispatched — say why.
+      // Through the same refusal voice as every other "Image not added"
+      // (task 1592) — no dialog host required, so it is never console-only.
       if (err instanceof TexUnsafeAssetPathError) {
-        const message =
+        refuse(
+          "failed",
           `“${err.path}” contains ${err.chars.map((c) => `“${c}”`).join(", ")}, ` +
-          "which LaTeX reads as part of the command, so the figure could not " +
-          "be written safely. Rename the file and pick it again.";
-        if (dialog) {
-          void dialog.alert({ title: "Can’t use this file name", message, tone: "danger" });
-        } else {
-          console.warn("[figure]", message);
-        }
+            "which LaTeX reads as part of the command, so the figure could not " +
+            "be written safely. Rename the file and pick it again.",
+          pickedName,
+        );
         return;
       }
       // Any other import failure — no free name in `figures/`, a write or
@@ -672,23 +662,13 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     if (pos == null) return;
     const rect = wrapperRef.current?.getBoundingClientRect();
     if (!rect) return;
-    window.dispatchEvent(
-      new CustomEvent("virgil-figure-click", {
-        // EX-F4-02: carry the owning editor so the save targets THIS editor
-        // (the page = main). The float surface (FigureFloatView) carries its
-        // own editor the same way; handleFigureSave routes by it, never to
-        // MAIN by absolute pos.
-        // Task 1082: plus the clicked `uuid`, so the save names THIS block.
-        detail: {
-          kind: node.type.name,
-          raw: popoverRaw,
-          uuid: (node.attrs.uuid as string | null | undefined) ?? null,
-          pos,
-          rect,
-          editor,
-        },
-      }),
-    );
+    // EX-F4-02: carry the owning editor so the save targets THIS editor (the
+    // page = main). The float surface (FigureFloatView) carries its own editor
+    // the same way; handleFigureSave routes by it, never to MAIN by absolute
+    // pos. Task 1082: plus the clicked `uuid`, so the save names THIS block.
+    const clicked = clickedFigureOf(node, popoverRaw);
+    if (!clicked) return;
+    emitFigureClick({ ...clicked, pos, rect, editor });
   };
 
   // Decide whether the hover chrome fits BESIDE the image (to its right) within
@@ -1011,7 +991,7 @@ export function FigureChrome({
       setDraft(draftFor(currentPercent));
       return;
     }
-    const clamped = clampPercent(num);
+    const clamped = clampWidthPercent(num);
     // `null !== 50`, so the first commit on a width-less figure LANDS — the
     // box can only display a value it can commit (task 537).
     // A refused write (the pen moved, the width is not the chrome's) restores
@@ -1037,8 +1017,8 @@ export function FigureChrome({
     e.stopPropagation();
   };
 
-  const minusDisabled = !canScale || stepOrigin <= MIN_PERCENT;
-  const plusDisabled = !canScale || stepOrigin >= MAX_PERCENT;
+  const minusDisabled = !canScale || stepOrigin <= MIN_WIDTH_PERCENT;
+  const plusDisabled = !canScale || stepOrigin >= MAX_WIDTH_PERCENT;
   const naturalSize = currentPercent === null;
 
   return (
@@ -1074,8 +1054,8 @@ export function FigureChrome({
           className="figure-scale-input"
           value={draft}
           inputMode="numeric"
-          min={MIN_PERCENT}
-          max={MAX_PERCENT}
+          min={MIN_WIDTH_PERCENT}
+          max={MAX_WIDTH_PERCENT}
           step={1}
           disabled={!canScale}
           // The honest empty state: a figure with no `width=` renders at
@@ -1173,14 +1153,6 @@ const NATURAL_SIZE_PLACEHOLDER = "auto";
 /** Why the width composite is greyed: its tooltip AND its accessible
  *  description, one string (`describedHint`). */
 const SCALE_LOCKED_REASON = "Width uses absolute units — edit in code to adjust";
-
-function clampPercent(n: number): number {
-  if (!Number.isFinite(n)) return DEFAULT_SCALE_PERCENT;
-  const i = Math.round(n);
-  if (i < MIN_PERCENT) return MIN_PERCENT;
-  if (i > MAX_PERCENT) return MAX_PERCENT;
-  return i;
-}
 
 // ---- icons (inline SVG for crisp scaling, no extra deps) ----
 

@@ -14,7 +14,7 @@ const ROOT = join(__dirname, "../../../..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
 /** The popover-opening click events whose popover commits a document write. */
-const WRITE_POPOVER_EVENTS = ["virgil-math-click", "REF_CLICK_EVENT", "virgil-figure-click"];
+const WRITE_POPOVER_EVENTS = ["virgil-math-click", "REF_CLICK_EVENT", "FIGURE_CLICK_EVENT"];
 
 describe("atom-popover gate CENSUS (task 1071)", () => {
   const bridges = read("src/components/editor-layout/event-bridges/marker-clicks.ts");
@@ -82,10 +82,16 @@ describe("atom-popover gate CENSUS (task 1071)", () => {
   });
 
   it("every virgil-figure-click detail carries the clicked uuid", () => {
+    // Task 1592: the NodeView sites build their identity through the ONE
+    // builder (`clickedFigureOf`, which carries `uuid`) and emit through the
+    // ONE emitter.
+    const target = read("src/lib/figures/popover-target.ts");
+    const builder = target.slice(target.indexOf("export function clickedFigureOf"));
+    expect(builder.slice(0, 600)).toMatch(/\buuid:/);
     const view = read("src/components/FigureBlockNodeView.tsx");
-    const sites = view.split('new CustomEvent("virgil-figure-click"').slice(1);
+    const sites = view.split("emitFigureClick(").slice(1);
     expect(sites.length).toBeGreaterThan(0);
-    for (const site of sites) expect(site.slice(0, 600)).toMatch(/\buuid\b/);
+    for (const site of sites) expect(site.slice(0, 80)).toMatch(/^\{ \.\.\.clicked,/);
     const registry = read("src/lib/actions/action-registry.ts");
     expect(registry).toMatch(/kind: "figureBlock",[\s\S]{0,1200}?\buuid,/);
     expect(registry).toMatch(/kind: "graphicsBlock",[\s\S]{0,200}?\buuid,/);
