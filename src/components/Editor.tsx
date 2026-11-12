@@ -185,10 +185,12 @@ interface EditorProps {
    */
   onConfirmFigureDelete?: () => Promise<boolean>;
   /**
-   * Documentclass name (e.g. "article", "report") used by the heading-
-   * type dropdown to disable entries the class doesn't support. Pass
-   * `null` (or omit) to show every entry as enabled — appropriate when
-   * the class isn't known or is a custom `.cls`.
+   * Documentclass name (e.g. "article", "report"), passed to the
+   * `SelectionActionsMenu` so its block-type choices can disable entries the
+   * class doesn't support. Pass `null` (or omit) to show every entry as
+   * enabled — appropriate when the class isn't known or is a custom `.cls`.
+   * (The heading-type dropdown reads the class from EditorPane's
+   * `documentClassName`, not from this prop.)
    */
   documentClass?: string | null;
 }
@@ -259,11 +261,10 @@ export interface EditorHandle {
   // --- Heading-label callbacks, exposed for float proxying (FCU Chip B) ---
   // A popped-out heading float runs the SAME `createHeadingWithLabel`
   // NodeView as main but proxies its structural writes back to the main
-  // editor. These two expose main's own confirmations so the float reads
-  // the identical dialogs off `editorRef.current` and threads them into the
-  // factory's `callbacks`. Each falls back to the no-prop default the NodeView
-  // assumes (rename→carry, delete→true) when the host didn't supply the
-  // corresponding prop — a default the producer census keeps production from
+  // editor. This exposes main's own rename confirmation so the float reads
+  // the identical dialog off `editorRef.current` and threads it into the
+  // factory's `callbacks`. It falls back to the no-prop default the NodeView
+  // assumes (rename→carry) when the host didn't supply the prop — a default the producer census keeps production from
   // ever reaching (task 534). The "label already in use" predicate is NOT
   // proxied: it is `@/lib/labels`' `isLabelTaken`, read directly against the
   // write target by every label editor.
@@ -483,16 +484,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // inside the extension closure; a ref keeps it in sync across renders.
   const onConfirmLabelRenameRef = useRef(onConfirmLabelRename);
   onConfirmLabelRenameRef.current = onConfirmLabelRename;
-  // Heading lozenge controls: type-menu opener, delete confirmation, and
-  // the live documentclass name. All consumed from inside the vanilla
-  // DOM heading node view through the standard ref-mirror pattern.
+  // Heading lozenge type-menu opener, consumed from inside the vanilla DOM
+  // heading node view through the standard ref-mirror pattern.
   const onOpenHeadingTypeMenuRef = useRef(onOpenHeadingTypeMenu);
   onOpenHeadingTypeMenuRef.current = onOpenHeadingTypeMenu;
 
   const onConfirmFigureDeleteRef = useRef(onConfirmFigureDelete);
   onConfirmFigureDeleteRef.current = onConfirmFigureDelete;
-  const documentClassRef = useRef<string | null>(documentClass ?? null);
-  documentClassRef.current = documentClass ?? null;
 
   // Chrome-aware scroll margin (Part B): an intentional scrollIntoView() (block
   // inserts, jump-to-link) lands BELOW the sticky MenuBar strip + top reading-mask

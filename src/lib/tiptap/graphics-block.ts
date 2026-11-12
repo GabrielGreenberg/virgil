@@ -2,6 +2,14 @@ import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
 import type { FigureBlockOptions } from "./figure-block";
+
+// The label lozenge and the figure-delete confirm are figure-only, so
+// GraphicsBlock takes neither callback; the shared FigureBlockNodeView reads
+// both optionally (`?.`), so their absence here is safe by construction.
+export type GraphicsBlockOptions = Omit<
+  FigureBlockOptions,
+  "onConfirmLabelRenameRef" | "onConfirmFigureDeleteRef"
+>;
 import { UUID_ATTR_SPEC } from "./uuid-attr";
 // CHIP 6a: the pure (React-free) fresh-attrs builder moved to `figure-attrs.ts`
 // (see figure-block.ts for the rationale — keep the registry's `graphicsRun` +
@@ -26,7 +34,7 @@ import {
 // figures and quick inclusions. Carries the verbatim command in
 // `command` for byte-stable round-trip; structured attrs (`source`,
 // `widthPercent`) drive display only.
-export const GraphicsBlock = Node.create<FigureBlockOptions>({
+export const GraphicsBlock = Node.create<GraphicsBlockOptions>({
   name: "graphicsBlock",
   group: "block textObject",
   atom: true,
@@ -39,8 +47,6 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
       // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
       surface: "float" as "main" | "float",
       figureFloat: false,
-      onConfirmLabelRenameRef: null,
-      onConfirmFigureDeleteRef: null,
     };
   },
 

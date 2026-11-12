@@ -74,10 +74,11 @@ function Harness() {
         onConfirmFigureDeleteRef: confirmRef as never,
       }),
       FigureCaption,
+      // GraphicsBlock takes no delete confirm (its options type omits it), so
+      // an image's delete has no dialog to ask by construction.
       GraphicsBlock.configure({
         surface: "main",
         docIdRef: { current: "doc1" },
-        onConfirmFigureDeleteRef: confirmRef as never,
       }),
     ],
     content: {

@@ -789,8 +789,8 @@ props; `Editor.tsx` mirrored them into refs and threaded them into the extension
 factory's `callbacks` bag and onto the `EditorHandle` proxy; the heading
 strip's lozenge (a vanilla-DOM NodeView), the figure's lozenge
 (`FigureAnnotation`) and eight float bodies all READ them. The sole production
-mount — `EditorPane` — supplied every SIBLING (`onConfirmHeadingDelete`,
-`onConfirmFigureDelete`, `onOpenHeadingTypeMenu`) and neither of these two. So
+mount — `EditorPane` — supplied every SIBLING (`onConfirmHeadingDelete` — since removed with
+the heading strip's ×, `f4c56fb0` —, `onConfirmFigureDelete`, `onOpenHeadingTypeMenu`) and neither of these two. So
 every rename of a `\label{…}`, from any surface, on any paper, since
 `0f1761ef`, ran with `updateRefs` false: **the declaration moved and every
 `\ref` naming the old key was left behind** — a `??` in the compiled PDF, with
