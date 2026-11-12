@@ -50,6 +50,7 @@ import { lightningContext } from "@/lib/actions/lightning-context";
 import { actionHint } from "@/components/action-hint";
 import { collabReadOnly } from "@/lib/tiptap/collab-read-only-gate";
 import { reseedEditor } from "@/lib/reseed-caret";
+import { refreshAtomDisplay } from "@/lib/borrowed-render";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -324,73 +325,18 @@ function RichTextFieldImpl({
     getRefDisplayTextRef.current = getRefDisplayText;
   });
 
-  /**
-   * Walk a JSONContent tree and rewrite citation nodes so their `displayText`
-   * matches the current bibliography lookup. We do this both before mounting
-   * the editor and again on every value sync — that way nodes loaded from
-   * persisted JSON (which often saved displayText="") render with the
-   * formatted name instead of the raw \cite command.
-   */
-  const refreshCitationDisplay = useCallback((doc: JSONContent): JSONContent => {
-    const lookup = getCitationDisplayTextRef.current;
-    if (!lookup) return doc;
-    const resolve = lookup;
-    function walk(node: JSONContent): JSONContent {
-      if (node.type === "citation" && node.attrs) {
-        const command = (node.attrs.command as string) || "";
-        const desired = resolve(command) || command;
-        if (node.attrs.displayText !== desired) {
-          return { ...node, attrs: { ...node.attrs, displayText: desired } };
-        }
-        return node;
-      }
-      if (node.content) {
-        return { ...node, content: node.content.map(walk) };
-      }
-      return node;
-    }
-    return walk(doc);
-  }, []);
-
-  /**
-   * The labelRef sibling of `refreshCitationDisplay`. A footnote/note-nested
-   * `\ref` gets its `displayText` resolved at INSERT time (handleInsertRef reads
-   * MAIN — correct in-session), but on RELOAD `richLatexToJson` re-parses it
-   * with `displayText: ""`, and the doc-level ref-display pass can't reach a
-   * footnote's opaque sub-doc — so the NodeView would show `displayText || "??"`
-   * = "??". Resolve each labelRef's number against MAIN here (via the context
-   * resolver) so the reloaded ref shows its number, mirroring the citation path.
-   * When the resolver yields "??"/empty we KEEP the persisted displayText (e.g.
-   * a transient unresolved label) rather than overwriting a good value with "??".
-   */
-  const refreshRefDisplay = useCallback((doc: JSONContent): JSONContent => {
-    const resolve = getRefDisplayTextRef.current;
-    if (!resolve) return doc;
-    function walk(node: JSONContent): JSONContent {
-      if (node.type === "labelRef" && node.attrs) {
-        const label = (node.attrs.label as string) || "";
-        const refCommand = (node.attrs.refCommand as string) || "ref";
-        const resolved = resolve!(label, refCommand);
-        // Only adopt a real resolution; "??"/"" means MAIN couldn't place the
-        // label — don't clobber whatever displayText we already had.
-        if (resolved && resolved !== "??" && node.attrs.displayText !== resolved) {
-          return { ...node, attrs: { ...node.attrs, displayText: resolved } };
-        }
-        return node;
-      }
-      if (node.content) {
-        return { ...node, content: node.content.map(walk) };
-      }
-      return node;
-    }
-    return walk(doc);
-  }, []);
-
-  // Compose both atom-display refreshes (citation + labelRef) into one pass —
-  // applied identically before mount and on each external value sync.
-  const refreshAtomDisplay = useCallback(
-    (doc: JSONContent): JSONContent => refreshRefDisplay(refreshCitationDisplay(doc)),
-    [refreshCitationDisplay, refreshRefDisplay],
+  // Rewrite citation + `\ref` displayText through the ONE atom-display door
+  // every presence tier reads (`@/lib/borrowed-render`, task 1584) — applied
+  // identically before mount and on each external value sync. A reloaded
+  // nested ref (parsed with `displayText: ""`) gets its number from MAIN; a
+  // "??" answer keeps the stored text (the door's stated policy).
+  const refreshAtomDisplayHere = useCallback(
+    (doc: JSONContent): JSONContent =>
+      refreshAtomDisplay(doc, {
+        citation: getCitationDisplayTextRef.current,
+        ref: getRefDisplayTextRef.current,
+      }),
+    [],
   );
 
   // The editor whose edit the debounce is holding — read by the coalescer's
@@ -434,7 +380,7 @@ function RichTextFieldImpl({
   const reseedOwedRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const initialContent = refreshAtomDisplay(normalizeRichContent(value));
+  const initialContent = refreshAtomDisplayHere(normalizeRichContent(value));
 
   const spellcheckPortRef = useSpellcheckPortRef();
 
@@ -662,7 +608,7 @@ function RichTextFieldImpl({
       return;
     }
     reseedOwedRef.current = false;
-    const desired = refreshAtomDisplay(normalizeRichContent(valueRef.current));
+    const desired = refreshAtomDisplayHere(normalizeRichContent(valueRef.current));
     const current = editor.getJSON();
     if (JSON.stringify(current) !== JSON.stringify(desired)) {
       // Through the re-seed door: an external value push is not the user's
@@ -671,7 +617,7 @@ function RichTextFieldImpl({
       // revert back (task 1398).
       reseedEditor(editor, desired);
     }
-  }, [editor, refreshAtomDisplay]);
+  }, [editor, refreshAtomDisplayHere]);
   // The blur handler is bound once at editor construction, so it reaches the
   // live sync (and the live value) through refs.
   const syncExternalValueRef = useRef(syncExternalValue);

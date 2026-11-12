@@ -6,7 +6,7 @@
 //  1. FIDELITY — the HTML comes from a DOMSerializer over the SAME extension
 //     list the live BorrowedMainText mounts (buildCardBodySchema at the
 //     scope), so every borrowed atom serializes with its data-type marker,
-//     citations carry the RESOLVED display text (the refreshCitationDisplay
+//     citations carry the RESOLVED display text (the refreshAtomDisplay
 //     walk, factored here from BorrowedMainText), and math atoms carry
 //     their `latex` attribute for the one-shot KaTeX pass.
 //  2. NORMALIZATION — legacy string bodies route through
@@ -24,7 +24,7 @@ vi.mock("@/lib/storage", () => ({
   readTex: vi.fn(() => Promise.resolve("")),
 }));
 
-import { renderBorrowedHtml, refreshCitationDisplay } from "@/lib/borrowed-render";
+import { renderBorrowedHtml, refreshAtomDisplay } from "@/lib/borrowed-render";
 
 const doc = (...content: object[]) => ({ type: "doc", content });
 const para = (...content: object[]) => ({ type: "paragraph", content });
@@ -45,7 +45,7 @@ describe("renderBorrowedHtml — fidelity", () => {
         ),
       ),
       "card",
-      (cmd) => (cmd.includes("abusch") ? "Abusch 2014" : ""),
+      { citation: (cmd) => (cmd.includes("abusch") ? "Abusch 2014" : "") },
     );
     expect(html).not.toBeNull();
     expect(html!).toContain('data-type="citation"');
@@ -59,9 +59,9 @@ describe("renderBorrowedHtml — fidelity", () => {
   });
 
   it("falls back to the raw command when the resolver answers empty", () => {
-    const walked = refreshCitationDisplay(
+    const walked = refreshAtomDisplay(
       doc(para({ type: "citation", attrs: { command: "\\cite{x}", displayText: "" } })) as never,
-      () => "",
+      { citation: () => "" },
     );
     const cite = (walked as { content: { content: { attrs: { displayText: string } }[] }[] })
       .content[0].content[0];
@@ -92,5 +92,43 @@ describe("renderBorrowedHtml — refusal (task-308 discipline)", () => {
     });
     expect(renderBorrowedHtml(headed, "excerpt")).toContain("A section");
     expect(renderBorrowedHtml(headed, "card")).toBeNull();
+  });
+});
+
+describe("refreshAtomDisplay — the one atom-display door (task 1584)", () => {
+  const ref = (displayText: string, label = "sec:x") => ({
+    type: "labelRef",
+    attrs: { label, refCommand: "ref", displayText },
+  });
+  const refShown = (walked: unknown) =>
+    (walked as { content: { content: { attrs: { displayText: string } }[] }[] }).content[0]
+      .content[0].attrs.displayText;
+  const cases: [string, object, string][] = [
+    ["a resolved number replaces a stale one", { ref: () => "3" }, "3"],
+    ["\"??\" keeps the stored number", { ref: () => "??" }, "2"],
+    ["an empty answer keeps the stored number", { ref: () => "" }, "2"],
+    ["a null answer (main not mounted) keeps the stored number", { ref: () => null }, "2"],
+    ["no ref resolver is identity", { citation: () => "X" }, "2"],
+  ];
+  it.each(cases)("%s", (_name, resolvers, expected) => {
+    expect(refShown(refreshAtomDisplay(doc(para(ref("2"))) as never, resolvers))).toBe(expected);
+  });
+
+  it("returns the SAME object when no resolver is given", () => {
+    const body = doc(para(ref("2"))) as never;
+    expect(refreshAtomDisplay(body, {})).toBe(body);
+  });
+
+  it("refreshes both atom kinds in one walk", () => {
+    const walked = refreshAtomDisplay(
+      doc(
+        para(
+          { type: "citation", attrs: { command: "\\cite{a}", displayText: "" } },
+          ref("1"),
+        ),
+      ) as never,
+      { citation: () => "A 2020", ref: () => "4" },
+    ) as { content: { content: { attrs: { displayText: string } }[] }[] };
+    expect(walked.content[0].content.map((n) => n.attrs.displayText)).toEqual(["A 2020", "4"]);
   });
 });

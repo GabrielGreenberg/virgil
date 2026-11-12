@@ -48,7 +48,7 @@ import {
   type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { refreshCitationDisplay } from "@/lib/borrowed-render";
+import { refreshAtomDisplay } from "@/lib/borrowed-render";
 import { applyBorrowedBodyStyle } from "@/lib/borrowed-body-style";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { registerEditorMount } from "@/lib/editor-census-probe";
@@ -93,8 +93,9 @@ export interface BorrowedMainTextProps {
   schemaScope?: CardBodySchemaScope;
 }
 
-// `refreshCitationDisplay` moved to @/lib/borrowed-render (perf Wave 3) so
-// the live editor and the static T1 tier resolve citations through ONE walk.
+// `refreshAtomDisplay` lives in @/lib/borrowed-render so every presence tier
+// (T1 static, this T2 read-only twin, T3 RichTextField) answers "what does
+// this citation / \ref display?" through ONE walk (perf Wave 3; task 1584).
 
 export function BorrowedMainText({
   value,
@@ -111,13 +112,20 @@ export function BorrowedMainText({
   // sites that REQUIRE a provider; this surface must also render without one).
   const citationCtx = useCitationDisplayContextOrNull();
   const resolveCitation = getCitationDisplayText ?? citationCtx?.getCitationDisplayText;
+  // `\ref`s resolve against the main doc too (the same context resolver the
+  // T1 and T3 tiers read — a stable identity, so no per-keystroke recompute).
+  const resolveRef = citationCtx?.getRefDisplayText;
   // Resolve the content. The editor is read-only, so we never need a
   // focus-gated external value sync — but we DO re-push content when `value`
   // changes (see the value-sync effect below), so a card whose instanceKey is
   // content-independent (e.g. keyed on a stable id) still reflects live edits.
   const resolved = useMemo(
-    () => refreshCitationDisplay(normalizeRichContent(value), resolveCitation),
-    [value, resolveCitation],
+    () =>
+      refreshAtomDisplay(normalizeRichContent(value), {
+        citation: resolveCitation,
+        ref: resolveRef,
+      }),
+    [value, resolveCitation, resolveRef],
   );
 
   const editor = useEditor(

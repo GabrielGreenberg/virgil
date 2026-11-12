@@ -4,7 +4,7 @@
  * The presence-tier system renders a COLLAPSED card body as static HTML
  * instead of mounting a read-only TipTap editor per card (the diagnosis's
  * 881-live-editors problem). This module is the render SSOT for that tier:
- * the SAME normalize → citation-refresh pipeline the live `BorrowedMainText`
+ * the SAME normalize → atom-display-refresh pipeline the live `BorrowedMainText`
  * runs, serialized over the SAME extension list `buildCardBodySchema`
  * composes — byte-identical schema by construction, never a hand copy (the
  * task-308 discipline: a static tier is a THIRD body surface bound by the
@@ -60,51 +60,54 @@ import { forEachBareCommand } from "@/lib/tiptap/cmd-only-paragraph";
 import { inlineIsProse } from "@/lib/prose-index";
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 
-/**
- * Rewrite citation nodes so their `displayText` reflects the current
- * bibliography lookup (persisted nodes often saved `displayText=""`). Pure.
- * Factored out of BorrowedMainText (its sole owner pre-Wave-3) so the live
- * editor and the static tier resolve citations through ONE walk — the
- * `resolve(command) || command` fallback included.
- */
-export function refreshCitationDisplay(
-  doc: JSONContent,
-  resolve: ((command: string) => string) | undefined,
-): JSONContent {
-  if (!resolve) return doc;
-  function walk(node: JSONContent): JSONContent {
-    if (node.type === "citation" && node.attrs) {
-      const command = (node.attrs.command as string) || "";
-      const desired = resolve!(command) || command;
-      if (node.attrs.displayText !== desired) {
-        return { ...node, attrs: { ...node.attrs, displayText: desired } };
-      }
-      return node;
-    }
-    if (node.content) {
-      return { ...node, content: node.content.map(walk) };
-    }
-    return node;
-  }
-  return walk(doc);
+/** Resolve a `\cite` command to its display text (bibliography lookup). */
+export type CitationDisplayResolver = (command: string) => string;
+/** Resolve a `\ref` label to its number in the MAIN doc; null = can't answer. */
+export type RefDisplayResolver = (label: string, refCommand: string) => string | null;
+
+export interface AtomDisplayResolvers {
+  citation?: CitationDisplayResolver;
+  ref?: RefDisplayResolver;
 }
 
 /**
- * Rewrite `\ref` (labelRef) nodes so their `displayText` is the number the
- * label resolves to in the MAIN doc now. A card body owns no headings or
- * examples, and the doc-level ref-display pass can't reach into it, so a
- * stored ref reads stale (or "??") without this. `resolve` returns null when
- * it can't answer; the stored text then stays. Pure.
+ * The ONE answer to "what does this inline atom display?" for a card body —
+ * read by every presence tier (T1 `renderBorrowedHtml`, T2 `BorrowedMainText`,
+ * T3 `RichTextField`; task 1584 retired the per-tier copies, which disagreed
+ * on `\ref`). Pure; one walk; returns the input unchanged when nothing moves.
+ *
+ *  - citation: `displayText = resolve(command) || command` — persisted nodes
+ *    often saved `displayText=""`, and the raw command beats a blank.
+ *  - `\ref` (labelRef): a card body owns no headings/examples, and the
+ *    doc-level ref-display pass can't reach into it, so each ref is resolved
+ *    against the MAIN doc. Only a REAL resolution is adopted: null, "" and
+ *    "??" (MAIN couldn't place the label — not yet hydrated at doc open, or a
+ *    transient miss) KEEP the stored `displayText`, so a good number is never
+ *    degraded; the NodeView/renderHTML already paint `displayText || "??"` for
+ *    a genuinely empty ref.
  */
-export function refreshRefDisplay(
+export function refreshAtomDisplay(
   doc: JSONContent,
-  resolve: ((label: string, refCommand: string) => string | null) | undefined,
+  { citation, ref }: AtomDisplayResolvers,
 ): JSONContent {
-  if (!resolve) return doc;
+  if (!citation && !ref) return doc;
+  function desiredFor(node: JSONContent): string | null {
+    const attrs = node.attrs!;
+    if (node.type === "citation" && citation) {
+      const command = (attrs.command as string) || "";
+      return citation(command) || command;
+    }
+    if (node.type === "labelRef" && ref) {
+      const label = (attrs.label as string) || "";
+      if (!label) return null;
+      const resolved = ref(label, (attrs.refCommand as string) || "ref");
+      return resolved && resolved !== UNRESOLVED_REF_DISPLAY ? resolved : null;
+    }
+    return null;
+  }
   function walk(node: JSONContent): JSONContent {
-    if (node.type === "labelRef" && node.attrs) {
-      const label = (node.attrs.label as string) || "";
-      const desired = label ? resolve!(label, (node.attrs.refCommand as string) || "ref") : null;
+    if ((node.type === "citation" || node.type === "labelRef") && node.attrs) {
+      const desired = desiredFor(node);
       if (desired != null && node.attrs.displayText !== desired) {
         return { ...node, attrs: { ...node.attrs, displayText: desired } };
       }
@@ -117,6 +120,9 @@ export function refreshRefDisplay(
   }
   return walk(doc);
 }
+
+/** What `resolveLabelDisplay` answers for a label MAIN can't place. */
+const UNRESOLVED_REF_DISPLAY = "??";
 
 // One extension list per scope, cached — composed once. Composition mirrors
 // BorrowedMainText's editor construction exactly (StarterKit at the scope's
@@ -317,14 +323,10 @@ function rendererForScope(scope: CardBodySchemaScope): ScopeRenderer {
 export function renderBorrowedHtml(
   value: unknown,
   scope: CardBodySchemaScope,
-  resolveCitation?: (command: string) => string,
-  resolveRef?: (label: string, refCommand: string) => string | null,
+  resolvers: AtomDisplayResolvers = {},
 ): string | null {
   try {
-    const resolved = refreshRefDisplay(
-      refreshCitationDisplay(normalizeRichContent(value), resolveCitation),
-      resolveRef,
-    );
+    const resolved = refreshAtomDisplay(normalizeRichContent(value), resolvers);
     const { schema, serializer } = rendererForScope(scope);
     const doc = withStaticCommandRuns(PMNode.fromJSON(schema, resolved), schema);
     const container = document.implementation
