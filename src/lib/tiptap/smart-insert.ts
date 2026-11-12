@@ -56,7 +56,7 @@
 
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
-import { generateShortId } from "@/lib/uuid";
+import { mintDocUuid } from "@/lib/anchor-uuid";
 import { blockRangeHostsBlockInsert } from "@/text-objects/text-object-registry";
 
 /** The outcome of a `smartInsertBlock` call. */
@@ -70,26 +70,6 @@ export interface SmartInsertResult {
   /** The document position of the inserted block node in the post-dispatch doc,
    *  or -1 if it could not be relocated (defensive — should not happen). */
   pos: number;
-}
-
-/**
- * Scan the doc for every existing `uuid` on nodes of `typeName`, so a freshly
- * minted id is collision-free within that node family. Mirrors the per-block
- * `collect*Uuids` helpers (figure-block / graphics-block / tex-block), unified
- * here so the smart-insert path has one scan. Exported so the view-only block
- * creators in the action registry (`texRun` / `forestRun`, which operate on
- * `ctx.view` and so cannot go through `smartInsertBlock`, which needs a live
- * TipTap `Editor`) mint against the SAME scan rather than a third copy of it.
- */
-export function collectUuids(doc: PMNode, typeName: string): Set<string> {
-  const set = new Set<string>();
-  doc.descendants((node) => {
-    if (node.type.name === typeName && node.attrs.uuid) {
-      set.add(node.attrs.uuid as string);
-    }
-    return true;
-  });
-  return set;
 }
 
 export interface SmartInsertBlockArgs {
@@ -157,14 +137,17 @@ export function smartInsertBlock(args: SmartInsertBlockArgs): SmartInsertResult 
   const carriesUuid = "uuid" in type.spec.attrs!;
   // Mint a collision-free uuid iff the node type declares one and the caller
   // didn't already supply it. A caller that pre-mints (to stamp disk data first)
-  // passes its uuid in `attrs`; we preserve it.
+  // passes its uuid in `attrs`; we preserve it. Drawn through the ONE mint door
+  // (`mintDocUuid`, task 552) — block uuids share ONE namespace across every
+  // anchorable type, so a per-type collision set (the pre-1587 `collectUuids`)
+  // let a figure take a paragraph's id, which `BlockUuidBackfill` then re-minted.
   const suppliedUuid =
     typeof args.attrs?.uuid === "string" && args.attrs.uuid
       ? (args.attrs.uuid as string)
       : "";
   const uuid =
     carriesUuid && !suppliedUuid
-      ? generateShortId(collectUuids(state.doc, type.name))
+      ? mintDocUuid(state.doc)
       : suppliedUuid;
   const attrs = {
     ...(args.attrs ?? {}),
@@ -187,26 +170,44 @@ export function smartInsertBlock(args: SmartInsertBlockArgs): SmartInsertResult 
   let tr = state.tr;
   if (!state.selection.empty) tr = tr.deleteSelection();
   tr = tr.replaceSelectionWith(node);
+  // Where the block landed in the DISPATCHED doc — read before dispatch, while
+  // the minted uuid is still guaranteed to be the one it carries.
+  const dispatchedPos = locateInserted(tr.doc, type, carriesUuid, uuid);
   editor.view.dispatch(tr.scrollIntoView());
 
-  // Locate the inserted node in the post-dispatch doc by its uuid (its position
-  // shifted under deleteSelection). When the type carries no uuid we fall back
-  // to a first-of-type match (single-insert-per-call, so unambiguous in
-  // practice).
+  // Locate the inserted node in the post-dispatch doc (its position shifted
+  // under deleteSelection). By uuid first; then — because an appendTransaction
+  // plugin may have RE-MINTED it (`BlockUuidBackfill` resolving a collision
+  // with a caller-supplied uuid) — at the position it was dispatched to. Either
+  // way the uuid RETURNED is the one the live node carries, read back from the
+  // doc, so a re-mint can never strand the caller with a stale id (task 1587).
+  const live = editor.state.doc;
+  let pos = locateInserted(live, type, carriesUuid, uuid);
+  if (pos < 0 && dispatchedPos >= 0 && live.nodeAt(dispatchedPos)?.type === type) {
+    pos = dispatchedPos;
+  }
+  const liveUuid =
+    carriesUuid && pos >= 0 ? ((live.nodeAt(pos)?.attrs.uuid as string) ?? uuid) : uuid;
+
+  return { uuid: liveUuid, pos };
+}
+
+/** The position of the inserted `type` node in `doc`: by uuid when the type
+ *  carries one, else the first of its type (single-insert-per-call, so
+ *  unambiguous in practice). -1 when absent. */
+function locateInserted(
+  doc: PMNode,
+  type: NodeType,
+  carriesUuid: boolean,
+  uuid: string,
+): number {
   let pos = -1;
-  editor.state.doc.descendants((n, p) => {
+  doc.descendants((n, p) => {
     if (pos >= 0) return false;
-    if (n.type.name !== type.name) return true;
-    if (carriesUuid) {
-      if (n.attrs.uuid === uuid) {
-        pos = p;
-        return false;
-      }
-      return true;
-    }
+    if (n.type !== type) return true;
+    if (carriesUuid && n.attrs.uuid !== uuid) return true;
     pos = p;
     return false;
   });
-
-  return { uuid, pos };
+  return pos;
 }

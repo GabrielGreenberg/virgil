@@ -144,7 +144,8 @@ import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // the grid cell and any future figure/graphics FILE-DROP path converge on one
 // creator. Pure ProseMirror (operates on `editor.view`) — no React/DOM — so the
 // value import is free for every consumer of this registry.
-import { smartInsertBlock, collectUuids } from "@/lib/tiptap/smart-insert";
+import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
+import { collectDocUuids, mintDocUuid } from "@/lib/anchor-uuid";
 // VALUE import: the ONE starter tree an insertion surface seeds a fresh
 // `forestBlock` with, and the grammar it must satisfy. It lives on the forest
 // GRAMMAR leaf (not beside the node) precisely so this registry can reach it —
@@ -2035,14 +2036,10 @@ function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
 
     // Build the new node. Pre-stamp a UUID so the in-memory id matches what
     // will land on disk (matches the `cite` / `tex` pattern).
-    const existingUuids = new Set<string>();
-    state.doc.descendants((n) => {
-      if (n.attrs?.uuid) existingUuids.add(n.attrs.uuid as string);
-    });
     const attrs = {
       field,
       rawPrefix: null,
-      uuid: generateShortId(existingUuids),
+      uuid: mintDocUuid(state.doc),
     };
     let nodeContent = null;
     if (field === "date") {
@@ -2153,8 +2150,8 @@ const TITLE_ACTION_ROWS: Readonly<Record<TitleActionId, ActionSpec>> = {
 // RICHER behavior — **seed code from the selection**. Both surfaces now route
 // through this ONE helper; the slash creator gains seed-from-selection (a minor
 // improvement — it previously threw the selection away), and the duplicated
-// uuid-scan collapses to one (`generateShortId` over the doc's existing
-// `texBlock` uuids).
+// uuid-scan collapses to one (`mintDocUuid`, the ONE block mint door — over
+// EVERY uuid in the doc, not only `texBlock`s, task 1587).
 // ---------------------------------------------------------------------------
 
 /**
@@ -2203,15 +2200,9 @@ export function texRun(ctx: ActionContext): void {
   // selections this run refuses, instead of a live button that does nothing.
   if (!wrapCaptureHolds(state.doc, from, to, TEX_CAPTURE)) return;
   const seedCode = empty ? "" : (captureRangeLatexSource(state.doc, from, to) ?? "");
-  // The ONE uuid-collision scan (was duplicated across slash + grid).
-  const existing = new Set<string>();
-  state.doc.descendants((node) => {
-    if (node.type.name === "texBlock" && node.attrs.uuid) {
-      existing.add(node.attrs.uuid as string);
-    }
-    return true;
-  });
-  const attrs = { uuid: generateShortId(existing), code: seedCode };
+  // Minted through the ONE block mint door (task 552 / 1587): block uuids share
+  // one namespace, so the collision set is the whole doc, not `texBlock`s.
+  const attrs = { uuid: mintDocUuid(state.doc), code: seedCode };
   let tr = state.tr;
   if (!empty) tr = tr.deleteSelection();
   // After deleteSelection the range collapsed; replaceSelectionWith places the
@@ -2253,8 +2244,8 @@ const TEX_ACTION_ROW: ActionSpec = {
 // the 383/384 cluster). Pure ProseMirror on `ctx.view`, exactly like `texRun`:
 // the slash surface reaches it through `runViewOnlyAction`, whose synthesized
 // ctx carries no `.chain()`, so `smartInsertBlock` (which needs a live TipTap
-// `Editor`) is not available to it — the uuid scan is nonetheless the SAME
-// `collectUuids` that helper uses, so there is no third copy of the mint.
+// `Editor`) is not available to it — the uuid is nonetheless minted through the
+// SAME door that helper uses (`mintDocUuid`), so there is no second mint.
 //
 // SELECTION POLICY, stated because it deviates from the sibling block-atom
 // inserts on purpose. `figure`/`graphics` (through `smartInsertBlock`) and
@@ -2271,7 +2262,7 @@ const TEX_ACTION_ROW: ActionSpec = {
 // ---------------------------------------------------------------------------
 export function forestRun(ctx: ActionContext): void {
   insertBlockAtomAtCaret(ctx, "forestBlock", (doc) => ({
-    uuid: generateShortId(collectUuids(doc, "forestBlock")),
+    uuid: mintDocUuid(doc),
     source: freshForestSource(),
   }));
 }
@@ -2701,14 +2692,15 @@ export function exampleRun(ctx: ActionContext): void {
     ? []
     : extractInlineFromSlice(state.doc.slice(from, to));
 
-  // ONE walk, two answers: the uuid collision set this always needed, and the
-  // per-dialect census the mint rule reads (task 355). O(doc) on a user
-  // gesture — never per keystroke — and it was already being paid.
+  // ONE walk, two answers: the uuid collision set this always needed — EVERY
+  // uuid in the doc, since block uuids share one namespace (task 1587; the
+  // `collectDocUuids` rule) — and the per-dialect census the mint rule reads
+  // (task 355). O(doc) on a user gesture — never per keystroke.
   const existing = new Set<string>();
   const dialectCounts = { expex: 0, linguex: 0 };
   state.doc.descendants((node) => {
+    if (node.attrs?.uuid) existing.add(node.attrs.uuid as string);
     if (node.type.name === "exampleBlock") {
-      if (node.attrs.uuid) existing.add(node.attrs.uuid as string);
       dialectCounts[exampleDialectOf(node.attrs)]++;
     }
     return true;
@@ -3132,7 +3124,7 @@ export function figureRun(ctx: ActionContext): void {
   const editor = ctx.editor;
   const figureType = editor.state.schema.nodes.figureBlock;
   if (!figureType) return;
-  const attrs = freshFigureBlockAttrs(collectBlockUuids(editor, "figureBlock"));
+  const attrs = freshFigureBlockAttrs(collectDocUuids(editor.state.doc));
   const { uuid, pos } = smartInsertBlock({
     editor,
     type: figureType,
@@ -3176,7 +3168,7 @@ export function graphicsRun(ctx: ActionContext): void {
   const editor = ctx.editor;
   const graphicsType = editor.state.schema.nodes.graphicsBlock;
   if (!graphicsType) return;
-  const attrs = freshGraphicsBlockAttrs(collectBlockUuids(editor, "graphicsBlock"));
+  const attrs = freshGraphicsBlockAttrs(collectDocUuids(editor.state.doc));
   const { uuid, pos } = smartInsertBlock({
     editor,
     type: graphicsType,
@@ -3195,18 +3187,6 @@ export function graphicsRun(ctx: ActionContext): void {
       rect: dom.getBoundingClientRect(),
     });
   });
-}
-
-/** Collect the existing `uuid`s on nodes of `typeName` (for collision-free
- *  minting). The block-file `collect*Uuids` twins; inlined here so the registry
- *  doesn't import the React block modules. */
-function collectBlockUuids(ctx: { state: { doc: PMNodeLike } }, typeName: string): Set<string> {
-  const set = new Set<string>();
-  ctx.state.doc.descendants((node: { type: { name: string }; attrs: Record<string, unknown> }) => {
-    if (node.type.name === typeName && node.attrs.uuid) set.add(node.attrs.uuid as string);
-    return true;
-  });
-  return set;
 }
 
 /** Find the position of the `typeName` node carrying `uuid` in the live doc, or
@@ -3229,7 +3209,7 @@ function relocateBlock(
 }
 
 /** Minimal structural type for the doc-walk above (a `descendants`-bearing
- *  node). Keeps `collectBlockUuids` / `relocateBlock` PM-version-agnostic without
+ *  node). Keeps `relocateBlock` PM-version-agnostic without
  *  importing the model types. */
 interface PMNodeLike {
   descendants: (

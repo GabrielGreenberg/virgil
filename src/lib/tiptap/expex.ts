@@ -7,7 +7,7 @@ import { createLabelKeyWarning } from "@/lib/tiptap/label-key-warning";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
-import { generateShortId } from "@/lib/uuid";
+import { mintDocUuid } from "@/lib/anchor-uuid";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { DEFAULT_EXAMPLE_DIALECT, exampleDialectOf } from "@/lib/example-dialect";
 import {
@@ -302,17 +302,6 @@ function locateExampleNode(
     return true;
   });
   return result;
-}
-
-function collectExampleIds(doc: import("@tiptap/pm/model").Node): Set<string> {
-  const out = new Set<string>();
-  doc.descendants((node) => {
-    if (node.type.name === "exampleBlock" && node.attrs.uuid) {
-      out.add(node.attrs.uuid as string);
-    }
-    return true;
-  });
-  return out;
 }
 
 // Seven nodes implement the expex package:
@@ -791,7 +780,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         // keeps minting linguex — task 1076) through the one attrs door.
         const newBlock = blockType.create(
           freshExampleBlockAttrs({
-            uuid: generateShortId(collectExampleIds(state.doc)),
+            uuid: mintDocUuid(state.doc),
             dialect: exampleDialectOf(blockNode.attrs),
             kind: "single",
           }),
@@ -1416,7 +1405,7 @@ export const ExampleItem = Node.create<ExampleItemOptions>({
         // derived from the content it carries (task 1076).
         const newBlock = blockType.create(
           freshExampleBlockAttrs({
-            uuid: generateShortId(collectExampleIds(state.doc)),
+            uuid: mintDocUuid(state.doc),
             dialect: exampleDialectOf(blockNode.attrs),
             kind: exampleKindOfContent(newBlockContent),
           }),
