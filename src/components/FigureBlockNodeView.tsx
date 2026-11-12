@@ -27,7 +27,7 @@ import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
 // dev backend has its own `importFigureFile` that PUTs to the dev API.
 // `pickFigureFile` encapsulates the FSA-picker vs hidden-`<input>` dispatch.
 import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
-import { pickFigureFile } from "@/lib/figures/pick-file";
+import { pickFigureFile, toIncludableFigure } from "@/lib/figures/pick-file";
 import { announceEditRefused, editRefusalNotice, errorText } from "@/lib/edit-refusal";
 import { TexUnsafeAssetPathError } from "@/lib/figures/asset-import";
 import { useOptionalSystemDialog } from "@/components/system-dialog-host";
@@ -598,6 +598,18 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       return;
     }
     if (!picked) return; // the user cancelled — nothing to say
+    // Task 1590: a format pdfTeX cannot include (webp) is converted HERE,
+    // before anything is written, so the paper the pick produces compiles.
+    try {
+      picked = await toIncludableFigure(picked);
+    } catch (err) {
+      refuse(
+        "failed",
+        `the image could not be converted to a format LaTeX can include (${errorText(err)}).`,
+        picked.file.name,
+      );
+      return;
+    }
     const pickedName = picked.file.name;
     // …and again AFTER it: the pen can be taken while the dialog is up, and
     // `importFigureFile` WRITES the asset to disk — a copy made for a doc edit

@@ -29,7 +29,10 @@ vi.mock("@/lib/storage", async () =>
     { stub: () => vi.fn(async () => null) },
   ),
 );
-vi.mock("@/lib/figures/pick-file", () => ({ pickFigureFile: pick.pickFigureFile }));
+vi.mock("@/lib/figures/pick-file", () => ({
+  pickFigureFile: pick.pickFigureFile,
+  toIncludableFigure: async (p: unknown) => p,
+}));
 vi.mock("@/hooks/useResolvedFigureUrl", () => ({
   useResolvedFigureUrl: () => ({ url: null, status: "loading", error: null, refresh: () => {} }),
 }));
