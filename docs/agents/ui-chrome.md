@@ -1,4 +1,4 @@
-<!-- last-verified: e2b5a6ce 2026-11-11 -->
+<!-- last-verified: 170ddd3a 2026-11-12 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts, src/components/PomodoroTimer.tsx, src/lib/pomodoro-timer.ts, src/lib/tool-gutter-store.ts, src/lib/gutter-layout.ts -->
 
@@ -112,7 +112,9 @@ The one reader is `gutterLayoutOn()` ([src/lib/gutter-layout.ts](../../src/lib/g
      ([GutterList.tsx](../../src/components/editor-layout/tool-gutter/GutterList.tsx),
      groups from the pure
      [gutter-lists.ts](../../src/components/editor-layout/tool-gutter/gutter-lists.ts),
-     wired in [ReadingLists.tsx](../../src/components/editor-layout/tool-gutter/ReadingLists.tsx)).
+     wired in [ReadingLists.tsx](../../src/components/editor-layout/tool-gutter/ReadingLists.tsx);
+     every position from ONE snapshot, [reading-snapshot.ts](../../src/components/editor-layout/tool-gutter/reading-snapshot.ts), task 1570;
+     an open LEASES its card's expansion, [open-lease.ts](../../src/components/editor-layout/tool-gutter/open-lease.ts), task 1571).
      One row model: a click selects (no scroll); hover/focus shows ↗ jump and ⌄
      open; open turns the row IN PLACE into the kind's own card
      ([GutterCardBody.tsx](../../src/components/editor-layout/tool-gutter/GutterCardBody.tsx):
