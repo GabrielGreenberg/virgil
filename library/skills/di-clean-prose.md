@@ -299,8 +299,11 @@ garbage headings on edge cases. Use cluster awareness:
   ≥3 short/noisy entries within 50 lines, and the surrounding body
   text reads like a figure caption (axis labels, coordinate values,
   figure references), the entire cluster is a figure-caption block
-  that the extractor synthesized. Delete the headings (or convert to
-  `\textbf{}` if the captions are needed).
+  that the extractor synthesized. Delete the headings; if the caption
+  text is needed, re-encode it the ONE caption way
+  [_latex-output.md](_latex-output.md) states (`quote` environment,
+  body in `\textit{…}` — what the extractor itself emits), never as
+  `\textbf{}` or as a heading.
 - Single-character headings, headings whose argument is mostly
   non-alphabetic punctuation, and headings with `\(\d+\)\s*[a-z]'?\(`
   shape (formal-semantics example markers): delete or convert to

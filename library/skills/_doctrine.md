@@ -145,7 +145,9 @@ Recoverable problems explicitly include:
   the TOC, or PDF visual structure. Merge wrapped section fragments.
   Demote math-symbol-only headings. Delete OCR-garbage cluster
   headings (figure-caption blocks, payoff-matrix shorthand, diagram
-  axis labels). Promote all-caps siblings.
+  axis labels) — caption text worth keeping is re-encoded the one
+  caption way [_latex-output.md](_latex-output.md) states. Promote
+  all-caps siblings.
 - **Pagination and pgmarks** — offset detection has multiple fallback
   patterns (standalone numeric footer, recto/verso running headers,
   modal offset from multiple anchors). Blank pages get
