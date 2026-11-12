@@ -76,7 +76,7 @@ export function StaticBorrowedText({
   // the number the label has now.
   const resolveRef = citationCtx?.getRefDisplayText;
   const html = useMemo(
-    () => renderBorrowedHtml(value, schemaScope, resolveCitation, resolveRef),
+    () => renderBorrowedHtml(value, schemaScope, { citation: resolveCitation, ref: resolveRef }),
     [value, schemaScope, resolveCitation, resolveRef],
   );
 
