@@ -214,7 +214,9 @@ describe("task 486 — refocus/scroll census", () => {
     // adopter (its declaration resolves by a doc WALK, not by the write/resolve
     // family), and a revert there would silently re-fork the rule.
     const adopters = [
-      "src/lib/editor-extensions.ts",
+      // The heading strip's label rename refocuses through the shared
+      // label-edit session since task 1588 (the expex pods ride it too).
+      "src/lib/tiptap/label-edit-session.ts",
       "src/components/Editor.tsx",
       "src/components/editor-layout/reader-view-prefs.ts",
     ];
