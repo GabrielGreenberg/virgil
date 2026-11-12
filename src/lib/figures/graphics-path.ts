@@ -17,9 +17,49 @@
  */
 import { extractBraced, matchCommentTailAt } from "@/lib/latex-lexer";
 
+/**
+ * What a figure file can be — the ONE extension census (task 1590). Every
+ * other list derives from it: the probe order below, the picker's accept list
+ * (`pick-file.ts`), and the rasterizer's dispatch (`rasterize.ts`). A format
+ * pdfTeX cannot `\includegraphics` (`includable: false`) names the format it
+ * is TRANSCODED to at import, so a pickable file always yields a paper that
+ * compiles; the editor still reads one the user spelled out by hand.
+ *
+ * Row order is pdfTeX's probe order for the includable rows.
+ */
+export const FIGURE_FORMATS = [
+  { ext: "pdf", mime: "application/pdf", render: "pdf", includable: true },
+  { ext: "png", mime: "image/png", render: "raster", includable: true },
+  { ext: "jpg", mime: "image/jpeg", render: "raster", includable: true },
+  { ext: "jpeg", mime: "image/jpeg", render: "raster", includable: true },
+  { ext: "webp", mime: "image/webp", render: "raster", includable: false, transcodeTo: "png" },
+] as const satisfies readonly FigureFormat[];
+
+export interface FigureFormat {
+  /** Lower-cased extension, no dot. */
+  ext: string;
+  mime: string;
+  /** Which rasterizer draws it in the editor. */
+  render: "pdf" | "raster";
+  /** Whether pdfTeX's graphicx can include it. */
+  includable: boolean;
+  /** For a non-includable format: the includable extension the import door
+   *  converts it to. */
+  transcodeTo?: string;
+}
+
+/** The census row for an extension (case-insensitive), or null. */
+export function figureFormatFor(ext: string): FigureFormat | null {
+  const norm = ext.toLowerCase().replace(/^\./, "");
+  return (FIGURE_FORMATS as readonly FigureFormat[]).find((f) => f.ext === norm) ?? null;
+}
+
 /** The extensions pdfTeX's graphicx tries for an extension-less name, in its
- *  order. The ONLY probe list in the app (census: figure-probe-ext-census). */
-export const FIGURE_PROBE_EXTS = ["pdf", "png", "jpg", "jpeg"] as const;
+ *  order — the census's includable rows. The ONLY probe list in the app
+ *  (census: figure-probe-ext-census). */
+export const FIGURE_PROBE_EXTS: readonly string[] = FIGURE_FORMATS.filter(
+  (f) => f.includable,
+).map((f) => f.ext);
 
 export interface FigureCandidate {
   /** Path relative to the paper folder, as the backend should open it. */

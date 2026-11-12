@@ -21,20 +21,52 @@
 
 import { fsaPickerUsable } from "@/lib/storage-mode";
 import type { PickedFigureFile } from "@/lib/storage";
+import { FIGURE_FORMATS, figureFormatFor } from "@/lib/figures/graphics-path";
+import { transcodeImage } from "@/lib/figures/rasterize";
+
+// Both accept lists DERIVE from the one figure-format census (task 1590) —
+// this file spells no extension. A non-includable row (webp) stays pickable
+// because `toIncludableFigure` transcodes it before it reaches the paper.
+/** The picker's MIME → extensions map (exported for the census test). */
+export const FIGURE_PICKER_ACCEPT: Record<`${string}/${string}`, `.${string}`[]> =
+  FIGURE_FORMATS.reduce<Record<`${string}/${string}`, `.${string}`[]>>((acc, f) => {
+    (acc[f.mime] ??= []).push(`.${f.ext}`);
+    return acc;
+  }, {});
 
 const FSA_PICKER_TYPES: FilePickerAcceptType[] = [
-  {
-    description: "Image",
-    accept: {
-      "image/png": [".png"],
-      "image/jpeg": [".jpg", ".jpeg"],
-      "image/webp": [".webp"],
-      "application/pdf": [".pdf"],
-    },
-  },
+  { description: "Image", accept: FIGURE_PICKER_ACCEPT },
 ];
 
-const HTML_INPUT_ACCEPT = ".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf";
+export const HTML_INPUT_ACCEPT = [
+  ...FIGURE_FORMATS.map((f) => `.${f.ext}`),
+  ...new Set(FIGURE_FORMATS.map((f) => f.mime)),
+].join(",");
+
+/**
+ * Make a picked file one pdfTeX can include (task 1590). A file whose format
+ * the census marks `includable` passes through untouched (its handle kept, so
+ * the FSA backend's in-folder short-circuit still applies). A non-includable
+ * one is re-encoded to its `transcodeTo` format under `<stem>.<ext>` with NO
+ * handle — the paper must reference the converted copy, never the original —
+ * and then lands through `importFigureFile`'s usual dedupe / TeX-safe naming.
+ * An extension the census does not know passes through (the picker never
+ * offers one).
+ */
+export async function toIncludableFigure(
+  picked: PickedFigureFile,
+  transcode: (file: File, toMime: string) => Promise<Blob> = transcodeImage,
+): Promise<PickedFigureFile> {
+  const name = picked.file.name;
+  const dot = name.lastIndexOf(".");
+  const format = dot > 0 ? figureFormatFor(name.slice(dot + 1)) : null;
+  if (!format || format.includable || !format.transcodeTo) return picked;
+  const target = figureFormatFor(format.transcodeTo);
+  if (!target) throw new Error(`[pick-file] no census row for .${format.transcodeTo}`);
+  const blob = await transcode(picked.file, target.mime);
+  const file = new File([blob], `${name.slice(0, dot)}.${target.ext}`, { type: target.mime });
+  return { file, handle: null };
+}
 
 /**
  * Prompt the user to pick a single image / PDF for a figure block.

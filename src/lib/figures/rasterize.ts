@@ -6,6 +6,8 @@
 // `pdfjs-dist` is intentionally not a static import — papers with only
 // raster figures pay zero bundle cost.
 
+import { figureFormatFor } from "@/lib/figures/graphics-path";
+
 export class RasterizeError extends Error {
   constructor(message: string) {
     super(message);
@@ -34,19 +36,11 @@ async function encodeWebp(canvas: OffscreenCanvas): Promise<Blob> {
  *  (preserving aspect ratio). */
 async function rasterizeRaster(
   bytes: ArrayBuffer,
-  ext: string,
+  mime: string,
   targetWidthPx: number,
 ): Promise<Blob> {
-  // The browser deduces type from the blob — but be explicit so file
-  // sniffing doesn't trip on stripped headers.
-  const mime =
-    ext === "jpg" || ext === "jpeg"
-      ? "image/jpeg"
-      : ext === "png"
-        ? "image/png"
-        : ext === "webp"
-          ? "image/webp"
-          : "application/octet-stream";
+  // The browser deduces type from the blob — but be explicit (the census's
+  // MIME) so file sniffing doesn't trip on stripped headers.
   const blob = new Blob([bytes], { type: mime });
   const bitmap = await createImageBitmap(blob);
   const aspect = bitmap.height / bitmap.width;
@@ -135,16 +129,32 @@ async function rasterizePdf(bytes: ArrayBuffer, targetWidthPx: number): Promise<
   }
 }
 
-/** Public entry: dispatch on extension. Unknown extensions throw. */
+/** Re-encode a raster image at its NATIVE size into `toMime` (task 1590: a
+ *  picked webp becomes a PNG pdfTeX can include). Lossless for PNG output. */
+export async function transcodeImage(file: Blob, toMime: string): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new RasterizeError("OffscreenCanvas 2D context unavailable");
+    ctx.drawImage(bitmap, 0, 0);
+    return await canvas.convertToBlob({ type: toMime });
+  } finally {
+    bitmap.close();
+  }
+}
+
+/** Public entry: dispatch on the figure-format census's `render` kind
+ *  (`graphics-path.ts`). Unknown extensions throw. */
 export async function rasterizeFigure(
   bytes: ArrayBuffer,
   ext: string,
   targetWidthPx: number = defaultTargetWidthPx(),
 ): Promise<Blob> {
-  const norm = ext.toLowerCase();
-  if (norm === "pdf") return rasterizePdf(bytes, targetWidthPx);
-  if (norm === "png" || norm === "jpg" || norm === "jpeg" || norm === "webp") {
-    return rasterizeRaster(bytes, norm, targetWidthPx);
+  const format = figureFormatFor(ext);
+  if (format?.render === "pdf") return rasterizePdf(bytes, targetWidthPx);
+  if (format?.render === "raster") {
+    return rasterizeRaster(bytes, format.mime, targetWidthPx);
   }
   throw new RasterizeError(`Unsupported figure format: .${ext}`);
 }
