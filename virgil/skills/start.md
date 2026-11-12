@@ -344,14 +344,28 @@ multi-subagent job runs in the session the user is writing in, and the library
 session they may already have (`/loop /library/index-pending`) never sees it.
 So the choice is the user's to make, not the front door's to make for them.
 
+**Queueable** is one condition, stated here and read by the explanation, the
+question and the Queue branch below — none of them restates it: *the matched
+skill is `/library/deep-index <citekey>` AND the mode is `paper-session`.* A
+queue entry needs a library to write into, and deep-index is the only heavy op
+the queue represents — `queue_slot.py` has a citekey-keyed slot for it and for
+nothing else heavy; `/library/ai-requests`, `/library/index-pending`,
+`/library/merge-bibs` and `/library/triage-pending` *are* drainers or are
+library-wide, with no citekey to key on. Offering Queue for them promises an
+entry no door can write.
+
 Print a 3-line explanation tailored to the mode:
 
 - **paper-session**:
   ```
   <op> is a heavy library operation — it wants to run from inside the library folder, not from this paper session.
   Fastest path: open <resolved-library-path> as another project in this Cowork/Claude Code workspace, then ask me again.
-  Alternative: I can queue it for your library session to pick up — useful if you have `/loop /library/index-pending` running there.
+  <alternative>
   ```
+  where `<alternative>` is, when **queueable**:
+  `Alternative: I can queue it for your library session to pick up — useful if you have /loop /library/index-pending running there.`
+  and otherwise:
+  `Alternative: I can run it here anyway — it works, but the whole job runs in this session, and your library session never sees it.`
 
 - **no-library**:
   ```
@@ -362,8 +376,10 @@ Print a 3-line explanation tailored to the mode:
 Then ask — and ask only what the mode can honour, because an option nothing
 can carry out is the same false affordance this Step was rescued from:
 
-- **paper-session** → *Mount the library, queue this for later, run it here
-  anyway, or skip?*
+- **paper-session**, **queueable** → *Mount the library, queue this for
+  later, run it here anyway, or skip?*
+- **paper-session**, not queueable → *Mount the library, run it here anyway,
+  or skip?* — no Queue option, because the Queue branch cannot write one.
 - **no-library** → *Skip for now?* Mount has nothing to mount, Queue has
   nowhere to write, and Run-here-anyway would dispatch a skill whose own
   Bootstrap resolves the library root and is told to stop when it cannot.
@@ -376,10 +392,9 @@ Branches:
   answering `paper-session`. (`cd`-ing this session into the library root
   flips it in place; opening a second project does not.) Either way, the next
   turn runs Step 1 fresh.
-- **Queue** (only for `/library/deep-index <citekey>`, and only in
-  `paper-session` — a queue entry needs a library to write into, and
-  deep-index is the only heavy op the queue represents; the others *are*
-  drainers or are library-wide with no citekey to key on):
+- **Queue** (only when **queueable**, above — the question never offers it
+  otherwise; if the user asks to queue a non-queueable op anyway, say it has
+  no queue entry and re-ask *Mount, run it here anyway, or skip?*):
 
   Enqueue through the library's queue-slot door — the one writer every
   skill prompt uses, pinned to the app's own queue code:
@@ -446,6 +461,20 @@ For onboarding-only turns where nothing was dispatched, use:
 Done: oriented user. Output: state-summary.
 ```
 
+For every exit that dispatched nothing, or whose dispatch failed, use:
+
+```
+Done: did not <action> — <reason>. Output: none.
+```
+
+That covers: no matching card ("no row", Card routes), a kind `create-card`
+refuses (Task routes 4), a specialist that failed (surfaced, not retried),
+**Skip**, **Mount** (the work happens in the next session, not this one), and a
+Queue whose door wrote nothing (`in-flight`, `occupied`). A can't-act close is
+a failure, never a success with a note — `Output: dispatched specialist` for a
+turn that dispatched nothing is false. (`already-queued` added nothing either;
+it closes as `did not queue deep-index — already queued`.)
+
 ## What this skill does NOT do
 
 - Does **not** invoke specialists directly without a subagent — that's
@@ -460,7 +489,7 @@ Done: oriented user. Output: state-summary.
   Card routes) — never the first match.
 - Does **not** silently run a heavy library operation from a paper session.
   Whenever the mode is not `in-library`, Step 4 surfaces the choice first —
-  mount, queue, run here anyway, or skip. Running it *after* the user picks
+  mount, queue (only when queueable), run here anyway, or skip. Running it *after* the user picks
   is not silence; skipping the question is.
 - Does **not** retry failed specialists. If a dispatch fails, surface
   the error and stop.

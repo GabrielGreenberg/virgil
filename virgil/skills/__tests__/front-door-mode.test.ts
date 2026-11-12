@@ -434,6 +434,55 @@ describe("Step 4 is reachable, and its Queue branch states the entry", () => {
     ).toEqual([]);
   });
 
+  it("Queue is offered only when the op is queueable (task 1580)", () => {
+    // Step 4 fires for every heavy skill, but the Queue branch can write an
+    // entry only for deep-index — the drainers and library-wide ops have no
+    // citekey-keyed slot. The paper-session explanation and question used to
+    // offer Queue unconditionally, so "merge my library bibs" from a paper
+    // folder promised an entry nothing could write. One named condition
+    // (`queueable`) must gate every place the offer appears.
+    const s4 = stepFour();
+    expect(/\*\*Queueable\*\*[^]*?deep-index[^]*?paper-session/.test(s4),
+      "Step 4 does not define the queueable condition (deep-index AND paper-session)").toBe(true);
+    // The paper-session template block itself must not hard-code the queue
+    // alternative — that line is chosen by the condition.
+    const tmpl = s4.match(/- \*\*paper-session\*\*:\s*```([\s\S]*?)```/);
+    expect(tmpl, "Step 4 lost its paper-session template").not.toBeNull();
+    expect(/queue/i.test(tmpl![1]),
+      `the paper-session template offers Queue unconditionally:\n\n${tmpl![1]}`).toBe(false);
+    // Every paper-session QUESTION that offers Queue names the condition, and
+    // one paper-session question offers no Queue at all.
+    const questions = [...s4.matchAll(/^- \*\*paper-session\*\*[^\n]*→[^]*?(?=\n- |\n\n)/gm)].map((m) => m[0]);
+    expect(questions.length, "Step 4 asks no paper-session question").toBeGreaterThan(0);
+    for (const q of questions) {
+      if (/queue this/i.test(q)) {
+        expect(/\*\*queueable\*\*/.test(q) && !/not queueable/.test(q),
+          `a paper-session question offers Queue without the queueable condition:\n\n${q}`).toBe(true);
+      }
+    }
+    expect(questions.some((q) => !/queue this/i.test(q)),
+      "no paper-session question omits Queue for a non-queueable op").toBe(true);
+    const branch = s4.match(/- \*\*Queue\*\*[^\n]*\n[^]*?:\n/);
+    expect(branch && /queueable/.test(branch[0]),
+      "the Queue branch is not gated on the queueable condition").toBe(true);
+  });
+
+  it("the Done convention has a form for an exit that dispatched nothing (task 1580)", () => {
+    // Task 1578: a can't-act close is a failure, never a success with a note.
+    // The front door's own non-dispatching exits (no row, refused kind,
+    // failed specialist, Skip, Mount) had only success shapes to reach for.
+    const body = start();
+    const at = body.indexOf("## Done convention");
+    expect(at, "start.md has no Done convention").toBeGreaterThan(-1);
+    const end = body.indexOf("\n## ", at + 1);
+    const dc = body.slice(at, end === -1 ? undefined : end);
+    expect(/Done: did not [^\n]*Output: none\./.test(dc),
+      `the Done convention has no non-success form:\n\n${dc}`).toBe(true);
+    for (const exit of [/no row/, /refuses/, /failed/, /\*\*Skip\*\*/, /\*\*Mount\*\*/]) {
+      expect(exit.test(dc), `the Done convention does not route the ${exit} exit`).toBe(true);
+    }
+  });
+
   it("the declared invariant is true of the shipped file", () => {
     // `start.md` declares in "What this skill does NOT do" that it always
     // surfaces the mount-or-queue choice. Pre-475 that was false — the branch
