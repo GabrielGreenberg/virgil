@@ -91,6 +91,7 @@ describe("gutter grab — the token is a FLOOR over every painted thickness", ()
   const painted = {
     "--pod-gap": tokenPx("--pod-gap"),
     "--pod-seam": tokenPx("--pod-seam"),
+    "--gutter-split-gap": tokenPx("--gutter-split-gap"),
     LIB_GRID_GUTTER,
     GAP_WIDTH_PX,
   };
@@ -162,6 +163,39 @@ describe("gutter grab — CENSUS: every gutter reaches the shared rule, none re-
           /\b(?:top|bottom|left|right):\s*-\d/.test(g.subtree)),
     );
     expect(respelled.map((g) => g.file)).toEqual([]);
+  });
+
+  it("a gutter's own class rule paints at a TOKEN, never a pixel literal (task 1583)", () => {
+    // The painted thickness is a stated choice (STYLE_GUIDE "Resize gutters":
+    // `--pod-gap`, `--pod-seam`, `--gutter-split-gap`, or a pinned JS constant
+    // fed in inline/through a grid template). A site class that sizes the
+    // gutter itself — the tool gutter's split divider is the case that
+    // arrived as a bare `height: 12px` — must read a var. Only the className's
+    // STATIC classes are read; a class with no rule in either stylesheet (a
+    // Tailwind utility) has nothing to check.
+    const css = [globals, cssCommentsStripped(readFileSync(path.join(ROOT, "library/styles/library.css"), "utf8"))].join("\n");
+    const siteClasses = new Set(
+      gutters.flatMap((g) => {
+        const m = /className=\{?["`]([^"`$]*)/.exec(g.tag);
+        return (m?.[1] ?? "")
+          .split(/\s+/)
+          .filter((c) => c && !/^(?:drag-gap|band-grip)/.test(c));
+      }),
+    );
+    const offenders: string[] = [];
+    let ruled = 0;
+    for (const cls of siteClasses) {
+      const esc = cls.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`(?<=^|[},])\\s*([^{}]*\\.${esc}(?![\\w-])[^{}:]*)\\{([^}]*)\\}`, "g");
+      for (const m of css.matchAll(re)) {
+        ruled++;
+        for (const d of m[2].matchAll(/\b(height|width|flex-basis):\s*([^;]+);/g)) {
+          if (/\b\d+(?:\.\d+)?px\b/.test(d[2])) offenders.push(`${m[1].trim()} { ${d[1]}: ${d[2]} }`);
+        }
+      }
+    }
+    expect(ruled, "no site class rule found — the scan went blind").toBeGreaterThan(0);
+    expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
   it("the bottom seam's grab hangs wholly below it (the pod above eats any upward reach)", () => {

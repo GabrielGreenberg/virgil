@@ -2304,10 +2304,12 @@ per-pod stripe, ring, border, or shadow-change on focus. Pinned by
 
 ## Resize gutters
 
-Every draggable divider in the app — the panel-band dividers, the
-panel↔editor gutters, the code splitter, and three of the four
-Library resizers — shares ONE grip chrome: `.drag-gap.drag-gap-{h,v}
-.band-grip`. The strip is **invisible at rest** (only the resize cursor
+Every draggable divider in the app — every `usePaneResizeHandle` handle —
+shares ONE grip chrome: `.drag-gap.drag-gap-{h,v}.band-grip`. This section
+names the RULE, not the population: the live set of handles has one owner,
+`pane-drag-guardrail.test.ts`'s per-handle chrome census (a hand list here
+went stale the day the tool gutter's split divider arrived — task 1583), and
+the sole unchromed exception is stated below. The strip is **invisible at rest** (only the resize cursor
 shows) and reveals a single centered **grip pill** on hover AND drag. The
 pill's rest background is `--edge-hover`, but it rests at `opacity: 0`, so
 the color a user ever *sees* is `--drag-highlight` on both hover and drag;
@@ -2327,7 +2329,13 @@ which places the grip just below its sync-arrows pill (task 813). Engine
 gutters in the editor render at `--pod-gap` — except `BottomEdgeHandle` (the
 seam under the last docked band), which renders at `--pod-seam` because it IS
 that seam (see "One question per token" above; `pod-seam-contract.test.ts`
-pins its consumers). The code splitter's drag math
+pins its consumers) — and except the tool gutter's top/bottom split divider,
+which renders at `--gutter-split-gap` (12px) because it answers a different
+question: not the gap between two pods but the seam between two lozenges
+inside ONE gutter (chosen live in the gutter rounds, task 1440; named in task
+1583). A new gutter paints at one of these tokens, never a pixel literal —
+`gutter-grab-census.test.ts` fails a literal on a gutter's own class rule.
+The code splitter's drag math
 needs the width as a number, so `GAP_WIDTH_PX` is pinned to the token by
 `split-with-code-gutter.test.ts`.
 **The grab is the gutter's, not the site's (task 1241).** A gutter PAINTS at
