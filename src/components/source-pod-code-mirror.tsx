@@ -52,7 +52,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
-import { latex } from "codemirror-lang-latex";
+import { virgilLatex } from "@/lib/codemirror/virgil-cm-language";
 import { EditorState } from "@codemirror/state";
 import { NEVER_SPELLCHECK_ATTRS } from "@/lib/spellcheck-policy";
 import {
@@ -101,11 +101,10 @@ const sourcePodTheme = EditorView.theme(
  * not a live object, so one array is safely shared by every mounted pod.
  */
 export const SOURCE_POD_EXTENSIONS = [
-  // `enableLinting` defaults to TRUE in codemirror-lang-latex despite what the
-  // .d.ts suggests — the linter checks for `\begin{document}` and unmatched
-  // environments, both of which fire on any raw LaTeX fragment. We never want
-  // those diagnostics here.
-  latex({ enableLinting: false }),
+  // Every latex() option (linting OFF — the package linter fires on any raw
+  // LaTeX fragment) is stated once in the language door (task 1582). The door
+  // memoises, so this stays one value for the app's lifetime (task 729).
+  virgilLatex("source-pod"),
   sourcePodTheme,
   EditorView.lineWrapping,
   // Defense-in-depth: also suppress browser spell-check so plain words inside
