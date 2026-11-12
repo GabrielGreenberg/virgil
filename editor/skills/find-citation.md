@@ -154,7 +154,8 @@ card so the user can drag it into the document.
      others have verified the same metadata.
 
    If you can't find anything that meets the request's criteria,
-   **mark the request complete with a note explaining why** rather
+   **close the request as a failure** (`--result impossible`, per
+   [_request-load.md](_request-load.md) rule 3) with a note explaining why, rather
    than fabricating a citation. If the request includes soft
    preferences ("ideally", "if available", "preferably") and they
    can't be satisfied but a fallback is implied, use the failure-mode

@@ -46,7 +46,7 @@ grammar is the tell, not its subject matter:
 | asks a question about the world — "can you check this quote", "is this right", "did X really say this", "what's in the source" | findings: what you looked up, what it said, where it diverges | **report** |
 | asks for explanation or connection — "why does this matter", "how does this relate to X" | commentary beside the text | **note** |
 | asks where something came from — "what's the source for this claim" | a located work | **citation** / **footnote** |
-| asks for something you cannot do — "check with my coauthor", "look at the dataset" | a stated limit | complete with a note; don't pretend |
+| asks for something you cannot do — "check with my coauthor", "look at the dataset" | a stated limit | close it as a FAILURE — `--result impossible` (see [_request-load.md](_request-load.md) rule 3); don't pretend |
 
 **3. The tell that you got it wrong: findings compressed into a rationale
 field.** If you are proposing a rewrite mainly so that what you found has
