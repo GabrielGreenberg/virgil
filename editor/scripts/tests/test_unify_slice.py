@@ -30,6 +30,7 @@ Run from anywhere:  python3 editor/scripts/tests/test_unify_slice.py
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -241,6 +242,15 @@ r = subprocess.run([sys.executable, DEV_LOOP, "write-iteration-memo", "--json",
                    capture_output=True, text=True, env=env2)
 check(r.returncode == 0 and "tier=flagged" in r.stdout and len(list((work / "it-cli").rglob("*.md"))) == 1,
       "write-iteration-memo CLI writes a flagged memo with DEV unset (the stream is ungated)")
+_m = re.search(r"^Done: wrote (\S+\.md) ", r.stdout, re.M)
+check(_m is not None and Path(_m.group(1)).is_absolute() and Path(_m.group(1)).is_file(),
+      "the Done: line prints the memo's ABSOLUTE path — the one the driver opens (task 1607)")
+r = subprocess.run([sys.executable, DEV_LOOP, "write-iteration-memo", "--json",
+                    json.dumps({"skill": "review", "case": "crash", "attempt": 1,
+                                "result": "failure", "edits": []})],
+                   capture_output=True, text=True, env=env2, cwd=str(work))
+check("tier=flagged" in r.stdout and "block=0" in r.stdout,
+      "a failed run with no edits is flagged with zero blocks — iterate's 2e must branch on it")
 
 r = subprocess.run([sys.executable, DEV_LOOP, "route-edits", "--edits",
                     json.dumps([b1, ok])], capture_output=True, text=True)

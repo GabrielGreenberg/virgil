@@ -60,3 +60,43 @@ describe("iterate-virgil-editor skill set CENSUS (task 1430)", () => {
     expect(injectableKinds(md)).toEqual(want);
   });
 });
+
+/** The text of one `#### <heading>` subsection. */
+function subsection(md: string, heading: string): string {
+  return md.split(`#### ${heading}`)[1]?.split(/\n#{2,4} /)[0] ?? "";
+}
+
+describe("iterate-virgil-editor tier → next-step CENSUS (task 1607)", () => {
+  const md = readRepo(ITERATE);
+  const mapper = readRepo("editor/scripts/dev_loop.py");
+  const step2d = subsection(md, "2d.");
+  const step2e = subsection(md, "2e.");
+
+  it("both steps parse (a vacuous census is a false pass)", () => {
+    expect(step2d.length).toBeGreaterThan(200);
+    expect(step2e.length).toBeGreaterThan(200);
+  });
+
+  it("the tier rule is CITED from its owner, not restated", () => {
+    expect(mapper).toMatch(/^def tier_for_iteration\(/m);
+    expect(step2d).toContain("tier_for_iteration");
+    expect(step2e).toContain("tier_for_iteration");
+  });
+
+  it("2e gives every result the mapper reads its own row — a failure and a partial are never 'clean'", () => {
+    // The `result ==` values tier_for_iteration branches on.
+    const body = mapper.split(/^def tier_for_iteration\(/m)[1]?.split(/^def /m)[0] ?? "";
+    const results = [...new Set([...body.matchAll(/result == "([a-z]+)"/g)].map((m) => m[1]))];
+    expect(results.sort()).toEqual(["failure", "partial"]);
+    const rows = step2e.split("\n").filter((l) => l.startsWith("- **"));
+    for (const r of results) {
+      const row = rows.find((l) => l.startsWith(`- **\`result: ${r}\``));
+      expect(row, `2e has no row for result: ${r}`).toBeDefined();
+      expect(row).toMatch(/NOT clean|Not clean/);
+    }
+  });
+
+  it("the memo path is never cwd-relative (iterations_root lives in the primary checkout)", () => {
+    expect(md).not.toMatch(/`editor\/dev\/iterations\/<date>/);
+  });
+});

@@ -88,8 +88,13 @@ be divined from prose.
 So on "make a dream memo about X": compose the buckets from X and run
 `/editor/reflect <docPath> <skill> -` with `--memo-json` — use the skill the
 observation is about, or `session` for a general observation (a compile issue,
-an app behavior) that belongs to no one skill. Only if the script itself
-reports DEV mode off do you fall back to offering a paper-side note.
+an app behavior) that belongs to no one skill. With **no paper open** (a repo
+session), a `session` observation passes `-` as its `<docPath>`:
+`/editor/reflect - session - --memo-json …` — one paperless memo per day,
+later same-day observations append to it. Never borrow a paper (the sample
+included) to satisfy the slot: that attributes the memo to a doc it is not
+about. Only if the script itself reports DEV mode off do you fall back to
+offering a paper-side note.
 
 **Memo routing rule — one decision rule, stated identically in
 [editor/AGENTS.md](../AGENTS.md) ("Memo routing rule") so either file
@@ -105,10 +110,12 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 /editor/reflect <docPath> <skill> <taskId> --tag "…"  # after-the-fact "put this in the memo"
 /editor/reflect <docPath> <skill> <taskId> --fix-now  # mark the fast-path (flagged + fix-now)
 /editor/reflect <docPath> session - --memo-json '{…}' # a general observation no one skill owns
+/editor/reflect - session - --memo-json '{…}'         # …made with no paper open
 ```
 
 - `<docPath>` — the paper folder the skill ran against (read-only here; we only
-  read its Task queue).
+  read its Task queue), or `-` for a `session` observation with no paper open
+  (taskId must then be `-`; any other skill refuses `-`).
 - `<skill>` — the skill that just ran (e.g. `draft-suggestion`), bare name.
   `/editor/draft-suggestion`, `editor:draft-suggestion` and
   `draft-suggestion.md` fold to it; a name with no `editor/skills/<name>.md`
