@@ -67,6 +67,11 @@ export interface GlyphHit {
   exempt: boolean;
 }
 
+/** Shared glyph leaves (`src/components/icons/`) and their default edge: a
+ *  leaf is the svg it renders, sized by `size` (task 1612). */
+const LEAF_DEFAULT_SIZE: Record<string, number> = { CloseIcon: 14, CopyIcon: 12, ExternalLinkIcon: 12 };
+const GLYPH_OPEN = new RegExp(`<(?:svg|${Object.keys(LEAF_DEFAULT_SIZE).join("|")})\\b`);
+
 /** Every SVG that is a DIRECT child of an iconbtn-sized element in `src` —
  *  its children up to the closing `</button>`, or the element's own
  *  `trigger=` render prop (AnchoredMenu/ItemMenu triggers). An SVG behind a
@@ -100,12 +105,23 @@ export function iconbtnGlyphs(src: string): GlyphHit[] {
     let consumed = "";
     let rest = region;
     for (;;) {
-      const i = rest.search(/<svg\b/);
+      const i = rest.search(GLYPH_OPEN);
       if (i < 0) break;
       consumed += rest.slice(0, i);
       const end = tagEnd(rest, i);
       if (end < 0) break;
       const open = rest.slice(i, end + 1);
+      const leaf = open.match(/^<(\w+)/)![1];
+      if (leaf !== "svg") {
+        // A shared glyph leaf renders ONE svg sized by its `size` prop (task 1612).
+        if (!/<[A-Za-z]/.test(consumed)) {
+          const n = open.match(/\bsize=\{(\d+)\}/);
+          const edge = n ? Number(n[1]) : LEAF_DEFAULT_SIZE[leaf];
+          hits.push({ size, width: edge, height: edge, exempt });
+        }
+        rest = rest.slice(end + 1);
+        continue;
+      }
       if (!/<[A-Za-z]/.test(consumed)) {
         const num = (attr: string): number | null => {
           const a = open.match(new RegExp(`\\b${attr}=(?:"(\\d+)"|\\{(\\d+)\\})`));
@@ -162,6 +178,8 @@ describe("B · an iconbtn's own SVG attributes agree with its rung", () => {
       `<AnchoredMenu triggerClassName="iconbtn-md" trigger={() => (<svg width={16} height={16}></svg>)} />`,
       `<button className="iconbtn-md"><span className="contents"><svg width="18" height="18"></svg></span></button>`,
       `<button className="iconbtn-md" data-iconbtn-glyph="aligns: x"><svg width="18" height="18"></svg></button>`,
+      `<button className="iconbtn-xs">{copied ? (<svg width="12" height="12"></svg>) : <CopyIcon />}</button>`,
+      `<button className="iconbtn-sm"><CloseIcon size={12} /></button>`,
     ].join("\n");
     const hits = iconbtnGlyphs(fixture);
     expect(hits.map((h) => [h.size, h.width, h.height, h.exempt])).toEqual([
@@ -170,6 +188,9 @@ describe("B · an iconbtn's own SVG attributes agree with its rung", () => {
       ["xs", 10, 10, false],
       ["md", 16, 16, false],
       ["md", 18, 18, true],
+      ["xs", 12, 12, false],
+      ["xs", 12, 12, false],
+      ["sm", 12, 12, false],
     ]);
   });
 

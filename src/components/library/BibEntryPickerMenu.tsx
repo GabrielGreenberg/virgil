@@ -79,6 +79,8 @@ import { useCopyFlash } from "@/hooks/useCopyFlash";
 import { isCancelEscape, isCommitEnter } from "@/lib/key-intent";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 import { MenuCaret } from "@/components/icons/MenuCaret";
+import { CopyIcon } from "@/components/icons/CopyIcon";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -547,18 +549,7 @@ function BibEntryPickerBody({
             className="iconbtn-xs"
             {...iconHint({ label: "Close (Esc)" })}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={ICON_STROKE_SMALL}
-              strokeLinecap="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <CloseIcon size={12} />
           </button>
         </div>
       )}
@@ -963,19 +954,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
             <polyline points="20 6 9 17 4 12" />
           </svg>
         ) : (
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="9" y="9" width="12" height="12" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
+          <CopyIcon />
         )}
       </button>
     </div>

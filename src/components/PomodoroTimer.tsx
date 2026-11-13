@@ -79,6 +79,7 @@ import {
 } from "@/lib/pomodoro-timer";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
 import { BarStatusPill } from "@/components/status/BarStatusPill";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 function PlayIcon() {
   return (
@@ -294,9 +295,7 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
             className={`${GHOST} focus-ring w-4 h-4`}
             {...iconHint({ label: "Dismiss timer", hint: "Dismiss — stops the timer" })}
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
+            <CloseIcon size={10} />
           </button>
         </>
       }

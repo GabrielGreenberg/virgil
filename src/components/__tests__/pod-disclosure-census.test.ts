@@ -98,6 +98,11 @@ const RAW_DISCLOSURES: Record<string, { count: number; reason: string }> = {
 const RING_EXEMPT = new Set(["src/components/MenuBar.tsx"]);
 const FOCUS_INDICATOR = /(?<![\w-])(?:focus-ring(?![\w-])|iconbtn-(?:xs|sm|md|lg)|topbarbtn)|withFocusIndicator\s*\(/;
 const TEXT_CHEVRON = /[▾▸▴◂►▼▲◀]/;
+/** What a named raw disclosure DRAWS: a shared chevron leaf, never an inline
+ *  `<svg>` (task 1612 — MenuBar's hand-made 8-grid chevron carried no `width`,
+ *  so it missed the small stroke rung). */
+const CHEVRON_LEAF = /<(?:Chevron|FoldChevronGlyph|MenuCaret)\b/;
+const INLINE_SVG = /<svg\b/;
 const EXPANDED = /(?<![\w-])aria-expanded\s*=/;
 
 /** Every raw `<button aria-expanded>` in a file, its tag resolved through the
@@ -189,6 +194,10 @@ describe("pod-disclosure census", () => {
     // …and a ring spelled through a const is read as a ring.
     const viaConst = `const RING = "focus-ring";\n<button className={\`px-2 \${RING}\`} aria-expanded={x}>a</button>`;
     expect(FOCUS_INDICATOR.test(rawDisclosures(viaConst)[0].tag)).toBe(true);
+    // …and a hand-drawn svg chevron is not the leaf (task 1612, MenuBar's shape).
+    const [svgDrawn] = rawDisclosures(`<button aria-expanded={e}><span>x</span><svg className="w-3 h-3" viewBox="0 0 8 8"><path d="M2.5 1L5.5 4L2.5 7" /></svg></button>`);
+    expect(INLINE_SVG.test(svgDrawn.subtree)).toBe(true);
+    expect(CHEVRON_LEAF.test(svgDrawn.subtree)).toBe(false);
   });
 
   it("every raw `<button aria-expanded>` is <PodDisclosure> or named, ringed, and draws a real chevron", () => {
@@ -205,6 +214,9 @@ describe("pod-disclosure census", () => {
       for (const d of found) {
         if (!RING_EXEMPT.has(file) && !FOCUS_INDICATOR.test(d.tag)) offenders.push(`${file}: disclosure without focus-ring`);
         if (TEXT_CHEVRON.test(d.subtree)) offenders.push(`${file}: text-glyph chevron — render <Chevron expanded=…>`);
+        if (INLINE_SVG.test(d.subtree) || !CHEVRON_LEAF.test(d.subtree)) {
+          offenders.push(`${file}: disclosure draws no shared chevron leaf — render <Chevron expanded=…>`);
+        }
       }
     }
     expect(seen).toBeGreaterThanOrEqual(Object.keys(RAW_DISCLOSURES).length);

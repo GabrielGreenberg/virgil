@@ -16,7 +16,7 @@
  * For an ICON-ONLY control the label is also its accessible name, so it goes
  * through {@link iconHint} instead — one string, both consumers:
  *
- *   <button {...iconHint({ label: "Close tab" })}><IconX /></button>
+ *   <button {...iconHint({ label: "Close tab" })}><CloseIcon /></button>
  *
  * `keys` is a portable shortcut string (see {@link Kbd}); `pos` nudges the
  * preferred placement (default: below, flipping/clamping to fit).
