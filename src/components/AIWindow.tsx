@@ -1190,6 +1190,9 @@ function RequestCard({ req }: { req: AIRequestVM }) {
   // never a row-local literal (task 178).
   const accent = usePanelColor(themeKeyForVM(req));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // The discard confirm is about THIS row, so it opens beside it (task 1609;
+  // STYLE_GUIDE: a confirm about one object anchors to it).
+  const rowRef = useRef<HTMLLIElement>(null);
 
   const handleCancel = useCallback(() => {
     if (req.hasUserText) {
@@ -1200,7 +1203,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
   }, [req]);
 
   return (
-    <li className="ai-request-row py-2 border-b border-edge-subtle/50 last:border-b-0">
+    <li ref={rowRef} className="ai-request-row py-2 border-b border-edge-subtle/50 last:border-b-0">
       <div className="flex items-center gap-1.5 min-h-5">
         <span
           aria-hidden="true"
@@ -1237,7 +1240,9 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       </p>
       <ConfirmDialog
         open={confirmOpen}
+        title="Discard request?"
         message="This request has text. Discard it?"
+        anchorRef={rowRef}
         confirmLabel="Discard"
         tone="danger"
         onConfirm={() => { setConfirmOpen(false); req.onCancel?.(); }}

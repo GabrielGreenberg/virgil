@@ -4520,7 +4520,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     dialog: notifyDragHandleActionDialog,
   } = useConfirmDialog();
   const dragHandleNotify = useCallback(
-    (opts: { title?: string; message: string; tone?: "default" | "danger" }) => {
+    (opts: { title: string; message: string; tone?: "default" | "danger" }) => {
       // Fire-and-forget. The promise resolves true on OK; we don't
       // care about cancel since `hideCancel: true` removes it.
       void notifyDragHandleAction({
@@ -5257,7 +5257,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // the caret. One gate, one honest cause, for every caller of this door.
     const refusal = archiveRestoreRefusal(innerRef.current?.getEditor());
     if (refusal) {
-      dragHandleNotify({ message: refusal });
+      dragHandleNotify({ title: "Can't restore", message: refusal });
       return;
     }
     // RETURN ADDRESS (task 965): an anchored clip goes back where it came
@@ -5315,7 +5315,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // after a restore that already happened (`gone` / `already-restored`)
       // words to null: silent, because nothing failed.
       const message = restoreRefusalMessage(restored, { addressed: address !== null });
-      if (message) dragHandleNotify({ message });
+      if (message) dragHandleNotify({ title: "Can't restore", message });
       return;
     }
     if (restored.route === "excerpt") {

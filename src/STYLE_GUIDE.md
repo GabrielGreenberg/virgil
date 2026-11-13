@@ -3136,8 +3136,22 @@ The whole card-delete family anchors through ONE door, `usePanelCardTryDelete`,
 which REQUIRES the card's `anchorRef` (task 976) — so every kind's "This item
 has text" opens beside its card; the shell (`PanelCard`) also arms the
 Delete/Backspace key from the same trash thunk, so a card cannot offer one
-without the other. Still centered, and due `anchorRef` when next touched:
-`TexBlockNodeView`, `AIWindow` and the `EditorPane` archive confirms.
+without the other. The source-block delete (`SourcePodNodeView`, serving
+`texBlock` and `forestBlock`) anchors to its pod and the AI-request row's
+discard (`AIWindow`) to its row (task 1609). Still centered: the `EditorPane`
+atom-archive confirm (`archiveCard(kind, id)` is reached by id from panel
+callbacks and holds no element) — due `anchorRef` when its callers grow one.
+
+**Every confirm is NAMED and DESCRIBED by the shell.** `title` is REQUIRED on
+every confirm/alert door (`ConfirmDialog`, `useConfirmDialog().confirm()`,
+`useSystemDialog().confirm()/alert()`, and the structural option types the
+lifecycle, drop and drag-handle paths pass through) — it is the dialog's
+accessible name, and a sighted reader scans it first; keep it short and a
+question where the dialog asks one ("Delete item?"). The message renders in
+`SystemDialogMessage`, which registers its id so the frame's
+`aria-describedby` points at it — no caller wires either name (task 1609).
+`system-dialog-accessible-name.test.tsx` renders every door and asserts both at
+runtime.
 
 **Two answers plus a way out.** `ConfirmDialog` takes an optional
 `secondaryLabel`/`onSecondary` pair rendering a third button between Cancel and

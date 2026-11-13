@@ -133,7 +133,8 @@ export type DropDecision =
   | {
       kind: "confirm";
       tone: "danger";
-      title?: string;
+      /** Required — the confirm's accessible name (task 1609). */
+      title: string;
       message: ReactNode;
       confirmLabel?: string;
       cancelLabel?: string;
@@ -252,7 +253,8 @@ export interface DropCtx {
   /** Imperative confirm — opens the modal and awaits the user's choice. Only
    *  a destructive drop reaches it (see {@link DropDecision}). */
   confirm: (opts: {
-    title?: string;
+    /** Required — the dialog's accessible name (task 1609). */
+    title: string;
     message: ReactNode;
     confirmLabel?: string;
     cancelLabel?: string;

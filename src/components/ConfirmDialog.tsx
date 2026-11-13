@@ -44,6 +44,7 @@ import SystemDialog, {
   SystemDialogButton,
   SystemDialogFooter,
   SystemDialogHeader,
+  SystemDialogMessage,
 } from "./system-dialog";
 
 /* The tone→button policy is a LEAF (`confirm-cue-policy.ts`) so the OTHER
@@ -58,7 +59,11 @@ export {
 
 export interface ConfirmDialogProps {
   open: boolean;
-  title?: string;
+  /** REQUIRED (task 1609): the title is the dialog's accessible name — an
+   *  untitled confirm is a nameless `role=dialog` — and a sighted reader
+   *  scans it first. Short, and a question where the dialog asks one
+   *  ("Delete note?"). */
+  title: string;
   message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -162,7 +167,9 @@ export default function ConfirmDialog({
     >
       <SystemDialogHeader title={title} />
       <SystemDialogBody>
-        <div className="text-sm text-ink-body leading-relaxed">{message}</div>
+        <SystemDialogMessage className="text-sm text-ink-body leading-relaxed">
+          {message}
+        </SystemDialogMessage>
         {suppressible && (
           /* Deliberately NOT `autoFocus`: `autoFocus` marks the CUED DEFAULT
              (task 389) and the cue must stay on the answer. So the dialog's
@@ -217,7 +224,8 @@ export default function ConfirmDialog({
 /* ── useConfirmDialog ─────────────────────────────────────────────── */
 
 export interface ConfirmOptions {
-  title?: string;
+  /** REQUIRED — the dialog's accessible name (see `ConfirmDialogProps.title`). */
+  title: string;
   message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;

@@ -42,8 +42,10 @@
  *     {@link file://./dialog-enter-policy.ts} (task 389).
  *   - role=dialog, aria-modal=true, aria-describedby, and aria-labelledby
  *     WITHOUT the caller's help: a titled `SystemDialogHeader` registers its
- *     `<h2>` id with the shell, which names the frame by it (task 832). Pass
- *     `labelledBy` only when a CUSTOM header strip holds the title.
+ *     `<h2>` id with the shell, which names the frame by it (task 832), and a
+ *     `SystemDialogMessage` registers ITS id, which describes the frame
+ *     (task 1609). Pass `labelledBy` / `describedBy` only when a CUSTOM
+ *     element holds the title / the description.
  *   - initial focus, once the portal exists: whatever already claimed focus
  *     INSIDE the frame, else the dialog's own `initialFocus` claim (a name
  *     field, a file row), else the cued button, else the frame — so focus always
@@ -237,6 +239,9 @@ interface DialogCtxValue {
    *  (task 832). Returns the unregister cleanup. */
   registerTitle: (id: string) => () => void;
   describedBy?: string;
+  /** A `SystemDialogMessage` reports its id here, so the frame's DESCRIPTION
+   *  is a shell fact too (task 1609) — the same door as `registerTitle`. */
+  registerDescription: (id: string) => () => void;
   registerAutoFocus: (el: HTMLButtonElement | null) => void;
   autoFocusRef: RefObject<HTMLButtonElement | null>;
   variant: SystemDialogVariant;
@@ -480,6 +485,20 @@ export default function SystemDialog({
       setRegisteredTitleId((cur) => (cur === id ? null : cur));
   }, []);
   const effectiveLabelledBy = labelledBy ?? registeredTitleId ?? undefined;
+
+  // The description (task 1609), the same shape: a `SystemDialogMessage`
+  // registers its id and the frame's `aria-describedby` points at it; an
+  // explicit `describedBy` still wins.
+  const [registeredDescriptionId, setRegisteredDescriptionId] = useState<
+    string | null
+  >(null);
+  const registerDescription = useCallback((id: string) => {
+    setRegisteredDescriptionId(id);
+    return () =>
+      setRegisteredDescriptionId((cur) => (cur === id ? null : cur));
+  }, []);
+  const effectiveDescribedBy =
+    describedBy ?? registeredDescriptionId ?? undefined;
 
   // Read through a ref so an inline arrow at the call site cannot churn the
   // focus effect (which must run exactly once per open). Written in an effect,
@@ -875,6 +894,7 @@ export default function SystemDialog({
     labelledBy,
     registerTitle,
     describedBy,
+    registerDescription,
     registerAutoFocus,
     autoFocusRef,
     variant,
@@ -907,7 +927,7 @@ export default function SystemDialog({
           style={{ ...placement, zIndex }}
           role="dialog"
           aria-labelledby={effectiveLabelledBy}
-          aria-describedby={describedBy}
+          aria-describedby={effectiveDescribedBy}
         >
           {children}
         </div>
@@ -930,7 +950,7 @@ export default function SystemDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={effectiveLabelledBy}
-        aria-describedby={describedBy}
+        aria-describedby={effectiveDescribedBy}
         {...backdropPress}
       >
         <div
@@ -1119,6 +1139,35 @@ export function SystemDialogBody({
 }) {
   return (
     <div className={`${SYSTEM_DIALOG_TOKENS.body} ${className}`}>{children}</div>
+  );
+}
+
+/**
+ * The dialog's MESSAGE — the prose a confirm or alert asks or tells. It
+ * registers its id with the shell, which points the frame's
+ * `aria-describedby` at it (task 1609), so a screen reader hears the
+ * question with the dialog's name instead of only the focused button.
+ * Render it inside `SystemDialogBody`; one per dialog.
+ */
+export function SystemDialogMessage({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const ctx = useContext(DialogCtx);
+  const autoId = useId();
+  const id = `sd-message-${autoId}`;
+  const registerDescription = ctx?.registerDescription;
+  useLayoutEffect(() => {
+    if (!registerDescription) return;
+    return registerDescription(id);
+  }, [registerDescription, id]);
+  return (
+    <div id={id} className={className}>
+      {children}
+    </div>
   );
 }
 

@@ -694,6 +694,9 @@ export default function SourcePodNodeView({
         message={config.confirmMessage}
         confirmLabel="Delete"
         tone="danger"
+        // A confirm about ONE block opens beside it (task 1609; STYLE_GUIDE:
+        // a confirm about one object anchors to it).
+        anchorRef={wrapperRef}
         onConfirm={() => {
           setConfirmOpen(false);
           deleteNode();

@@ -85,7 +85,11 @@
 
 import { CARD_REGISTRY, canMorphCard } from "../card-registry";
 import { describeDrops, morphDropsTone } from "../morph-drop-fields";
-import { CARD_DELETE_CONFIRM_MESSAGE, morphDropsHeld } from "../has-content";
+import {
+  CARD_DELETE_CONFIRM_MESSAGE,
+  CARD_DELETE_CONFIRM_TITLE,
+  morphDropsHeld,
+} from "../has-content";
 import type { CardKind } from "../types";
 import type { CardLifecycleSink } from "./card-lifecycle-signal";
 import {
@@ -105,7 +109,8 @@ import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 export interface CardLifecycleDeps {
   /** Show a confirm dialog; resolves true to proceed. */
   confirm: (opts: {
-    title?: string;
+    /** Required — the dialog's accessible name (task 1609). */
+    title: string;
     message: string;
     confirmLabel?: string;
     cancelLabel?: string;
@@ -525,6 +530,7 @@ export async function runCardLifecycleEvent(
   // CONFIRM — the caller resolved `hasContent` from the kind-aware predicate.
   if (ev.hasContent) {
     const ok = await deps.confirm({
+      title: CARD_DELETE_CONFIRM_TITLE,
       message: CARD_DELETE_CONFIRM_MESSAGE,
       confirmLabel: "Delete",
       tone: "danger",
