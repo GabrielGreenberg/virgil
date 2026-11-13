@@ -74,9 +74,17 @@ and turn it into a properly-located paper folder + queue request.
 
 Supported source kinds:
 
-- **`.pdf`** — full PDF/DOCX-style indexing (extraction → `main.tex` with `\pgmark{N}`).
-- **`.docx`** — same flow, structured extraction (no pgmark).
-- **`.tex`** — already LaTeX. Passthrough copy into `papers/<citekey>/main.tex`; queue index. Defaults to `@unpublished` unless a DOI is present.
+**Every kind goes through the ONE triage engine** — `triage_batch.py --only
+<filename>` proposes the row(s), you review them, `triage_apply.py` applies
+them (task 1601). It is the same engine `/library/triage-pending` runs over the
+whole inbox, so a drop gets the same citekey, duplicate handling, move and park
+semantics from either skill. This skill adds only JUDGMENT — reading the file
+and correcting the proposed row — never a step of its own that moves a file,
+writes `master.bib`, queues a request or mints a citekey.
+
+- **`.pdf`** — one row; on apply, full PDF indexing (extraction → `main.tex` with `\pgmark{N}`).
+- **`.docx`** — one row; same flow, structured extraction (no pgmark).
+- **`.tex`** — one row; already LaTeX, so the indexer copies it into `papers/<citekey>/main.tex` verbatim (`index_paper.py`'s `tex-passthrough` branch). Defaults to `@unpublished` unless a DOI is present.
 - **`.bib`** — multi-entry fan-out. **This bullet is the one statement of what a `.bib` entry becomes; everything else in this family points here.** The ordinary outcome (`status: bib-imported`) is three things:
   1. its block in `master.bib`, carrying `% bib.state = unverified` (`manuscript` when the row proposes it). That comment is the F#4 **home** for the auth state; `build_bib_index` projects it into `bib-index.json` — *at process exit*, so the file is stale for the whole apply run and is not a way to check your own work mid-run.
   2. a **bib-only paper folder** — `papers/<citekey>/references.bib` + empty `virgil/` sidecars, no source file and no `main.tex`.
@@ -104,454 +112,223 @@ Supported source kinds:
 All paths below are relative to the library root (the current working
 directory).
 
-0. **Claim this file's triage request** through the queue door, before
-   anything else. The app filed it as `.virgil/queue/_triage-<slug>.json`
-   (one per dropped file); the door finds it by the file's name, so you
-   touch only THIS file's request — never another drop's:
+**This file's triage request** (`.virgil/queue/_triage-<slug>.json`, filed by
+the app when the file was dropped) **is `triage_apply.py`'s to close** (task
+1600): it claims the request before the file's row and, after, retires it when
+the file has left `unsorted/` (moved, parked) or releases it `failed` when the
+file is still there. So do NOT claim it up front — a request this skill held
+would be one apply cannot claim. Only a run that ends WITHOUT reaching step 3
+touches it, through the queue door, by the file's name (never a glob — that is
+every other pending drop too):
+
+- **Source already gone** (task 1600) — `unsorted/<filename>` does not exist:
+  an earlier run triaged it or the user removed it. Say so in one line ("source
+  already gone — nothing to triage") and RETIRE the request — releasing would
+  only walk it to `poisoned`:
+  ```bash
+  claim=$(python3 .virgil/scripts/library/queue_slot.py claim --kind triage --file "<filename>")
+  echo "$claim"
+  python3 .virgil/scripts/library/queue_slot.py retire --kind triage --file "<filename>" --requested-at "<requestedAt from the claim, or empty>"
+  ```
+  (`{"result": "nothing-claimable"}` means nothing was queued: pass `""`.)
+- **A stop before step 3** (task 1575) — the source is present but step 1
+  refuses it, or anything else ends the run: report first, then claim the
+  same way and RELEASE it, so the next drain retries it (`poisoned` after
+  three failures) instead of it sitting `running` for an hour:
+  ```bash
+  python3 .virgil/scripts/library/queue_slot.py release --kind triage --file "<filename>" --requested-at "<requestedAt from the claim, or empty>" --error "<one line: why you stopped>"
+  ```
+
+1. **Propose — run the engine on THIS file alone.** The rows outlive this call
+   (you review them in step 2 and apply them in step 3), so mint the run's
+   scratch directory and carry the printed path as `<runDir>` into every later
+   block, per [_scratch.md](_scratch.md):
    ```bash
-   python3 .virgil/scripts/library/queue_slot.py claim --kind triage --file "<filename>"
+   run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX") || exit 1
+   echo "runDir=$run_dir"
+   python3 .virgil/scripts/library/triage_batch.py \
+     --library . --only "<filename>" --output "$run_dir/triage.jsonl"
    ```
-   It prints `{"result": "claimed", "requestedAt": …}` — keep that
-   `requestedAt` for step 10 — or `{"result": "nothing-claimable"}`
-   (invoked directly with nothing queued: carry on, and pass `""` in
-   step 10).
+   `--only` takes a bare filename relative to `unsorted/` and errors (exit 2)
+   rather than falling back to the whole inbox — **without it
+   `triage_batch.py` triages every drop in `unsorted/`**, which is
+   `/library/triage-pending`'s job, not this skill's. Scoping the BATCH scopes
+   the whole pipeline: the apply step is driven entirely by the rows in the
+   JSONL and sweeps `unsorted/` for nothing of its own. An exit-2 refusal is a
+   stop (release the request, above).
 
-   **A run that STOPS short of step 10 RELEASES the claim** (task 1575) —
-   an error that ends the run (step 8's refused master.bib write, an
-   unreadable source, anything else). Report first, then:
+   A `.pdf`/`.docx`/`.tex` drop is ONE row; a `.bib` drop is one row PER ENTRY
+   (each flagged `bib-only`, carrying the verbatim `bibEntryRaw`). The row's
+   fields — `proposedCitekey`, `proposedType`, `proposedFields`, `flags`,
+   `byline`, `textPreview`, `notes`, and for a variant `existingCitekey` — are
+   described once, in `/library/triage-pending` step 1; the flag vocabulary is
+   open, so ask the script rather than reading a list:
    ```bash
-   python3 .virgil/scripts/library/queue_slot.py release --kind triage --file "<filename>" --requested-at "<requestedAt from step 0, or empty>" --error "<one line: why you stopped>"
+   python3 .virgil/scripts/library/triage_batch.py --print-flags
    ```
-   A claim left behind stays `running` for an hour; released, the request
-   is `failed` — re-triaged by the next drain, `poisoned` after three
-   failures. A COMPLETED path (variant, whole-handbook, `.tex`, `.bib`
-   fan-out) is not a stop: it retires at step 10.
 
-   **A source that is already GONE is not a failure either** (task 1600).
-   If `unsorted/<filename>` does not exist, the file was triaged by an
-   earlier run (`triage_apply.py` normally retires the request itself) or
-   the user removed it: there is nothing to triage, and releasing would
-   only walk the request to `poisoned`. Say so in one line ("source
-   already gone — nothing to triage") and go straight to step 10 to
-   RETIRE the request. Only a source that is PRESENT but unreadable is a
-   stop that releases.
+2. **Review — read the file and correct the row.** This is the skill's whole
+   job: the engine's heuristics are cheap, you can READ. Edit
+   `<runDir>/triage.jsonl` in place. Every value you put there must come from
+   the file itself — a field it does not show stays out rather than guessed;
+   authentication fills it later. That is the find-or-surface rule
+   ([_find-or-surface.md](_find-or-surface.md)).
 
-1. **Read metadata.** Branch on extension:
+   **A `.bib` row needs no reading** — the engine parsed the entry verbatim.
+   Leave its rows alone unless one is plainly wrong, and skip to step 3. **Do
+   not hand-roll a `.bib` row**: a hand-built row loses `bibEntryRaw`, the
+   `citekey-exists` collision flag and an `@unpublished` entry's `manuscript`
+   state (task 511).
 
-   For `.pdf`:
+   For the other kinds, read the source:
+
+   For `.pdf` (pages 1–4 — the year/DOI check needs more than page 1):
    ```bash
    pdftotext -f 1 -l 4 unsorted/<filename> -
    ```
-   (Read pages 1–4 — we need more than page 1 for the year/DOI check
-   in step 3.)
 
-   For `.docx` (Word documents have explicit core properties + paragraph
-   styles, so we read both):
+   For `.docx` (core properties first; the first paragraphs when they are
+   empty):
    ```bash
    python3 -c "import sys; sys.path.insert(0, '.virgil/scripts/library'); from extract_docx import core_properties; import json; print(json.dumps(core_properties('unsorted/<filename>'), indent=2))"
    ```
-   This returns `{title, author, created, modified, first_paragraphs}`. Use
-   the core properties first; fall back to scanning the first paragraphs if
-   they're empty.
 
-   For `.tex` (LaTeX manuscript): parse `\title{...}`, `\author{...}`,
-   `\date{...}`, plus the first ~2000 characters of the body for DOI /
-   ISBN / year detection. The shared helper is in `triage_batch.py`'s
-   `_read_tex_meta()`. A `.tex` source without a DOI defaults to
-   `@unpublished`; with a DOI, treat as `@article` and let
-   `/library/authenticate-bib` confirm.
+   For `.tex`: `\title{...}`, `\author{...}`, `\date{...}` and the first
+   ~2000 characters of the body (DOI / ISBN / year) — the engine already read
+   them with `_read_tex_meta()`; check its row against the source.
 
-   For `.bib` (BibTeX file with one or more entries): **stop here and run
-   the `.bib` handling (multi-entry fan-out) procedure at the end of this
-   file.**
-   A `.bib` drop is not one document — it fans out to one triage row per entry,
-   and the batch engine (scoped with `--only`) is what builds those rows. Do not
-   parse it by hand: a hand-rolled row loses the verbatim entry text, the
-   `citekey-exists` collision flag, and an `@unpublished` entry's `manuscript`
-   state.
+   Then correct the row:
 
-2. **Propose a citekey** from the title + first author + year. Convention:
-   `<LastName><Year>` (e.g. `Smith2020`). If the year is missing, use
-   `<LastName><LastName2>`. If a collision exists in `master.bib` or
-   `papers/`, append `a`, `b`, etc.
+   - **Author and year.** The filename convention `<YYYY>-<Surname>.pdf`
+     records acquisition, not publication, so the filename may disagree with
+     the document. If the lead surname in the page-1 byline is not the
+     filename's, or pages 1–4 give a different year (`© YYYY`, `First
+     published YYYY`, `Vol. N (YYYY)`, a DOI carrying a year, a `Received:` /
+     `Accepted:` date), correct `proposedFields`, add the `filename-mismatch`
+     flag with `filenameAuthor` / `contentAuthor` (apply writes the
+     `triage-filename-mismatch` audit notification from them), and re-derive
+     the citekey with the ENGINE's rule — never a rule of your own:
+     ```bash
+     python3 -c "import sys; sys.path.insert(0, '.virgil/scripts/library'); from triage_batch import _propose_citekey; print(_propose_citekey('<surname>', '<year>', '<title>', ''))"
+     ```
+     An empty answer means the parts are unusable (a stopword surname, no
+     year): leave the row to apply's `needs-metadata` quarantine.
+   - **DOI.** Search pages 1–4 for `\b10\.\d{4,9}/[^\s'"<>]+` and put it in
+     `proposedFields.doi` — strong evidence for the year and journal; prefer
+     DOI-derived metadata over filename guesses.
+   - **Fields the title / copyright page shows** — they materially improve
+     authentication and most cannot be recovered later. Add each to
+     `proposedFields` when present:
 
-3. **Sanity-check filename against source pages.** The filename convention
-   `<YYYY>-<LastName>.pdf` uses acquisition date, not publication year,
-   so the filename metadata may disagree with the document itself. Before
-   proceeding, verify:
+     | Field        | Look for                                                                      |
+     | ------------ | ----------------------------------------------------------------------------- |
+     | `editor`     | "Edited by", "Editors:", "ed. X", "eds. X and Y" — use this **instead of** `author` for edited volumes |
+     | `translator` | "translated by", "trans.", "Translator:" (matters for translated classics)    |
+     | `series`     | A series name on the title page, e.g. "Studies in Applied Philosophy"         |
+     | `edition`    | "Second edition", "3rd ed.", "Revised edition" on the copyright page          |
+     | `isbn`       | ISBN on the copyright page (regex `\b(?:ISBN[-:]?\s*)?\d{9,13}[Xx]?\b`) — strip dashes |
+     | `address`    | Publisher city on the title or copyright page (e.g. "New York", "Cambridge, MA") |
 
-   - **Author.** Extract the byline from page 1. If the lead author
-     surname in the filename does not appear in the page-1 byline,
-     adopt the page-1 lead author surname instead.
-   - **Year.** Scan pages 1–4 for any of: `© YYYY`, `First published
-     YYYY`, `Vol. N (YYYY)`, a DOI containing a year, or a `Received:`
-     / `Accepted:` date. If the in-PDF year disagrees with the filename
-     year, use the in-PDF year for the citekey.
-   - **DOI.** On the same pages 1–4 text, search for
-     `\b10\.\d{4,9}/[^\s'"<>]+`. If found, store it — prefill it in
-     the bib stub at step 7. A DOI here is strong evidence for the
-     correct year and journal; prefer DOI-derived metadata over
-     filename guesses.
+   - **Entry type** (`proposedType`). Journal article → `article` (the
+     default; `author`, `title`, `journal`, `year`, `volume`, `number`,
+     `pages`, `doi`). Monograph → `book` (`publisher`, `address`, `edition`,
+     `isbn`). Chapter in an edited volume → `incollection` (`booktitle`,
+     `editor`, `publisher`, `pages`). Excerpt from a single-author book →
+     `inbook` (`booktitle`, `chapter`, `pages`). Signals for book types: a
+     copyright page with publisher/ISBN, "Edited by" on the title page,
+     "Chapter N" headers, no journal/volume metadata. When uncertain, leave
+     `article` — authentication corrects it.
+   - **Preprints / forthcoming.** Page 1 says "Manuscript", "Penultimate
+     Draft", "Pre-print", "Preprint", "Forthcoming", "Draft — please do not
+     cite", "Under review", or carries a lingbuzz ID (`lingbuzz/\d+`) — the
+     engine flags `preprint` when it sees one: set `proposedType` to
+     `unpublished`, `proposedFields.note` to the document's own phrasing
+     (`Preprint`, `Forthcoming`, …) and, for lingbuzz,
+     `proposedFields.url = https://ling.auf.net/lingbuzz/<id>`. A DOI stays —
+     it may name the published version, which authentication reconciles.
+   - **SEP entries** (`sep` flag, a `plato.stanford.edu/.../entries/<slug>/`
+     URL): `proposedType` `incollection`, `booktitle` "The Stanford
+     Encyclopedia of Philosophy", `editor` "Edward N. Zalta and Uri
+     Nodelman", `publisher` "Metaphysics Research Lab, Stanford University",
+     `url` `https://plato.stanford.edu/entries/<slug>/`, and the citekey
+     suffixed `sep` so it never collides with a non-SEP work by the same
+     author/year. SEP is in no DOI registry; authentication short-circuits to
+     `authenticated` on the URL.
+   - **A whole edited volume, not one chapter.** Page 1 carries a handbook
+     signal ("Cambridge/Oxford/Routledge Handbook", "Edited by" with several
+     editors, "Series Editor", "General Editor", a TOC of chapters by
+     different authors) AND the filename's surname is not on the title page:
+     a stub under that surname would be a wrong-bib entry. Make sure the row
+     carries the `whole-handbook` flag (the engine sets it when it sees the
+     signal) and a `notes` line naming the handbook title — apply parks the
+     file in `unsorted/_pending/` through the no-clobber park door and writes
+     the `triage-needs-chapter-info` notification (with `parkedAs`), before
+     any `master.bib` write. This is the one failure mode that legitimately
+     needs a human: see the reply format below.
+   - **A copy of a paper the library already holds.** The engine detects a
+     numbered variant scan (`<base>.<N>.<ext>`) from the catalog and flags it
+     `variant-copy` with `existingCitekey`; apply archives it under
+     `papers/<existingCitekey>/variants/`. If you can see the drop is the
+     same work as an existing entry under a different key, you may set
+     `proposedCitekey` to that existing key — the same edit a
+     `/library/triage-pending` reviewer may make. Apply then fills a source
+     gap (entry with no source on disk), supersedes (a different format is
+     held — `docx` outranks `pdf`, by `_tools.SOURCE_FORMAT_PRIORITY`: a
+     higher format is placed alongside and queued `reindex`, a lower one is
+     kept as an archive with nothing queued), or REFUSES a same-format
+     collision rather than replace the held file. Leave the key as proposed
+     and apply's work-identity guard instead flags `triage-duplicate-work`
+     and indexes it anyway — it never silently drops the second copy.
+   - **A `needs-metadata` / `needs-title` row** (or no `proposedCitekey`).
+     Fill a citekey / year / title only from what the file shows. If it does
+     not show it, leave the row: apply quarantines it (`_needs-metadata/` or
+     `_pending/`) through the park door, which is the honest outcome.
 
-   **Also extract these fields** when present on the title or
-   copyright page — they materially improve auth quality and most
-   can't be recovered later:
+   A citekey is a folder name — keep any key you edit path-safe (no `/`, `\`,
+   leading `.`); apply refuses an unsafe one before writing anything.
 
-   | Field        | Look for                                                                      |
-   | ------------ | ----------------------------------------------------------------------------- |
-   | `editor`     | "Edited by", "Editors:", "ed. X", "eds. X and Y" — use this **instead of** `author` for edited volumes |
-   | `translator` | "translated by", "trans.", "Translator:" (matters for translated classics)    |
-   | `series`     | A series name on the title page, e.g. "Studies in Applied Philosophy"         |
-   | `edition`    | "Second edition", "3rd ed.", "Revised edition" on the copyright page          |
-   | `isbn`       | ISBN on the copyright page (regex `\b(?:ISBN[-:]?\s*)?\d{9,13}[Xx]?\b`) — strip dashes |
-   | `address`    | Publisher city on the title or copyright page (e.g. "New York", "Cambridge, MA") |
-
-   These flow into the auth pipeline: `isbn` enables direct Crossref
-   filter and OpenLibrary fallback, `editor` is mandatory for edited
-   volumes (BibTeX renders `@incollection` differently with `editor`
-   vs `author`), and `series`/`edition` disambiguate between similar
-   records. Capture them now or you'll need to fill them later.
-
-   If any corrections were made, re-derive the citekey from the
-   corrected author + year before continuing to step 4. **Also append
-   a `triage-filename-mismatch` notification** so the user has an audit
-   trail of files that were misnamed:
-   ```json
-   {
-     "kind": "triage-filename-mismatch",
-     "originalFilename": "<filename>",
-     "filenameAuthor": "<lastname from filename>",
-     "contentAuthor": "<lastname from page 1>",
-     "newCitekey": "<corrected citekey>",
-     "at": "<ISO>"
-   }
-   ```
-
-4. **Check for existing entry.** Look at `master.bib` and the `papers/`
-   directory.
-
-   **First, check for a variant copy.** If the filename matches the
-   pattern `<base>.<N>.<ext>` (where `<N>` is a numeric suffix like
-   `.1`, `.2`) AND `unsorted/<base>.<ext>` or `papers/<base>/<base>.<ext>`
-   already exists, this is a duplicate scan/offprint of an already-indexed
-   paper.
-
-   **Degenerate-base safeguard.** Refuse the variant-copy classification
-   when the base stem has fewer than 2 letters (e.g., `-.<N>.pdf`,
-   `<digits>.<N>.pdf`). A real citekey has letters; placeholder-named
-   backlogs would otherwise collapse into a single ghost-parent cluster
-   (2026-05-16-triage-no-name-pdfs.md). `triage_batch.py` enforces
-   this automatically; if you're handling a single file manually and
-   the base looks degenerate, treat it as a fresh row (not a variant).
-
-   1. Read `.virgil/catalog.json` and find the entry whose `pdf.filename ==
-      "<base>.<ext>"` (or whose alternates list contains it).
-   2. If found, the variant belongs to that citekey. Move the file to
-      `papers/<existing-citekey>/variants/<filename>` (mkdir variants/
-      if needed). Skip steps 5–9 — no new bib entry, no index request — but
-      still run step 10 to retire this file's triage request.
-      Append a notification via the locked CLI shim:
-      ```bash
-      t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
-      cat > "$t/variant-notify.json" <<'EOF'
-      {
-        "kind": "triaged",
-        "summary": "Kept <filename> as variant archive of <existing-citekey>",
-        "at": "<ISO>"
-      }
-      EOF
-      python3 .virgil/scripts/library/append_inbox_item.py \
-        --item-file "$t/variant-notify.json"
-      rm -rf "$t"
-      python3 .virgil/scripts/library/bump_catalog_version.py
-      ```
-      Then skip to step 10 (retire this file's request) and stop.
-   3. If `<base>.<ext>` exists on disk but no catalog entry maps to
-      it, fall through to the four cases below (mint a new citekey
-      with `a`/`b` suffix as needed).
-
-   Otherwise, there are four cases:
-
-   a. **No bib entry, no on-disk source** → standard new-paper flow.
-      Add the bib entry (step 7), move the file (step 8), enqueue
-      `kind: "index"` (step 9).
-
-   b. **Bib entry exists, no on-disk source** ("fill the source gap") →
-      skip step 7, move the file, enqueue `kind: "index"`.
-
-   c. **Bib entry exists AND a same-format source exists at
-      `papers/<citekey>/<citekey>.<ext>`** → genuine collision. Append `a`/`b`/...
-      to the citekey and restart from step 2.
-
-   d. **Bib entry exists AND a *different-format* source exists at
-      `papers/<citekey>/<citekey>.<other-ext>`** → this is a **supersede**. Format
-      priority is `docx > pdf` (DOCX carries explicit structure that
-      beats the PDF heuristics). Decide which to do:
-      - If the new file is *higher* priority than the existing one
-        (e.g., new=docx, existing=pdf) → skip step 7, place the new
-        file at `papers/<citekey>/<citekey>.<new-ext>` *alongside* the existing
-        one (don't delete the old source), and enqueue **`kind:
-        "reindex"`** instead of `"index"` in step 9. The existing
-        lower-priority source is preserved as an archive — the indexer
-        will record it as `pdf.alternates` in the catalog.
-      - If the new file is *lower* priority (e.g., new=pdf,
-        existing=docx) → place it alongside as an archive but do NOT
-        enqueue a re-index. The current docx-derived `main.tex` stands.
-        Append a `triaged` notification noting "kept as archive; docx
-        source remains canonical" so the user knows nothing was lost.
-
-   When proposing the citekey in step 2, watch for near-matches against
-   existing bib entries (slight title casing differences, "A" vs "The"
-   prefixes, etc.) — prefer the existing citekey rather than minting a
-   new one for what is plausibly the same paper.
-
-5. **Whole-handbook check — refuse to mint a stub when the file is a
-   whole edited volume, not a single chapter.** Trigger if first-page
-   text contains BOTH:
-
-   - A handbook signal: "Cambridge Handbook", "Oxford Handbook",
-     "Routledge Handbook", "Edited by" (with multiple editors), "Series
-     Editor", "General Editor", or a TOC listing chapters by different
-     authors
-   - The filename's proposed author surname does NOT appear on the
-     title page
-
-   When triggered, the file is the whole book — minting a stub for
-   `<filename-author>2024` would produce a wrong-bib entry. Instead:
-
-   1. Move file to `unsorted/_pending/<filename>` (mkdir if
-      needed) so it's not re-triaged on the next scan.
-   2. Append a notification:
-      ```json
-      {
-        "kind": "triage-needs-chapter-info",
-        "filename": "<filename>",
-        "candidateAuthor": "<lastname from filename>",
-        "handbookTitle": "<from page 1>",
-        "at": "<ISO>"
-      }
-      ```
-   3. Skip steps 6–9 — nothing has been written to `master.bib`, which
-      is why this check runs BEFORE the stub (as `triage_apply.py` checks
-      `whole-handbook` before any write) — then run step 10 (retire this
-      triage request).
-   4. Say so in your reply: name the parked file and ask the user for the
-      chapter title, chapter author(s) and page range, then to re-run
-      `/library/triage-pdf <filename>` with that context (move the file
-      back from `_pending/` first). Nothing in the app prompts for this
-      yet — the `triage-needs-chapter-info` notification is a record, not
-      a form — so your reply is the only place the user learns what to
-      supply. The re-run files a NEW request, which a retired old one
-      cannot shadow.
-
-   This is the one failure mode that legitimately needs human input —
-   the skill should not guess.
-
-6. **Flag preprints / forthcoming.** If page 1 contains any of:
-   "Manuscript", "Penultimate Draft", "Pre-print", "Preprint",
-   "Forthcoming", "Draft — please do not cite", "Under review", or a
-   lingbuzz ID (`lingbuzz/\d+`), change the entry type to
-   `@unpublished` and set:
-   - `note = {Preprint}` (or `Forthcoming`, `Penultimate draft`, etc.
-     — match the document's own phrasing)
-   - If a lingbuzz ID was found: `url = {https://ling.auf.net/lingbuzz/<id>}`
-
-   This DECIDES the entry type step 7 writes — decide it here, before the
-   one write, rather than correcting a stub afterwards (there is no step
-   that rewrites one). A preprint with a DOI keeps
-   its DOI field — the DOI may point to the published version, which
-   `/library/authenticate-bib` will reconcile later.
-
-7. **Add a `master.bib` entry** if no matching one exists. Use the
-   locked CLI shim — do **not** Read/Write `master.bib` directly:
-
+3. **Apply.**
    ```bash
-   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
-   cat > "$t/fields.json" <<'EOF'
-   { "author": "...", "title": "...", "year": "<YYYY>", ... }
-   EOF
-   python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
-     --entry-type "<type>" \
-     --fields-file "$t/fields.json" \
-     --bib-state unverified
-   rc=$?
-   rm -rf "$t"
-   echo "exit=$rc"
+   python3 .virgil/scripts/library/triage_apply.py \
+     --input <runDir>/triage.jsonl --library .
+   rm -rf <runDir>
    ```
+   (Keep `<runDir>` instead if apply failed — the fix is to edit that JSONL
+   and re-run it, never to hand-perform a step.)
 
-   **Branch on the exit code** (the ONE table:
-   `update_master_bib_entry.py --help`, task 796). **0** — added (or the
-   existing entry updated); continue. **3** — the library already holds this
-   work under the citekey stderr names: use THAT citekey for the rest of
-   triage rather than minting a duplicate. **4** — an entry with this
-   citekey exists and your fields would drop some of its fields: it is
-   already in master.bib, so leave it and continue. **2** (mis-built
-   command), **7** (unbalanced braces — needs a human repair) or anything
-   else — nothing was written: report stderr verbatim, release the claim
-   (step 0), and stop before queueing the paper.
-
-   First, determine the entry type from the source content. If step 6
-   flagged a preprint, its verdict wins: `@unpublished` with its `note`
-   (and `url`, for lingbuzz) goes into THIS write. Otherwise:
-
-   - **Journal article** → `@article` (default). Fields: `author`,
-     `title`, `journal`, `year`, `volume`, `number`, `pages`, `doi`.
-   - **Monograph** → `@book`. Fields: `author`, `title`, `publisher`,
-     `address`, `year`, `edition`, `isbn`.
-   - **Chapter in edited volume** → `@incollection`. Fields: `author`,
-     `title`, `booktitle`, `editor`, `publisher`, `address`, `year`,
-     `pages`, `isbn`.
-   - **Excerpt from a single-author book** → `@inbook`. Fields:
-     `author`, `title`, `booktitle`, `chapter`, `pages`, `publisher`,
-     `year`.
-
-   Signals for book types: copyright page with publisher/ISBN, "Edited
-   by" on title page, "Chapter N" headers, absence of journal/volume
-   metadata. When uncertain, default to `@article` — `/library/index-paper`
-   will correct the type during authentication.
-
-   **SEP entries get a canonical stub.** If page-1 text or a header
-   contains a Stanford Encyclopedia of Philosophy URL
-   (`plato.stanford.edu/.../entries/<slug>/`), use this template:
-   ```bibtex
-   @incollection{<Author><Year>sep,
-     author = {Last, First},
-     title = {<Title>},
-     booktitle = {The Stanford Encyclopedia of Philosophy},
-     editor = {Edward N. Zalta and Uri Nodelman},
-     publisher = {Metaphysics Research Lab, Stanford University},
-     year = {<Year from URL slug or copyright>},
-     url = {https://plato.stanford.edu/entries/<slug>/}
-   }
-   ```
-   The citekey suffix `sep` distinguishes this from any non-SEP work
-   by the same author/year. SEP isn't in any DOI registry; the URL is
-   the canonical identifier and `/library/authenticate-bib` short-circuits to
-   `authenticated` when it sees the SEP URL.
-
-   Use the title + authors + year you read (as corrected by step 3).
-   Include any DOI extracted in step 3. Mark `bib.state = "unverified"`
-   so `/library/index-paper` will authenticate it. Every field you put in
-   `fields.json` must come from the file itself — a field it does not show
-   stays out rather than guessed; authentication fills it later. That is
-   the find-or-surface rule ([_find-or-surface.md](_find-or-surface.md)).
-
-8. **Move the source file** from `unsorted/<filename>` to
-   `papers/<citekey>/<citekey>.<ext>` — preserve the original extension. Do *not*
-   overwrite or delete a same-citekey source of a different format
-   (case 4d) — both files coexist on disk.
-
-9. **Enqueue indexing** through the queue-slot door — never by writing the
-   JSON yourself. Use `--kind index` for new papers (cases 4a, 4b) and
-   `--kind reindex` for supersede (case 4d, higher-priority new source).
-   Skip enqueueing entirely for case 4d when the new source is lower-priority.
-   ```bash
-   python3 .virgil/scripts/library/queue_slot.py write --kind index --citekey <citekey>
-   ```
-   The door retires a `.virgil/queue/<citekey>.done` left by an earlier run
-   (otherwise the drain would skip the new request as already done) and
-   refuses to overwrite a request that is being processed. It prints
-   `{"result": ..., "file": ...}`; exit code **3** means the request was
-   **not** queued — say so in your reply instead of reporting success.
-
-10. **Retire this file's triage request** through the queue door — never
-    by deleting a queue file, and never by a glob over the triage requests (that is
-    every OTHER pending drop too). **Every path through this skill ends
-    here** — the variant (4) and whole-handbook (6) branches, the `.tex`
-    passthrough and the `.bib` fan-out below included; a request left
-    behind is re-triaged on every drain. The door retires only the request
-    step 0 claimed (a file re-dropped mid-run stays queued as
-    `"superseded"`); with `""` it retires nothing:
-    ```bash
-    python3 .virgil/scripts/library/queue_slot.py retire --kind triage --file "<filename>" --requested-at "<requestedAt from step 0, or empty>"
-    ```
-
-11. **Append a `triaged` notification and bump the catalog version**
-    via the locked CLI shims:
-
-    ```bash
-    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX")
-    cat > "$t/triaged.json" <<'EOF'
-    { "kind": "triaged",
-      "summary": "Triaged <filename> → <citekey> (<entry_type>)",
-      "at": "<ISO>" }
-    EOF
-    python3 .virgil/scripts/library/append_inbox_item.py \
-      --item-file "$t/triaged.json"
-    rm -rf "$t"
-    python3 .virgil/scripts/library/bump_catalog_version.py
-    ```
+   Apply does everything that writes, once, for both triage skills: the
+   `master.bib` stub (through the locked shim, `bib.state = unverified`),
+   the move into `papers/<citekey>/<citekey>.<ext>` (refusing to replace a
+   file), every park, the queue request through the queue-slot door, the
+   notifications (an OPEN vocabulary —
+   `python3 .virgil/scripts/library/triage_apply.py --print-notification-kinds`),
+   closing this file's triage request (`[request <result>] <filename>`), and
+   the one catalog-version bump. Its per-row statuses are stated in
+   `/library/triage-pending` step 3; the ones you will meet for one file:
+   `triaged` (queued for indexing), `archived` (a lower-priority format kept
+   beside the held source; nothing queued), `variant`, `needs-chapter-info`,
+   `needs-title`, `needs-metadata`, `collision` (refused — the file stays in
+   `unsorted/` and its request is released), `triaged-unqueued` (moved, but
+   the index slot refused the request — say so), and the `bib-*` family.
 
 ## Reply format
 
-One line: `Triaged <filename> → <citekey>; queued for indexing`
+One line per row, from apply's output:
+`Triaged <filename> → <citekey>; queued for indexing` — or the status apply
+printed when it is not `triaged` (archived, parked, refused, unqueued).
 
-If the citekey is uncertain (multiple plausible candidates), pick one and
-note the alternatives in your reply.
+If the citekey is uncertain (multiple plausible candidates), pick one and note
+the alternatives in your reply.
 
-## `.tex` handling (passthrough)
+**A `needs-chapter-info` park** — name the parked file (apply's `parkedAs`)
+and ask the user for the chapter title, chapter author(s) and page range, then
+to move the file back from `_pending/` and re-run `/library/triage-pdf
+<filename>` with that context. Nothing in the app prompts for this yet — the
+`triage-needs-chapter-info` notification is a record, not a form — so your
+reply is the only place the user learns what to supply. The re-run files a NEW
+request, which the retired old one cannot shadow.
 
-When `<filename>` ends with `.tex`:
-
-1. Read `\title{}`, `\author{}`, `\date{}` from the source. Use
-   `_read_tex_meta()` in `triage_batch.py` if you want a one-shot helper.
-2. Propose citekey from author + year + first significant title word.
-3. Add a `@unpublished{<citekey>, …}` stub in `master.bib` via
-   `update_master_bib_entry.py` (with `--entry-type unpublished` and
-   `--bib-state unverified`), or `@article` if a DOI was found in the
-   body.
-4. Move `unsorted/<filename>` → `papers/<citekey>/<citekey>.tex`.
-5. Enqueue `kind: "index"`. The indexer (`/library/index-paper`) will copy the
-   `.tex` source verbatim into `papers/<citekey>/main.tex` —
-   `index_paper.py` has a `tex-passthrough` extractor branch.
-6. Bib auth runs as part of indexing — auto-detection of a published
-   version flips `bib.state` to `authenticated`/`unverified`/`manuscript`.
-
-## `.bib` handling (multi-entry fan-out)
-
-**This section is the `.bib` PROCEDURE.** Step 1's `.bib` bullet points here;
-run this instead of the per-document flow, and do not hand-roll the per-entry
-rows — the batch engine is the ONE implementation of what a `.bib` entry
-becomes.
-
-When `<filename>` ends with `.bib`, do NOT treat it as one document. Fan it out
-through the batch engine, SCOPED TO THIS FILE with `--only`:
-
-```bash
-run_dir=$(mktemp -d "${TMPDIR:-/tmp}/virgil-triage-pdf.XXXXXX") || exit 1
-echo "runDir=$run_dir"
-python3 .virgil/scripts/library/triage_batch.py \
-  --library . --only "<filename>" --output "$run_dir/bib-triage.jsonl"
-```
-
-Review/edit `<runDir>/bib-triage.jsonl` if desired — each line is one bib
-entry; `<runDir>` is the path the block above printed, carried as a literal
-per [_scratch.md](_scratch.md). Then apply:
-
-```bash
-python3 .virgil/scripts/library/triage_apply.py \
-  --input <runDir>/bib-triage.jsonl --library .
-rm -rf <runDir>
-```
-
-`--only` takes a bare filename relative to `unsorted/` and errors (exit 2)
-rather than falling back to the whole inbox — **without it `triage_batch.py`
-triages every drop in `unsorted/`**, which is `/library/triage-pending`'s job,
-not this skill's. Scoping the BATCH scopes the whole pipeline: the apply step is
-driven entirely by the rows in the JSONL and sweeps `unsorted/` for nothing of
-its own.
-
-The apply step, per row:
-
-- Decides on collision. The existing state is resolved through
-  `_tools.resolve_bib_state` — master.bib's `% bib.state` comment FIRST, a legacy
-  catalog row as the fallback — so a FILELESS reference (cited but not held, and so
-  carrying no catalog row at all under the F#4 holdings model) is seen. A settled
-  entry (`TERMINAL_BIB_STATES`: authenticated / manuscript / canonical) is IGNORED
-  and left byte-unchanged; anything else merges fields over the existing ones,
-  preferring the incoming value on conflict.
-- Writes the three things a `bib-imported` entry becomes, and queues its
-  `kind: "authenticate"`. **What those are, and the other three per-entry
-  outcomes, is stated once** — see the `.bib` bullet under **Supported source
-  kinds** above.
-- Deletes the source `.bib` from `unsorted/` only when every row came back `bib-imported` or `bib-ignored`; any other status (including a `bib-folded` duplicate) parks the whole file under `_pending/`.
+**A `.bib` drop** — report apply's per-entry lines and its per-file
+`triage-bib-summary`. What each entry became, and when the source `.bib` is
+deleted versus parked, is stated once in the `.bib` bullet under **Supported
+source kinds** above.

@@ -209,8 +209,9 @@ def _invocations():
 
 def test_the_census_finds_every_known_caller():
     names = {name for name, *_ in _invocations()}
-    assert {"authenticate-bib.md", "apply-bib-edit.md", "index-paper.md",
-            "triage-pdf.md"} <= names, names
+    # triage-pdf.md left this list in task 1601: its stub is written by
+    # triage_apply.py, the engine both triage skills now run.
+    assert {"authenticate-bib.md", "apply-bib-edit.md", "index-paper.md"} <= names, names
 
 
 def test_every_skill_invocation_captures_and_branches_on_the_exit_code():
