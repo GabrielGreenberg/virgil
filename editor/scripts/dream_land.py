@@ -529,9 +529,16 @@ def finding_of(spec: dict) -> dict:
     """The routing object inside a spec: a `file-task` spec carries it under
     `"finding"`; a bare finding IS it. The only unwrap (task 1430) — before it,
     `file-task` unwrapped and `--route` did not, so a step-6 `finding.json`
-    piped to `--route` classified `{}` and read as blocked/ for every finding."""
+    piped to `--route` classified `{}` and read as blocked/ for every finding.
+
+    `fixNow` is accepted at EITHER level (task 1606): step 3's natural reading
+    puts it beside `title`, and a top-level flag the unwrap discarded filed the
+    task at normal priority with no error — the fast lane lost in silence. Either
+    level being true raises it; neither level can lower the other."""
     inner = spec.get("finding") if isinstance(spec, dict) else None
     if isinstance(inner, dict) and inner:
+        if spec.get("fixNow") and not inner.get("fixNow"):
+            return {**inner, "fixNow": True}
         return inner
     return spec if isinstance(spec, dict) else {}
 

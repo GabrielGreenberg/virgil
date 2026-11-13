@@ -17,13 +17,18 @@ read-and-account work around it:
            blob the agent reads to decide what to change.
   digest   re-run the selection to fix the deterministic facts (memo count,
            counts, the high-water marker the NEXT dream reads), merge the
-           agent's qualitative ACTED / PROPOSED / REFUSED entries, and write the
+           agent's qualitative ACTED / PROPOSED / REFUSED / GATES entries, decide
+           whether step 8's self-memo is owed (`reflectOwed`), and write the
            morning digest to editor/dev/dream-digests/<date>.md.
   file-task
            file ONE of the night's findings as a task in ~/virgil-tasks/ — the
            loop's only actionable output since task 522.  Mints the id under the
            three-minter collision protocol, asks dream_land.task_route which
            queue it goes to, and enforces the pipeline's schema bar.
+  amend-task
+           APPEND to a LIVE task's Description / Done when (step 0's dedupe:
+           a finding that matches a filed task sharpens it). Never touches the
+           frontmatter, never creates a section, refuses a task in done/.
   paths    print where THIS build resolves every dev-loop root — the digest
            root, the memo sink (and which rung answered), the courtesy reports
            dir, the task queue — as JSON, or ONE of them bare (`paths digests`).
@@ -64,6 +69,7 @@ Usage:
   dream.py select
   dream.py digest [--report <inline|@file>]
   dream.py file-task --task <inline|@file>
+  dream.py amend-task <id> --append <inline|@file>
   dream.py paths [digests|memos|reports|tasks]
 """
 
@@ -893,6 +899,10 @@ def cmd_select(_argv: list[str]) -> int:
         # dev-loop sink suppressed discovery, which is the sandbox rule doing
         # its job); the digest is then the night's only record and says so.
         "taskQueueRoot": (str(tasks_root()) if tasks_root() is not None else None),
+        # ...and the same answer as a BOOLEAN, the spelling the digest's
+        # frontmatter already records and the shape `memoSinkPresent` has: the
+        # skill's step-1 preflight reads this flag (task 1606), never a `null`.
+        "taskQueuePresent": tasks_root() is not None,
         # ...and every flag above is about the READER. These four are about the
         # SEAM: a writer resolves its own sink from whatever bundle vintage its
         # paper folder carries, so a sink migration silently routes real memos
@@ -1006,6 +1016,7 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     acted = report.get("acted") or []
     proposed = report.get("proposed") or []
     refused = report.get("refused") or []
+    gates = report.get("gates") or []
     counts = summ["counts"]
     by_tier = counts["byTier"]
 
@@ -1016,7 +1027,7 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
               "extraSinkMemos", "extraSinkNonDreamMemos",
               "extraSinkMemosInWindow", "unreachableMemos",
               "nightsSinceLastDigest", "nightsSinceReason",
-              "acted", "proposed", "refused",
+              "acted", "proposed", "refused", "gates", "reflectOwed",
               "bootstrap", "dreamSha"):
         v = fm[k]
         if isinstance(v, bool):
@@ -1031,7 +1042,8 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
         f"Read **{fm['memoCount']}** memo(s) since {since_h} — "
         f"flagged {by_tier.get(TIER_FLAGGED, 0)} · noted {by_tier.get(TIER_NOTED, 0)} · "
         f"unremarkable {by_tier.get(TIER_UNREMARKABLE, 0)}. "
-        f"Acted on {len(acted)}, proposed {len(proposed)}, refused {len(refused)}."
+        f"Acted on {len(acted)}, proposed {len(proposed)}, refused {len(refused)}, "
+        f"red gates {len(gates)}."
     )
     out.append("")
     if not fm.get("memoSinkPresent", True):
@@ -1116,9 +1128,10 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
             "listed below was detected and then dropped. Either "
             "`~/virgil-tasks/` is missing on this machine, or a pinned dev-loop "
             "sink suppressed discovery — which is the sandbox rule working "
-            "correctly and means this was a test run, not a night. Re-file by "
-            "hand or re-run with `VIRGIL_TASKS_DIR` set; nothing below is "
-            "queued."
+            "correctly and means this was a test run, not a night. Never "
+            "hand-write a task file to make up for it: once the queue is "
+            "mounted (or `VIRGIL_TASKS_DIR` is set), re-run `dream.py "
+            "file-task` for each finding below. Nothing below is queued."
         )
         out.append("")
     unreachable = fm.get("unreachableMemos", 0)
@@ -1238,6 +1251,25 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
                        f"{_fmt_refs(e.get('memoRefs'))}")
             if e.get("reason"):
                 out.append(f"  - {e['reason']}")
+    else:
+        out.append("- None.")
+    out.append("")
+
+    # The FOURTH bucket (task 1606). A red gate is not a verdict — `task_route`
+    # gives a `gate-failure` no `mode` — so it fit none of the three captions
+    # above, and a night that filed one either left it out of its own record or
+    # filed it under a caption that was false for it.
+    out.append(f"## Red gates — filed ({len(gates)})")
+    out.append("_The step-6 gate sweep went red: a work task about the TREE "
+               "(attributed to a commit → `incoming/` at high priority) or, "
+               "unattributed, a question in `blocked/`._")
+    if gates:
+        for e in gates:
+            commit = (e.get("commit") or "").strip()
+            out.append(f"- 🔴 **{e.get('gate', '?')}** — "
+                       f"{e.get('summary', '')}{_task_pointer(e)}")
+            out.append(f"  - attributed to: "
+                       f"{('`' + commit + '`') if commit else 'nothing (unattributed)'}")
     else:
         out.append("- None.")
     out.append("")
@@ -1363,7 +1395,7 @@ def cmd_digest(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="dream.py digest")
     p.add_argument("--report", default=None,
                    help="the agent's qualitative entries (acted/proposed/refused/"
-                        "bootstrap) as inline JSON or @file")
+                        "gates/bootstrap) as inline JSON or @file")
     a = p.parse_args(argv)
     report = _load_report(a.report)
 
@@ -1392,6 +1424,7 @@ def cmd_digest(argv: list[str]) -> int:
         "acted": len(report.get("acted") or []),
         "proposed": len(report.get("proposed") or []),
         "refused": len(report.get("refused") or []),
+        "gates": len(report.get("gates") or []),
         "bootstrap": bool((report.get("bootstrap") or "").strip()),
         "dreamSha": _dream_sha(),
         "memoSinkPresent": _memo_sink_present(memos_root),
@@ -1420,6 +1453,14 @@ def cmd_digest(argv: list[str]) -> int:
         "_date": date_str,
     }
 
+    # Step 8's recursion guard, computed HERE rather than by the night (task
+    # 1606): skip the self-memo only on a no-signal NO-OP — no real skill memo in
+    # the window AND nothing filed in ANY bucket. The prose used to count three
+    # buckets, so a night whose only work was a red gate read as a no-op and
+    # left no self-reflection behind it. Same predicate as `selfReferentialOnly`.
+    filed = fm["acted"] + fm["proposed"] + fm["refused"] + fm["gates"]
+    fm["reflectOwed"] = bool([r for r in recs if r["skill"] != "dream"]) or filed > 0
+
     target = digests_root / f"{date_str}.md"
     target.parent.mkdir(parents=True, exist_ok=True)
     rotated = _rotate_prior_digest(target, iso)
@@ -1434,7 +1475,9 @@ def cmd_digest(argv: list[str]) -> int:
         rel = target.relative_to(digests_root)
     tail = f" · copy → {published}" if published else ""
     print(f"Done: dreamed over {len(recs)} memo(s) "
-          f"(acted {fm['acted']}, proposed {fm['proposed']}, refused {fm['refused']}). "
+          f"(acted {fm['acted']}, proposed {fm['proposed']}, refused {fm['refused']}, "
+          f"gates {fm['gates']}). "
+          f"reflect: {'owed' if fm['reflectOwed'] else 'skip (no-signal no-op)'}. "
           f"wrote {rel}{tail}")
     return 0
 
@@ -1676,6 +1719,115 @@ def cmd_file_task(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# amend-task — step 0's "update that task", as a door (task 1606)
+# ---------------------------------------------------------------------------
+# Step 0's dedupe rule — a finding that matches a LIVE task sharpens that task
+# rather than minting a second id for one disease — had no executor, so the only
+# way to follow it was to hand-edit a queue file, which step 6 and the hard rules
+# forbid. This door is that edit, kept deliberately narrow: it APPENDS (never
+# rewrites), only to `## Description` and `## Done when`, never touches the
+# frontmatter (id, priority, status and queue stay the queue's own facts), and
+# refuses a task that has already landed — a finding about landed work is a new
+# task, because `done/` is history.
+
+_AMENDABLE_SECTIONS = ("Description", "Done when")
+_AMEND_KEYS = frozenset(_AMENDABLE_SECTIONS) | {"memoRefs"}
+_LIVE_QUEUES = ("incoming", "in-progress", "blocked")
+
+
+def _find_task_file(root: Path, task_id: str) -> tuple[Path, str] | None:
+    """The one file carrying `task_id`, and the queue dir it sits in."""
+    hits = []
+    for sub in TASK_ID_DIRS:
+        d = root / sub
+        if not d.is_dir():
+            continue
+        for f in d.glob("*.md"):
+            if f.stem == task_id or f.name.startswith(task_id + "-"):
+                hits.append((f, sub))
+    if len(hits) > 1:
+        die(f"task id {task_id!r} names {len(hits)} files "
+            f"({', '.join(f'{q}/{f.name}' for f, q in hits)}) — resolve the "
+            f"collision before amending either")
+    return hits[0] if hits else None
+
+
+def _append_to_section(body: str, name: str, addition: str) -> str:
+    lines = body.split("\n")
+    head = f"## {name}"
+    try:
+        start = next(i for i, ln in enumerate(lines) if ln.rstrip() == head)
+    except StopIteration:
+        die(f"the task has no `{head}` section to append to — amend-task "
+            f"never creates sections (that is a rewrite, not an amendment)")
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("## ")), len(lines))
+    # Trim the section's trailing blank lines, append, restore one separator.
+    cut = end
+    while cut > start + 1 and not lines[cut - 1].strip():
+        cut -= 1
+    block = ["", *addition.rstrip().split("\n")]
+    tail = [""] if end < len(lines) else []
+    return "\n".join(lines[:cut] + block + tail + lines[end:])
+
+
+def cmd_amend_task(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="dream.py amend-task")
+    p.add_argument("id", help="the live task to amend, e.g. 2026-09-01-014")
+    p.add_argument("--append", default=None,
+                   help='{"Description": "...", "Done when": "...", '
+                        '"memoRefs": [...]} as inline JSON or @file')
+    a = p.parse_args(argv)
+    spec = _load_report(a.append)
+    if not spec:
+        die("amend-task needs --append (inline JSON or @file)")
+    unknown = sorted(set(spec) - _AMEND_KEYS)
+    if unknown:
+        die(f"amend-task appends only to {list(_AMENDABLE_SECTIONS)} (plus "
+            f"`memoRefs`); refused: {unknown}. Frontmatter (priority, status, "
+            f"title…) and the other sections are not the dream's to rewrite — "
+            f"a finding that needs them changed is a question for the catcher.")
+    additions = {k: str(spec.get(k) or "").strip() for k in _AMENDABLE_SECTIONS}
+    additions = {k: v for k, v in additions.items() if v}
+    if not additions:
+        die("amend-task needs a non-empty `Description` or `Done when` to append")
+
+    root = tasks_root()
+    if root is None:
+        die("no task queue found — set VIRGIL_TASKS_DIR, or run where "
+            "~/virgil-tasks/ exists.", code=3)
+    found = _find_task_file(root, a.id)
+    if found is None:
+        die(f"no task {a.id!r} in any queue dir — file a new one with file-task")
+    path, queue = found
+    if queue not in _LIVE_QUEUES:
+        die(f"task {a.id} is in `{queue}/` — landed work is history, not a "
+            f"live task; file the new finding with file-task (and name "
+            f"{a.id} in its Description)")
+
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n") or "\n---\n" not in text[4:]:
+        die(f"{path.name} has no frontmatter block — refusing to edit a file "
+            f"this door cannot parse")
+    split = text.index("\n---\n", 4) + len("\n---\n")
+    front, body = text[:split], text[split:]
+
+    iso, _ = _now_iso_date()
+    stamp = iso.split(".")[0].rstrip("Z")
+    refs = [str(r) for r in (spec.get("memoRefs") or []) if str(r).strip()]
+    for name, add in additions.items():
+        if name == "Description" and refs:
+            add += "\n\nSource memos: " + ", ".join(f"`{r}`" for r in refs)
+        body = _append_to_section(
+            body, name, f"**Amended by the dream, {stamp}:** {add}")
+    atomic_write([(path, front + body)])
+
+    print(json.dumps({"amended": True, "id": a.id, "path": str(path),
+                      "queue": queue, "sections": list(additions)}, indent=2))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # paths — the loop's roots, as THIS build resolves them
 # ---------------------------------------------------------------------------
 
@@ -1773,7 +1925,8 @@ def cmd_next_id(argv: list[str]) -> int:
 # ---------------------------------------------------------------------------
 
 _SUBCOMMANDS = {"select": cmd_select, "digest": cmd_digest,
-                "file-task": cmd_file_task, "paths": cmd_paths,
+                "file-task": cmd_file_task, "amend-task": cmd_amend_task,
+                "paths": cmd_paths,
                 "next-id": cmd_next_id}
 
 # Doors that run WITHOUT the DEV gate. The gate exists to keep the dream from
