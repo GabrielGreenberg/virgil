@@ -146,10 +146,16 @@ this step is a queue read and nothing else.
      have introduced. A dead pointer that nobody confirms gets re-reconciled
      every night forever.
   2. **Is it already filed?** A finding that matches a live task is not a new
-     finding. **Update that task** (append to its `## Description`, sharpen its
-     `## Done when`) rather than minting a second id for one disease — the
-     catcher's own dedupe rule, and the reason the queue clusters instead of
-     accumulating.
+     finding. **Amend that task** rather than minting a second id for one
+     disease — the catcher's own dedupe rule, and the reason the queue clusters
+     instead of accumulating. The door is
+     `python3 editor/scripts/dream.py amend-task <id> --append @amend.json`
+     with `{"Description": "…", "Done when": "…", "memoRefs": [...]}`: it
+     APPENDS to those two sections only, never touches the frontmatter, and
+     refuses a task in `done/` (landed work is history — file a new task that
+     names it). Never edit the file by hand; a sharper priority or a changed
+     status is not an amendment, it is a question for the catcher. List each
+     amended id in the digest's `bootstrap` line.
   3. **Would it COLLIDE with a queued one?** Two tasks whose fixes touch the
      same seam is a real cost the worker pays serially. Prefer removing the
      collision **by construction** — file yours at a seam the other does not
@@ -338,6 +344,16 @@ be minted. What crosses instead is an immutable timestamped COPY under
 **nothing that needs attention may live only there**; `~/virgil-tasks/` is the
 one attention surface.
 
+**Preflight 0b — can you FILE at all?** Read **`taskQueuePresent`** next.
+Every actionable output is a task (step 6), and `file-task` dies with code 3
+when no queue resolves — so a night that learns this only at step 6 has already
+done all its detection for nothing. When it is `false`: still detect and still
+write the digest (step 7), but file nothing and amend nothing — the digest's
+no-queue banner records that nothing reached a queue, and the findings are
+re-filed by re-running `file-task` once the queue is mounted, never by
+hand-writing a file. (Whether a preflight alarm should itself FILE a task is a
+separate, open ruling — blocked `2026-09-02-001` Q2. Don't decide it here.)
+
 **Preflight 1 — are you running the current prompt?** This skill is *distributed*:
 the copy that actually runs is a built artifact — the skill BUNDLE that
 skill-sync writes into a paper's `.virgil/`, mirrored for dev convenience under
@@ -459,8 +475,10 @@ exactly what you meant, and the worker authors the real diff against whatever
 
 For each memo in `fixNow`: handle it **now**, in a narrow single-memo pass.
 Build its change object, route it (step 4), and file its task with
-`"fixNow": true` — which is what raises the task to `priority: high` so the
-worker claims it ahead of the batch. A fix-now memo whose change comes back
+`"fixNow": true` inside the spec's `finding` object (step 6's example shows the
+spot; `finding_of` also accepts it beside `title`, so neither spelling is lost)
+— which is what raises the task to `priority: high` so the worker claims it
+ahead of the batch. A fix-now memo whose change comes back
 `refused` or own-rulebook does **not** get the fast lane; it routes to
 `blocked/` like any other, because "the maintainer flagged it" is a statement
 about urgency and not about who may decide it.
@@ -625,7 +643,8 @@ of the old step 6 that survives whole, because it was never about landing:
    out the suspect's parent and re-run the failing leg. File it with
    `{"kind": "gate-failure", "commit": "<sha>"}` and the door routes it to
    `incoming/` at high priority, with the failing gate's output tail in
-   `## Description`.
+   `## Description`. Record it in the digest's **`gates`** bucket (step 7) —
+   never under a verdict bucket, because a red gate has no verdict.
    **If you cannot attribute it, the door routes it to `blocked/` instead** —
    and that is not a formality. Filing an unattributed break as a work task
    points a worker at a diff nobody has separated from the tree's own state,
@@ -657,8 +676,9 @@ can't drift:
 python3 editor/scripts/dream.py digest --report @report.json
 ```
 
-`report.json` — the three buckets are the three **verdicts** (that is what
-`dream_land` calls them), and every entry carries the **task** it was filed as:
+`report.json` — the first three buckets are the three **verdicts** (that is
+what `dream_land` calls them); the fourth, `gates`, holds the step-6 red gates,
+which have no verdict. Every entry carries the **task** it was filed as:
 
 ```json
 { "acted":    [ { "summary": "...", "paths": ["editor/skills/x.md"],
@@ -669,6 +689,8 @@ python3 editor/scripts/dream.py digest --report @report.json
   "refused":  [ { "summary": "...", "boundary": "B1:agents-dont-rules",
                   "task": "2026-09-01-016", "queue": "blocked",
                   "reason": "...", "memoRefs": ["..."] } ],
+  "gates":    [ { "summary": "...", "gate": "vitest", "commit": "<sha or empty>",
+                  "task": "2026-09-01-017", "queue": "incoming" } ],
   "bootstrap": "<one line on how this dream went — feeds step 8>" }
 ```
 
@@ -676,7 +698,7 @@ It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored, the sibling of
 `memos/` — a reader OUTSIDE the dream, such as the catcher's nightly-digest
 step, finds this root through `dream.py paths digests` rather than by spelling
 it: it has moved twice and the prose copy went stale both times, task 538),
-recording the three buckets, the counts by tier/skill/lens, and the
+recording the four buckets, the counts by tier/skill/lens, and the
 `marker` the next dream reads. **Quote each entry's real `task` id and queue** —
 the digest then reads as what actually happened rather than as what was
 intended, and an entry with no `task` renders as **NOT FILED**, which is exactly
@@ -722,14 +744,17 @@ condition by eye from `memoCount`. The empty window is precisely where a
 by-eye reading goes wrong, and doing so re-opens the two-night oscillator:
 suppress on the self-memo night → empty window next night → write a fresh
 contentless memo → suppress again → …) When that flag is
-true **and** this run acted/proposed/refused **nothing** (a pure no-op), do
-**not** write a step-8 memo — a self-reflection with no real skill signal to
+true **and** this run filed **nothing** in any of the four buckets (a pure
+no-op), do **not** write a step-8 memo — a self-reflection with no real skill signal to
 reflect on is exactly what perpetuates the infinite self-referential recursion
 (dream reads its own note → no-ops → writes another note → …). Still write the
 digest (step 7, always) and flag the cadence in its `bootstrap` line so the next
 dream reads zero new memos until a **real** skill runs. Reflect normally
-whenever the run did real work (acted/proposed/refused > 0) — even in a
-self-referential window — since then there is something worth recording.
+whenever the run did real work (any bucket > 0, a gate-only night included) —
+even in a self-referential window — since then there is something worth
+recording. **You do not compute this:** `digest` does, and its `Done:` line
+says `reflect: owed` or `reflect: skip (no-signal no-op)` (frontmatter
+`reflectOwed`). Follow that line.
 
 ## Relationship to `/editor/iterate-virgil-editor` (and the chip-19 unification)
 
@@ -767,7 +792,8 @@ and it is now one call to `dream.py file-task`. See
 - **You LAND NOTHING.** No branch, no commit, no merge, no patch, no edit to any
   file in the tree — including the skill prompts your findings are about. The
   worker is the one executor. (The only files a night writes are its digest, its
-  step-8 memo, and the task files it mints.)
+  step-8 memo, the task files it mints with `file-task`, and the appends
+  `amend-task` makes to live tasks.)
 - **Never edit a paper file.** The dream proposes changes to Virgil's *skill
   set* (`editor/skills/`, the scripts, the manifest) — never a user's
   `.tex`/`.bib`/sidecar. It needs no pen and no `apply_response` contract.
@@ -781,6 +807,6 @@ and it is now one call to `dream.py file-task`. See
 
 Echo `dream.py digest`'s one-line `Done:` reply (counts + digest path), then a
 ≤5-line summary: the memo count + tier split, every task you FILED (id + queue
-+ one clause of what it is), any REFUSED finding with its boundary and the
++ one clause of what it is), every task you AMENDED, any REFUSED finding with its boundary and the
 blocked task id it became, and the gate sweep's verdict. If DEV mode is off, say
 so in one line and stop.

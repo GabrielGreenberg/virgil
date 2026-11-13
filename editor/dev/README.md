@@ -414,8 +414,9 @@ loop runs *inside*.
 `editor/dev/dream-digests/<YYYY-MM-DD>.md` — **gitignored**, the sibling of
 `memos/` and `iterations/` (with a checked-in `.gitkeep`). Written **every**
 run, even a no-op night. Frontmatter carries `dreamedAt` / `since` / `marker` /
-`markerMemo` / the acted/proposed/refused counts / `taskQueuePresent` /
-`dreamSha`; the body lists the three verdict buckets — each entry naming **the
+`markerMemo` / the acted/proposed/refused/gates counts / `reflectOwed` /
+`taskQueuePresent` / `dreamSha`; the body lists the three verdict buckets and
+the red-gates bucket — each entry naming **the
 task it was filed as** and that task's queue, or rendering **NOT FILED**, which
 is what a finding that reached no queue is — plus the counts by
 tier/skill/lens, and a bootstrap note. The digest is a RECORD, not a channel:

@@ -497,6 +497,165 @@ class NextIdDoor(_QueueCase):
 
 
 # ---------------------------------------------------------------------------
+# TASK 1606 — every step the prose describes has a door, and nothing vanishes
+# ---------------------------------------------------------------------------
+
+
+class TopLevelFixNow(_QueueCase):
+    """Step 3 says "file its task with `"fixNow": true`" without saying where
+    the key goes, and its natural reading puts it beside `title`. The unwrap
+    (`finding_of`) used to discard a top-level key, so the fast lane was lost
+    with no error."""
+
+    def test_a_top_level_fix_now_routes_high(self):
+        spec = {"title": "t", "fixNow": True,
+                "finding": {"kind": "change", "change": SKILL_CHANGE},
+                "sections": _sections()}
+        self.assertEqual(task_route(spec)["priority"], PRIORITY_HIGH)
+        out = self.file_task(spec)
+        self.assertEqual(out["priority"], PRIORITY_HIGH)
+        self.assertIn("priority: high", Path(out["path"]).read_text())
+
+    def test_a_top_level_fix_now_still_buys_no_lane_past_the_human(self):
+        spec = {"title": "t", "fixNow": True,
+                "finding": {"kind": "change", "change": RULEBOOK_CHANGE}}
+        self.assertEqual(task_route(spec)["queue"], QUEUE_BLOCKED)
+
+    def test_neither_level_lowers_the_other(self):
+        spec = {"title": "t", "fixNow": False,
+                "finding": {"kind": "change", "change": SKILL_CHANGE,
+                            "fixNow": True}}
+        self.assertEqual(task_route(spec)["priority"], PRIORITY_HIGH)
+
+
+class DigestGatesBucket(_QueueCase):
+    """A red gate is not a verdict, so it fit none of the three verdict
+    buckets — and step 8's no-op guard, counting only those, read a gate-only
+    night as a no-op and skipped its self-memo."""
+
+    def setUp(self):
+        super().setUp()
+        self.memos = Path(self._tmp.name) / "memos"
+        self.digests = Path(self._tmp.name) / "digests"
+        self.memos.mkdir()
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(self.memos)
+        os.environ["VIRGIL_DREAM_DIGESTS_DIR"] = str(self.digests)
+        os.environ["VIRGIL_INBOX"] = str(Path(self._tmp.name) / "no-inbox")
+
+    def digest(self, report: dict) -> tuple[str, str]:
+        r = subprocess.run([sys.executable, DREAM_PY, "digest",
+                            "--report", json.dumps(report)],
+                           capture_output=True, text=True, cwd=str(ROOT))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout, (self.digests / "2026-09-01.md").read_text()
+
+    GATE = {"summary": "vitest red in the bib suite", "gate": "vitest",
+            "commit": "deadbee", "task": "2026-09-01-020", "queue": "incoming"}
+
+    def test_a_gate_entry_renders_in_its_own_bucket(self):
+        _, text = self.digest({"acted": [], "proposed": [], "refused": [],
+                               "gates": [self.GATE], "bootstrap": "x"})
+        self.assertIn("\ngates: 1\n", text)
+        self.assertIn("## Red gates — filed (1)", text)
+        section = text.split("## Red gates — filed (1)")[1].split("\n## ")[0]
+        self.assertIn("vitest red in the bib suite", section)
+        self.assertIn("2026-09-01-020", section)
+        self.assertIn("deadbee", section)
+        # …and NOT under a verdict caption that would be false for it.
+        for verdict in ("## Scoped", "## Structural", "## Refused"):
+            block = text.split(verdict)[1].split("\n## ")[0]
+            self.assertNotIn("vitest red", block, verdict)
+
+    def test_a_gates_only_night_is_NOT_a_no_op(self):
+        # The window is empty (selfReferentialOnly would be true), so only the
+        # gate bucket can make the self-memo owed.
+        out, text = self.digest({"gates": [self.GATE], "bootstrap": "x"})
+        self.assertIn("reflectOwed: true", text)
+        self.assertIn("reflect: owed", out)
+
+    def test_an_empty_window_with_nothing_filed_IS_a_no_op(self):
+        out, text = self.digest({"bootstrap": "x"})
+        self.assertIn("reflectOwed: false", text)
+        self.assertIn("reflect: skip", out)
+
+    def test_select_publishes_task_queue_present(self):
+        r = subprocess.run([sys.executable, DREAM_PY, "select"],
+                           capture_output=True, text=True, cwd=str(ROOT))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIs(json.loads(r.stdout)["taskQueuePresent"], True)
+
+    def test_the_no_queue_banner_never_prescribes_a_hand_write(self):
+        os.environ.pop("VIRGIL_TASKS_DIR")   # pinned sinks suppress discovery
+        _, text = self.digest({"bootstrap": "x"})
+        self.assertIn("No task queue", text)
+        self.assertNotIn("by hand", text.split("No task queue")[1].split("\n\n")[0])
+        self.assertIn("file-task", text)
+
+
+class AmendTaskDoor(_QueueCase):
+    """Step 0's "update that task" had no door, so it could only be followed by
+    hand-editing a queue file — which step 6 and the hard rules forbid."""
+
+    BODY = ("---\nid: 2026-08-31-500\ntype: bug\ntitle: T\npriority: normal\n"
+            "status: ready\n---\n\n## Description\n\nOriginal text.\n\n"
+            "## Done when\n\nOriginal bar.\n\n## Progress log\n")
+
+    def plant(self, sub: str = "incoming") -> Path:
+        f = self.queue / sub / "2026-08-31-500-t.md"
+        f.write_text(self.BODY)
+        return f
+
+    def amend(self, spec: dict, task_id: str = "2026-08-31-500",
+              expect_ok: bool = True):
+        r = subprocess.run([sys.executable, DREAM_PY, "amend-task", task_id,
+                            "--append", json.dumps(spec)],
+                           capture_output=True, text=True, cwd=str(ROOT))
+        if expect_ok:
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return json.loads(r.stdout)
+        self.assertNotEqual(r.returncode, 0)
+        return r.stderr
+
+    def test_it_appends_to_description_and_done_when_only(self):
+        f = self.plant()
+        out = self.amend({"Description": "A second memo saw it too.",
+                          "Done when": "Also pinned for the footnote path.",
+                          "memoRefs": ["2026-09-01/09-00-00-x.md"]})
+        self.assertTrue(out["amended"])
+        text = f.read_text()
+        # Frontmatter is byte-identical; original prose survives.
+        self.assertTrue(text.startswith(self.BODY.split("\n---\n")[0] + "\n---\n"))
+        self.assertIn("Original text.", text)
+        self.assertIn("Original bar.", text)
+        desc = text.split("## Description")[1].split("## Done when")[0]
+        self.assertIn("A second memo saw it too.", desc)
+        self.assertIn("2026-09-01/09-00-00-x.md", desc)
+        done = text.split("## Done when")[1].split("## Progress log")[0]
+        self.assertIn("Also pinned for the footnote path.", done)
+        self.assertLess(done.index("Original bar."), done.index("Also pinned"))
+
+    def test_it_refuses_a_landed_task(self):
+        f = self.plant("done")
+        err = self.amend({"Description": "x"}, expect_ok=False)
+        self.assertIn("done/", err)
+        self.assertEqual(f.read_text(), self.BODY)
+
+    def test_it_refuses_frontmatter_and_other_sections(self):
+        f = self.plant()
+        for bad in ({"priority": "high"}, {"status": "blocked"},
+                    {"Design": "x"}, {"Description": "x", "title": "y"}):
+            err = self.amend(bad, expect_ok=False)
+            self.assertIn("refused", err, bad)
+        self.assertEqual(f.read_text(), self.BODY)
+
+    def test_an_unknown_id_is_refused(self):
+        self.plant()
+        err = self.amend({"Description": "x"}, task_id="2026-08-31-501",
+                         expect_ok=False)
+        self.assertIn("no task", err)
+
+
+# ---------------------------------------------------------------------------
 # SANDBOX
 # ---------------------------------------------------------------------------
 
