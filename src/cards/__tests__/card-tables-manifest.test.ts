@@ -30,6 +30,7 @@ import {
 import type { CardKind } from "@/cards/types";
 import type { PanelKind } from "@/panels/_shared/types";
 import { ARCHIVE_ORIGIN_PANELS } from "@/lib/archive-origin";
+import { SUGGESTION_STATUSES, isResolvedSuggestionStatus } from "@/cards/suggestion-status";
 import { SIDECAR_COLLECTIONS } from "@/lib/sidecar-merge";
 import { CARD_KIND_SIDECAR } from "@/lib/host-writability";
 import { LEGACY_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
@@ -229,6 +230,46 @@ describe("card_tables.json suggestionLanding ↔ FAMILY_MEANS_DELETION", () => {
     expect(landing.noReplacementText).toBe(
       SUGGESTION_BLOCK_TEXT["no-replacement"],
     );
+  });
+});
+
+// Task 1594 — "may <verb> touch this suggestion as it stands?" is ONE table
+// (`proposalVerdicts`), read by apply_response's proposal doors and cited by
+// the accept-/reject-suggestion skills. Every row must answer for every status
+// the app can store, and the verb set is exactly the doors that consult it.
+describe("card_tables.json proposalVerdicts ↔ SUGGESTION_STATUSES", () => {
+  const verdicts = (
+    JSON.parse(readFileSync(join(scripts, "card_tables.json"), "utf8")) as {
+      proposalVerdicts: Record<string, Record<string, string>>;
+    }
+  ).proposalVerdicts;
+  const door = readFileSync(join(scripts, "apply_response.py"), "utf8");
+
+  it.each(Object.keys(verdicts))("the %s row answers for every SUGGESTION_STATUSES member", (verb) => {
+    expect(Object.keys(verdicts[verb]).sort()).toEqual([...SUGGESTION_STATUSES].sort());
+    for (const v of Object.values(verdicts[verb])) {
+      expect(["proceed", "noop", "refuse-applied", "refuse-terminal"]).toContain(v);
+    }
+  });
+
+  it("the verb set is exactly the doors that consult it (and each has its applied-harm sentence)", () => {
+    const consulted = new Set<string>();
+    for (const m of door.matchAll(/_proposal_door_refusal\([^)]*"(\w+)"\)/g)) consulted.add(m[1]);
+    for (const m of door.matchAll(/_resolve_proposal\(doc, op, "(\w+)"\)/g)) consulted.add(m[1]);
+    expect(Object.keys(verdicts).sort()).toEqual([...consulted].sort());
+    const harm = door.slice(door.indexOf("_APPLIED_DOOR_HARM = {"), door.indexOf("}", door.indexOf("_APPLIED_DOOR_HARM = {")));
+    for (const verb of consulted) expect(harm, `_APPLIED_DOOR_HARM lacks "${verb}"`).toContain(`"${verb}":`);
+  });
+
+  it("noop / refuse-terminal only on the terminal states, and only for the verbs _resolve_proposal serves", () => {
+    for (const [verb, row] of Object.entries(verdicts)) {
+      for (const [status, v] of Object.entries(row)) {
+        if (v === "noop" || v === "refuse-terminal") {
+          expect(isResolvedSuggestionStatus(status), `${verb}.${status}=${v}`).toBe(true);
+          expect(["accept", "reject"]).toContain(verb);
+        }
+      }
+    }
   });
 });
 

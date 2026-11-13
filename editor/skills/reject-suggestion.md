@@ -31,7 +31,10 @@ sanctioned writeback, [`apply_response.py`](../scripts/apply_response.py). The
 `reject` op flips the suggestion card `status` → `rejected` and completes the
 originating Task (`result=rejected`) in one atomic, pen-wrapped commit (with the
 audit notification + version bump). No document edit, no `texEdit` — rejecting a
-proposal is purely a card-lifecycle transition.
+proposal is purely a card-lifecycle transition. A **todo** the Task was raised
+from stays **open** on purpose: the change it asked for did not land, so the
+todo is still to do — where [`accept-suggestion`](accept-suggestion.md) marks
+it done (`close_source_todo`, task 1043). Don't "symmetrise" the two.
 
 ## Args
 
@@ -50,11 +53,10 @@ proposal is purely a card-lifecycle transition.
    - `cardKind` must be `revision-suggestion` or `cutter-suggestion`. Any other
      kind → stop (`reject` is for the suggestion family — to set aside a
      different card, use [`archive-card`](archive-card.md)).
-   - If `card.status` is already `rejected`, skip (the op is idempotent). If it's
-     already `accepted`, stop: an accepted proposal can't be rejected (undo the
-     `.tex` edit in the editor instead). If it's `applied` (its change is live in
-     the paper under the blue pending-change mark), stop: the op refuses — tell
-     the user to settle it with **Keep** or **Revert** on the card in the editor.
+   - Read `card.status` against the **per-status verdict** in Applicability
+     (one table, `card_tables.json` → `proposalVerdicts`): `pending` and
+     `stale` proceed; `rejected` is a no-op; `accepted` and `applied` are
+     refused — reply with that row's template and stop.
 
 2. **Run the `reject` op:**
    ```bash
@@ -67,11 +69,26 @@ proposal is purely a card-lifecycle transition.
 
 ## Applicability
 
+- **Per-status verdict** — the op does not decide this per skill: it reads
+  `card_tables.json` → `proposalVerdicts.reject` (in
+  `apply_response._resolve_proposal` / `_proposal_door_refusal`), the one table
+  every proposal door consults, over the app's whole status vocabulary
+  (`SUGGESTION_STATUSES`, `src/cards/suggestion-status.ts`):
+  - `pending` → **proceed**.
+  - `stale` → **proceed**: the paragraph drifted so the app could not land the
+    splice — turning the proposal down is the natural move, and nothing in the
+    `.tex` needs to match for a reject.
+  - `rejected` → **no-op**: `{ok, noop:true, reason:"already rejected"}`,
+    nothing written.
+  - `accepted` → **refused** (`refuse-terminal`): already spliced — undo the
+    `.tex` edit in the editor instead.
+  - `applied` → **refused** (`refuse-applied`): live under a pending-change
+    mark — Keep or Revert it in the editor first (task 1109).
 - **Rejectable** — `revision-suggestion` (in `revisions.json`) and
-  `cutter-suggestion` (in `cutter.json`), `status: pending`.
-- **Refused** — any non-suggestion kind; a proposal already `accepted` (already
-  spliced — undo in the editor); an `applied` proposal (live under a
-  pending-change mark — Keep or Revert it in the editor; task 1109). Re-rejecting a `rejected` card is a no-op.
+  `cutter-suggestion` (in `cutter.json`), in a status whose verdict is
+  **proceed**.
+- **Refused** — any non-suggestion kind, and a status whose verdict is
+  `refuse-terminal` (`accepted`) or `refuse-applied` (`applied`).
 
 > **This skill OWNS the `status` transition** (with
 > [`accept-suggestion`](accept-suggestion.md)). `edit-card` refuses
@@ -83,8 +100,25 @@ proposal is purely a card-lifecycle transition.
 
 ## Reply
 
+One template per outcome the op can produce. On success:
 ```
-Done: reject-suggestion <cardId> (<cardKind>) — status=rejected, Task complete (rejected), document.tex unchanged. Output: <cutter|revisions>.json (+ ai-requests.json, notifications, version).
+Done: reject-suggestion <cardId> (<cardKind>) — status=rejected, Task complete (rejected), document.tex unchanged[, source todo left open]. Output: <cutter|revisions>.json (+ ai-requests.json, notifications, version).
+```
+On a `noop` (already rejected):
+```
+Done: reject-suggestion <cardId> — already rejected; nothing to do. Nothing written.
+```
+On a `refuse-terminal` refusal (already accepted):
+```
+Done: refused <cardId> — this proposal was already accepted into the paper, so it can't be rejected. Nothing written. Undo the edit in the editor if you want the old wording back.
+```
+On a `refuse-applied` refusal (already applied):
+```
+Done: refused <cardId> — this suggestion is already applied in the paper (the blue pending change). Nothing written. Settle it with Keep or Revert on the card in the editor (Revert puts the old wording back).
+```
+On any other refusal (card not found, not a suggestion):
+```
+Done: refused <cardId> — <the op's reason, in plain words>. Nothing written.
 ```
 
 ## Safety

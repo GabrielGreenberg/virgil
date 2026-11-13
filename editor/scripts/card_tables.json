@@ -21,6 +21,12 @@
     "                      noReplacementText = SUGGESTION_BLOCK_TEXT['no-replacement'] (src/links/pending-change-actions.ts):",
     "                      apply_response's accept refuses an empty replacement for a family where it does not mean a cut.",
     "                      Its KEY SET is also apply_response.SUGGESTION_KINDS (task 1486) — pinned to the app's SUGGESTION_KINDS.",
+    "  proposalVerdicts    verb → suggestion status → verdict (task 1594): THE one answer to \"may <verb> touch this suggestion",
+    "                      as it stands?\" — read by apply_response._resolve_proposal (accept/reject) and _proposal_door_refusal",
+    "                      (every door), and CITED by accept-/reject-suggestion.md instead of restated. proceed = run the op;",
+    "                      noop = idempotent {ok, noop:true, reason}; refuse-applied = settle Keep/Revert in the editor first;",
+    "                      refuse-terminal = already in the opposite terminal state. Each row's KEY SET is SUGGESTION_STATUSES",
+    "                      (src/cards/suggestion-status.ts); the verb set is the doors that consult it.",
     "  atomBearingPanels   the panels whose cards are card-bearing ATOMS (id = a .tex \\v*id marker; task 1486) —",
     "                      CARD_ATOMS.map(m => panelForCardKind(m.kind)) (src/lib/tiptap/atom-registry.ts), in Python panel",
     "                      tokens via cardSidecars' tsPanel. apply_response.ATOM_BEARING_PANELS: archive/move refuse them,",
@@ -66,5 +72,11 @@
   "suggestionLanding": {
     "familyMeansDeletion": { "cutter-suggestion": true, "revision-suggestion": false },
     "noReplacementText": "No replacement text yet — this suggestion has nothing to put in the paper."
+  },
+  "proposalVerdicts": {
+    "accept":  { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "noop",            "rejected": "refuse-terminal" },
+    "reject":  { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "refuse-terminal", "rejected": "noop" },
+    "archive": { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "proceed",         "rejected": "proceed" },
+    "update":  { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "proceed",         "rejected": "proceed" }
   }
 }
