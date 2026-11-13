@@ -52,8 +52,11 @@ library folder rather than the user's global cache. The result is:
 - **Heavy deps** (may fail on incompatible platforms — see "Platform
   notes" below): `marker-pdf>=1.0` (the default PDF extractor),
   `ocrmypdf` (scanned-PDF preprocessing).
-- **Model cache**: marker's ~1 GB of ML weights land in
-  `<library>/.virgil/models/huggingface/` (not `~/.cache/huggingface/`).
+- **Model caches** (two — `setup.py` names both at its start): marker's
+  huggingface_hub snapshots land in `<library>/.virgil/models/huggingface/`
+  (not `~/.cache/huggingface/`), and surya's layout/table/OCR weights —
+  the ~3 GB bulk — in `<library>/.virgil/models/datalab/` (not
+  `~/Library/Caches/datalab/`).
 - **System binary**: `tesseract` is verified — if missing, the script
   prints an install hint (we don't auto-install system packages).
 - **Manifest**: `<library>/.virgil/models/manifest.json` records
@@ -134,10 +137,10 @@ warning in your reply if you see it.
    ```
 
    First run typically takes 5–15 minutes for the marker model
-   download (~1 GB, depending on bandwidth). Subsequent runs are
+   download (~3 GB, depending on bandwidth). Subsequent runs are
    instant if nothing's missing.
 
-3. **Read the script output.** It logs four steps (Step 1 prints twice):
+3. **Read the script output.** It logs five steps (Step 1 prints twice):
    - Step 1: pip install, in two blocks — `(light deps)` then
      `(heavy deps)` (`setup.py`'s `LIGHT_PIP` / `HEAVY_PIP`; marker-pdf is
      heavy). Installed separately so a heavy-block failure (typically
@@ -145,40 +148,52 @@ warning in your reply if you see it.
    - Step 2: system binary check (tesseract)
    - Step 3: marker model pre-download
    - Step 4: manifest write
+   - Step 5: model-cache verification (read in steps 4–5 below)
 
    If Step 2 reports missing tesseract, surface the install hint in
    your reply — the user has to run `brew install tesseract` (macOS)
    or `apt install tesseract-ocr` (Debian/Ubuntu) themselves, then
    re-run `/library/setup` to update the manifest.
 
-4. **Verify the cache landed in the right place.**
+4. **Read the cache verdict — don't hand-check paths.** `setup.py`'s
+   Step 5 measures both library caches itself and prints one line each:
 
-   ```bash
-   ls -lh .virgil/models/huggingface/ 2>/dev/null | head -10
-   du -sh .virgil/models/ 2>/dev/null
+   ```
+     CACHE huggingface: ok 1.1 GB at <library>/.virgil/models/huggingface
+     CACHE datalab: ok 3.2 GB at <library>/.virgil/models/datalab
    ```
 
-   Expect a populated `.virgil/models/huggingface/` directory in the
-   hundreds-of-MB to GB range. If it's empty or missing, the
-   pre-download failed silently — note it in your reply and check
-   the script output for errors.
-
-5. **Confirm no global cache pollution.**
+   A cache is `EMPTY` when it holds no file bytes (the directory always
+   exists — setup creates it). An `EMPTY` cache after a run means the
+   download did not land: Step 3 will show either a `PREDOWNLOAD FAILED:`
+   line (quote it in your reply) or `Skipping — marker-pdf failed to
+   install` (the Step 1 heavy-deps failure is the cause). To re-check
+   later without installing anything:
 
    ```bash
-   du -sh ~/.cache/huggingface/ 2>/dev/null || echo "  (no global cache — good)"
+   "$PY" .virgil/scripts/library/setup.py --verify-only        # add --json for the dict
    ```
 
-   If a global cache exists and is large, the user previously
-   downloaded marker models there. Nothing for this skill to do
-   about that — `/library/setup` doesn't touch existing global
-   caches, just stamps the library-local one for future use.
+   (exit 1 when either cache is empty).
+
+5. **Report global cache pollution from the same verdict.** Step 5 also
+   checks every global default either cache falls back to when its
+   redirect is unset — `~/.cache/huggingface` (or
+   `$XDG_CACHE_HOME/huggingface`) and surya's `~/Library/Caches/datalab`
+   (or `~/.cache/datalab`) — printing `GLOBAL CACHE <name>: <size> at
+   <path>` for each that holds weights, or `GLOBAL CACHE: none`.
+
+   If a global cache is listed, those weights were downloaded outside
+   the library (a previous install, or a run that skipped
+   `ensure_model_env`). Nothing for this skill to do about that —
+   `/library/setup` doesn't touch existing global caches — but name the
+   path and size in your reply so the user can reclaim the space.
 
 ## Reply format
 
 Three lines:
 1. `Setup complete — marker-pdf <version>, ocrmypdf <version>, tesseract <version>`
-2. `Models cached: <size> at .virgil/models/huggingface/`
+2. `Models cached: huggingface <size>, datalab <size> at .virgil/models/` (from Step 5's `CACHE` lines; add `— global cache: <size> at <path>` when Step 5 lists one)
 3. `Manifest: .virgil/models/manifest.json`
 
 If anything's missing (especially tesseract on a fresh machine),

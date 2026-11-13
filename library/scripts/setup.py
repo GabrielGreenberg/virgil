@@ -3,10 +3,13 @@
 
 Installs `marker-pdf` and `ocrmypdf`, verifies `tesseract` is present
 (system binary — not pip-installable), pre-downloads marker's ML
-models into `<library>/.virgil/models/huggingface/` so they're cached
-inside the library instead of polluting the user's global
-`~/.cache/huggingface/`, then writes a manifest at
-`<library>/.virgil/models/manifest.json` recording versions + paths.
+models into the library's two caches (`<library>/.virgil/models/
+huggingface/` and `.../datalab/` — see "Two caches" below) instead of
+the user's global caches, writes a manifest at
+`<library>/.virgil/models/manifest.json` recording versions + paths,
+then VERIFIES both caches (Step 5: size + populated, and whether either
+global default location holds weights). `/library/setup` reads that
+verdict rather than hand-checking paths (task 1603).
 
 Idempotent: re-running detects the existing manifest and only
 installs/downloads what's missing or stale. Pass `--force` to redo
@@ -15,6 +18,7 @@ everything from scratch.
 CLI:
 
   python3 setup.py [<library>] [--force]
+  python3 setup.py [<library>] --verify-only [--json]
 
 `<library>` defaults to CWD. The standard skill bootstrap (see
 `library/skills/library-setup.md`) cd's into the library root first
@@ -354,6 +358,98 @@ def _check_macos_arch() -> None:
         print()
 
 
+# The global locations each cache falls back to when its redirect is NOT
+# set (task 1603). huggingface_hub defaults to `~/.cache/huggingface`
+# (or `$XDG_CACHE_HOME/huggingface`); surya-ocr defaults via
+# `platformdirs.user_cache_dir("datalab")` — `~/Library/Caches/datalab`
+# on macOS, `$XDG_CACHE_HOME/datalab` / `~/.cache/datalab` elsewhere.
+# Both macOS and XDG spellings are listed for datalab so a run under
+# either convention is caught.
+def global_cache_defaults(home: Optional[Path] = None,
+                          env: Optional[dict] = None) -> dict[str, list[Path]]:
+    home = Path.home() if home is None else home
+    env = os.environ if env is None else env
+    xdg = Path(env["XDG_CACHE_HOME"]) if env.get("XDG_CACHE_HOME") else home / ".cache"
+    hf = [xdg / "huggingface"]
+    datalab = [home / "Library" / "Caches" / "datalab", xdg / "datalab"]
+    # De-duplicate while keeping order (XDG may equal ~/.cache).
+    def _uniq(paths: list[Path]) -> list[Path]:
+        out: list[Path] = []
+        for path in paths:
+            if path not in out:
+                out.append(path)
+        return out
+    return {"huggingface": _uniq(hf), "datalab": _uniq(datalab)}
+
+
+def _tree_bytes(path: Path) -> int:
+    """Total size of the regular files under `path` (0 if absent)."""
+    if not path.is_dir():
+        return 0
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += (Path(root) / name).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def _human(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{n} B"
+
+
+def verify_caches(library: Path, *, home: Optional[Path] = None,
+                  env: Optional[dict] = None) -> dict:
+    """The cache verdict /library/setup reports (task 1603).
+
+    Measures BOTH library-local caches — `huggingface/` (marker's
+    huggingface_hub snapshots) and `datalab/` (surya's layout/table/OCR
+    weights, the ~3 GB bulk) — and every global default location either
+    would fall back to. A cache counts as populated when it holds file
+    bytes, not merely when the directory exists: `ensure_model_env`
+    mkdirs both, so existence proves nothing.
+    """
+    library = library.expanduser().resolve()
+    local = {
+        "huggingface": hf_cache_dir(library),
+        "datalab": datalab_cache_dir(library),
+    }
+    caches = []
+    for name, path in local.items():
+        size = _tree_bytes(path)
+        caches.append({"name": name, "path": str(path),
+                       "bytes": size, "populated": size > 0})
+    pollution = []
+    for name, paths in global_cache_defaults(home, env).items():
+        for path in paths:
+            size = _tree_bytes(path)
+            if size > 0:
+                pollution.append({"name": name, "path": str(path), "bytes": size})
+    return {
+        "caches": caches,
+        "allPopulated": all(c["populated"] for c in caches),
+        "globalPollution": pollution,
+    }
+
+
+def print_cache_verdict(verdict: dict) -> None:
+    for c in verdict["caches"]:
+        state = "ok" if c["populated"] else "EMPTY"
+        print(f"  CACHE {c['name']}: {state} {_human(c['bytes'])} at {c['path']}")
+    if verdict["globalPollution"]:
+        for g in verdict["globalPollution"]:
+            print(f"  GLOBAL CACHE {g['name']}: {_human(g['bytes'])} at {g['path']}")
+    else:
+        print("  GLOBAL CACHE: none — no weights outside the library")
+
+
 def run_setup(library: Path, *, force: bool = False) -> dict:
     """Install heavy tools and pre-download models. Returns the new manifest."""
     library = library.expanduser().resolve()
@@ -456,6 +552,13 @@ def run_setup(library: Path, *, force: bool = False) -> dict:
     }
     _atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + "\n")
     print(f"  Wrote {manifest_path}")
+    print()
+
+    # 5. Verify both caches + the global defaults (task 1603). The
+    # skill reports THIS verdict instead of hand-checking paths.
+    print("Step 5: verify model caches")
+    manifest["cacheVerify"] = verify_caches(library)
+    print_cache_verdict(manifest["cacheVerify"])
     return manifest
 
 
@@ -480,12 +583,35 @@ def _main(argv: list[str]) -> int:
         "--force", action="store_true",
         help="Reinstall + redownload even if already present",
     )
+    ap.add_argument(
+        "--verify-only", action="store_true",
+        help="Install nothing; just report the model-cache verdict",
+    )
+    ap.add_argument(
+        "--json", action="store_true",
+        help="With --verify-only: print the verdict as JSON",
+    )
     args = ap.parse_args(argv)
+    if args.verify_only:
+        verdict = verify_caches(Path(args.library))
+        if args.json:
+            print(json.dumps(verdict, indent=2))
+        else:
+            print_cache_verdict(verdict)
+        return 0 if verdict["allPopulated"] else 1
     manifest = run_setup(Path(args.library), force=args.force)
 
     print()
     print("Summary:")
     print(_summary_line(manifest))
+    verdict = manifest.get("cacheVerify") or {}
+    if not verdict.get("allPopulated", True):
+        empty = [c["name"] for c in verdict["caches"] if not c["populated"]]
+        print(f"  CACHE INCOMPLETE — empty: {', '.join(empty)} "
+              "(see Step 3 for a PREDOWNLOAD FAILED line)")
+    if verdict.get("globalPollution"):
+        print("  GLOBAL CACHE IN USE — weights sit outside the library "
+              "(see Step 5)")
     print()
     missing = [n for n, t in manifest["tools"].items() if not t["installed"]]
     if missing:
