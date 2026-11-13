@@ -224,6 +224,22 @@ _CARD_TABLES: dict = json.loads(
 # its `no-replacement` sentence (src/links/pending-change-actions.ts), task 957.
 _SUGGESTION_LANDING: dict = _CARD_TABLES["suggestionLanding"]
 
+# "May <verb> touch this suggestion as it stands?" — verb → status → verdict
+# (task 1594). ONE table for every proposal door; the accept-/reject-suggestion
+# skills cite it instead of hand-copying the state machine (their copies had
+# dropped `stale`). Row key sets are SUGGESTION_STATUSES, pinned in
+# card-tables-manifest.test.ts.
+_PROPOSAL_VERDICTS: dict = _CARD_TABLES["proposalVerdicts"]
+
+
+def _proposal_verdict(verb: str, card) -> str:
+    """The table's verdict for `verb` on `card` — `proceed`, `noop`,
+    `refuse-applied` or `refuse-terminal`. An unset status is `pending` (a
+    freshly drafted card); a status outside the vocabulary proceeds, as before
+    the table — the door's own guards still run."""
+    status = (card.get("status") if isinstance(card, dict) else None) or "pending"
+    return _PROPOSAL_VERDICTS[verb].get(status, "proceed")
+
 # Map panel names to (filename, list-key) for new-card insertion.
 PANEL_TO_SIDECAR: dict[str, tuple[str, str]] = {
     panel: (row["file"], row["listKey"])
@@ -2816,7 +2832,7 @@ def _proposal_door_refusal(kind: str, card, verb: str) -> str | None:
     proceed. Non-suggestions and other states pass."""
     if kind not in SUGGESTION_KINDS or not isinstance(card, dict):
         return None
-    if card.get("status") != "applied":
+    if _proposal_verdict(verb, card) != "refuse-applied":
         return None
     return (f"cannot {verb} {card.get('id')}: it is an APPLIED suggestion — its change is "
             f"live in the paper under a pending-change mark, and {_APPLIED_DOOR_HARM[verb]}. "
@@ -3262,14 +3278,16 @@ def _resolve_proposal(doc: Path, op: dict, verb: str):
     if kind not in SUGGESTION_KINDS:
         die(f"{verb}-suggestion applies only to a suggestion proposal "
             f"(revision-suggestion / cutter-suggestion); {card_id} is a {kind}")
+    # The verdict is the table's (card_tables.json → proposalVerdicts), not a
+    # per-door copy: `stale` proceeds, like `pending` — accept's replace-span
+    # stale-guard is what decides whether its splice can still land.
     status = hit.card.get("status") or "pending"
-    target = "accepted" if verb == "accept" else "rejected"
-    opposite = "rejected" if verb == "accept" else "accepted"
-    if status == target:
-        return {"ok": True, "noop": True, "reason": f"already {target}",
+    verdict = _proposal_verdict(verb, hit.card)
+    if verdict == "noop":
+        return {"ok": True, "noop": True, "reason": f"already {status}",
                 "op": verb, "cardId": card_id, "cardKind": kind, "status": status}
-    if status == opposite:
-        die(f"cannot {verb} {card_id}: it is already {opposite} (a terminal state)")
+    if verdict == "refuse-terminal":
+        die(f"cannot {verb} {card_id}: it is already {status} (a terminal state)")
     refusal = _proposal_door_refusal(kind, hit.card, verb)
     if refusal:
         die(refusal)

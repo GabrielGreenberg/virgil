@@ -37,8 +37,12 @@ sanctioned writeback, [`apply_response.py`](../scripts/apply_response.py). The
 `accept` op does **three things in one atomic, pen-wrapped commit**: splices the
 `.tex` (`original_text` → `user_text || suggested_text` via the generic
 `replace-span` texEdit), flips the card `status` → `accepted`, and completes the originating
-Task (`result=accepted`) — plus the audit notification + version bump. A fault
-anywhere rolls **all three** back together (the `.tex`, the card, and the Task).
+Task (`result=accepted`) — plus the audit notification + version bump. When that
+Task was raised from a **todo**, the same commit also marks the todo done in
+`todos.json` (`close_source_todo`, task 1043 — the todo asked for this change,
+and it has now landed; [`reject-suggestion`](reject-suggestion.md) leaves it open
+on purpose). A fault anywhere rolls **all of it** back together (the `.tex`, the
+card, the Task, the todo).
 
 This skill is **mechanical**: it composes no prose. The replacement text is the
 suggestion the user is reviewing; the `accept` op builds the `replace-span`
@@ -53,7 +57,7 @@ transaction — never hand-assemble a `texEdit` here.
 
 ## Procedure
 
-1. **Resolve + validate the proposal.** Confirm it's a reviewable, pending AI
+1. **Resolve + validate the proposal.** Confirm it's a reviewable AI
    suggestion:
    ```bash
    python3 editor/scripts/card_by_id.py <docPath> <cardId> [--panel <panel>]
@@ -63,12 +67,10 @@ transaction — never hand-assemble a `texEdit` here.
    - `{found:false}` → stop (wrong id).
    - `cardKind` must be `revision-suggestion` or `cutter-suggestion`. Any other
      kind → stop (not a proposal — `accept` is for the suggestion family).
-   - `card.status` must be `pending`. If it's already `accepted`, skip (the
-     op is idempotent — re-accepting is a no-op). If it's `rejected`, stop: a
-     dismissed proposal can't be accepted. If it's `applied`, stop: its change
-     is ALREADY live in the paper under the blue pending-change mark — the op
-     refuses (a second splice would double it); the user settles it with
-     **Keep** or **Revert** on the card in the editor.
+   - Read `card.status` against the **per-status verdict** in Applicability
+     (one table, `card_tables.json` → `proposalVerdicts`): `pending` and
+     `stale` proceed; `accepted` is a no-op; `rejected` and `applied` are
+     refused — reply with that row's template and stop.
    - `card.author` should be `ai` (the proposal the user is reviewing). A
      human-authored suggestion can still be accepted, but confirm intent first.
    - The card must carry `original_text`, `suggested_text`, and an anchor
@@ -102,12 +104,32 @@ transaction — never hand-assemble a `texEdit` here.
 
 ## Applicability
 
+- **Per-status verdict** — the op does not decide this per skill: it reads
+  `card_tables.json` → `proposalVerdicts.accept` (in
+  `apply_response._resolve_proposal` / `_proposal_door_refusal`), the one table
+  every proposal door consults, over the app's whole status vocabulary
+  (`SUGGESTION_STATUSES`, `src/cards/suggestion-status.ts`):
+  - `pending` → **proceed** (the drafted, unapplied proposal).
+  - `stale` → **proceed**: the app could not land the splice when it tried, so
+    accept tries again — step 2's pre-check and the op's own stale-guard decide
+    whether `original_text` still matches. If it does not, it is the stale
+    refusal below.
+  - `accepted` → **no-op**: `{ok, noop:true, reason:"already accepted"}`,
+    nothing written.
+  - `rejected` → **refused** (`refuse-terminal`): a dismissed proposal can't be
+    accepted.
+  - `applied` → **refused** (`refuse-applied`): its change is ALREADY live in
+    the paper under the blue pending-change mark, and a second splice would
+    double it; the user settles it with **Keep** or **Revert** on the card in
+    the editor.
 - **Acceptable** — `revision-suggestion` (in `revisions.json`) and
-  `cutter-suggestion` (in `cutter.json`), `status: pending`. The replacement is
+  `cutter-suggestion` (in `cutter.json`), in a status whose verdict is
+  **proceed**. The replacement is
   `user_text` when the human typed one, else `suggested_text`. An empty
   replacement on a **Cutter** suggestion is a "cut entirely" — `accept` deletes
   the span.
-- **Refused** — any non-suggestion kind; a proposal already `rejected`; a
+- **Refused** — any non-suggestion kind; a status whose verdict is
+  `refuse-terminal` (`rejected`) or `refuse-applied` (`applied`); a
   suggestion missing `original_text`/`suggested_text`/anchor; a proposal whose
   `original_text` no longer matches the `.tex` (stale); and a **revision**
   suggestion whose replacement is empty or whitespace (task 957). A human
@@ -128,17 +150,29 @@ transaction — never hand-assemble a `texEdit` here.
 
 > **This skill OWNS the `status` transition.** `edit-card` refuses
 > `--field status=…` on a suggestion by name (`apply_response.OP_OWNED_FIELDS`),
-> because flipping the field alone does step 5 of this op and nothing else: the
-> panel reads *accepted* while the paper is byte-unchanged and the Task stays
+> because flipping the field alone only sets `status` — none of the rest of
+> this op: the panel reads *accepted* while the paper is byte-unchanged and the Task stays
 > open. Route a status change here, never through
 > [`edit-card`](edit-card.md) — which owns the suggestion's *other* fields
 > (`suggested_text` / `user_text` / `explanation` / `instructions`).
 
 ## Reply
 
-On success:
+One template per outcome the op can produce. On success:
 ```
-Done: accept-suggestion <cardId> (<cardKind>) — spliced into document.tex, status=accepted, Task complete (accepted). Output: <cutter|revisions>.json, document.tex (+ ai-requests.json, notifications, version).
+Done: accept-suggestion <cardId> (<cardKind>) — spliced into document.tex, status=accepted, Task complete (accepted)[, source todo marked done]. Output: <cutter|revisions>.json, document.tex (+ ai-requests.json[, todos.json], notifications, version).
+```
+On a `noop` (already accepted):
+```
+Done: accept-suggestion <cardId> — already accepted; nothing to do. Nothing written.
+```
+On a `refuse-terminal` refusal (already rejected):
+```
+Done: refused <cardId> — this proposal was already rejected, so it can't be accepted. Nothing applied. Ask me to re-draft it with /editor/draft-suggestion if you want the change after all.
+```
+On a `refuse-applied` refusal (already applied):
+```
+Done: refused <cardId> — this suggestion is already applied in the paper (the blue pending change). Nothing written. Settle it with Keep or Revert on the card in the editor.
 ```
 On a stale refusal:
 ```
@@ -147,6 +181,15 @@ Done: refused <cardId> — the paragraph changed since this proposal was drafted
 On an empty-revision refusal:
 ```
 Done: refused <cardId> — this revision suggestion has no replacement text yet, so accepting it would delete the passage. Nothing applied. Type the new wording into "Your text" (or ask me to draft one with /editor/draft-suggestion), then accept.
+```
+On a marker-conservation refusal (the op names the marker):
+```
+Done: refused <cardId> — the replacement drops or adds <marker>, so accepting it would detach a citation card or delete a footnote's prose. Nothing applied. Re-draft with /editor/draft-suggestion, carrying every marker through verbatim.
+```
+On any other refusal (card not found, not a suggestion, a card missing
+`original_text` / `suggested_text` / an anchor):
+```
+Done: refused <cardId> — <the op's reason, in plain words>. Nothing applied.
 ```
 
 ## Safety

@@ -10,7 +10,7 @@
 // `for k, v in sets.items(): card[k] = v`: arbitrary key, arbitrary value, no
 // allow-list, no deny-list, no coupling check.
 //
-// So `update {"set":{"status":"accepted"}}` on a suggestion did step 5 of
+// So `update {"set":{"status":"accepted"}}` on a suggestion did only the status flip of
 // `cmd_accept` and NOTHING else — no `.tex` splice, no stale-guard, no Task
 // completion. The panel reads *accepted*, the user's paper is byte-unchanged,
 // the Task stays open, exit 0. And it was TAUGHT: `edit-card.md`'s Applicability

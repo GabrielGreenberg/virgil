@@ -494,6 +494,29 @@ for verb in ("accept", "reject"):
     check(files_snapshot(sb) == before, f"…and {verb} wrote nothing (no double splice, no stranded edit)")
     check(card_by_id(sb, "revisions.json", "cards", cid)["status"] == "applied", "…card still applied")
 
+def make_stale(doc, cid):
+    """The app marked the proposal `stale` (its splice could not land when it
+    tried) — the .tex itself is left as is."""
+    p = doc / "virgil" / "revisions.json"
+    rv = json.loads(p.read_text())
+    for c in rv["cards"]:
+        if c.get("id") == cid:
+            c["status"] = "stale"
+    p.write_text(json.dumps(rv, indent=2))
+
+
+print("\n=== a STALE proposal is rejectable and acceptable, per card_tables.json proposalVerdicts (task 1594) ===")
+for verb, landed in (("reject", "rejected"), ("accept", "accepted")):
+    sb = sandbox()
+    cid = f"rev-stale-{verb}"
+    propose(sb, panel="revisions", card_id=cid, kind_label="revision-suggestion",
+            task_id=f"{cid}-task", anchor="6607", original=REV_ORIGINAL, suggested=REV_SUGGESTED)
+    make_stale(sb, cid)
+    r = run(APPLY, str(sb), verb, json.dumps({"cardId": cid}))
+    check(r.returncode == 0, f"{verb} of a stale proposal proceeds (stderr={r.stderr.strip()[:160]})")
+    check(card_by_id(sb, "revisions.json", "cards", cid)["status"] == landed, f"…card → {landed}")
+    check(req_by_id(sb, f"{cid}-task").get("result") == landed, f"…Task complete ({landed})")
+
 print("\n=== update of an APPLIED proposal's text refuses; a non-text field still edits ===")
 sb = sandbox()
 propose(sb, panel="revisions", card_id="rev-applied-upd", kind_label="revision-suggestion",
