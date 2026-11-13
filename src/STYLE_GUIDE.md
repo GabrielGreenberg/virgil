@@ -4456,12 +4456,21 @@ Five rules:
   never shows the seed. Whatever the box displays is committable, and a
   source that HAS a width keeps the task-470 rule: re-committing it
   unchanged persists nothing.
-- **Delete lives in the grab-handle menu, not on the image.** The
-  hover chrome carries only non-destructive controls — pick / scale /
-  refresh — and no per-figure X, for the same reason the per-kind popout
-  buttons were retired (above): the grab handle owns destructive and
-  move operations. (The empty-state placeholder keeps its own X — a
-  half-made block's quick bail before it has any content to grab.)
+- **Delete never sits ON the image.** The hover chrome over the image
+  carries only non-destructive controls — pick / scale / refresh — for the
+  same reason the per-kind popout buttons were retired (above). A populated
+  figure's delete is the `×` on its LABEL LOZENGE, which sits off the image
+  (task 1265, `FigureAnnotation.tsx`); the empty-state placeholder keeps its
+  own X in its chrome row — a half-made block's quick bail before it has a
+  lozenge. Both are ONE door, `requestFigureDelete`
+  (`src/lib/figures/delete-figure.ts`).
+- **Figure chrome wears the shared vocabulary** (task 1593). The empty
+  state's "Choose image…" is a `<Button variant="secondary">`; the tex-mode
+  popover's field (and the math popover's) is `<Textarea density="dense">`,
+  so it focuses to `--edge-strong`, never `--accent`. The translucent fill of
+  chrome over an image is ONE token, `--chrome-glass`; the placeholder and
+  error states wear the image's own `--pod-radius`, so the corner does not
+  jump when the image loads; disabled chrome dims to the spec's 0.4.
 
 ### Block labels — off the paper
 

@@ -29,6 +29,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import katex from "katex";
 import { Kbd } from "./Kbd";
+import { Textarea } from "./field-primitives";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
@@ -227,8 +228,9 @@ export default function NodeEditPopover({
           ref={previewRef}
           className={`math-popover-preview math-popover-preview-${kind}`}
         />
-        <textarea
+        <Textarea
           ref={inputRef}
+          density="dense"
           className="math-popover-input"
           value={value}
           {...NEVER_SPELLCHECK_PROPS}
@@ -270,8 +272,9 @@ export default function NodeEditPopover({
   return (
     <div ref={setContainerRef} className="figure-popover" style={style}>
       <div className="figure-popover-label">{label}</div>
-      <textarea
+      <Textarea
         ref={inputRef}
+        density="dense"
         className="figure-popover-input"
         value={value}
         {...NEVER_SPELLCHECK_PROPS}
