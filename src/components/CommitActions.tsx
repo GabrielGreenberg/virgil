@@ -49,11 +49,13 @@
 import type { ReactElement } from "react";
 import { iconHint } from "@/components/Hint";
 import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 /** A check (Keep) / cross (Dismiss) glyph. ONE implementation — this used to be
  *  `PillGlyph` in `PendingChangePill.tsx` and `CommitGlyph` in
  *  `suggestion-fields.tsx`, byte-identical apart from a `flex-shrink-0`. */
 export function CommitGlyph({ kind }: { kind: "check" | "cross" }): ReactElement {
+  if (kind === "cross") return <CloseIcon size={15} className="flex-shrink-0" />;
   return (
     <svg
       width="15"
@@ -67,14 +69,7 @@ export function CommitGlyph({ kind }: { kind: "check" | "cross" }): ReactElement
       className="flex-shrink-0"
       aria-hidden
     >
-      {kind === "check" ? (
-        <polyline points="20 6 9 17 4 12" />
-      ) : (
-        <>
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </>
-      )}
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }

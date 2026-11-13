@@ -19,7 +19,8 @@ import {
 import type { Library } from "@library/lib/library-store";
 import { ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE } from "@library/lib/dnd-types";
 import { addEntryToLibraryGlobal } from "@library/lib/library-store";
-import { IconLibrary, IconX } from "./panel-icons";
+import { IconLibrary } from "./panel-icons";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 import { ActiveBarTab } from "./ActiveBarTab";
 import { InlineTabLabel } from "./InlineTabLabel";
 import { InlineRenameInput } from "@/components/InlineRenameInput";
@@ -268,7 +269,7 @@ function TabStripImpl(props: TabStripProps) {
                 className="topbarbtn topbarbtn-icon"
                 {...iconHint({ label: "Close tab" })}
               >
-                <IconX />
+                <CloseIcon size={16} />
               </button>
             </ActiveBarTab>
           </div>,
@@ -382,7 +383,7 @@ function TabStripImpl(props: TabStripProps) {
                 className="topbarbtn topbarbtn-icon"
                 {...iconHint({ label: "Close tab" })}
               >
-                <IconX />
+                <CloseIcon size={16} />
               </button>
             </ActiveBarTab>
           </div>,
@@ -475,7 +476,7 @@ function TabStripImpl(props: TabStripProps) {
               className="topbarbtn topbarbtn-icon"
               {...iconHint({ label: "Close tab" })}
             >
-              <IconX />
+              <CloseIcon size={16} />
             </button>
           </ActiveBarTab>
         </div>,

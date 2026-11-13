@@ -79,25 +79,11 @@ import {
   useBarStatusMenu,
 } from "./status/BarStatusPill";
 import { useBarStatusVisible } from "@/hooks/useBarStatusVisible";
+import { CopyIcon } from "@/components/icons/CopyIcon";
 
-/** Copy — a 16px stroke-only two-sheets glyph (the "there are two of these" idea). */
+/** Copy — the shared two-sheets glyph (the "there are two of these" idea). */
 function ForkIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="9" y="9" width="12" height="12" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
+  return <CopyIcon size={16} />;
 }
 
 function SyncConflictBadge({ docId }: { docId: string | null }) {

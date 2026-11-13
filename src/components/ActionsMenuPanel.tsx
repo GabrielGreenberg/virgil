@@ -81,6 +81,7 @@ import { compoundCellProps, useMenuItem } from "./menu/useMenuItem";
 import { MenuSeparator } from "./menu/MenuChrome";
 import { menuCellToneStyle, menuRowRovingStyle } from "./menu/row-tone";
 import { actionHint } from "@/components/action-hint";
+import { ICON_STROKE } from "@/components/icons/icon-stroke";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -194,13 +195,13 @@ export const LIGHTNING_GRID: readonly LightningGridCell[] = [
     </svg>
   ) },
   { id: "ordered-list", glyph: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-      <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">1</text>
-      <text x="2" y="9.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">2</text>
-      <text x="2" y="13.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">3</text>
-      <line x1="6.5" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <line x1="6.5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <line x1="6.5" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round">
+      <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif" fill="currentColor" stroke="none">1</text>
+      <text x="2" y="9.5" fontSize="5" fontWeight="600" fontFamily="sans-serif" fill="currentColor" stroke="none">2</text>
+      <text x="2" y="13.5" fontSize="5" fontWeight="600" fontFamily="sans-serif" fill="currentColor" stroke="none">3</text>
+      <line x1="6.5" y1="4" x2="13" y2="4" />
+      <line x1="6.5" y1="8" x2="13" y2="8" />
+      <line x1="6.5" y1="12" x2="13" y2="12" />
     </svg>
   ) },
   { id: "blockquote", glyph: (

@@ -24,6 +24,7 @@ import { MenuSeparator, MenuSectionLabel } from "./menu/MenuChrome";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { elementAnchor } from "./menu/live-anchor";
 import { iconHint } from "@/components/Hint";
+import { Chevron } from "@/components/Chevron";
 import { useSpellDictionaries } from "@/lib/spell/spellcheck-context";
 import { menuTriggerAria } from "@/components/menu/menu-trigger";
 
@@ -186,9 +187,7 @@ function ViewGroupRow({
       style={menuRowRovingStyle(active, false)}
     >
       <span>{label}</span>
-      <svg className="w-3 h-3 text-ink-muted motion-safe:transition-transform" style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2.5 1L5.5 4L2.5 7" />
-      </svg>
+      <Chevron expanded={expanded} size={12} className="text-ink-muted" />
     </button>
   );
 }

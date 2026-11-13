@@ -44,7 +44,7 @@ import {
   type RegistryPrefs,
 } from "@/lib/view-prefs/registry";
 import { isCancelEscape } from "@/lib/key-intent";
-import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 
 interface BibliographyPanelProps {
@@ -524,10 +524,7 @@ function BibliographyPanel({
               className="iconbtn-xs"
               {...iconHint({ label: "Close search" })}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <CloseIcon size={12} />
             </button>
           </div>
           {searchScope === "library" && !isLibraryConnected && (

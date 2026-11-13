@@ -49,6 +49,8 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { describedHint, iconHint } from "@/components/Hint";
 import { Button } from "@/components/Button";
 import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
+import { CloseIcon } from "@/components/icons/CloseIcon";
+import { ICON_STROKE } from "@/components/icons/icon-stroke";
 
 // The width range + clamp are owned by `parse-attrs.ts`, which owns the
 // `widthPercent` round-trip (task 1592).
@@ -729,7 +731,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
             onClick={handleDelete}
             kind="danger"
           >
-            <CloseIcon />
+            <CloseIcon size={11} />
           </ChromeIconButton>
         </div>
         {/* Empty figureBlock still has an editable caption sub-node and a
@@ -1162,50 +1164,18 @@ const SCALE_LOCKED_REASON = "Width uses absolute units — edit in code to adjus
 
 function FolderIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3.379a1.5 1.5 0 0 1 1.06.44L9 4.5h3.5A1.5 1.5 0 0 1 14 6v6.5A1.5 1.5 0 0 1 12.5 14h-9A1.5 1.5 0 0 1 2 12.5v-8Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3.379a1.5 1.5 0 0 1 1.06.44L9 4.5h3.5A1.5 1.5 0 0 1 14 6v6.5A1.5 1.5 0 0 1 12.5 14h-9A1.5 1.5 0 0 1 2 12.5v-8Z" />
     </svg>
   );
 }
 
 function RefreshIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M13.5 2.5V5h-2.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+      <path d="M13.5 2.5V5h-2.5" />
     </svg>
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M3.5 3.5 12.5 12.5 M12.5 3.5 3.5 12.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}

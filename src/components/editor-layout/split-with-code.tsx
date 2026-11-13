@@ -15,6 +15,7 @@ import {
 } from "./CodePaneSplitContext";
 import { iconHint } from "@/components/Hint";
 import { CODE_VIEW_GUTTER_PX } from "@/lib/marginalia";
+import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 
 /**
  * Vertical split: editor pane on the left, code pane on the right,
@@ -468,15 +469,13 @@ export function SplitWithCode({
                       height="10"
                       viewBox="0 0 10 10"
                       fill="none"
+                      stroke="currentColor"
+                      strokeWidth={ICON_STROKE_SMALL}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       aria-hidden
                     >
-                      <path
-                        d="M6.5 2 3 5l3.5 3"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                      <path d="M6.5 2 3 5l3.5 3" />
                     </svg>
                   </button>
                   <div
@@ -497,15 +496,13 @@ export function SplitWithCode({
                       height="10"
                       viewBox="0 0 10 10"
                       fill="none"
+                      stroke="currentColor"
+                      strokeWidth={ICON_STROKE_SMALL}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       aria-hidden
                     >
-                      <path
-                        d="M3.5 2 7 5l-3.5 3"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                      <path d="M3.5 2 7 5l-3.5 3" />
                     </svg>
                   </button>
                 </div>

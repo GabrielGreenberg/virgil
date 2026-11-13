@@ -1878,7 +1878,8 @@ textarea {
   color: var(--footnote-color, #b45757);
 }
 /* Thicker stroke when folded — reads as more assertive alongside the red
-   tint. Default is 1.5 (set as an SVG attribute); folded bumps to 2. */
+   tint. At rest the glyph draws at `--icon-stroke` ("One line weight"); this
+   real rule outranks that zero-specificity default and bumps it to 2. */
 .margin-fold-chevron.is-folded svg path {
   stroke-width: 2;
 }

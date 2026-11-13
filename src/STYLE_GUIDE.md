@@ -1229,6 +1229,18 @@ shared mark for opening a library entry as its own tab; like `DropChevrons`
 it is a domain-neutral leaf (no card/library imports) so any surface —
 bibliography cards, citation cards — can reuse it.
 
+The same holds for the other shared leaves in `src/components/icons/`:
+**`CopyIcon`** (lucide two-sheets, 12px default) is every "copy to clipboard"
+or "there are two of these" mark, and **`CloseIcon`** is every close or remove
+"×" — window and panel close, tab close, a per-row remove — the caller picks
+only `size`. A sized glyph takes its edge as `size`, which the leaf stamps as
+the `width` attribute; that attribute is what the small stroke rung keys on, so
+an inline `<svg>` that strokes always declares `width` too, never a size class
+alone. `icon-leaf-census.test.ts` reads these rules: a leaf's path data has one
+speller, every stroked svg has a `width`, no child carries its own
+`strokeWidth`, and the off-rung literals that predate it are a per-file ratchet
+that only goes down (task 1612).
+
 Marginalia margin icons are 16px, rendered via the components in
 `src/components/editor-layout/panel-icons.tsx`.
 
@@ -2521,7 +2533,9 @@ through the file's same-file string consts (`_source-scan`'s
 const paints, not an opaque name. Likewise every raw `<button aria-expanded>`
 is a disclosure: `<PodDisclosure>`, or named in `pod-disclosure-census.test.ts`
 with a reason, ringed, and drawing `<Chevron>` (the leaf
-`@/components/Chevron`) — never a "▾/▸" text glyph. And the converse: a
+`@/components/Chevron`, `size` for a sub-14px row) — or the shared
+`FoldChevronGlyph` / `MenuCaret` where that is its glyph — never a "▾/▸" text
+glyph and never an inline `<svg>` (the census checks both). And the converse: a
 `<button>` that draws a state-turned chevron (`rotate-90`/`rotate-180`,
 `<Chevron`, `<FoldChevronGlyph`) DECLARES its state — a disclosure that
 declares nothing is the shape the census exists to see (task 1305).
@@ -2839,7 +2853,7 @@ const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
 <Hint label="Delete" keys="Backspace"><IconButton …/></Hint>
 
 // An ICON-ONLY control takes `iconHint` — one label, tooltip AND name:
-<button {...iconHint({ label: "Close tab" })}><IconX /></button>
+<button {...iconHint({ label: "Close tab" })}><CloseIcon /></button>
 ```
 
 Both just stamp the attribute protocol that `HintLayer` reads:

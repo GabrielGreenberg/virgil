@@ -26,8 +26,8 @@ import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
 import { isCancelEscape } from "@/lib/key-intent";
 import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
-import { ICON_STROKE_SMALL } from "@/components/icons/icon-stroke";
 import { formatWhen } from "@/lib/relative-time";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 /** Why the Library search scope is unavailable. ONE string for both the
  *  disabled segment's hint (the only place a user can meet the reason while
@@ -351,10 +351,7 @@ function BibRequestFormOpen({ request: r }: { request: BibLibraryFlow["request"]
           className="iconbtn-xs iconbtn-on-dark ml-auto"
           {...iconHint({ label: "Cancel" })}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <CloseIcon size={12} />
         </button>
       </div>
       <Textarea
@@ -403,10 +400,7 @@ export function BibPendingRequests({
               className="iconbtn-xs iconbtn-on-dark"
               {...iconHint({ label: "Dismiss", pos: "above" })}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE_SMALL} strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <CloseIcon size={12} />
             </button>
           </div>
           <div className="text-2xs text-ink-muted mt-1">

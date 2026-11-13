@@ -36,6 +36,7 @@ import { didBibSaveLand, bibSaveRefusalReason } from "@/lib/project-bib";
 import type { BibEditState } from "@/lib/bib-edit-rebase";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
 import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -541,7 +542,7 @@ export default function BibEntryCard({
                         className="iconbtn-xs iconbtn-danger-hover"
                         {...iconHint({ label: `Remove field ${field}`, hint: `Remove ${field}` })}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <CloseIcon size={12} />
                       </button>
                     </div>
                   ))}

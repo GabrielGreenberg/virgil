@@ -2,7 +2,7 @@
 
 import { memo, type ReactNode } from "react";
 import { activatableProps } from "@/lib/activatable-props";
-import { IconX } from "./panel-icons";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 import { FONT_MONO } from "@/lib/font-stacks";
 import {
   TAB_LABEL_MAX_PX,
@@ -104,7 +104,7 @@ function InlineTabLabelImpl({
           className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100"
           {...iconHint({ label: "Close tab" })}
         >
-          <IconX />
+          <CloseIcon size={16} />
         </button>
       ) : null}
     </div>

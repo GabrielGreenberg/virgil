@@ -39,6 +39,7 @@ import { Button } from "@/components/Button";
 import { CitekeyPicker } from "./CitekeyPicker";
 import { describedHint, iconHint } from "@/components/Hint";
 import type { LiveAnchor } from "@/components/menu/live-anchor";
+import { CloseIcon } from "@/components/icons/CloseIcon";
 
 export interface CitationCreatePopoverProps {
   /** Caret rect captured at trigger time — the popover anchors here. */
@@ -186,18 +187,7 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
                 className="text-[var(--muted)] hover:text-ink-body leading-none focus-ring"
                 {...iconHint({ label: `Remove ${key}` })}
               >
-                <svg
-                  width="9"
-                  height="9"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <CloseIcon size={9} />
               </button>
             </span>
           ))
