@@ -92,7 +92,7 @@ Use this template (substitute `<skill>`, `<citekey>`, `<date>`,
 > ```markdown
 > # <skill> on <citekey> — run <run-N>
 >
-> **Skill SHA**: <output of: git rev-parse HEAD:library/skills/<skill>.md>
+> **Skill SHA**: <output of: git hash-object library/skills/<skill>.md — the WORKING-TREE file's blob hash, since this loop edits the skill without committing; `HEAD:` would record the same SHA for every run>
 > **Run started**: <ISO timestamp>
 > **Result**: success | partial | failure
 >
@@ -216,9 +216,13 @@ run. This is exactly the failure mode that bit us on 2026-05-09.
 
 Use the detach-and-poll pattern from `library/skills/index-pending.md`
 ("Large queues / running from inside a subagent") instead: kick off
-the drain in a detached shell, arm a Bash background waiter on the
-empty-queue condition, and only spawn iterate-skill subagents after
-the waiter fires.
+the drain in a detached shell, arm a Bash background waiter that polls
+`python3 .virgil/scripts/library/queue_slot.py outstanding --native --count`
+until it prints `0`, with the drain's pid as the belt — exactly the loop in
+`index-pending.md`'s Phase B, which owns it (never an empty-folder test: the
+drain never empties deferred kinds, poisoned entries or the review
+manifest), and only spawn iterate-skill
+subagents after the waiter fires.
 
 ## Reply format
 

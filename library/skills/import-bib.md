@@ -67,22 +67,26 @@ All paths below resolve against the library root.
 
 ## Args
 
-`$ARGUMENTS` is a single `<citekey>` (both dispatch callers —
-`/library/index-pending` and `/library/ai-requests` — always pass it explicitly). If it's
-empty (a bare manual invocation), fall back to the first pending
-`*-importbib.json` request on the queue. Resolve it into `CK`:
+`$ARGUMENTS` is a single `<citekey>` (its one dispatch caller,
+`/library/index-pending`, always passes it explicitly — `/library/ai-requests`
+never routes `import-bib`). If it's empty (a bare manual invocation), fall back
+to the first CLAIMABLE `import-bib` request — `queue_slot.py claimable` is the
+one owner of "which requests may a worker take now" (task 1598: waiting,
+failed-and-retryable, or an abandoned claim), so a running or poisoned request
+is never picked up by hand-parsing the queue. Resolve it into `CK`:
 
 ```bash
 CK="$(printf '%s' "$ARGUMENTS" | awk '{print $1}')"
 if [ -z "$CK" ]; then
-  for q in .virgil/queue/*-importbib.json; do
-    [ -f "$q" ] || continue
-    CK="$(python3 -c "import json; print(json.load(open('$q')).get('citekey',''))" 2>/dev/null)"
-    [ -n "$CK" ] && break
-  done
+  CK="$(python3 .virgil/scripts/library/queue_slot.py claimable \
+    | python3 -c 'import json,sys
+for l in sys.stdin:
+    d = json.loads(l)
+    if d["kind"] == "import-bib" and d["citekey"]:
+        print(d["citekey"]); break')"
 fi
 if [ -z "$CK" ]; then
-  echo "No citekey given and no pending *-importbib.json request found — nothing to do."
+  echo "No citekey given and no claimable import-bib request found — nothing to do."
   exit 0
 fi
 echo "Importing bibliography for: $CK"
