@@ -127,6 +127,15 @@ directory).
    failures. A COMPLETED path (variant, whole-handbook, `.tex`, `.bib`
    fan-out) is not a stop: it retires at step 10.
 
+   **A source that is already GONE is not a failure either** (task 1600).
+   If `unsorted/<filename>` does not exist, the file was triaged by an
+   earlier run (`triage_apply.py` normally retires the request itself) or
+   the user removed it: there is nothing to triage, and releasing would
+   only walk the request to `poisoned`. Say so in one line ("source
+   already gone — nothing to triage") and go straight to step 10 to
+   RETIRE the request. Only a source that is PRESENT but unreadable is a
+   stop that releases.
+
 1. **Read metadata.** Branch on extension:
 
    For `.pdf`:

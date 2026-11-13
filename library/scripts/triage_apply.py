@@ -13,6 +13,14 @@ Reads JSONL from --input (or stdin) where each line is one row produced by
                                   move file to papers/<citekey>/<citekey>.<ext>,
                                   queue an index request (queue_slot contract)
 
+Each dropped file's own `triage` request (`_triage-<slug>.json`, filed by the
+app on every drop) is CLAIMED before its rows are applied and SETTLED after
+(task 1600): retired when the file has left `unsorted/` (moved, parked,
+deleted) or carries a never-triageable verdict (`unsupported-ext`); released
+as `failed` when it is still there. The executor closes the request the app
+opened, so the follow-up drain never routes a moved file to
+`/library/triage-pdf`.
+
 Bumps catalog-version.txt once at the end so the frontend re-renders. Designed
 to be idempotent on the queue side — a pending request of the same kind is left
 alone, a stale `.done` is retired, and a refused write is reported per row.
@@ -35,7 +43,18 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from work_identity import norm_year  # noqa: E402  (task 1485: one year parser)
-from queue_slot import ALREADY_QUEUED, REFUSED_RESULTS, WRITTEN, write_request  # noqa: E402
+from queue_slot import (  # noqa: E402
+    ALREADY_QUEUED,
+    CLAIM_ADDRESS_STATUSES,
+    REFUSED_RESULTS,
+    TRIAGE_KIND,
+    WRITTEN,
+    claim_request,
+    release_claimed,
+    request_path,
+    retire_claimed,
+    write_request,
+)
 from _tools import (
     _atomic_write_text,
     TERMINAL_BIB_STATES,
@@ -120,6 +139,50 @@ def _write_queue_entry(library: Path, citekey: str, kind: str = "index") -> str:
     caller MUST report (task 618: a refused write once read as "triaged")."""
     result, _path = write_request(library, kind, citekey)
     return result
+
+
+# ── The per-drop triage request (task 1600) ──────────────────────────────
+#
+# Row flags that are a VERDICT on the file rather than a failure to triage it:
+# a file carrying one is settled even though it stays in `unsorted/`, so its
+# request is retired, not released into a failed→poisoned retry loop.
+TRIAGE_VERDICT_FLAGS: frozenset[str] = frozenset({"unsupported-ext"})
+
+
+def claim_triage_request(library: Path, filename: str):
+    """Claim the app's triage request for the dropped file `filename`
+    through the queue door. Returns `(path, claimed)` or None when there is
+    nothing claimable (no request — a hand-dropped file — or another worker
+    holds it, in which case it is left exactly as it is)."""
+    if not filename:
+        return None
+    try:
+        path = request_path(library, TRIAGE_KIND, filename=filename,
+                            statuses=CLAIM_ADDRESS_STATUSES)
+    except ValueError:
+        return None
+    if path is None:
+        return None
+    claimed = claim_request(path)
+    return (path, claimed) if claimed is not None else None
+
+
+def settle_triage_request(
+    library: Path, filename: str, claim, *, flags=(), summary: str = "",
+) -> str:
+    """Retire or release a claim `claim_triage_request` took. The file's
+    location is the verdict: gone from `unsorted/` (or flagged with a
+    `TRIAGE_VERDICT_FLAGS` member) → the triage landed → retired; still
+    there → it did not → released `failed` with `summary` as the error.
+    Returns "retired" / the released status / "unclaimed" / "superseded"."""
+    if claim is None:
+        return "unclaimed"
+    path, claimed = claim
+    still_there = (library / "unsorted" / filename).exists()
+    if not still_there or TRIAGE_VERDICT_FLAGS.intersection(flags or ()):
+        return "retired" if retire_claimed(path, claimed) else "superseded"
+    status = release_claimed(path, claimed, summary or f"{filename}: not triaged")
+    return status or "superseded"
 
 
 def _master_has_citekey(library: Path, citekey: str) -> bool:
@@ -854,7 +917,38 @@ def main() -> int:
     # Track which source .bib files in unsorted/ have been touched, and
     # whether any of their rows hit a parse failure.
     bib_files: dict[str, dict[str, int]] = {}
+    # Each dropped file's own triage request, claimed before its first row
+    # and settled once all its rows (and a .bib's disposition) are done.
+    claims: dict[str, Any] = {}
+    file_flags: dict[str, set[str]] = {}
+    file_summary: dict[str, str] = {}
+    try:
+        _apply_rows(rows, library, guard_index, counts, bib_files,
+                    claims, file_flags, file_summary)
+        _dispose_bib_sources(library, bib_files)
+    finally:
+        for fn, claim in claims.items():
+            settled = settle_triage_request(
+                library, fn, claim,
+                flags=file_flags.get(fn, ()), summary=file_summary.get(fn, ""),
+            )
+            if claim is not None:
+                print(f"  [request {settled}] {fn}")
+
+    if counts:
+        bump_catalog_version(library)
+
+    print(f"\nDone. {len(rows)} rows: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
+    return 0
+
+
+def _apply_rows(rows, library, guard_index, counts, bib_files,
+                claims, file_flags, file_summary) -> None:
     for row in rows:
+        fn = row.get("filename") or ""
+        if fn and fn not in claims:
+            claims[fn] = claim_triage_request(library, fn)
+        file_flags.setdefault(fn, set()).update(row.get("flags") or [])
         try:
             result = apply_row(row, library, guard_index=guard_index)
         except Exception as e:
@@ -862,15 +956,17 @@ def main() -> int:
         status = result["status"]
         counts[status] = counts.get(status, 0) + 1
         print(f"  [{status}] {result['summary']}")
+        file_summary[fn] = f"[{status}] {result['summary']}"
 
         if (row.get("extension") or "").lower() == "bib":
-            fn = row.get("filename") or ""
             stats = bib_files.setdefault(fn, {"ok": 0, "failed": 0})
             if status in BIB_SOURCE_CLEAN_STATUSES:
                 stats["ok"] += 1  # processed cleanly (an ignored row counts)
             else:
                 stats["failed"] += 1
 
+
+def _dispose_bib_sources(library: Path, bib_files: dict[str, dict[str, int]]) -> None:
     # ── Source .bib disposition. ──────────────────────────────────────
     for fn, stats in bib_files.items():
         src = library / "unsorted" / fn
@@ -916,12 +1012,6 @@ def main() -> int:
                 "failed": stats["failed"],
                 "at": _now(),
             })
-
-    if counts:
-        bump_catalog_version(library)
-
-    print(f"\nDone. {len(rows)} rows: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
-    return 0
 
 
 if __name__ == "__main__":

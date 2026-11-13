@@ -986,6 +986,83 @@ def test_release_triage_by_file(tmp_path, capsys):
     assert _read(slot)["status"] == "failed"
 
 
+# ── task 1600: the batch executor closes the request the app opened ──────
+
+def _apply_main(lib: Path, rows: list[dict], capsys) -> str:
+    """Run `triage_apply.main` (the batch path triage-pending pipes into)."""
+    _as_library(lib)
+    plan = lib / "plan.jsonl"
+    plan.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    saved = sys.argv
+    sys.argv = ["triage_apply.py", "--input", str(plan), "--library", str(lib)]
+    try:
+        capsys.readouterr()
+        assert triage_apply.main() == 0
+    finally:
+        sys.argv = saved
+    return capsys.readouterr().out
+
+
+def _drop_request(lib: Path, filename: str) -> Path:
+    slot = _qdir(lib) / queue_slot.triage_slot_filename(filename)
+    _put(slot, kind="triage", status="requested", filename=filename,
+         requestedAt="2026-11-13T00:00:00Z", attempts=0)
+    return slot
+
+
+def test_apply_retires_the_drop_triage_request_task_1600(tmp_path, capsys):
+    row = _triage_lib(tmp_path)
+    slot = _drop_request(tmp_path, "smith.docx")
+    out = _apply_main(tmp_path, [row], capsys)
+    assert "[request retired] smith.docx" in out, out
+    assert not slot.exists()
+    assert _read(slot.with_suffix(".done"))["status"] == "done"
+    # The follow-up drain finds no triage request to route to triage-pdf.
+    assert all(e.get("kind") != "triage" for e in drain_queue._list_pending(tmp_path))
+    assert all(e.get("kind") != "triage"
+               for e in queue_slot.claimable_requests(_qdir(tmp_path)))
+
+
+def test_apply_releases_the_request_when_the_file_stays_task_1600(tmp_path, capsys):
+    row = _triage_lib(tmp_path)
+    slot = _drop_request(tmp_path, "smith.docx")
+    # A collision leaves the source in unsorted/: the triage did not land.
+    (tmp_path / "papers" / "smith2020").mkdir(parents=True)
+    (tmp_path / "papers" / "smith2020" / "smith2020.docx").write_bytes(b"y")
+    out = _apply_main(tmp_path, [row], capsys)
+    assert "[collision]" in out, out
+    entry = _read(slot)
+    assert entry["status"] == "failed" and entry["attempts"] == 1, entry
+    assert "collision" in entry["lastError"]
+    assert "startedAt" not in entry
+
+
+def test_apply_retires_a_verdict_skip_and_leaves_others_requests_task_1600(
+    tmp_path, capsys,
+):
+    (tmp_path / "unsorted").mkdir()
+    (tmp_path / "unsorted" / "notes.txt").write_bytes(b"x")
+    slot = _drop_request(tmp_path, "notes.txt")
+    other = _drop_request(tmp_path, "other.pdf")
+    before = other.read_text()
+    out = _apply_main(tmp_path, [{"filename": "notes.txt", "extension": "txt",
+                                  "flags": ["unsupported-ext"]}], capsys)
+    assert "[request retired] notes.txt" in out, out
+    assert not slot.exists()
+    assert other.read_text() == before  # another drop's request is untouched
+
+
+def test_apply_leaves_an_in_flight_claim_alone_task_1600(tmp_path, capsys):
+    row = _triage_lib(tmp_path)
+    slot = _qdir(tmp_path) / queue_slot.triage_slot_filename("smith.docx")
+    _put(slot, kind="triage", status="running", filename="smith.docx",
+         requestedAt="r", attempts=0, startedAt=queue_slot._now())
+    before = slot.read_text()
+    out = _apply_main(tmp_path, [row], capsys)
+    assert "[request" not in out, out
+    assert slot.read_text() == before
+
+
 if __name__ == "__main__":
     from _standalone import main
 

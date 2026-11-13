@@ -92,7 +92,7 @@ directory).
    | `deepIndex` | → `/library/deep-index <citekey>`; legacy `richIndex` likewise (with `[note]`: → `/library/ai-requests`) |
    | `bib-edit` | → `/library/apply-bib-edit <citekey>` |
    | `import-bib` | → `/library/import-bib <citekey>` |
-   | `triage` | → `/library/triage-pdf <filename>` (pre-`triage_apply` stubs from the legacy per-file flow; the drain prints the filename) |
+   | `triage` | → `/library/triage-pdf <filename>` (the app files one per drop; `triage_apply.py` retires each file it applies, so what is left here is a drop no batch triage has applied yet, or a released retry; the drain prints the filename) |
    | `index` | → native, step 1 (a leftover is `failed`; see the drain's summary) |
    | `reindex` | → native, step 1 |
    | `delete` | → **no skill — do not act.** Deleting a paper folder, its `master.bib` block and catalog row is destructive and has no handling skill yet; list each in the summary as "delete requested — needs the user" and leave the file |
