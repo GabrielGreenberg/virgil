@@ -47,6 +47,7 @@ import { atomPopoverMayOpen } from "@/lib/tiptap/atom-edit-target";
 import { surfaceEditableNow } from "@/lib/tiptap/surface-editable";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { describedHint, iconHint } from "@/components/Hint";
+import { Button } from "@/components/Button";
 import { isCommitEnter, isCancelEscape } from "@/lib/key-intent";
 
 // The width range + clamp are owned by `parse-attrs.ts`, which owns the
@@ -702,8 +703,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         <div className={chromeOnly("figure-empty-stack")}>
           {/* No "Choose image…" when a pick has nowhere to land (task 1436). */}
           {canTakePath ? (
-            <button
-              type="button"
+            // The `secondary` Button (task 1593) — its paint, hover and focus
+            // ring are the primitive's; `.figure-empty-cta` states only the
+            // two-row icon-over-label LAYOUT.
+            <Button
+              variant="secondary"
               className="figure-empty-cta"
               onClick={handlePickFile}
             >
@@ -711,7 +715,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
                 <FolderIcon />
               </span>
               <span className="figure-empty-cta-label">Choose image…</span>
-            </button>
+            </Button>
           ) : null}
           {canTakePath ? (
             <div className="figure-empty-hint">or click anywhere to edit code</div>

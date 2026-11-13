@@ -862,6 +862,10 @@
   --accent: #12669a;
   --background: #ede3de;
   --surface: #ffffff;
+  /* Translucent chrome fill — hover chrome sitting OVER an image (the figure
+     chrome row, its scale composite). One role, derived from --surface rather
+     than a literal white (task 1593). */
+  --chrome-glass: color-mix(in srgb, var(--surface) 92%, transparent);
   --comment-color: #93c5fd;
   --latex-comment-color: #7c5e3c;
   --citation-color: #6b6245;
@@ -3640,22 +3644,18 @@ textarea {
   font-style: italic;
 }
 
+/* Box + mono face only. The field CHROME (edge-subtle resting, edge-strong
+   focus, surface fill, 4px dense radius) is `<Textarea density="dense">`'s —
+   this rule used to focus to `--accent`, the drift task 190 removed (task 1593).
+   No border/background/color/radius here: an unlayered declaration would beat
+   the primitive's layered utilities. */
 .math-popover-input {
   width: 100%;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 13px;
   padding: 0.4em 0.5em;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  outline: none;
   resize: vertical;
   box-sizing: border-box;
-  background: var(--surface);
-  color: var(--foreground);
-}
-
-.math-popover-input:focus {
-  border-color: var(--accent);
 }
 
 .math-popover-hint {
@@ -3743,7 +3743,7 @@ textarea {
 
 .figure-block.figure-block-empty {
   cursor: pointer;
-  background: var(--code-bg, #f0eeeb);
+  background: var(--code-bg);
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
   padding: 1.5em 0.75em;
@@ -3761,24 +3761,15 @@ textarea {
   gap: 0.4em;
 }
 
+/* The CTA is a `<Button variant="secondary">` (task 1593) — fill, edge,
+   hover, focus ring and radius are the primitive's. This rule states only the
+   two-row icon-over-label LAYOUT the md size's fixed `h-8` cannot hold. */
 .figure-block .figure-empty-cta {
-  display: inline-flex;
   flex-direction: column;
-  align-items: center;
   gap: 0.25em;
+  height: auto;
   padding: 0.6em 1em;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--ink-strong);
-  cursor: pointer;
   font-size: 0.92em;
-  transition: border-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out;
-}
-
-.figure-block .figure-empty-cta:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .figure-block .figure-empty-cta-icon {
@@ -3922,8 +3913,11 @@ textarea {
    this float no number to show — it has no `\caption` — so the toggle has
    nothing to toggle and carries no click handler. Same look-and-mechanism-in-
    one-declaration rule as task 316's parked cue. */
+/* Same 0.4 dim as every disabled control (STYLE_GUIDE "Interaction" →
+   Disabled, task 1593); what tells it apart from `.is-off` is the missing
+   strike-through and the dead cursor, not a third opacity. */
 .figure-block .figure-annotation-numbered-toggle.is-unavailable {
-  opacity: 0.3;
+  opacity: 0.4;
   cursor: default;
 }
 
@@ -3990,7 +3984,9 @@ textarea {
   height: 14px;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  /* On the 15px rung of the type ladder — it was `0.95rem` (≈15.2px), the one
+     rem size in the figure chrome and off the ladder (task 1593). */
+  font-size: 15px;
   line-height: 1;
   color: var(--heading-annotation-color);
 }
@@ -4007,24 +4003,23 @@ textarea {
   color: #fff;
 }
 
+/* The two resolution states stand where the image will, so they wear the
+   image's corner (`--pod-radius`, STYLE_GUIDE radius table) — at
+   `--radius-sm` the corner jumped 4 → 10px when the image loaded (task 1593).
+   One rule; the error differs only in ink. */
+.figure-block .figure-error,
 .figure-block .figure-placeholder {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
   color: var(--ink-muted);
   padding: 1em;
-  background: var(--code-bg, #f0eeeb);
-  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  border-radius: var(--pod-radius);
   min-width: 200px;
 }
 
 .figure-block .figure-error {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.85em;
   color: var(--danger-strong);
-  padding: 1em;
-  background: var(--code-bg, #f0eeeb);
-  border-radius: var(--radius-sm);
-  min-width: 200px;
 }
 
 /* Figure block chrome — the hover-revealed corner row of controls
@@ -4128,7 +4123,7 @@ textarea {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--chrome-glass);
   border: 1px solid var(--border);
   color: var(--ink-muted);
   cursor: pointer;
@@ -4164,12 +4159,12 @@ textarea {
   height: 22px;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--chrome-glass);
   border: 1px solid var(--border);
 }
 
 .figure-block .figure-scale[data-disabled="true"] {
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 :where(.figure-block) .figure-scale-btn {
@@ -4223,7 +4218,7 @@ textarea {
    An inputs-take-a-thicker-border edge (STYLE_GUIDE → Focus), drawn inset so
    the attached [ − | n | + ] composite does not shift (task 2026-10-24-1264). */
 .figure-block .figure-scale-input:focus {
-  background: white;
+  background: var(--surface);
   box-shadow: inset 0 -2px 0 var(--edge-strong);
 }
 
@@ -4262,22 +4257,18 @@ textarea {
   color: var(--ink-muted);
 }
 
+/* Box + mono face only. The field CHROME (edge-subtle resting, edge-strong
+   focus, surface fill, 4px dense radius) is `<Textarea density="dense">`'s —
+   this rule used to focus to `--accent`, the drift task 190 removed (task 1593).
+   No border/background/color/radius here: an unlayered declaration would beat
+   the primitive's layered utilities. */
 .figure-popover-input {
   width: 100%;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 13px;
   padding: 0.4em 0.5em;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  outline: none;
   resize: vertical;
   box-sizing: border-box;
-  background: var(--surface);
-  color: var(--foreground);
-}
-
-.figure-popover-input:focus {
-  border-color: var(--accent);
 }
 
 .figure-popover-hint {
