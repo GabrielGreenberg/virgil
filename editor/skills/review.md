@@ -49,12 +49,15 @@ with `/loop /editor/review`.
    {"source":"bib-review","kind":"bib-review","id":"<bibKey>","text":"...","extra":{"type":"fields"}}
    {"source":"card-flag","kind":"todo","id":"virtual:todos:<cardId>",...}
    ```
-   "Open" is **not-terminal**: `pending` | `in-progress` (and the legacy
-   `draft` | `submitted`, and a status-absent row) are open; `complete` |
-   `failed` are terminal and already filtered out, so the umbrella never
-   re-dispatches a drained request. Each `ai-requests` row carries the
-   two-field outcome vocabulary (`extra.status` + `extra.result`) and the
-   `extra.safetyLevel` the responder routes on (1/2/3 or null).
+   Which rows are open is `list_requests.py`'s decision, not this skill's —
+   its one gate is `_common.is_request_open`. Trust its output; don't
+   re-derive "open" from `ai-requests.json`. That file holds rows the drain
+   deliberately leaves out — terminal ones, and an answered Level-3 proposal
+   (`in-progress` WITH a `resultId`; see "Safety level + outcome" below) — so
+   reconciling against it shows rows "missing" that are answered, not lost.
+   Each `ai-requests` row carries the two-field outcome vocabulary
+   (`extra.status` + `extra.result`) and the `extra.safetyLevel` the
+   responder routes on (1/2/3 or null).
 
    Stderr ends with `# <N> open: …` — surface this count up front so
    the user sees how much you're about to do.
@@ -99,9 +102,11 @@ with `/loop /editor/review`.
        suggestion, a report, or a sibling comment; `draft-suggestion` only ever
        emits the first)*
    11. `kind: "suggestion"` → `/editor/draft-suggestion <docPath> <id>`
-       *(the fallback, and the case `draft-suggestion` genuinely owns: an
-       **unbridged** suggestion Task — no `linkedTo` at all, so there is no
-       source card and no panel thread to answer into)*
+       *(the fallback: every suggestion Task with no comment thread to answer
+       into — the rows 9–10 above don't match. Which `linkedTo` shapes that
+       covers is `draft-suggestion`'s ownership table
+       ([draft-suggestion.md](draft-suggestion.md) step 1), not restated
+       here)*
 
    For card-flag virtual requests (`id` starts with `virtual:`), the
    subskill receives the virtual id; `apply_response.py` knows to clear
@@ -146,21 +151,13 @@ with `/loop /editor/review`.
    **Safety level + outcome.** A Task may carry a `safetyLevel` (1/2/3). The
    umbrella doesn't build cards or pick subcommands — the dispatched subskill
    reads the level off the Task and routes its card-create through
-   `create_card.py` → `apply_response.py`: **1** → silent apply, **2** → apply +
-   a sibling comment, **3** → propose (drafted; the change not applied, a `--range` anchor
-   still lands — [_safety-levels.md](_safety-levels.md); Task left
-   `in-progress`, awaiting review), **no level** → direct create. An
-   `--unanchored` create (find-citation's) and an in-place `update` sit outside
-   the level and always apply ([_safety-levels.md](_safety-levels.md) § Where the
-   level does NOT apply). The subskill
-   stamps the two-field `status`/`result` (`complete` + `silent-applied` /
-   `auto-applied` / `direct-created`, or `in-progress` for a level-3 proposal).
+   `create_card.py` → `apply_response.py`. What each level does, which paths
+   sit outside the level, and the `status`/`result` each one stamps are stated
+   once in [_safety-levels.md](_safety-levels.md) — don't re-list them here.
    Surface the level in the banner (below) and echo the subskill's stamped
-   outcome. A level-3 proposal's Task stays `in-progress` (the user owns
-   accept/reject in the editor), but once its proposal card is drafted the Task
-   carries a `resultId`, and the drain treats an `in-progress`-with-`resultId`
-   row as answered — so a later `/editor/review` does NOT re-list it. The user,
-   not the drain, closes it via accept/reject.
+   outcome. A Level-3 proposal is the one the drain treats specially: its Task
+   stays `in-progress` with a `resultId`, so a later `/editor/review` does NOT
+   re-list it (step 2) — the user, not the drain, closes it via accept/reject.
 
    **Phrase or paragraph.** Every subskill that lands a margin card can pin it
    to the exact words it is about (`create_card.py --range`, task 1197) — the
