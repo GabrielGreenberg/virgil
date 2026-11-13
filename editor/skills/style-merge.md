@@ -222,9 +222,12 @@ Skip everything else.
   ```
   (a fixed literal, so it stays inline — the same rule as the failure path
   below).
-- Never write the .tex if the body extraction returns an empty body —
-  that's a corrupted source file. Take the failure path:
-  `complete-only <requestId> --result impossible --note "Empty body; source looks corrupted; .tex left untouched."`
+- The body is not yours to check: `region-replace` touches only
+  `[start..\begin{document}]`, and `apply_response.py`'s region-replace
+  guard (`_guard_region_replace`) REFUSES — writing nothing — a result that
+  loses body words or does not carry exactly one live `\begin{document}`.
+  On that refusal, take the failure path:
+  `complete-only <requestId> --result impossible --note "Region-replace refused (body or document marker); .tex left untouched."`
   (a fixed literal with nothing for the shell to expand, so it stays inline —
   a note you COMPOSE goes through scratch, [`_op-json.md`](_op-json.md)).
 - This skill is doc-local. Don't touch anything outside `<docPath>/`.
