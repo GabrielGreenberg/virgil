@@ -40,7 +40,11 @@ import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
 import { useConfirmDialog } from "./ConfirmDialog";
-import { CARD_DELETE_CONFIRM_MESSAGE, cardHasContent } from "@/cards/has-content";
+import {
+  CARD_DELETE_CONFIRM_MESSAGE,
+  CARD_DELETE_CONFIRM_TITLE,
+  cardHasContent,
+} from "@/cards/has-content";
 import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, hasArchiveButton, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
 import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
@@ -269,6 +273,7 @@ export function usePanelCardTryDelete(
   opts: {
     anchorRef: RefObject<HTMLElement | null>;
     readCard?: () => unknown;
+    title?: string;
     message?: string;
     confirmLabel?: string;
     /** Confirm even when the card holds no content — the delete has a
@@ -278,6 +283,7 @@ export function usePanelCardTryDelete(
   },
 ): { tryDelete: () => void; dialog: ReactNode } {
   const { confirm, dialog } = useConfirmDialog();
+  const title = opts.title ?? CARD_DELETE_CONFIRM_TITLE;
   const message = opts.message ?? CARD_DELETE_CONFIRM_MESSAGE;
   const confirmLabel = opts.confirmLabel ?? "Delete";
   const { anchorRef, readCard, alwaysConfirm } = opts;
@@ -291,12 +297,12 @@ export function usePanelCardTryDelete(
     if (!onDelete || !deleteAllowed) return;
     void (async () => {
       if (alwaysConfirm || cardHasContent(kind, readCard ? readCard() : card)) {
-        const ok = await confirm({ message, confirmLabel, tone: "danger", anchorRef });
+        const ok = await confirm({ title, message, confirmLabel, tone: "danger", anchorRef });
         if (!ok) return;
       }
       onDelete(id);
     })();
-  }, [kind, card, readCard, id, onDelete, deleteAllowed, confirm, message, confirmLabel, anchorRef, alwaysConfirm]);
+  }, [kind, card, readCard, id, onDelete, deleteAllowed, confirm, title, message, confirmLabel, anchorRef, alwaysConfirm]);
   return { tryDelete, dialog };
 }
 
@@ -364,9 +370,10 @@ export interface CardContentTransition {
  */
 export function usePanelCardTryEmptyContent(
   kind: CardKind,
-  opts?: { message?: string; confirmLabel?: string },
+  opts?: { title?: string; message?: string; confirmLabel?: string },
 ): { tryEmptyContent: (t: CardContentTransition) => void; dialog: ReactNode } {
   const { confirm, dialog } = useConfirmDialog();
+  const title = opts?.title ?? "Remove content?";
   const message =
     opts?.message ?? "This removes the item's content from the document. Continue?";
   const confirmLabel = opts?.confirmLabel ?? "Remove";
@@ -379,12 +386,12 @@ export function usePanelCardTryEmptyContent(
         return;
       }
       void (async () => {
-        const ok = await confirm({ message, confirmLabel, tone: "danger" });
+        const ok = await confirm({ title, message, confirmLabel, tone: "danger" });
         if (ok) commit();
         else onAbort?.();
       })();
     },
-    [kind, confirm, message, confirmLabel],
+    [kind, confirm, title, message, confirmLabel],
   );
   return { tryEmptyContent, dialog };
 }

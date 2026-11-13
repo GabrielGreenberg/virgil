@@ -36,6 +36,7 @@ import SystemDialog, {
   SystemDialogButton,
   SystemDialogFooter,
   SystemDialogHeader,
+  SystemDialogMessage,
   type SystemDialogSize,
 } from "./system-dialog";
 import {
@@ -48,7 +49,8 @@ import { registerEditRefusalVoice } from "@/lib/edit-refusal";
 /* ── Option types ────────────────────────────────────────────────── */
 
 export interface AlertOptions {
-  title?: string;
+  /** REQUIRED (task 1609) — the dialog's accessible name. */
+  title: string;
   message: ReactNode;
   /** Label for the single dismiss button. Defaults to "OK". */
   okLabel?: string;
@@ -61,7 +63,8 @@ export interface AlertOptions {
 }
 
 export interface ConfirmOptions {
-  title?: string;
+  /** REQUIRED (task 1609) — the dialog's accessible name. */
+  title: string;
   message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -219,13 +222,13 @@ function PendingDialog({
               failure notice is honest; a red BUTTON says "pressing this
               destroys content without a net" (STYLE_GUIDE, "the destructive /
               alarm family") and this one only dismisses. */}
-          <div
+          <SystemDialogMessage
             className={`text-xs leading-relaxed ${
               tone === "danger" ? "text-error" : "text-ink-body"
             }`}
           >
             {message}
-          </div>
+          </SystemDialogMessage>
         </SystemDialogBody>
         <SystemDialogFooter>
           {/* Deliberately a LITERAL, not `confirmActionVariant(tone)`: this
@@ -279,7 +282,9 @@ function PendingDialog({
       >
         <SystemDialogHeader title={title} />
         <SystemDialogBody>
-          <div className="text-sm text-ink-body leading-relaxed">{message}</div>
+          <SystemDialogMessage className="text-sm text-ink-body leading-relaxed">
+            {message}
+          </SystemDialogMessage>
         </SystemDialogBody>
         <SystemDialogFooter>
           <SystemDialogButton

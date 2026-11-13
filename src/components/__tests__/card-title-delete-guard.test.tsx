@@ -201,6 +201,7 @@ describe("a danger confirm never cues its destructive button (task 386)", () => 
     render(
       <ConfirmDialog
         open
+        title="Confirm"
         message={CONFIRM_TEXT}
         confirmLabel="Delete"
         tone="danger"
@@ -218,6 +219,7 @@ describe("a danger confirm never cues its destructive button (task 386)", () => 
     render(
       <ConfirmDialog
         open
+        title="Confirm"
         message="Proceed?"
         confirmLabel="Continue"
         tone="default"
@@ -234,6 +236,7 @@ describe("a danger confirm never cues its destructive button (task 386)", () => 
     render(
       <ConfirmDialog
         open
+        title="Confirm"
         message="Something went wrong."
         confirmLabel="OK"
         tone="danger"
@@ -259,6 +262,7 @@ describe("a danger confirm never cues its destructive button (task 386)", () => 
     render(
       <ConfirmDialog
         open
+        title="Confirm"
         message={CONFIRM_TEXT}
         confirmLabel="Delete"
         tone="danger"

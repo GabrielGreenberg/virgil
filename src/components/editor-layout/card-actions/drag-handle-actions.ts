@@ -166,7 +166,8 @@ export interface DragHandleActionsDeps {
    *  `useConfirmDialog` instance with `hideCancel: true`. Replaces the
    *  silent `break;` in branches that today swallow errors. See
    *  post-refactor followup B1. */
-  notify: (opts: { title?: string; message: string; tone?: "default" | "danger" }) => void;
+  /** `title` is required — it is the notice dialog's accessible name (task 1609). */
+  notify: (opts: { title: string; message: string; tone?: "default" | "danger" }) => void;
   prefs: ViewPrefs;
   expandLeft: () => void;
   expandRight: () => void;
@@ -680,7 +681,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const slice = ed.state.doc.slice(outer.from, outer.to);
           if (slice.size === 0) {
             console.warn("[Duplicate] empty slice for ref", ref);
-            notify({ message: "Nothing to duplicate." });
+            notify({ title: "Nothing to duplicate", message: "Nothing to duplicate." });
             break;
           }
           // ── VALIDATE DRY, MINT, THEN COMMIT (task 735) ─────────────────
@@ -741,6 +742,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           } catch (err) {
             console.warn("[Duplicate] schema violation; aborting", err);
             notify({
+              title: "Can't duplicate",
               tone: "danger",
               message: "This kind cannot be duplicated here.",
             });
@@ -884,6 +886,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             // A refusal NAMES what it refused (the loud-refusal rule): "part of
             // it" leaves the user with nothing to act on.
             notify({
+              title: "Can't archive",
               message:
                 `Can't archive this — the Archive panel can't hold ` +
                 `${describeCardBodyRefusal(refusal)}, so nothing was removed.`,
@@ -1228,6 +1231,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         }
         console.error(`[ActionsMenu] "${action}" failed`, err, ref);
         notify({
+          title: `${lifecycleLabel(action)} failed`,
           tone: "danger",
           message: `${lifecycleLabel(action)} failed — something went wrong, see the console for details.`,
         });
@@ -1327,6 +1331,7 @@ function notifyStaleRef(
 ): void {
   console.warn(`[${label}] stale ref — could not resolve outer range`, ref);
   notify({
+    title: `${label} didn't happen`,
     message: "Could not find the source. Close the menu and try again.",
   });
 }
@@ -1342,6 +1347,7 @@ function notifyTargetMoved(
 ): void {
   console.warn(`[${label}] refused — the target changed while the prompt was open`, ref);
   notify({
+    title: `${label} didn't happen`,
     message: `${label} didn't happen — the selected text changed while you were confirming, so nothing was changed.`,
   });
 }
@@ -1357,6 +1363,7 @@ function notifyRefused(
 ): void {
   console.warn(`[${label}] refused — the document change did not land; nothing was modified.`);
   notify({
+    title: `${label} didn't happen`,
     message: `${label} didn't happen — this document can't be edited right now, so nothing was changed.`,
   });
 }

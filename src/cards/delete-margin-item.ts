@@ -49,6 +49,7 @@ import {
 import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   CARD_DELETE_CONFIRM_MESSAGE,
+  CARD_DELETE_CONFIRM_TITLE,
   cardHasContent,
   type CardContentKind,
 } from "@/cards/has-content";
@@ -226,6 +227,7 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
   // This is the card's last anchor. Confirm-on-content before deleting.
   if (cardHasContent(cardKindOf(handlers, card), card)) {
     const ok = await confirm({
+      title: CARD_DELETE_CONFIRM_TITLE,
       message: CARD_DELETE_CONFIRM_MESSAGE,
       confirmLabel: "Delete",
       tone: "danger",

@@ -266,6 +266,7 @@ describe("a DANGER confirm may never be suppressible", () => {
         <button
           onClick={() =>
             void confirm({
+              title: "Delete item?",
               message: "Delete it?",
               confirmLabel: "Delete",
               tone: "danger",

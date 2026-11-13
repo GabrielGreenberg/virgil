@@ -82,8 +82,8 @@ describe("useConfirmDialog queues overlapping asks (task 1447)", () => {
     let a!: ReturnType<typeof track<boolean>>;
     let b!: ReturnType<typeof track<boolean>>;
     act(() => {
-      a = track(host.api().confirm({ message: "First ask" }));
-      b = track(host.api().confirm({ message: "Second ask" }));
+      a = track(host.api().confirm({ title: "Ask", message: "First ask" }));
+      b = track(host.api().confirm({ title: "Ask", message: "Second ask" }));
     });
     // The FIRST ask is on screen; the second waits behind it.
     expect(screen.getByText("First ask")).toBeTruthy();
@@ -104,8 +104,9 @@ describe("useConfirmDialog queues overlapping asks (task 1447)", () => {
   it("a chained danger confirm mounts a FRESH dialog (keyed per ask)", async () => {
     const host = mountConfirmHost();
     act(() => {
-      void host.api().confirm({ message: "Ordinary ask" });
+      void host.api().confirm({ title: "Ask", message: "Ordinary ask" });
       void host.api().confirm({
+        title: "Delete?",
         message: "Destroy it?",
         tone: "danger",
         confirmLabel: "Delete",
@@ -126,9 +127,9 @@ describe("useConfirmDialog queues overlapping asks (task 1447)", () => {
     let a!: ReturnType<typeof track<boolean>>;
     let b!: ReturnType<typeof track<string>>;
     act(() => {
-      a = track(host.api().confirm({ message: "Yes or no" }));
+      a = track(host.api().confirm({ title: "Ask", message: "Yes or no" }));
       b = track(
-        host.api().choose({ message: "Keep or revert", secondaryLabel: "Revert" }),
+        host.api().choose({ title: "Ask", message: "Keep or revert", secondaryLabel: "Revert" }),
       );
     });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -144,9 +145,9 @@ describe("useConfirmDialog queues overlapping asks (task 1447)", () => {
     let a!: ReturnType<typeof track<boolean>>;
     let b!: ReturnType<typeof track<string>>;
     act(() => {
-      a = track(host.api().confirm({ message: "Open ask" }));
+      a = track(host.api().confirm({ title: "Ask", message: "Open ask" }));
       b = track(
-        host.api().choose({ message: "Queued ask", secondaryLabel: "Other" }),
+        host.api().choose({ title: "Ask", message: "Queued ask", secondaryLabel: "Other" }),
       );
     });
     host.unmount();

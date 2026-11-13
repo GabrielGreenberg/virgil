@@ -500,7 +500,8 @@ export interface ConfirmDestructiveContext {
  *  kept React-free so this module stays import-free of UI. The
  *  dispatcher widens it to the full `ConfirmOptions` at call time. */
 export interface ConfirmDescriptor {
-  title?: string;
+  /** Required — the dialog's accessible name (task 1609). */
+  title: string;
   message: string;
   tone?: "default" | "danger";
   confirmLabel?: string;

@@ -88,6 +88,8 @@ function isAiAuthored(rec: Record<string, unknown>): boolean {
  *  (`usePanelCardTryDelete`), the margin marker (`deleteMarginItem`), the
  *  lifecycle runner — reads this string, so the question cannot drift by door. */
 export const CARD_DELETE_CONFIRM_MESSAGE = "This item has text. Delete it?";
+/** Its title — the dialog's accessible name (task 1609), read by the same doors. */
+export const CARD_DELETE_CONFIRM_TITLE = "Delete item?";
 
 /**
  * True iff the card has user-authored content worth warning about before
