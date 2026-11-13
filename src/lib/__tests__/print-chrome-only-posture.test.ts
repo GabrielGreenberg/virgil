@@ -69,7 +69,7 @@ import {
   tagEnd,
   REPO_ROOT,
 } from "./_source-scan";
-import { CHROME_ONLY_CLASS, chromeOnly } from "@/lib/view-only-chrome";
+import { CHROME_ONLY_CLASS, CHROME_ONLY_PRIMITIVES, chromeOnly } from "@/lib/view-only-chrome";
 import {
   nodeViewPopulation,
   vanillaNodeViewPopulation,
@@ -311,7 +311,7 @@ function jsxHits(rel: string): JsxHit[] {
     const end = elementEnd(src, m.index, close, name);
     const shaped: string[] = [];
     if (!ROOT_TAGS.has(name)) {
-      if (AFFORDANCE_TAGS.has(name)) shaped.push(`<${name}>`);
+      if (AFFORDANCE_TAGS.has(name) || name in CHROME_ONLY_PRIMITIVES) shaped.push(`<${name}>`);
       if (/\bon(?:Click|MouseDown|PointerDown|DoubleClick|KeyDown)\s*=/.test(tag)) shaped.push("handler");
       if (/\brole=["']button["']/.test(tag)) shaped.push("role=button");
       // `describedHint(…)` is the same hover hint through its door (task 1438).
@@ -344,6 +344,8 @@ function reactUncovered(): string[] {
     for (const h of hits) {
       if (h.shaped.length === 0) continue;
       if (/\bchromeOnly\s*\(/.test(h.tag)) continue;
+      // A shared primitive stamps its OWN element (CHROME_ONLY_PRIMITIVES).
+      if (h.name in CHROME_ONLY_PRIMITIVES) continue;
       if (stamped.some((s) => s.start < h.start && h.end <= s.end)) continue;
       if (h.classes.some((c) => c in DOCUMENT_CONTENT_CLASSES)) continue;
       out.push(`${rel}:${h.line} <${h.name} …> [${h.shaped.join(", ")}] classes=${JSON.stringify(h.classes)}`);
@@ -478,7 +480,9 @@ function vanillaUncovered(): string[] {
 function stampedClasses(): Set<string> {
   const out = new Set<string>();
   for (const rel of POPULATION.react) {
-    for (const h of jsxHits(rel)) if (/\bchromeOnly\s*\(/.test(h.tag)) h.classes.forEach((c) => out.add(c));
+    for (const h of jsxHits(rel)) {
+      if (/\bchromeOnly\s*\(/.test(h.tag) || h.name in CHROME_ONLY_PRIMITIVES) h.classes.forEach((c) => out.add(c));
+    }
   }
   for (const rel of POPULATION.vanilla) {
     for (const h of domHits(rel)) if (h.stamped) h.classes.forEach((c) => out.add(c));
@@ -543,7 +547,9 @@ describe("the chrome-only census — population", () => {
     const hits = jsxHits("src/components/FigureBlockNodeView.tsx");
     const shapedOf = (cls: string) =>
       hits.filter((h) => h.classes.includes(cls)).flatMap((h) => h.shaped);
-    expect(shapedOf("figure-empty-cta")).toContain("<button>");
+    // Task 1593 moved it onto the shared primitive; the scanner reads the
+    // primitive's name as the affordance (CHROME_ONLY_PRIMITIVES, task 1599).
+    expect(shapedOf("figure-empty-cta")).toContain("<Button>");
     expect(shapedOf("figure-empty-hint").join(" ")).toMatch(/copy/);
     expect(shapedOf("figure-placeholder").join(" ")).toMatch(/copy/);
     expect(shapedOf("figure-error").join(" ")).toMatch(/copy/);
@@ -557,6 +563,24 @@ describe("the chrome-only census — population", () => {
     expect(loz.filter((h) => h.classes.includes("figure-annotation-delete")).flatMap((h) => h.shaped)).toContain(
       "<button>",
     );
+  });
+});
+
+describe("the chrome-only census — shared chrome primitives (task 1599)", () => {
+  // The table lets a NodeView render `<Button>` with no stamp of its own; it
+  // may only say so while the primitive really stamps the element it renders.
+  it.each(Object.entries(CHROME_ONLY_PRIMITIVES))("%s stamps chromeOnly() on what it renders", (name, rel) => {
+    expect(existsSync(join(REPO_ROOT, rel)), `${rel} exists`).toBe(true);
+    const affordances = jsxHits(rel).filter((h) => h.shaped.length > 0);
+    expect(affordances.length, `${name} renders an affordance`).toBeGreaterThan(0);
+    const bare = affordances.filter((h) => !/\bchromeOnly\s*\(/.test(h.tag));
+    expect(bare.map((h) => `${rel}:${h.line} <${h.name}>`)).toEqual([]);
+  });
+
+  it("the figure empty state renders the primitive — and is covered by it, not by a callsite stamp", () => {
+    const hits = jsxHits("src/components/FigureBlockNodeView.tsx").filter((h) => h.name === "Button");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((h) => !/\bchromeOnly\s*\(/.test(h.tag))).toBe(true);
   });
 });
 
@@ -651,7 +675,10 @@ describe("the print block carries ONE rule for the marker", () => {
     const byName: string[] = [];
     for (const cls of stampedClasses()) {
       for (const r of rules) {
-        if (new RegExp(`\\.${cls}(?![\\w-])`).test(r[1]) && /display\s*:\s*none/.test(r[2])) {
+        // Escaped: a primitive's template-literal className scans to tokens
+        // like `?` (task 1599), which unescaped would match every selector.
+        const esc = cls.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`\\.${esc}(?![\\w-])`).test(r[1]) && /display\s*:\s*none/.test(r[2])) {
           byName.push(cls);
         }
       }

@@ -207,3 +207,20 @@ export const CHROME_ONLY_CLASS = "virgil-chrome-only";
 export function chromeOnly(cls: string): string {
   return cls ? `${cls} ${CHROME_ONLY_CLASS}` : CHROME_ONLY_CLASS;
 }
+
+/**
+ * The shared chrome PRIMITIVES — components that stamp `chromeOnly()` on their
+ * OWN rendered element, so every caller is chrome-only by construction (task
+ * 1599; the card primitives' task-1114 precedent, one level down). A NodeView
+ * that renders `<Button>` therefore needs no per-callsite stamp, and moving a
+ * raw `<button>` onto the primitive (task 1593's figure empty state, the whole
+ * field-chrome convergence) never re-opens the print census.
+ *
+ * `print-chrome-only-posture.test.ts` READS this table: a JSX tag named here
+ * is an affordance AND covered, and the census fails if a listed file stops
+ * stamping its element — so the table cannot claim a primitive that prints.
+ * A primitive that may render DOCUMENT content must never be listed.
+ */
+export const CHROME_ONLY_PRIMITIVES: Readonly<Record<string, string>> = {
+  Button: "src/components/Button.tsx",
+};

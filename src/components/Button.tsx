@@ -6,12 +6,13 @@
 // storage backend: so a component that only wanted a button (the Library's
 // folder gates, the collab pen action, the bib picker's raw-commit) dragged
 // `@/lib/storage` into every test that rendered it, and each such test had to
-// mock storage for a BUTTON. This module imports nothing but React and the
-// focus-indicator door. `panel-primitives` re-exports it, so existing callers
+// mock storage for a BUTTON. This module imports nothing but React, the
+// focus-indicator door and the chrome-only leaf. `panel-primitives` re-exports it, so existing callers
 // are unchanged; a new caller imports from here.
 
 import { type ButtonHTMLAttributes, forwardRef } from "react";
 import { withFocusIndicator } from "./focus-indicator";
+import { chromeOnly } from "@/lib/view-only-chrome";
 
 /* ── Button primitive ──────────────────────────────────────────────
    Five variants, three sizes, codified in src/STYLE_GUIDE.md ("Buttons"),
@@ -82,13 +83,15 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { variant = "secondary", size = "md", type = "button", className, ...rest },
   ref,
 ) {
+  // A Button is editor chrome wherever it renders: stamped here, ONCE, so it
+  // never reaches paper (CHROME_ONLY_PRIMITIVES, task 1599).
   return (
     <button
       ref={ref}
       type={type}
       {...rest}
       className={withFocusIndicator(
-        `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""}`,
+        chromeOnly(`${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""}`),
       )}
     />
   );

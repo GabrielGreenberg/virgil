@@ -34,6 +34,8 @@ import { fileURLToPath } from "node:url";
 // math the runtime applies. Both are import-free leaves under src/lib.
 import {
   PREF_CSS_BLOCK_END,
+  PREF_CSS_BLOCK_HAND_EDIT_HINT,
+  foreignPrefCssDeclarations,
   PREF_CSS_ROWS,
   renderPrefCssBlockBody,
   renderPrefCssSeed,
@@ -413,6 +415,16 @@ function planCssBlock(seed) {
   const parts = splitPrefCssBlock(cur);
   if (!parts) {
     throw new Error("globals.css missing a PROMOTE-DEFAULTS-START / -END marker pair");
+  }
+  // A token no table row writes is a hand edit; re-rendering would delete it
+  // (task 1599). Refuse before `main` has written anything.
+  const foreign = foreignPrefCssDeclarations(parts.body);
+  if (foreign.length > 0) {
+    throw new Error(
+      `globals.css's PROMOTE-DEFAULTS block declares ${foreign.join(", ")}, which no ` +
+        `pref-css-table row writes — re-rendering would delete it. ${PREF_CSS_BLOCK_HAND_EDIT_HINT} ` +
+        `(A token retired from the table: delete its line by hand.)`,
+    );
   }
   // Rebuild the body between the START comment and the END marker. The
   // indent captured from START is reused for END so re-runs don't drift.
