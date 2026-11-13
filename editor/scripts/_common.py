@@ -1626,7 +1626,7 @@ def source_repo_root() -> Path | None:
 #: `revert` is the app's own request-revert door; `apply` / `card-op` are the
 #: `apply_response` fallbacks for a write that names no responder. `session`
 #: is the capture cue for a GENERAL dev observation no single skill owns
-#: (reflect.md step 1; task 1430) — naming the nearest skill instead would
+#: (reflect.md "When this runs" and "Args"; task 1430) — naming the nearest skill instead would
 #: mis-attribute it. Their memos are still wanted — they just have no
 #: `editor/skills/<name>.md` to hash.
 MECHANICAL_WRITERS = frozenset({"revert", "apply", "card-op", "session"})

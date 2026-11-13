@@ -36,8 +36,8 @@ shape, the same reader, and the same boundary guard — built from two real
 consumers, not duplicated. What stays **specialized to `iterate`**: it
 synthesizes its own input + sandboxes it, and it lands every non-refused edit
 **inline in the working tree** (synchronous, no commit — the maintainer watches
-`git diff editor/skills/`). It does **not** take on `dream`'s autonomous
-acts-on-branch / propose-via-worktree machinery — see
+`git diff editor/skills/`). It does **not** take on `dream`'s output channel
+(the dream edits nothing — it files each finding as a task, task 522) — see
 [The boundary guard](#the-boundary-guard-chip-19) below.
 
 ## Args
@@ -404,8 +404,11 @@ into one of three modes, and iterate honors each:
 | **surface** | `proposes`-class: cross-skill / `.py` / manifest / contract-adjacent / structural | apply inline **and flag** for a deliberate separate pass — **no worktree** |
 | **blocked** | `refused`: an `editor/AGENTS.md` Don't-rule, the `apply_response.py` contract shape, or the `VIRGIL_DEV` gate | **do NOT apply** — record the boundary + surface it |
 
-**The autonomy layer is `dream`-only.** `dream` runs unattended overnight, so its
-`proposes` verdict means *stage it in a `dream/<date>` worktree for review*.
+**The task-filing channel is `dream`-only.** `dream` runs unattended overnight, so
+it edits nothing: every verdict becomes a task it files (`acts` and `proposes`
+both go to the worker's `incoming/` queue, a boundary refusal or an own-rulebook
+change to `blocked/` — owner: `dream_land.task_route`; see [dream.md](dream.md)
+step 4).
 iterate runs **synchronously with the maintainer watching the diff**, so it lands
 every non-refused edit **inline in the working tree** and uses `surface` only to
 *flag* — it never stands up a worktree and never commits. iterate adopts
@@ -440,13 +443,13 @@ through the one guard. See [editor/dev/README.md](../dev/README.md).
 - Never run a skill against the real fixture; sandboxes are mandatory.
 - Memos live at `<iterations_root>/<date>-<skill>/<case-slug>-attempt<k>.md` (`iterations_root()` — the primary checkout's `editor/dev/iterations/`, even from a worktree; open the absolute path the writer's `Done:` line prints), written by `dev_loop.py write-iteration-memo` in the **unified shape**. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is the cowork-memo / paper-note stream — notes *about a paper*, not about Virgil's skill markdown).
 - **Route every skill edit through `dev_loop.py route-edits` (the guard) before applying it.** Honor `blocked` (refused — never apply, never work around the boundary); flag `surface` (proposes — apply inline but surface for scrutiny); apply `acts` inline. The three boundaries are law.
-- **No worktree, no commit.** iterate is synchronous + inline; the propose-via-worktree autonomy is `dream`'s, not iterate's.
+- **No worktree, no commit.** iterate is synchronous + inline; filing findings as tasks for an unattended worker is `dream`'s channel, not iterate's.
 - Loop driver edits skill markdown directly. Runner subagents never edit `editor/skills/`; they only write their critique JSON (in the sandbox) and call the writer script.
 - One seam, no fork: reuse `reflect._parse_memo` (the reader) and `dream_land` (the guard) via `dev_loop` — never write a second parser or a parallel routing rule.
 
 ## What this skill does NOT do
 
-- It does not commit, and it does not stage edits in a worktree. The user inspects `git diff editor/skills/` and commits when satisfied. (Worktree-staging of `proposes`-class changes is `dream`'s autonomy model — not iterate's.)
+- It does not commit, and it does not stage edits in a worktree. The user inspects `git diff editor/skills/` and commits when satisfied. (No dev-loop skill stages edits in a worktree: the dream files tasks, and the task worker owns worktrees.)
 - It does not cross the three boundaries. A `refused` edit is recorded and surfaced, never applied.
 - It does not run against the user's real paper folders. The fixture is always `samples/annotation-history`.
 - It does not retry skills that hit the per-skill cap. Re-invoke `/editor/iterate-virgil-editor <skill-name>` to take another pass.
