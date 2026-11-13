@@ -9,6 +9,7 @@ brace-matching scan, which is enough for pretty-printing and surgical
 field updates.
 
 Usage:  python3 bib_resolve.py <docPath> <bibKey>
+        python3 bib_resolve.py <docPath> --bibliography-anchor
 
 Emits:
   { "bibKey": "...",
@@ -17,6 +18,14 @@ Emits:
     "fields": { "title": "...", "author": "..." },
     "annotation": "<user note text or null>"
   }
+
+`--bibliography-anchor` answers "where in the paper does the bibliography
+sit?" instead: `{ "anchor": "<uuid>" | null, "tex": "<doc-relative path>" }`
+— the `%!v:` uuid of the block holding `\\bibliography{…}` /
+`\\printbibliography`, the paragraph a whole-bibliography finding (sync-bib's
+review report, task 1595) anchors its card at. `null` when the paper prints no
+bibliography or the block carries no uuid yet; the caller then has no anchor
+and must carry the finding in its run notification instead.
 
 For deeper Crossref/OpenAlex lookups, skills should call
 `library/scripts/bib_auth.py` directly — that module already handles the
@@ -29,7 +38,15 @@ import json
 import re
 import sys
 
-from _common import die, find_bib_file, read_json, resolve_doc, sidecar
+from _common import (
+    NODE_UUID_REGEX,
+    die,
+    find_bib_file,
+    find_tex_file,
+    read_json,
+    resolve_doc,
+    sidecar,
+)
 
 
 # Match `name = ` after a comma. We prepend a virtual comma to the entry
@@ -355,10 +372,36 @@ def parse_fields(entry: str) -> dict:
     return fields
 
 
+# A bibliography-printing command at the START of a line (after indentation),
+# so a commented-out `% \bibliography{…}` never counts.
+_BIBLIOGRAPHY_CMD = re.compile(r"(?m)^[ \t]*\\(?:bibliography|printbibliography)(?![A-Za-z])")
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+
+
+def bibliography_anchor(tex: str) -> str | None:
+    """The `%!v:` uuid of the block that prints the bibliography, or None.
+    The block's uuid is the first marker at or after the command within the
+    same blank-line-delimited slab (the `marker_paragraph_ids` rule) — the
+    LAST such command wins, since that is where the reader meets the list."""
+    hits = list(_BIBLIOGRAPHY_CMD.finditer(tex))
+    if not hits:
+        return None
+    m = hits[-1]
+    blank = _BLANK_LINE.search(tex, m.end())
+    u = NODE_UUID_REGEX.search(tex, m.end(), blank.start() if blank else len(tex))
+    return u.group(1) if u else None
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
-        die("usage: bib_resolve.py <docPath> <bibKey>")
+        die("usage: bib_resolve.py <docPath> <bibKey> | <docPath> --bibliography-anchor")
     doc = resolve_doc(argv[1])
+    if argv[2] == "--bibliography-anchor":
+        tex = find_tex_file(doc)
+        text = tex.read_text(encoding="utf-8", errors="replace")
+        print(json.dumps({"anchor": bibliography_anchor(text),
+                          "tex": str(tex.relative_to(doc))}, indent=2))
+        return 0
     key = argv[2].strip()
     if not key:
         die("bibKey is empty")

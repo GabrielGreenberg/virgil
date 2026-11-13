@@ -2542,7 +2542,7 @@ def cmd_notify(doc: Path, summary: str, skill: str) -> dict:
     """Close a Task-less RUN: append the `ai-request-complete` notification and
     bump version.txt, both DEFERRED, committed together under the pen (task
     1313). A skill whose writes all went through other doors (sync-bib-to-library:
-    the library shims, rename_citekey, a review note) still owes the app its
+    the library shims, rename_citekey) still owes the app its
     "run finished" signal — and before, it reached for two unpenned
     `_common` writers through a dotted import that only resolved in the
     source repo. This is that signal's one door: no Task is touched (a run is
