@@ -71,8 +71,10 @@ from _tools import (
     paper_folder,
     read_catalog,
     RelocateCollision,
+    SOURCE_FORMAT_PRIORITY,
     read_master_bib,
     resolve_bib_state,
+    resolve_paper_source,
     safe_move,
     update_master_bib_entry,
     write_catalog,
@@ -86,6 +88,33 @@ from _tools import (
 # `bib-parse-failed`, `bib-master-unreadable`, `error`, …) parks it under
 # `_pending/`. `/library/triage-pdf` cites this set rather than counting it.
 BIB_SOURCE_CLEAN_STATUSES: frozenset[str] = frozenset({"bib-imported", "bib-ignored"})
+
+
+def supersede_verdict(library: Path, citekey: str, ext: str) -> tuple[str, str]:
+    """What a new `<citekey>.<ext>` source does to a paper that is already HELD
+    in another format (task 1601). Returns `(queue_kind, held_ext)`:
+
+    - `("index", "")`  — nothing held yet: the ordinary new-source flow.
+    - `("reindex", held)` — the new format OUTRANKS the held one in
+      `_tools.SOURCE_FORMAT_PRIORITY` (the indexer's own pick order): it is
+      placed alongside and the paper is re-extracted from it; the old source
+      stays on disk as an archive.
+    - `("", held)` — the new format ranks LOWER: it is kept alongside as an
+      archive and nothing is queued, because the indexer would re-extract
+      from the held source anyway.
+
+    A SAME-format holding is not a supersede — it is a collision, which the
+    move door (`safe_move(on_collision="refuse")`) refuses. The rule lives
+    here rather than in `/library/triage-pdf`'s prose so a drop gets the same
+    verdict from either triage skill."""
+    held = resolve_paper_source(library, citekey)
+    if held is None or ext not in SOURCE_FORMAT_PRIORITY:
+        return "index", ""
+    held_ext = held[1]
+    if held_ext == ext:
+        return "index", ""
+    rank = SOURCE_FORMAT_PRIORITY.index
+    return ("reindex" if rank(ext) < rank(held_ext) else ""), held_ext
 
 # ── The notification vocabulary ───────────────────────────────────────────
 #
@@ -784,6 +813,10 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
             bib_state="unverified",
         )
 
+    # Supersede (task 1601): decided BEFORE the move, while the held source
+    # is still the only one on disk.
+    queue_kind, held_ext = supersede_verdict(library, citekey, ext)
+
     # Move file to papers/<citekey>/<citekey>.<ext>.
     paper_dir = paper_folder(library, citekey)
     paper_dir.mkdir(parents=True, exist_ok=True)
@@ -797,15 +830,20 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
     # Write queue entry. The file has already moved, so a refused request
     # must be SAID — otherwise the paper sits in papers/ never indexed while
     # the run reports success (task 618).
-    queue_result = _write_queue_entry(library, citekey, kind="index")
     triaged_summary = f"Triaged {filename} → {citekey} ({entry_type})"
     queue_note = ""
-    if queue_result in REFUSED_RESULTS:
-        queue_note = (
-            f" — index NOT queued (slot {queue_result}); "
-            f"re-queue {citekey} for indexing once the slot is free"
-        )
-        triaged_summary += queue_note
+    if queue_kind:
+        queue_result = _write_queue_entry(library, citekey, kind=queue_kind)
+        if queue_result in REFUSED_RESULTS:
+            queue_note = (
+                f" — {queue_kind} NOT queued (slot {queue_result}); "
+                f"re-queue {citekey} for indexing once the slot is free"
+            )
+    if held_ext and queue_kind:
+        queue_note = f" — supersedes the held .{held_ext} (reindex queued; .{held_ext} kept as archive)" + queue_note
+    elif held_ext:
+        queue_note = f" — kept as archive; the held .{held_ext} source remains canonical (nothing queued)"
+    triaged_summary += queue_note
     if duplicate_of:
         triaged_summary += f" [duplicateOf {duplicate_of} — flagged for review]"
     append_inbox_item(library, {
@@ -814,8 +852,14 @@ def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[s
         "at": _now(),
         **({"duplicateOf": duplicate_of} if duplicate_of else {}),
     })
+    if held_ext and not queue_kind:
+        status = "archived"
+    elif "NOT queued" in queue_note:
+        status = "triaged-unqueued"
+    else:
+        status = "triaged"
     result = {
-        "status": "triaged-unqueued" if queue_note else "triaged",
+        "status": status,
         "summary": f"{filename} → {citekey} ({entry_type}){queue_note}",
     }
     if duplicate_of:

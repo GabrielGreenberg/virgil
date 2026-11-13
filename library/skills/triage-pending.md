@@ -219,7 +219,7 @@ directory).
    - **whole-handbook** → moves file to `unsorted/_pending/`,
      emits a `triage-needs-chapter-info` notification (a record only —
      nothing in the app prompts for the chapter info, so list these files
-     in your reply and say what to supply; see `/library/triage-pdf` step 5)
+     in your reply and say what to supply; see `/library/triage-pdf`'s reply format)
    - **variant-copy** + `existingCitekey` → archives under
      `papers/<existingCitekey>/variants/<filename>`, no new bib entry
    - **bib-only** → upserts the entry into `master.bib` with its
