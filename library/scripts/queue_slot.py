@@ -105,11 +105,15 @@ CLI (the door for skill prompts that enqueue work)::
     python3 queue_slot.py claim  --kind triage --file "Smith 2020.pdf"
     python3 queue_slot.py retire --kind triage --file "Smith 2020.pdf" --requested-at <claimed>
     python3 queue_slot.py pending [--native] [--count]
+    python3 queue_slot.py claimable [--native] [--count]
     python3 queue_slot.py outstanding [--native] [--count]
 
 `pending` prints the requests WAITING to be picked up (`status: requested`)
 as JSON lines (`{"kind", "citekey", "file", "status"}`), or with `--count` just
-their number. `outstanding` prints the work NOT YET FINISHED — waiting,
+their number. `claimable` prints what a worker may CLAIM now (`is_claimable`:
+waiting, a `failed` retry a released run left, an abandoned claim) — the
+listing a skill that finds its own work uses (task 1598), so a released
+request is retried rather than invisible. `outstanding` prints the work NOT YET FINISHED — waiting,
 failed-and-retryable, or claimed and being worked (contract item 11).
 `--native` limits either to the kinds `drain_queue.py` processes itself
 (`DRAIN_NATIVE_KINDS`); `outstanding --native --count` is the count a
@@ -749,6 +753,16 @@ def pending_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str,
     return _requests_where(qdir, lambda d: d.get("status") == PENDING_STATUS, native_only)
 
 
+def claimable_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str, Any]]:
+    """The requests a worker may CLAIM right now (`is_claimable` — the one
+    gate `claim_request` applies): waiting ones, `failed` retries a released
+    run left behind, and abandoned claims. What a skill that finds its own
+    work lists (task 1598) — `pending` alone misses every released request,
+    so a retry promised by `release` would never come."""
+    now = datetime.now(timezone.utc).timestamp()
+    return _requests_where(qdir, lambda d: is_claimable(d, now), native_only)
+
+
 def outstanding_requests(qdir: Path, *, native_only: bool = False) -> list[dict[str, Any]]:
     """The work NOT YET FINISHED (contract item 11): every request a worker
     may still claim plus every live claim (`is_outstanding`). Zero means no
@@ -801,6 +815,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                      help="one line saying why the run stopped (stored as lastError)")
     for name, help_ in (
         ("pending", "list (or count) the requests waiting to be picked up"),
+        ("claimable", "list (or count) the requests a worker may claim now: "
+                      "waiting, failed-and-retryable, or an abandoned claim"),
         ("outstanding", "list (or count) the work not yet finished: "
                         "waiting, failed-and-retryable, or being worked"),
     ):
@@ -812,8 +828,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = ap.parse_args(argv)
     library = library_root_or_exit(args.library)
 
-    if args.cmd in ("pending", "outstanding"):
-        lister = pending_requests if args.cmd == "pending" else outstanding_requests
+    listers = {"pending": pending_requests, "claimable": claimable_requests,
+               "outstanding": outstanding_requests}
+    if args.cmd in listers:
+        lister = listers[args.cmd]
         items = lister(queue_dir(library), native_only=args.native)
         if args.count:
             print(len(items))

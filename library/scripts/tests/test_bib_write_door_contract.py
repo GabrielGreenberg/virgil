@@ -222,6 +222,11 @@ def test_every_skill_invocation_captures_and_branches_on_the_exit_code():
         for code in ("2", "7"):
             assert re.search(rf"\*\*{code}\*\*", tail), \
                 f"{where} — names no branch for exit {code}"
+        # The epilog's catch-all: any other code (1 = a crash) wrote nothing
+        # the shim vouches for — report, do not retire (task 1598: a table
+        # without it let a crash fall through to retiring the request).
+        assert re.search(r"anything\s+else", tail), \
+            f"{where} — no catch-all row (any other code = crash, do not retire)"
         if "--base-raw-file" in block:
             assert re.search(r"\*\*5\*\*", tail), f"{where} — no branch for held (5)"
         if "--merge-existing" in block:

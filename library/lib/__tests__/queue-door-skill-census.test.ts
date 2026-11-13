@@ -31,6 +31,12 @@
  *      deep-index converged-resume short-circuit named neither, so a
  *      re-requested finished paper sat `running` and was re-dispatched by
  *      every drain, forever.
+ *   7. no skill LISTS the queue with `queue_slot.py pending` (task 1598).
+ *      A skill lists to find work (`claimable` — the `is_claimable` gate
+ *      `claim` applies, so a request an earlier run RELEASED as `failed`
+ *      is retried) or to wait (`outstanding`). `pending` is
+ *      `status: requested` only: ai-requests found its work with it, so
+ *      every request it released was never seen again.
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
@@ -154,5 +160,13 @@ describe("CENSUS: skills retire queue requests only through the claimed door (ta
     }
     expect(offenders).toEqual([]);
     expect(tables).toBeGreaterThan(0);
+  });
+
+  it("no skill lists the queue with `pending` — work is found `claimable` (task 1598)", () => {
+    const offenders = all
+      .filter(({ text }) => /queue_slot\.py pending\b/.test(text))
+      .map((s) => s.name);
+    expect(offenders).toEqual([]);
+    expect(all.some(({ text }) => /queue_slot\.py claimable\b/.test(text))).toBe(true);
   });
 });
