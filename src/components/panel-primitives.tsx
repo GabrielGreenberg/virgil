@@ -1403,7 +1403,7 @@ export function CardBodyTitle({
 
 /* ── Title input (par-title styling) ─────────────────────────────── */
 
-const TITLE_CLASS = "min-w-0 max-w-full bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
+const TITLE_CLASS = "card-title-focus min-w-0 max-w-full bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
 /** A card's title stays ink in every kind; the kind is the dot's job. */
 const CARD_TITLE_INK = "var(--ink-strong)";
 

@@ -2686,8 +2686,12 @@ compile error). The **numeric steppers** (`SizeStepper`,
 `PanelTextSizeRow`) are NOT exceptions: they are ordinary fields with
 `tabular-nums`, and they dropped their rings to match this spec.
 
-Card title input is borderless except a `border-bottom: 1px solid
-var(--ink-strong)` on focus, transparent bg, sans 0.78rem weight 500.
+Card title input is borderless except a 1px `var(--ink-strong)` underline
+on focus — drawn as an inset `box-shadow`, so focus never shifts the card
+(one rule in `globals.css`, `.card-title-input` / `.card-title-focus`, task
+1611) — transparent bg, sans 0.78rem weight 500. Its width follows its text
+and is re-measured on every completed font wave (`autoSizeInput` subscribes
+to `onFontReady`), so a title mounted before its font loads is not clipped.
 Don't reuse this style. (It is already its own primitive, `CardTitleInput`
 — the pattern that made the missing ordinary one conspicuous.)
 

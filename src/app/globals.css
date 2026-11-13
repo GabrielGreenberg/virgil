@@ -2637,6 +2637,17 @@ textarea {
   width: 100%;
   display: block;
 }
+/* The focus underline STYLE_GUIDE "Inputs" promises for a card title (task
+ * 1611) — ONE rule for both title fields: the expanded card's
+ * `.card-title-input` (CardBodyTitle) and the header's `CardTitleInput`,
+ * which carries `.card-title-focus` in its `TITLE_CLASS`. Both are otherwise
+ * chromeless (`outline: none`), so without this a keyboard-focused title
+ * showed only a caret. Drawn as an INSET box-shadow, not a border, so taking
+ * focus never adds a pixel of height and the card does not shift. */
+.card-title-input:focus-visible,
+.card-title-focus:focus-visible {
+  box-shadow: inset 0 -1px 0 var(--ink-strong);
+}
 /* Static title line on a COLLAPSED card (backlog #15) — same dialect as
  * .card-title-input, minus the input chrome (no underline, ellipsized). */
 .card-title-collapsed {
