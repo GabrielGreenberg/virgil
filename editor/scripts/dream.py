@@ -8,7 +8,7 @@ to `<checkout>/editor/dev/memos`) as real skill invocations run under DEV
 mode.  This script is
 the deterministic half of the overnight pass that consumes them; the skill
 markdown (editor/skills/dream.md) is the agent-facing half — the agent does the
-cross-memo PATTERN DETECTION and the actual editing, this script does the
+cross-memo PATTERN DETECTION and files each finding, this script does the
 read-and-account work around it:
 
   select   gate on DEV → find the memos written since the last dream → parse
@@ -38,7 +38,7 @@ read-and-account work around it:
            that writes nothing.
 
 It does NOT decide a queue by itself — that is dream_land.task_route, over
-dream_land.classify_change (the shared landing-mode helper + the three-boundary
+dream_land.classify_change (the shared change classifier + the three-boundary
 guard).  It does NOT edit a skill, create a branch, or run a merge: since task
 522 the dream LANDS NOTHING.  The worker is the one executor; this script writes
 the task that asks it, and the digest that accounts for the night.
@@ -1028,7 +1028,7 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
               "extraSinkMemosInWindow", "unreachableMemos",
               "nightsSinceLastDigest", "nightsSinceReason",
               "acted", "proposed", "refused", "gates", "reflectOwed",
-              "bootstrap", "dreamSha"):
+              "bootstrap", "selfNote", "dreamSha"):
         v = fm[k]
         if isinstance(v, bool):
             v = "true" if v else "false"
@@ -1285,9 +1285,9 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
                f"refusal-patterns {len(lenses[LENS_REFUSAL])}")
     out.append("")
 
-    # Bootstrap --------------------------------------------------------------
-    out.append("## Bootstrap (the dream reflects on itself)")
-    boot = (report.get("bootstrap") or "").strip()
+    # Self-note --------------------------------------------------------------
+    out.append("## Self-note (the dream reflects on itself)")
+    boot = _self_note(report)
     out.append(boot if boot else
                "Reflect on this run via `/editor/reflect <docPath> dream -` "
                "AFTER this digest, so the next dream reads it (skill=dream memo).")
@@ -1391,11 +1391,19 @@ def _publish_report(text: str, iso: str, date_str: str) -> Path | None:
     return target
 
 
+def _self_note(report: dict) -> str:
+    """The agent's one free-text line on how the night went (step 8's input,
+    plus the gate-sweep verdict and any amended task id). `selfNote` since task
+    1608; `bootstrap` — the old name, which collided with select's first-dream
+    flag — is read as an alias for one release."""
+    return (report.get("selfNote") or report.get("bootstrap") or "").strip()
+
+
 def cmd_digest(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="dream.py digest")
     p.add_argument("--report", default=None,
                    help="the agent's qualitative entries (acted/proposed/refused/"
-                        "gates/bootstrap) as inline JSON or @file")
+                        "gates/selfNote) as inline JSON or @file")
     a = p.parse_args(argv)
     report = _load_report(a.report)
 
@@ -1425,7 +1433,11 @@ def cmd_digest(argv: list[str]) -> int:
         "proposed": len(report.get("proposed") or []),
         "refused": len(report.get("refused") or []),
         "gates": len(report.get("gates") or []),
-        "bootstrap": bool((report.get("bootstrap") or "").strip()),
+        # ONE meaning of `bootstrap` across select and digest: the first dream
+        # (no prior marker). The agent's free-text line is `selfNote` (task 1608
+        # — it used to be stamped here as `bootstrap`, true on nearly every night).
+        "bootstrap": marker is None,
+        "selfNote": bool(_self_note(report)),
         "dreamSha": _dream_sha(),
         "memoSinkPresent": _memo_sink_present(memos_root),
         # Which rung of the sink ladder answered — recorded durably for the

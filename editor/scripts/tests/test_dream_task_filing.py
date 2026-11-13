@@ -578,6 +578,16 @@ class DigestGatesBucket(_QueueCase):
         self.assertIn("reflectOwed: false", text)
         self.assertIn("reflect: skip", out)
 
+    def test_the_legacy_bootstrap_report_key_is_read_as_self_note(self):
+        """Task 1608: the report's free-text line is `selfNote`; the old name
+        `bootstrap` stays a read alias for one release, and the frontmatter's
+        `bootstrap` no longer echoes it (it means "first dream" only)."""
+        _, text = self.digest({"bootstrap": "legacy self line"})
+        self.assertIn("legacy self line", text)
+        self.assertIn("\nselfNote: true\n", text)
+        _, text = self.digest({"selfNote": "new self line"})
+        self.assertIn("new self line", text)
+
     def test_select_publishes_task_queue_present(self):
         r = subprocess.run([sys.executable, DREAM_PY, "select"],
                            capture_output=True, text=True, cwd=str(ROOT))

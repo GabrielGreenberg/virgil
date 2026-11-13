@@ -39,7 +39,9 @@ surgical per-skill patch — *within* the scope guard, the queue routing, and th
 three hard boundaries below (they are never weakened by this principle).
 
 The **night** half of the dev-dream loop. The day half — [`/editor/reflect`](reflect.md),
-chip 17 — drops a tiered memo into `editor/dev/memos/` after every skill that
+chip 17 — drops a tiered memo into the memo sink (`_common.memos_root`: pinned → synced
+`Virgil-Inbox/dev-loop/memos` → local; `dream.py paths memos` prints where it
+resolves, step 1's `memoSinkKind` which rung answered) after every skill that
 runs under DEV mode. This skill is the overnight pass that **consumes** those
 memos: read everything since the last dream, find the cross-memo patterns, and
 **file each one as a task** — ready work for the task worker, or a question for
@@ -123,8 +125,8 @@ to satisfy `reflect.py` — it is **not** the subject of the dream. Default it t
 ## The flow
 
 ```
-reconcile ─► read ─► detect ─► route ─► FILE ─► gate sweep ─► digest ─► reflect-on-self
-   §0        §1      §2      §4/§5     §3+§4       §6          §7          §8
+reconcile ─► read ─► detect ─► route ─► FILE + gate sweep ─► digest ─► reflect-on-self
+   §0        §1      §2      §3–§5          §6               §7          §8
 ```
 
 ### 0. Reconcile with the QUEUE FIRST
@@ -155,7 +157,7 @@ this step is a queue read and nothing else.
      refuses a task in `done/` (landed work is history — file a new task that
      names it). Never edit the file by hand; a sharper priority or a changed
      status is not an amendment, it is a question for the catcher. List each
-     amended id in the digest's `bootstrap` line.
+     amended id in the report's `selfNote` line (step 7).
   3. **Would it COLLIDE with a queued one?** Two tasks whose fixes touch the
      same seam is a real cost the worker pays serially. Prefer removing the
      collision **by construction** — file yours at a seam the other does not
@@ -196,7 +198,9 @@ This gates on DEV, finds the previous digest's high-water `marker`, selects
 every memo written **after** it (no prior digest → the bootstrap dream reads
 all of them), and emits one JSON blob:
 
-- `bootstrap` / `since` / `memoCount` / `marker` — the run's frame.
+- `bootstrap` / `since` / `memoCount` / `marker` — the run's frame (`bootstrap`
+  means ONE thing everywhere: this is the first dream, no prior marker — the
+  digest frontmatter's `bootstrap` says the same).
 - `flagged` — the `flagged` memos, **read these first**; `fixNow` is the subset
   on the fast-path (step 3).
 - `noted` — grouped by **skill → bucket** (a bucket that recurs across a skill's
@@ -635,7 +639,7 @@ of the old step 6 that survives whole, because it was never about landing:
 
 1. In the primary checkout on `main`: `npx tsc --noEmit` · `npx vitest run` ·
    every `editor/scripts/tests/test_*.py`. All three families, no shortcuts.
-2. **Green** → record it in the digest's `bootstrap` line and stop. The dream is
+2. **Green** → record it in the report's `selfNote` line and stop. The dream is
    the only thing that runs the full sweep unattended every night.
 3. **Red** → **attribute it before you file it.** A red gate is evidence about
    the TREE, and the honest artifact depends on whether you can say *which
@@ -691,11 +695,11 @@ which have no verdict. Every entry carries the **task** it was filed as:
                   "reason": "...", "memoRefs": ["..."] } ],
   "gates":    [ { "summary": "...", "gate": "vitest", "commit": "<sha or empty>",
                   "task": "2026-09-01-017", "queue": "incoming" } ],
-  "bootstrap": "<one line on how this dream went — feeds step 8>" }
+  "selfNote": "<one line on how this dream went — feeds step 8>" }
 ```
 
-It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored, the sibling of
-`memos/` — a reader OUTSIDE the dream, such as the catcher's nightly-digest
+It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored and LOCAL —
+not beside the synced memo sink — a reader OUTSIDE the dream, such as the catcher's nightly-digest
 step, finds this root through `dream.py paths digests` rather than by spelling
 it: it has moved twice and the prose copy went stale both times, task 538),
 recording the four buckets, the counts by tier/skill/lens, and the
@@ -718,7 +722,7 @@ there alone**. Everything actionable keeps flowing through `~/virgil-tasks/`,
 which is the one surface the human checks. A machine with no synced inbox simply
 gets no copy; the durable digest has already landed either way.
 
-### 8. Reflect on this dream (bootstrap / recursion)
+### 8. Reflect on this dream (self-note / recursion)
 
 The dream is a Virgil skill, so it reflects on itself like any other —
 **after** the digest, so the memo lands past this run's marker and the **next**
@@ -748,7 +752,7 @@ true **and** this run filed **nothing** in any of the four buckets (a pure
 no-op), do **not** write a step-8 memo — a self-reflection with no real skill signal to
 reflect on is exactly what perpetuates the infinite self-referential recursion
 (dream reads its own note → no-ops → writes another note → …). Still write the
-digest (step 7, always) and flag the cadence in its `bootstrap` line so the next
+digest (step 7, always) and flag the cadence in its `selfNote` line so the next
 dream reads zero new memos until a **real** skill runs. Reflect normally
 whenever the run did real work (any bucket > 0, a gate-only night included) —
 even in a self-referential window — since then there is something worth
@@ -762,12 +766,13 @@ says `reflect: owed` or `reflect: skip (no-signal no-op)` (frontmatter
 precursor: it injects test cases, runs a skill in a sandbox, reads a `[block]`/
 `[nice-to-have]` critique, and edits the skill markdown in a tight loop. `dream`
 is its **ambient, real-input, cross-skill, batch** generalization — same
-read-a-critique → edit-skill spine, but over passively-captured real memos.
+read-a-critique → act-on-it shape, but over passively-captured real memos —
+and its act is FILING a task (step 6), never an edit.
 
 As of **chip 19** the two are **one engine**, sharing exactly the
 **genuinely-common** seams: the memo reader (`reflect._parse_memo`), the
-critique-memo shape, and this skill's landing-mode helper + boundary guard
-(`dream_land.py`). `iterate` routes its skill edits through `dream_land` via
+critique-memo shape, and the change classifier + boundary guard
+(`dream_land.py` — which, like this skill, lands nothing). `iterate` routes its skill edits through `dream_land` via
 [`dev_loop.py`](../scripts/dev_loop.py) (the shared read→derive→route spine) and
 writes its critique in the same unified memo shape — `iterations/` and `memos/`
 are now two *labeled* streams of one shape, not two shapes.
@@ -778,8 +783,8 @@ worker executes it (task 522). `iterate` runs synchronously with a human in the
 loop, so it adopts `dream_land` as a **boundary guard only** — honoring
 `refused`, surfacing `proposes` for scrutiny, and landing non-refused edits
 inline. That asymmetry is the same one it always was, with the dream's half now
-much smaller: it used to be acts-on-branch / propose-via-worktree / self-merge,
-and it is now one call to `dream.py file-task`. See
+much smaller: it used to branch, stage and self-merge its own edits, and it is
+now one call to `dream.py file-task`. See
 [editor/dev/README.md](../dev/README.md).
 
 ## Hard rules

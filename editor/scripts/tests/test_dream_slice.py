@@ -527,7 +527,7 @@ report = {
                   "memoRefs": ["2026-06-06/10-01-00-draft-suggestion.md"]}],
     "refused": [{"summary": "loosen the only-writeback-path rule", "boundary": B_AGENTS_DONT,
                  "reason": "would edit the AGENTS.md Don't-rules"}],
-    "bootstrap": "First dream — low confidence on the noted grouping.",
+    "selfNote": "First dream — low confidence on the noted grouping.",
 }
 r = dream(mem, dig, "digest", "--report", json.dumps(report), now="2026-06-06T23:00:00")
 check(r.returncode == 0 and "acted 1, proposed 1, refused 1" in r.stdout,
@@ -565,7 +565,11 @@ r = dream(mem, dig, "digest", "--report", json.dumps(unfiled), now="2026-06-06T2
 text2 = (Path(dig) / "2026-06-06.md").read_text()
 check(r.returncode == 0 and "NOT FILED" in text2,
       "an entry with no task id is flagged NOT FILED")
-check("## Bootstrap" in text and "low confidence" in text, "bootstrap note rendered")
+check("## Self-note" in text and "low confidence" in text, "self-note rendered")
+# task 1608: frontmatter `bootstrap` means ONE thing — the first dream (select's
+# meaning) — and the agent's free-text line is stamped as `selfNote`.
+check("\nbootstrap: true\n" in text and "\nselfNote: true\n" in text,
+      "frontmatter: bootstrap = first dream (a fresh sandbox); selfNote = the line was written")
 check("Next dream reads memos after marker" in text, "digest records the next-dream marker line")
 
 

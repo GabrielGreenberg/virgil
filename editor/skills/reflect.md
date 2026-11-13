@@ -141,8 +141,8 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 > the Task even if you do nothing), so a manual `/editor/reflect` call here
 > **enriches** that same `(skill, taskId)` memo with the four qualitative buckets
 > rather than being the only record. Pass the same `<skill>` the writeback used so
-> the two merge. (Script paths below are written repo-relative; the bundle build
-> rewrites them for a synced paper folder — see editor/AGENTS.md → Folder layout.)
+> the two merge. (Script paths below are repo-relative: this is a developer-only
+> skill, run from the checkout and never shipped in a paper's skill bundle.)
 
 1. **Reflect on the run.** Before composing, recall: where was the skill
    markdown ambiguous? where did you ask the user or make a low-confidence A/B
@@ -257,8 +257,10 @@ the floor, never lower it):
 | `withdrawn` | `noted` | the user retracted mid-run |
 | `errored` | `flagged` | something broke |
 | none (a Level-3 draft awaiting review, or a Task-less op) | `unremarkable` | the accept/reject reflection comes later |
+| none, Task `status: failed` | `noted` | the run ended failed with no classified outcome |
 
-(The table mirrors `reflect.py`'s `RESULT_TIER`, which is the owner.)
+(The table mirrors `reflect.py`'s `RESULT_TIER` plus the one status-keyed row
+beside it in the tier resolution, which together are the owner.)
 
 `fix-now` is the fast-path flag: a `flagged` memo that warrants an immediate
 single-memo dream pass rather than waiting for the overnight batch.
