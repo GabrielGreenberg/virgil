@@ -258,7 +258,7 @@ A queue entry is an AI request when **any** of these is true:
 
    ```
    AI requests: handled 2.
-     • smith2020       (bib)   — filled doi, year; staged bib-edit.
+     • smith2020       (bib)   — filled doi, year; wrote master.bib.
      • jones2018       (paper) — re-extracted section 3 in main.tex; bumped version.
    ```
 

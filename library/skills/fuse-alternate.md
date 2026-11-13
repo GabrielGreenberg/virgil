@@ -82,7 +82,6 @@ All paths are relative to the library root (the current working directory).
 
 - `papers/<citekey>/main.tex` must already exist (indexed or deepIndexed).
   If missing, tell the user to run `/library/index-pending` first and stop.
-- `master.bib` must contain an entry for `<citekey>`.
 - The paper must have a catalog row (`indexed.state` `indexed` or
   `deepIndexed`; legacy `richIndexed` accepted on read). You do not check
   this by reading the catalog — the script does, and says
@@ -246,8 +245,10 @@ the record.
 
 ### 4. Report
 
-One line: the `Fused …` line (or the no-op / refusal line) plus, on the
-normal path, the `Log:` path — the script writes
+Relay what the script printed (`fuse_alternate.py`'s `main()` is the one
+owner of the report's shape — this skill keeps no copy of it): the `Fused
+K/P pgmarks from <pdf> (aligned A)` line (or the no-op / refusal line), the
+catalog-warnings block it echoes, and, on the normal path, the `Log:` path — the script writes
 `.virgil/logs/<citekey>/<timestamp>-fuse.summary.md` with the per-page
 alignment table.
 
@@ -293,12 +294,3 @@ catalog) are NOT failures: they exit 0 with a `fuse-alternate: …` line
 - Does not splice `\pgmark{N}` mid-paragraph in v1. Pgmarks land on
   their own blank-padded line between paragraphs; visual offset for
   cross-page paragraphs is up to one paragraph.
-
-## Output format
-
-```
-Fused <citekey>.
-Alternate: <pdf-filename> (<N> pages)
-Pgmarks injected: <K>/<N> pages aligned (threshold 0.78).
-Validator: clean.
-```

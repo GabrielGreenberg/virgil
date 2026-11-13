@@ -322,11 +322,17 @@ the alternatives in your reply.
 
 **A `needs-chapter-info` park** — name the parked file (apply's `parkedAs`)
 and ask the user for the chapter title, chapter author(s) and page range, then
-to move the file back from `_pending/` and re-run `/library/triage-pdf
-<filename>` with that context. Nothing in the app prompts for this yet — the
-`triage-needs-chapter-info` notification is a record, not a form — so your
-reply is the only place the user learns what to supply. The re-run files a NEW
-request, which the retired old one cannot shadow.
+to move that file back from `_pending/` into `unsorted/` and re-run
+`/library/triage-pdf <name>` with that context, where `<name>` is the
+basename of `parkedAs` (a library-relative path) — which differs from the
+original `<filename>` when the park had to de-collide it.
+Nothing in the app prompts for this yet — the `triage-needs-chapter-info`
+notification is a record, not a form — so your reply is the only place the
+user learns what to supply. A hand move files no queue request (only the app's
+drop, `dropUnsortedSource` in `library/lib/queue.ts`, files one), and none is
+needed: `triage_apply.py`'s `claim_triage_request` treats a hand-dropped file
+as "nothing claimable" and triages it all the same, while the old request was
+already retired by the park.
 
 **A `.bib` drop** — report apply's per-entry lines and its per-file
 `triage-bib-summary`. What each entry became, and when the source `.bib` is

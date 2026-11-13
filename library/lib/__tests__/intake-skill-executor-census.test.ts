@@ -17,6 +17,13 @@
  *      list it as an AI request; and its bib-scope write goes through the
  *      locked master.bib writer, never a `bib-edit` queue entry no CLI can
  *      produce.
+ *   4. (task 1602) fuse-alternate keeps no hand-written "Output format"
+ *      block (the script's `main()` owns the report) and no `master.bib`
+ *      precondition the script never checks; import-bib names only its real
+ *      dispatch caller and finds its own work through `queue_slot.py
+ *      claimable`, never by hand-parsing queue files; iterate-skill records
+ *      the working-tree blob (`git hash-object`), not `HEAD:`, and waits on
+ *      `outstanding --native --count`, never an empty queue.
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
@@ -29,6 +36,8 @@ const FUSE_SKILL = read("library/skills/fuse-alternate.md");
 const FUSE_SCRIPT = read("library/scripts/fuse_alternate.py");
 const AI_REQUESTS = read("library/skills/ai-requests.md");
 const INDEX_PENDING = read("library/skills/index-pending.md");
+const IMPORT_BIB = read("library/skills/import-bib.md");
+const ITERATE_SKILL = read("library/skills/iterate-skill.md");
 
 /** The `### N. …` section of a skill whose heading contains `marker`. */
 function section(text: string, marker: string): string {
@@ -77,5 +86,20 @@ describe("CENSUS: intake skills defer to their executors (task 1433)", () => {
     expect(writer.length).toBe(1);
     expect(writer[0]).toContain("--merge-existing");
     expect(writer[0]).not.toContain("--allow-field-drop");
+  });
+
+  it("prose restates no executor's output or precondition (task 1602)", () => {
+    expect(FUSE_SKILL).not.toMatch(/^## Output format/m);
+    expect(FUSE_SKILL).not.toMatch(/master\.bib` must contain/);
+    expect(FUSE_SCRIPT).not.toMatch(/master\.bib/);
+
+    expect(IMPORT_BIB).not.toMatch(/both dispatch callers/);
+    expect(IMPORT_BIB).not.toMatch(/for q in \.virgil\/queue\//);
+    expect(fences(IMPORT_BIB).some((f) => f.includes("queue_slot.py claimable"))).toBe(true);
+
+    expect(ITERATE_SKILL).not.toMatch(/git rev-parse HEAD:/);
+    expect(ITERATE_SKILL).toContain("git hash-object library/skills/<skill>.md");
+    expect(ITERATE_SKILL).not.toMatch(/empty-queue condition/);
+    expect(ITERATE_SKILL).toContain("outstanding --native --count");
   });
 });
