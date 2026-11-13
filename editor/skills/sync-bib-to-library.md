@@ -27,8 +27,10 @@ Virgil Library:
   pipeline (`triage_apply.py`), then authenticate each via
   `/library/authenticate-bib`, then loop back and swap them in.
 - **Ambiguous entries** (same author+year, similar title, multiple
-  library candidates) → write a markdown review note under
-  `<docPath>/virgil/notes/` for the user to disambiguate manually.
+  library candidates) → file ONE review **report** card through the
+  write door (`create_card.py --kind=report`), anchored at the block that
+  prints the bibliography, for the user to disambiguate manually; the
+  run's closing notification also names every flagged citekey.
 
 > **Allowable-LaTeX doctrine.** The citekey rename this skill performs
 > rewrites `\cite…` commands in `document.tex`, and the entry blocks it swaps
@@ -180,9 +182,14 @@ top of step 1.
       ```
       Concatenate the raw entry blocks for every `missing` row from
       `<runDir>/sync-match.jsonl` into `$bundle`. Use the `paper_fields`
-      payload from the JSONL plus the paper's verbatim entry text
-      (read with `_bib_parse.find_entry_span` against
-      `<docPath>/references.bib`).
+      payload from the JSONL plus the paper's verbatim entry text — the
+      `"entry"` field the editor's own door prints:
+      ```bash
+      python3 "$scripts_dir/bib_resolve.py" "<docPath>" "<paper_citekey>"
+      ```
+      Never reach a library-silo function (`_bib_parse.…`) for it: those
+      have no CLI, so calling one needs an inline cross-silo import, which
+      resolves only in the source repo (the class step 8 names).
 
    b. **Build a triage JSONL** with one `bib-only` row per entry, by
       running the library's own batch engine SCOPED to the bundle with
@@ -246,16 +253,40 @@ top of step 1.
    ```
    For rows that flipped from `missing` to `matched`, run step 4 per
    entry. Anything still `missing` (e.g., triage rejected it as a
-   collision) goes into the ambiguous review note in step 7.
+   collision) goes into the review report in step 7.
 
-7. **Write the ambiguous-review note** if any ambiguous (or
-   still-missing) rows remain:
+7. **File the review report** if any ambiguous (or still-missing) rows
+   remain — skip this step if every entry resolved. The rows that need the
+   user must land where the app shows them, through the write door (never a
+   hand-written file under `virgil/`): ONE `report` card, anchored at the
+   block that prints the bibliography.
+   ```bash
+   anchor=$(python3 "$scripts_dir/bib_resolve.py" "<docPath>" --bibliography-anchor \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["anchor"] or "")')
    ```
-   <docPath>/virgil/notes/sync-bib-review-<ISO>.md
+   If `anchor` is non-empty, write the title and body to scratch files
+   (free text goes in by `@<path>` — [`_op-json.md`](_op-json.md)) and
+   create the card:
+   ```bash
+   t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX") || exit 1
+   cat > "$t/title" <<'TXT'
+   Bibliography sync: <P> entries need a decision
+   TXT
+   cat > "$t/body" <<'TXT'
+   <one paragraph per row>
+   TXT
+   python3 "$scripts_dir/create_card.py" "<docPath>" --kind=report \
+       --title "@$t/title" --body "@$t/body" --anchor "$anchor"; rc=$?
+   rm -rf "$t"
+   [ "$rc" -eq 0 ] || exit "$rc"
    ```
-   Body: one section per row, with the paper citekey, the candidates
-   (for ambiguous) or the reason (for residual missing), and a
-   suggested resolution. Skip writing the file if every entry resolved.
+   Body: one paragraph per row — the paper citekey, the library
+   candidates (for ambiguous) or the reason (for residual missing), and a
+   suggested resolution.
+
+   If `anchor` is empty (the paper prints no bibliography, or its block has
+   no uuid yet), create no card: step 8's notification summary is then the
+   ONLY place the rows reach the user, which is why it always names them.
 
 8. **Final notification + reply.** Close the run through the writeback
    door's `notify` subcommand — it appends the `ai-request-complete`
@@ -269,7 +300,7 @@ top of step 1.
    rm -rf <runDir>
    t=$(mktemp -d "${TMPDIR:-/tmp}/virgil-txt.XXXXXX") || exit 1
    cat > "$t/summary" <<'TXT'
-   sync-bib-to-library: <N> matched, <K> added, <P> flagged
+   sync-bib-to-library: <N> matched, <K> added, <P> flagged[: <flagged citekeys, comma-separated>]
    TXT
    python3 "$scripts_dir/apply_response.py" "<docPath>" notify \
        --skill sync-bib-to-library \
@@ -279,7 +310,7 @@ top of step 1.
    ```
    Reply (single line):
    ```
-   Done: synced <total> entries (<M> swapped, <K> added, <P> flagged). Output: references.bib, document.tex, <citekey-keyed sidecars a rename changed>[, virgil/notes/sync-bib-review-…md].
+   Done: synced <total> entries (<M> swapped, <K> added, <P> flagged). Output: references.bib, document.tex, <citekey-keyed sidecars a rename changed>[, virgil/reports.json].
    ```
 
 ## Idempotence
@@ -288,15 +319,15 @@ Re-running on a paper whose bib already mirrors the library writes
 nothing to the paper: pass 1 reports 100% matched and every per-entry
 swap is an `"unchanged": true` no-op at the write door (no `.bib`
 rewrite, no notification, no version bump), pass 2 has nothing to do,
-no missing entries to triage, no ambiguous note written. The one write
+no missing entries to triage, no review report filed. The one write
 is step 8's single run-closing notification.
 
 ## Safety
 
 - **Don't auto-swap on ambiguous matches.** When the signature
   (surname + year ± 1 + normalized title) hits multiple library
-  candidates, write the review note and leave the paper's entry
-  alone.
+  candidates, list it in the review report and leave the paper's
+  entry alone.
 - **Don't fall back to `~/Virgil-Library/` silently.** The library
   path *must* resolve through `library_path.py`. If the chain fails,
   surface the error and exit — never guess.
@@ -316,7 +347,7 @@ is step 8's single run-closing notification.
 One line. Examples:
 
 ```
-Done: synced 23 entries (18 swapped, 4 added, 1 flagged). Output: references.bib, document.tex, virgil/citations.json, virgil/annotations.json, virgil/notes/sync-bib-review-20260513T142500Z.md.
+Done: synced 23 entries (18 swapped, 4 added, 1 flagged). Output: references.bib, document.tex, virgil/citations.json, virgil/annotations.json, virgil/reports.json.
 ```
 
 ```

@@ -14,7 +14,7 @@
 // are gitignored), so nothing ever ran a synced copy.
 //
 // This census BUILDS that layout itself (so it runs in a worktree) and holds
-// three legs:
+// four legs:
 //   1. layout parity — every non-test module that imports from the repo
 //      imports from the synced copy too (a module that needs a third-party
 //      package fails in BOTH and is not this census's business);
@@ -25,7 +25,9 @@
 //      than raising (`_library_root._load_ssot`) passes leg 1 while broken,
 //      which is why leg 2 is static;
 //   3. the reported repro — `bib_match_library.py --help` exits 0 from the
-//      synced copy.
+//      synced copy;
+//   4. the skill half (task 1595) — no skill step names a sibling silo's
+//      function, which only an inline cross-silo import could reach.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
@@ -147,6 +149,45 @@ describe("silo layout CENSUS — the synced copy imports like the repo", () => {
     expect(
       offenders,
       `spells the sibling silo's location instead of asking _silo_path:\n  ${offenders.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
+  // Leg 4 (task 1595): the SKILL half of the same class. A skill step that
+  // names a sibling silo's function (`_bib_parse.find_entry_span` in an editor
+  // skill) can only be run through an inline cross-silo import — those
+  // functions have no CLI — which resolves in the repo and nowhere else. A
+  // skill reaches the other silo through a SCRIPT (`<module>.py …`), never a
+  // dotted `<module>.<function>`.
+  it("no skill names a sibling silo's function (only its scripts)", () => {
+    const offenders: string[] = [];
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? e.name === "__tests__" ? [] : walk(join(dir, e.name))
+          : e.name.endsWith(".md") ? [join(dir, e.name)] : [],
+      );
+    for (const silo of SILOS) {
+      const other = SILOS.find((s) => s !== silo)!;
+      const mods = modulesOf(other).map((n) => n.replace(/\.py$/, ""));
+      // Canary: a real population of sibling modules.
+      expect(mods.length).toBeGreaterThan(20);
+      const esc = mods.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const DOTTED = new RegExp(`(?<![\\w/.])(?:${esc})\\.(?!py\\b|json\\b|md\\b)[A-Za-z_]\\w*`, "g");
+      const files = walk(join(ROOT, silo, "skills"));
+      expect(files.length).toBeGreaterThan(5);
+      for (const f of files) {
+        readFileSync(f, "utf8")
+          .split("\n")
+          .forEach((line, i) => {
+            for (const m of line.matchAll(DOTTED)) {
+              offenders.push(`${f.slice(ROOT.length + 1)}:${i + 1}  ${m[0]}`);
+            }
+          });
+      }
+    }
+    expect(
+      offenders,
+      `a skill names a sibling-silo function (no CLI — runs only via an inline cross-silo import); call a script instead:\n  ${offenders.join("\n  ")}`,
     ).toEqual([]);
   });
 
