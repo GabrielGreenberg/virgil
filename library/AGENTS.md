@@ -1004,10 +1004,12 @@ entries flagged for that subskill.
 ## Required deps for the Python pipeline
 
 Run `/library/setup` once per library to install everything below in one shot.
-The skill also pre-downloads marker's ~1 GB of ML weights into
-`<library>/.virgil/models/huggingface/` so they're cached library-locally
-(not in the user's global `~/.cache/huggingface/`) and shared across
-index-paper + deep-index PDF re-reads.
+The skill also pre-downloads marker's ML weights into the library's two
+caches — `<library>/.virgil/models/huggingface/` (huggingface_hub) and
+`.../datalab/` (surya's ~3 GB layout/table/OCR weights) — so they're cached
+library-locally (not in `~/.cache/huggingface/` or `~/Library/Caches/datalab/`)
+and shared across index-paper + deep-index PDF re-reads. `setup.py`'s Step 5
+(or `--verify-only`) reports both caches and any global pollution.
 
 - Python 3.10+
 - Poppler (`brew install poppler`) — provides `pdfinfo`, `pdftotext`, `pdffonts`
