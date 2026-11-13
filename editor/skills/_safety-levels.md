@@ -5,6 +5,14 @@ A Task's `safetyLevel` picks how a card-create lands
 a sibling comment, **3** → propose (the card is drafted, the Task left
 `in-progress`, awaiting the user's accept/reject), **none** → direct create.
 
+The Task's two-field outcome (`status` / `result`) follows the same pick, and
+this is the one place the vocabulary is spelled (`apply_response.py`'s
+`RESULT_*` constants are its executor): **1** → `complete` / `silent-applied`,
+**2** → `complete` / `auto-applied`, **none** → `complete` / `direct-created`,
+**3** → `in-progress` with no `result` yet — the proposal card's id is stamped
+as the Task's `resultId`, and the user's accept/reject closes it later. An
+in-place `update` (below) completes `auto-applied` at every level.
+
 **Level 3 withholds the proposed CHANGE.** The paper write the card *proposes*
 is not made until the user accepts it:
 
