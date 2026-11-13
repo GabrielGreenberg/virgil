@@ -202,7 +202,7 @@ describe("the lift grip paints iff the lift can land (task 277)", () => {
     );
     expect(gripCount(container)).toBe(0);
     expect(screen.getByTestId("badge")).toBeTruthy();
-    expect(screen.getByLabelText("Expand card")).toBeTruthy();
+    expect((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement)).toBeTruthy();
   });
 
   it("a refused header still clicks (select + toggle), it just cannot be dragged", () => {

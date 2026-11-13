@@ -143,7 +143,7 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
           type="button"
           onClick={() => setExpanded((x) => !x)}
           aria-expanded={expanded}
-          aria-label={expanded ? "Collapse bib entry" : "Expand bib entry"}
+          data-button-exempt="11px mono disclosure chip in the bib card's key row, below Button's sm scale"
           className="focus-ring"
           style={{
             display: "inline-flex",
@@ -161,7 +161,7 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
           }}
         >
           <Chevron expanded={expanded} />
-          {expanded ? "less" : "more"}
+          fields
         </button>
       </div>
 

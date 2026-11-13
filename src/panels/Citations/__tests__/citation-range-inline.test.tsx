@@ -87,7 +87,7 @@ function renderExpandedCard(overrides: Partial<CitationCardProps> = {}) {
   };
   const utils = render(<CitationCard {...props} />);
   // Open the card body so the key rows render.
-  fireEvent.click(screen.getByLabelText("Expand card"));
+  fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
   return { props, ...utils };
 }
 

@@ -133,7 +133,7 @@ function renderExpanded(
   render(
     <Harness initial={initial} keys={keys} anchored={anchored} onWrite={onWrite} />,
   );
-  fireEvent.click(screen.getByLabelText("Expand card"));
+  fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
   return { onWrite };
 }
 

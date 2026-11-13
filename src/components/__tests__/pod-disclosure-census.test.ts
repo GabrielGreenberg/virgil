@@ -34,6 +34,17 @@
  * `rotate(90deg)`/`rotate(180deg)` transform, a `<Chevron`, a
  * `<FoldChevronGlyph`) must DECLARE its state: `aria-expanded=`, or one of the
  * doors that spell it (`foldChevronAttrs(`, `menuTriggerAria(`).
+ *
+ * Fourth needle (task 1610): a disclosure's accessible NAME is stable —
+ * `aria-expanded` alone carries the state (the WAI-ARIA disclosure pattern).
+ * Card headers, outline twisties, the picker's details caret and both fold
+ * chevrons all flipped their name too ("Collapse card", announced as
+ * "Collapse card, expanded" — the state twice), and the guide prescribed it.
+ * So ANY element (not only `<button>` — the card header is a `role="button"`
+ * div whose attributes ride an object spread) that declares `aria-expanded`
+ * must not spell its name as a two-string ternary: not in `aria-label={…}`,
+ * not as an `"aria-label":` key, not as `iconHint({ label: … })`. The sighted
+ * hover hint may keep its action wording through `iconHint`'s `hint`.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -41,6 +52,7 @@ import { join, relative } from "node:path";
 import {
   commentsStripped,
   elementsNamed,
+  tagsContaining,
   resolveConsts,
   stringConsts,
   walkFiles,
@@ -109,6 +121,20 @@ function silentDisclosures(raw: string): string[] {
   return elementsNamed(src, "button")
     .filter((h) => TURNED_CHEVRON.test(h.subtree ?? "") && !DECLARES_STATE.test(h.tag))
     .map((h) => h.tag.split("\n")[0].trim());
+}
+
+/** A name spelled as a two-string ternary — `aria-label={x ? "A" : "B"}`,
+ *  `"aria-label": x ? "A" : "B"`, `iconHint({ label: x ? "A" : "B" })`. */
+const STATEFUL_NAME =
+  /(?:(?<![\w-])aria-label\s*=\s*\{|["']aria-label["']\s*:|(?<![\w-])label\s*:)\s*[^,{}?:"'`]{1,80}\?\s*(["'`])[^"'`]*\1\s*:\s*["'`]/;
+const DECLARES_EXPANDED = /(?<![\w-])aria-expanded\s*=|["']aria-expanded["']\s*:/;
+
+/** Open tags that declare `aria-expanded` AND flip their name with it. */
+function statefulNames(raw: string): string[] {
+  const src = commentsStripped(raw);
+  return tagsContaining(src, DECLARES_EXPANDED)
+    .filter((tag) => STATEFUL_NAME.test(tag))
+    .map((tag) => tag.split("\n")[0].trim());
 }
 
 function hits(src: string): number {
@@ -218,5 +244,26 @@ describe("pod-disclosure census", () => {
       expect(PRODUCTION, file).toContain(file);
       expect(RAW_DISCLOSURES[file], `${file} ring-exempt but not a named disclosure`).toBeDefined();
     }
+  });
+
+  it("canary: the fourth needle sees a name that flips with aria-expanded (task 1610)", () => {
+    expect(statefulNames(`<button aria-expanded={!c} aria-label={c ? "Expand section" : "Collapse section"}>x</button>`)).toHaveLength(1);
+    expect(statefulNames(`<button aria-expanded={!c} {...iconHint({ label: c ? "Expand" : "Collapse", pos: "above" })}>x</button>`)).toHaveLength(1);
+    // the card header's shape: an object spread on a role=button div
+    expect(statefulNames(`<div data-card-header="1" {...(h ? { role: "button", "aria-expanded": !c, "aria-label": c ? "Expand card" : "Collapse card" } : {})}>`)).toHaveLength(1);
+    // a stable name with an action-worded HINT is the pattern, not a hit
+    expect(statefulNames(`<button aria-expanded={e} {...iconHint({ label: "Details", hint: e ? "Hide details" : "Show details" })}>x</button>`)).toEqual([]);
+    // a stateful name on a NON-disclosure is another census's business
+    expect(statefulNames(`<button aria-pressed={on} aria-label={on ? "Mute" : "Unmute"}>x</button>`)).toEqual([]);
+  });
+
+  it("no disclosure's accessible name changes with its state", () => {
+    const offenders: string[] = [];
+    for (const file of PRODUCTION) {
+      for (const tag of statefulNames(readFileSync(join(ROOT, file), "utf8"))) {
+        offenders.push(`${file}: ${tag} — keep the name stable (the subject) and let aria-expanded carry the state; put the action wording in iconHint's \`hint\``);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

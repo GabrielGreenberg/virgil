@@ -108,7 +108,7 @@ function Harness({ onWrite }: { onWrite: (cmd: string) => void }) {
 function openCode() {
   const onWrite = vi.fn<(cmd: string) => void>();
   render(<Harness onWrite={onWrite} />);
-  fireEvent.click(screen.getByLabelText("Expand card"));
+  fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
   fireEvent.click(screen.getByLabelText("Edit raw LaTeX"));
   const input = screen.getByDisplayValue(ORIGINAL) as HTMLInputElement;
   input.focus();

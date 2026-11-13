@@ -667,7 +667,7 @@ function OutlineNode({
                whole of a row hover, and a bubble there would cover the row it
                belongs to. Its `EditablePod` sibling below is a distinct
                control (it folds the POD) and keeps its hint. */
-            aria-label={isCollapsed ? "Expand section" : "Collapse section"}
+            aria-label={`Section${node.heading.text ? `: ${node.heading.text}` : ""}`}
             aria-expanded={!isCollapsed}
             className="mt-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 flex items-center justify-center focus-ring"
             style={{ width: OUTLINE_TWIST_COL, height: 16 }}
@@ -906,7 +906,7 @@ const EditablePod = memo(function EditablePod({
             onMouseDown={(e) => e.stopPropagation()}
             aria-expanded={!isCollapsed}
             className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 focus-ring"
-            {...iconHint({ label: isCollapsed ? "Expand" : "Collapse", pos: "above" })}
+            {...iconHint({ label: "Contents", hint: isCollapsed ? "Expand" : "Collapse", pos: "above" })}
           >
             <FoldChevronGlyph
               size={10}

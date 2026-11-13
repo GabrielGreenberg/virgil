@@ -113,7 +113,7 @@ function Harness({
 function openCode() {
   const onWrite = vi.fn<(cmd: string) => void>();
   const view = render(<Harness onWrite={onWrite} />);
-  fireEvent.click(screen.getByLabelText("Expand card"));
+  fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
   fireEvent.click(screen.getByLabelText("Edit raw LaTeX"));
   const input = screen.getByDisplayValue(ORIGINAL) as HTMLInputElement;
   input.focus();
@@ -183,7 +183,7 @@ describe("Code field — UNMOUNT ends the session exactly once (task 686)", () =
     vi.useFakeTimers();
     const onWrite = vi.fn<(cmd: string) => void>();
     const view = render(<Harness onWrite={onWrite} />);
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     act(() => view.unmount());
     act(() => void vi.advanceTimersByTime(5000));
     expect(onWrite).not.toHaveBeenCalled();
@@ -198,7 +198,7 @@ describe("Code field — a cancel never undoes somebody ELSE (task 686)", () => 
     render(
       <Harness onWrite={onWrite} external={(s) => (setCommand = s)} />,
     );
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     fireEvent.click(screen.getByLabelText("Edit raw LaTeX"));
     const input = screen.getByDisplayValue(ORIGINAL) as HTMLInputElement;
     input.focus();
@@ -224,7 +224,7 @@ describe("A row keeps its identity across a resync (task 686)", () => {
     const onWrite = vi.fn<(cmd: string) => void>();
     let setCommand!: (c: string) => void;
     render(<Harness onWrite={onWrite} external={(s) => (setCommand = s)} />);
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
 
     // Open the row's "+range" and type without committing.
     fireEvent.click(screen.getByText("+range"));

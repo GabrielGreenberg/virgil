@@ -87,7 +87,7 @@ function renderCard(command: string, bibPackage: string) {
 }
 
 async function toggleStar() {
-  fireEvent.click(screen.getByLabelText("Expand card"));
+  fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
   fireEvent.click(screen.getByLabelText("More options"));
   await settleMenu();
   fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Full author list/i }));

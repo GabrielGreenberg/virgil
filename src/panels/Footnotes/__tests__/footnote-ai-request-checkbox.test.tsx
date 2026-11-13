@@ -72,7 +72,7 @@ describe("FootnoteCard AI-request checkbox (BUG #55)", () => {
   it("renders the AI-request checkbox when expanded AND onSetAiRequest is supplied", () => {
     renderCard({ onSetAiRequest: vi.fn() });
     // The header expand control flips the store axis and re-renders the body.
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(screen.getByText("AI request")).toBeTruthy();
   });
 
@@ -84,14 +84,14 @@ describe("FootnoteCard AI-request checkbox (BUG #55)", () => {
 
   it("does NOT render the checkbox when onSetAiRequest is omitted (e.g. Reader)", () => {
     renderCard(); // no onSetAiRequest
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(screen.queryByText("AI request")).toBeNull();
   });
 
   it("reflects the current flag and toggles it (unchecked → calls onSetAiRequest(true))", () => {
     const onSetAiRequest = vi.fn();
     renderCard({ aiRequest: false, onSetAiRequest });
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     fireEvent.click(screen.getByText("AI request"));
     expect(onSetAiRequest).toHaveBeenCalledWith(true);
   });
@@ -99,7 +99,7 @@ describe("FootnoteCard AI-request checkbox (BUG #55)", () => {
   it("toggles off when already checked (calls onSetAiRequest(false))", () => {
     const onSetAiRequest = vi.fn();
     renderCard({ aiRequest: true, onSetAiRequest });
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     fireEvent.click(screen.getByText("AI request"));
     expect(onSetAiRequest).toHaveBeenCalledWith(false);
   });
@@ -111,7 +111,7 @@ describe("FootnoteCard AI-request checkbox (BUG #55)", () => {
   it("does NOT render the checkbox when the footnote has no resolvable anchor (unresolvable pos)", () => {
     const unanchored = { ...(FN as object), pos: -1 } as unknown as FootnoteInfo;
     renderCard({ footnote: unanchored, onSetAiRequest: vi.fn() });
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(screen.queryByText("AI request")).toBeNull();
   });
 });

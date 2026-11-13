@@ -123,9 +123,9 @@ describe("CitationCard draft header-click suppression (backlog #13)", () => {
 
   it("non-draft: header click keeps the full toggle+select composition", () => {
     renderCard();
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(cardStore.isSelected(REF)).toBe(true);
     expect(cardStore.isExpanded(REF)).toBe(true);
-    expect(screen.getByLabelText("Collapse card")).toBeTruthy();
+    expect((document.querySelector('[data-card-header][aria-expanded="true"]') as HTMLElement)).toBeTruthy();
   });
 });

@@ -249,7 +249,7 @@ function FieldTitleRow({
             }}
             onMouseDown={(e) => e.stopPropagation()}
             className="text-[var(--muted)] hover:text-ink-strong cursor-pointer flex items-center focus-ring"
-            {...iconHint({ label: folded ? "Expand" : "Collapse", hint: "Toggle fold", pos: "above" })}
+            {...iconHint({ label, hint: "Toggle fold", pos: "above" })}
             aria-expanded={!folded}
           >
             <Chevron expanded={!folded} />

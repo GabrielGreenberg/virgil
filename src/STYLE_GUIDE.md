@@ -1842,8 +1842,9 @@ pop-out button). The body click keeps the select+expand+jump contract.
 Threading: `useAnchoredCard().onHeaderActivate` → `PanelCard`
 (`onHeaderActivate`); panel-local stores (Errors) compose their own
 select+toggle. The header carries the disclosure a11y (role="button",
-Enter/Space, `aria-expanded`, stateful "Expand card"/"Collapse card"
-label). Cards whose body is pinned open (e.g. a draft citation)
+Enter/Space, `aria-expanded`, and a STABLE name — the card's kind label,
+"Note card" — so `aria-expanded` alone says open or closed; see "A
+disclosure's name is its subject"). Cards whose body is pinned open (e.g. a draft citation)
 downgrade the header click to **select-only** — toggling a pinned-open
 body would be a silent no-op — and pass `headerDisclosure={false}` so
 the a11y drops `aria-expanded` and labels the header "Select card"
@@ -2526,6 +2527,20 @@ with a reason, ringed, and drawing `<Chevron>` (the leaf
 declares nothing is the shape the census exists to see (task 1305).
 `PodDisclosure` is a leaf too (`@/components/PodDisclosure`), so a surface
 outside the card vocabulary — Preferences' group headers — takes it as is.
+
+**A disclosure's name is its SUBJECT, never its state** (task 1610, the
+WAI-ARIA disclosure pattern). `aria-expanded` is the state channel; a name
+that ALSO flips ("Collapse card") is announced as "Collapse card, expanded" —
+the state twice — and, as an `aria-label`, replaces whatever the control
+visibly says. So the name names what opens: the card header is "<Kind> card",
+the fold chevrons "Section" / the pod's kind (`foldChevronAttrs`), the outline
+twisty "Section: <heading>", the picker caret "Details". The SIGHTED hover hint
+may keep its action wording, because a tooltip reads as what a click will do:
+`iconHint({ label: "Details", hint: expanded ? "Hide details" : "Show details" })`.
+`pod-disclosure-census.test.ts`'s fourth needle fails any element declaring
+`aria-expanded` whose name is a two-string ternary — in `aria-label={…}`, an
+`"aria-label":` key, or `iconHint`'s `label`. `PodDisclosure` was already
+right: its name is its fixed `children`.
 
 **A disabled `<Button>` keeps its hint.** It keeps pointer events (hover
 and the press nudge are gated on `enabled:`), so the `title` / `data-hint`
@@ -3856,7 +3871,7 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
   (default `14px`) — fold chevron column for headings and the SOURCE POD.
   Consumed by the ONE shared `.margin-fold-chevron` rule both renderers carry
   (task 830: heading + source pod are one control — shared class, `focus-ring`,
-  and hint/`aria-label`/`aria-expanded` from `foldChevronAttrs` in
+  and a stable `aria-label` + action-worded hint + `aria-expanded` from `foldChevronAttrs` in
   [src/lib/fold-chevron.ts](src/lib/fold-chevron.ts); the kind classes
   `.heading-fold-chevron` / `.source-pod-fold-chevron` keep only `top` and
   read-only visibility; the heading's per-level centering subtracts

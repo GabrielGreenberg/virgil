@@ -82,12 +82,12 @@ describe("OrphanedFootnoteCard expansion axis (backlog #12)", () => {
 
   it("header click expands AND selects (cell 4); a second click collapses but stays selected (cell 2)", () => {
     renderOrphan();
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(screen.getByTestId("rtf")).toBeTruthy();
     expect(cardStore.isExpanded(REF)).toBe(true);
     expect(cardStore.isSelected(REF)).toBe(true);
 
-    fireEvent.click(screen.getByLabelText("Collapse card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="true"]') as HTMLElement));
     expect(screen.getByTestId("borrowed")).toBeTruthy();
     expect(cardStore.isExpanded(REF)).toBe(false);
     // Selection is its own axis — the toggle never clears it.
@@ -96,7 +96,7 @@ describe("OrphanedFootnoteCard expansion axis (backlog #12)", () => {
 
   it("expand-without-select is reachable (cell 3) — expansion no longer welded to selection", () => {
     renderOrphan();
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     cardStore.clearSelection();
     // Still expanded with no selection (the old weld collapsed on deselect).
     expect(cardStore.isExpanded(REF)).toBe(true);

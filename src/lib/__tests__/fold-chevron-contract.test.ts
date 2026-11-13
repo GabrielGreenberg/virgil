@@ -69,10 +69,19 @@ describe("fold-chevron contract (task 830)", () => {
   it("aria-expanded describes the controlled content (true when NOT folded)", () => {
     expect(foldChevronAttrs(false, "listing")).toMatchObject({
       "aria-expanded": "true",
-      "aria-label": "Collapse listing",
+      "aria-label": "Listing",
       "data-hint": "Collapse listing",
     });
     expect(foldChevronAttrs(true, "listing")["aria-expanded"]).toBe("false");
+  });
+
+  it("the accessible NAME is stable across states; only the hint names the action (task 1610)", () => {
+    const open = foldChevronAttrs(false, "section");
+    const shut = foldChevronAttrs(true, "section");
+    expect(open["aria-label"]).toBe(shut["aria-label"]);
+    expect(open["aria-label"]).not.toMatch(/expand|collapse/i);
+    expect(open["data-hint"]).toBe("Collapse section");
+    expect(shut["data-hint"]).toBe("Expand section");
   });
 
   it("the glyph is declared once and every renderer reads it (task 1260)", () => {
