@@ -452,13 +452,13 @@ def cmd_write_iteration_memo(argv: list[str]) -> int:
         print("error: --json must be a JSON object", file=sys.stderr)
         return 2
     target = write_iteration_memo(critique)
-    rel = target
-    try:
-        rel = target.relative_to(_iterations_root())
-    except ValueError:
-        pass
     fm, _ = _parse_memo(target.read_text(encoding="utf-8"))
-    print(f"Done: wrote {rel} (tier={fm.get('tier')}, "
+    # ABSOLUTE, never relative to the iterations root (task 1607): that root
+    # is the PRIMARY checkout's `editor/dev/iterations` even when the driver
+    # runs in a worktree (`_common.dev_home`), so a root-relative or
+    # cwd-relative spelling sends the driver's `open('<memo-path>')` into the
+    # worktree's empty twin. The driver opens exactly the path printed here.
+    print(f"Done: wrote {target.resolve()} (tier={fm.get('tier')}, "
           f"block={fm.get('blockCount')}, nice={fm.get('niceCount')}).")
     return 0
 

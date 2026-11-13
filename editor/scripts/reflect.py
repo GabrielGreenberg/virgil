@@ -29,6 +29,12 @@ any paper file: the doc is read-only here (we only read its Task queue). chip 18
 
 Usage:
   reflect.py <docPath> <skill> <taskId> [options]
+  reflect.py - session - [options]     # no paper open (task 1607)
+
+  <docPath> the paper folder the skill ran against, or "-" for a general
+            observation made with no paper open — accepted only for the
+            `session` writer with taskId "-"; one such memo per day, later
+            same-day observations append to it.
 
   <taskId>  an ai-requests.json id, a bib-review-requests.json bibKey, a
             "virtual:<panel>:<cardId>" card-flag id, or "-" for a Task-less
@@ -466,7 +472,17 @@ def _is_task_less(task_id: str) -> bool:
     return task_id in ("-", "", "none", "None")
 
 
-def doc_key(doc: Path) -> str:
+#: The `<docPath>` spelling for a reflection made with NO paper open — a
+#: general observation from a repo session (task 1607). Accepted only for the
+#: `session` writer with a task-less id: every other skill reflects on a run
+#: against a paper, and a Task id needs a paper's queue to resolve against.
+#: Persisted verbatim as the memo's `doc`, so the task-less key (skill, doc,
+#: day) buckets one paperless `session` memo per day and later same-day
+#: observations append to it (`_merge_task_less_bucket`).
+PAPERLESS_DOC = "-"
+
+
+def doc_key(doc: Path | None) -> str:
     """The paper a reflection is about, as a stable frontmatter value: the
     RESOLVED absolute path. The task-less dedup key's middle term (see
     `_find_existing`), so two papers worked on the same day never merge floors.
@@ -483,7 +499,11 @@ def doc_key(doc: Path) -> str:
     A path key over-splits: two floors for one paper, mild noise, every word
     still attributed to the paper that produced it. A name key over-merges: two
     papers' reflections in one memo, silently, with no way to tell them apart
-    afterwards. Prefer the recoverable failure."""
+    afterwards. Prefer the recoverable failure.
+
+    `None` is the paperless reflection (`PAPERLESS_DOC`)."""
+    if doc is None:
+        return PAPERLESS_DOC
     try:
         return str(doc.resolve())
     except OSError:
@@ -491,7 +511,8 @@ def doc_key(doc: Path) -> str:
 
 
 def _find_existing(memos_root: Path, skill: str, task_id: str,
-                   doc: Path | None = None, date_str: str | None = None) -> Path | None:
+                   doc: Path | None = None, date_str: str | None = None,
+                   paperless: bool = False) -> Path | None:
     """The memo this reflection belongs to, if one already exists.
 
     TWO identity keys, because there are two kinds of reflection and only one of
@@ -554,8 +575,10 @@ def _find_existing(memos_root: Path, skill: str, task_id: str,
     if _is_task_less(task_id):
         # No Task to key on; (skill, doc, day) is the identity instead. Needs
         # both terms — a caller that supplies neither gets the old behaviour
-        # (a fresh file) rather than a wrong merge.
-        if doc is None or not date_str:
+        # (a fresh file) rather than a wrong merge. `paperless` names the
+        # no-paper term explicitly (task 1607), so a bare `doc=None` still
+        # means "no key", never "the paperless bucket".
+        if (doc is None and not paperless) or not date_str:
             return None
         day_dir = memos_root / date_str
         if not day_dir.is_dir():
@@ -697,7 +720,20 @@ def main(argv: list[str]) -> int:
     if reason:
         die(reason)
 
-    doc = resolve_doc(a.doc)
+    paperless = a.doc == PAPERLESS_DOC
+    if paperless:
+        # A general observation from a session with no paper open (task 1607):
+        # only `session` owns one, and with no queue there is no Task to name.
+        if a.skill != "session":
+            die(f"<docPath> {PAPERLESS_DOC!r} (no paper) is accepted only for "
+                f"the `session` writer; {a.skill!r} reflects on a run against "
+                "a paper — pass that paper's folder")
+        if not _is_task_less(a.taskId):
+            die(f"<docPath> {PAPERLESS_DOC!r} has no Task queue to resolve "
+                f"{a.taskId!r} against — pass taskId '-'")
+        doc = None
+    else:
+        doc = resolve_doc(a.doc)
     memo = _load_memo_json(a.memo_json)
     in_buckets = memo.get("buckets") or {}
     if not isinstance(in_buckets, dict):
@@ -732,7 +768,8 @@ def main(argv: list[str]) -> int:
     # filename it may end up minting.
     iso, date_str, time_str = _now_parts()
     memos_root = _memos_root()
-    existing_path = _find_existing(memos_root, a.skill, a.taskId, doc, date_str)
+    existing_path = _find_existing(memos_root, a.skill, a.taskId, doc, date_str,
+                                   paperless=paperless)
     prior_fm, prior_buckets, prior_summary = ({}, {}, None)
     if existing_path is not None:
         prior_text = existing_path.read_text(encoding="utf-8")

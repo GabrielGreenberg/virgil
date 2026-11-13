@@ -21,7 +21,7 @@ inject a synthetic AI request, spawn a fresh runner subagent that reads
 the target skill markdown and executes it against the sandbox, read
 the runner's critique memo, **route each proposed skill edit through the
 boundary guard**, edit the skill markdown inline, and re-run the same
-test case until the memo is no longer `flagged`.
+test case until it is clean (step 2e: a `success` that is not `flagged`).
 
 Unlike `/library/iterate-skill`, which iterates against the user's
 real `~/Virgil-Library/`, this skill iterates against **synthesized**
@@ -82,8 +82,11 @@ If absent: abort with a pointer to restore from `samples/`.
 Confirm the dev dirs exist (they should — `.gitkeep` files are
 checked in):
 ```bash
-mkdir -p editor/dev/iterations editor/dev/sandboxes
+mkdir -p editor/dev/sandboxes
 ```
+(The iterations dir needs no setup: the memo writer creates it under
+`iterations_root()` — the PRIMARY checkout's `editor/dev/iterations/` even
+from a worktree — and prints each memo's absolute path.)
 
 ## Skill-iteration order (when no skill named)
 
@@ -249,7 +252,7 @@ one shared reader. The script does the `[block]`→`flagged`/`[nice-to-have]`→
 > ```
 >
 >    `severity: "block"` = the skill cannot be reliably executed without this fix (→ the memo is `flagged`). `severity: "nice-to-have"` = a quality improvement (→ `noted`). Ambiguities go to the `issues` bucket; judgment calls to `alignment`; `block` edits to `issues`; `nice-to-have` edits to `streamlining`.
-> 4. Hand the critique to the writer (it computes the tier + the memo path and writes the unified-shape memo to `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<attempt-k>.md`):
+> 4. Hand the critique to the writer (it computes the tier + the memo path and writes the unified-shape memo to `<iterations_root>/<date>-<skill>/<case-slug>-attempt<attempt-k>.md`, printing its absolute path):
 >
 >    ```bash
 >    python3 editor/scripts/dev_loop.py write-iteration-memo --json @<sandbox-abs-path>/.iterate-critique.json
@@ -264,7 +267,9 @@ one shared reader. The script does the `[block]`→`flagged`/`[nice-to-have]`→
 
 #### 2d. Read the memo, route each edit through the guard, apply inline
 
-Read the memo file the runner wrote. It is now in the **unified shape** — the
+Read the memo file the runner wrote — at the absolute path its `Done:` line
+prints (never a cwd-relative `editor/dev/iterations/…`: from a worktree that is
+an empty twin). It is now in the **unified shape** — the
 same frontmatter + four buckets the dream reads. Extract via the one shared
 reader (no second parser):
 
@@ -274,8 +279,13 @@ python3 -c "import sys; sys.path.insert(0,'editor/scripts'); from reflect import
 fm,sec=_parse_memo(open('<memo-path>').read()); print(fm['tier'], fm['blockCount'], fm['niceCount']); print(sec['issues'])"
 ```
 
-- `tier: flagged` (≥1 `[block]`) → fixes are needed; build a change per block item.
-- `tier: noted` (`[nice-to-have]` only, or logged friction) → advisory; apply only the clear wins (typo, missing example, broken link). Skip anything that would bloat the skill.
+The tier is [`dev_loop.tier_for_iteration`](../scripts/dev_loop.py)'s — read
+its rule there, not a restatement here. It folds the runner's `result` in, so a
+tier is NOT a block count: a `failure` is `flagged` even with zero `[block]`
+items, and a `partial` is `noted` even with none.
+
+- `tier: flagged` → build a change per `[block]` item (a `failure` may have none — see 2e).
+- `tier: noted` → advisory; apply only the clear wins (typo, missing example, broken link). Skip anything that would bloat the skill.
 - `tier: unremarkable` → clean. Nothing to apply.
 
 The `issues` bucket holds the ambiguities + `[block]` items; `streamlining` the
@@ -312,12 +322,16 @@ Then act on the partition (you stay **synchronous + inline** — no worktree, no
 
 #### 2e. Re-run or advance
 
-The clean criterion is now the memo **tier**, and the guard gates the re-run:
+Branch on the memo's `tier` AND `result` (both in its frontmatter — the tier is
+`tier_for_iteration`'s, which reads `result` too). Exactly one row applies; the
+first matching row wins:
 
-- **`tier: noted` or `unremarkable`**: this test case is clean (no `[block]`). Advance to the next test case.
-- **`tier: flagged` AND you applied ≥1 inline edit (acts/surface) this attempt AND attempts < 4 AND total attempts for this skill < cap**: re-run the same test case with `attempt<k+1>` against a fresh sandbox to verify the edit actually fixed the friction (and didn't introduce new ambiguity). The synthetic request body is reused verbatim.
-- **`tier: flagged` but every proposed edit was `blocked` (refused)**: do NOT re-run — re-running can't converge on a boundary you won't cross. Log the refused block(s) for the maintainer and advance.
 - **Per-case cap (4 attempts) hit OR skill cap hit**: log the unresolved blocks in scratch state, advance to the next test case anyway.
+- **`result: failure` and you applied no edit** (a runner crash / an unexecutable case — `flagged` with zero `[block]`s, or every proposed edit `blocked`): do NOT re-run — re-running a crash or a refused boundary cannot converge. Log the failure (and any refused block, with its boundary) for the maintainer and advance. **Not clean.**
+- **`tier: flagged` AND you applied ≥1 inline edit (acts/surface) this attempt**: re-run the same test case with `attempt<k+1>` against a fresh sandbox to verify the edit actually fixed the friction (and didn't introduce new ambiguity). The synthetic request body is reused verbatim.
+- **`tier: flagged` but every proposed edit was `blocked` (refused)**: do NOT re-run — re-running can't converge on a boundary you won't cross. Log the refused block(s) for the maintainer and advance. **Not clean.**
+- **`result: partial`** (`noted`): NOT clean — the runner did not finish. If you applied ≥1 edit this attempt, re-run once (`attempt<k+1>`); otherwise log it as unresolved and advance.
+- **`tier: noted` (result `success`) or `unremarkable`**: this test case is clean. Advance to the next test case.
 
 #### 2f. Skill-stable check
 
@@ -372,7 +386,7 @@ complete):
    - Per-skill stability verdict (✓ stable / ✗ unresolved blocks).
    - **Surfaced (`proposes`-class) edits** that landed inline but want a deliberate separate pass (cross-skill / script / manifest / contract-adjacent).
    - **Refused (boundary) edits** the guard blocked — one line each with its boundary, so the maintainer can decide deliberately (the loop never crosses them).
-   - Path to iterations dir for this run: `editor/dev/iterations/<date>-*/`.
+   - Path to iterations dir for this run: `<iterations_root>/<date>-*/` — print it absolute (the directory of the `Done:` paths), never cwd-relative.
    - Sandbox dir for inspection: `editor/dev/sandboxes/<date>-*/`.
    - Reminder: `git diff editor/skills/` to review edits, `rm -rf editor/dev/sandboxes/` to clean up.
 
@@ -424,7 +438,7 @@ through the one guard. See [editor/dev/README.md](../dev/README.md).
 - Never mutate `samples/annotation-history/` or `virgil-data/doc_devtest/` — only sandbox copies.
 - Never commit. Loop ends with diffs in the working tree for the user to inspect.
 - Never run a skill against the real fixture; sandboxes are mandatory.
-- Memos live at `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<k>.md`, written by `dev_loop.py write-iteration-memo` in the **unified shape**. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is the cowork-memo / paper-note stream — notes *about a paper*, not about Virgil's skill markdown).
+- Memos live at `<iterations_root>/<date>-<skill>/<case-slug>-attempt<k>.md` (`iterations_root()` — the primary checkout's `editor/dev/iterations/`, even from a worktree; open the absolute path the writer's `Done:` line prints), written by `dev_loop.py write-iteration-memo` in the **unified shape**. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is the cowork-memo / paper-note stream — notes *about a paper*, not about Virgil's skill markdown).
 - **Route every skill edit through `dev_loop.py route-edits` (the guard) before applying it.** Honor `blocked` (refused — never apply, never work around the boundary); flag `surface` (proposes — apply inline but surface for scrutiny); apply `acts` inline. The three boundaries are law.
 - **No worktree, no commit.** iterate is synchronous + inline; the propose-via-worktree autonomy is `dream`'s, not iterate's.
 - Loop driver edits skill markdown directly. Runner subagents never edit `editor/skills/`; they only write their critique JSON (in the sandbox) and call the writer script.

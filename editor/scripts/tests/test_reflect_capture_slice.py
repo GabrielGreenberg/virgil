@@ -482,5 +482,39 @@ check("APPENDS" in flat and "_merge_task_less_bucket" in flat,
       "reflect.py's header states the task-less exception")
 
 
+# ── task 1607: the `session` cue needs NO paper ───────────────────────────────
+print("\n=== paperless session capture (task 1607) ===")
+mem = Path(tempfile.mkdtemp(prefix="memos-"))
+nopaper = Path(tempfile.mkdtemp(prefix="no-paper-"))   # a repo session's cwd: no virgil/
+r = subprocess.run([sys.executable, REFLECT, "-", "session", "-", "--memo-json",
+                    json.dumps({"buckets": {"issues": "dev server panics on worktree"}})],
+                   capture_output=True, text=True, cwd=nopaper,
+                   env={**os.environ, "VIRGIL_DEV_MEMOS_DIR": str(mem), "VIRGIL_DEV": "1",
+                        "VIRGIL_REFLECT_NOW": "2026-06-07T09:00:00"})
+check(r.returncode == 0 and len(memo_files(mem)) == 1,
+      "`reflect.py - session -` writes a memo with no paper folder anywhere")
+pm = only_memo(mem)
+check(pm is not None and fm_of(pm).get("doc") == "-",
+      "…recording `doc: -` (no false paper attributed)")
+r = run(mem, "-", "session", "-", "--memo-json",
+        json.dumps({"buckets": {"issues": "preview iframe has no FSA picker"}}),
+        now="2026-06-07T15:00:00")
+text = body_of(only_memo(mem)) if only_memo(mem) else ""
+check(r.returncode == 0 and "dev server panics on worktree" in text
+      and "preview iframe has no FSA picker" in text and fm_of(only_memo(mem)).get("runs") == "2",
+      "a second same-day paperless call APPENDS into the one memo (runs: 2)")
+r = run(mem, "-", "session", "-", now="2026-06-08T09:00:00")
+check(r.returncode == 0 and len(memo_files(mem)) == 2, "a new day mints a new paperless memo")
+sb = sandbox()
+run(mem, str(sb), "session", "-", now="2026-06-08T10:00:00")
+check(len(memo_files(mem)) == 3, "a paper-bearing session memo stays a SEPARATE floor from the paperless one")
+r = run(mem, "-", "draft-footnote", "-")
+check(r.returncode != 0 and "only for" in r.stderr + r.stdout,
+      "`-` is refused for a skill other than `session`")
+r = run(mem, "-", "session", "req-1")
+check(r.returncode != 0 and "taskId '-'" in r.stderr + r.stdout,
+      "`-` with a real Task id is refused (no queue to resolve it)")
+
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)
