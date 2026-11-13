@@ -106,7 +106,7 @@ describe("Outline rows are keyboard-operable (task 956)", () => {
 
   it("Enter on the fold chevron is the chevron's — the row does not also activate", () => {
     const { container, onScrollTo } = mount();
-    const chevron = row(container, "h-0").querySelector("button[aria-label$='section']")!;
+    const chevron = row(container, "h-0").querySelector("button[aria-label^='Section'][aria-expanded]")!;
     expect(chevron).not.toBeNull();
     fireEvent.keyDown(chevron, { key: "Enter" });
     expect(onScrollTo).not.toHaveBeenCalled();

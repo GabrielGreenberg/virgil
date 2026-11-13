@@ -716,7 +716,7 @@ function BibEntryPickerRow({
             }}
             aria-expanded={expanded}
             className="iconbtn-xs"
-            {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
+            {...iconHint({ label: "Details", hint: expanded ? "Hide details" : "Show details" })}
           >
             <MenuCaret
               className="motion-safe:transition-transform duration-(--motion-fast) ease-[ease]"

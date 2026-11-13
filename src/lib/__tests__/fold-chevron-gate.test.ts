@@ -458,7 +458,7 @@ describe("task 830 — the heading chevron wears the ONE fold-chevron contract",
     expect(btn.classList.contains("margin-fold-chevron")).toBe(true);
     expect(btn.classList.contains("focus-ring")).toBe(true);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
-    expect(btn.getAttribute("aria-label")).toBe("Collapse section");
+    expect(btn.getAttribute("aria-label")).toBe("Section");
     expect(btn.getAttribute("data-hint")).toBe("Collapse section");
     // The native title was the old, change-only tooltip — the hint replaces it.
     expect(btn.hasAttribute("title")).toBe(false);
@@ -478,13 +478,13 @@ describe("task 830 — the heading chevron wears the ONE fold-chevron contract",
     let btn = chevronForUuid(el, "h-A");
     expect(btn.classList.contains("is-folded")).toBe(true);
     expect(btn.getAttribute("aria-expanded")).toBe("false");
-    expect(btn.getAttribute("aria-label")).toBe("Expand section");
+    expect(btn.getAttribute("aria-label")).toBe("Section");
     expect(btn.getAttribute("data-hint")).toBe("Expand section");
     toggle();
     btn = chevronForUuid(el, "h-A");
     expect(btn.classList.contains("is-folded")).toBe(false);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
-    expect(btn.getAttribute("aria-label")).toBe("Collapse section");
+    expect(btn.getAttribute("aria-label")).toBe("Section");
     editor.destroy();
   });
 });

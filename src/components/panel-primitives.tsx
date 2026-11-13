@@ -3427,7 +3427,11 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
                     ? {
                         "aria-expanded": !isCollapsed,
                         "aria-controls": bodyId,
-                        "aria-label": isCollapsed ? "Expand card" : "Collapse card",
+                        // Stable name (task 1610): the card's kind label —
+                        // the header's own visible text, which an
+                        // `aria-label` would otherwise REPLACE — while
+                        // `aria-expanded` alone says open or closed.
+                        "aria-label": `${kindLabelOverride ?? cardTypeLabel(kind!)} card`,
                       }
                     : { "aria-label": "Select card" }),
                   onClick: (e: React.MouseEvent) => {

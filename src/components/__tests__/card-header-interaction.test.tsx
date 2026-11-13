@@ -76,7 +76,7 @@ function renderPanelCard(overrides: Partial<PanelCardProps> = {}) {
 describe("docked header click = toggle + select (backlog #14)", () => {
   it("fires onHeaderActivate, not the root onClick (no body contract)", () => {
     const { props } = renderPanelCard();
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(props.onHeaderActivate).toHaveBeenCalledTimes(1);
     expect(props.onToggleExpanded).not.toHaveBeenCalled();
     expect(props.onClick).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe("docked header click = toggle + select (backlog #14)", () => {
 
   it("falls back to the axis-pure onToggleExpanded when no composition is threaded", () => {
     const { props } = renderPanelCard({ onHeaderActivate: undefined });
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(props.onToggleExpanded).toHaveBeenCalledTimes(1);
     expect(props.onClick).not.toHaveBeenCalled();
   });
@@ -98,21 +98,31 @@ describe("docked header click = toggle + select (backlog #14)", () => {
 
   it("Enter and Space on the focused header activate; aria tracks state", () => {
     const { props, rerender } = renderPanelCard();
-    const header = screen.getByLabelText("Expand card");
+    const header = (document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement);
     expect(header.getAttribute("role")).toBe("button");
     expect(header.getAttribute("aria-expanded")).toBe("false");
     fireEvent.keyDown(header, { key: "Enter" });
     fireEvent.keyDown(header, { key: " " });
     expect(props.onHeaderActivate).toHaveBeenCalledTimes(2);
-    // Expanded: stateful label + aria-expanded flip.
+    // Expanded: ONLY aria-expanded flips — the name is stable (task 1610).
+    const closedName = header.getAttribute("aria-label");
     rerender(<PanelCard {...props} isCollapsed={false} />);
-    expect(screen.getByLabelText("Collapse card").getAttribute("aria-expanded")).toBe("true");
+    const open = document.querySelector('[data-card-header][aria-expanded="true"]') as HTMLElement;
+    expect(open).toBe(header);
+    expect(open.getAttribute("aria-label")).toBe(closedName);
+  });
+
+  it("the header's name is the card's kind label, never the state (task 1610)", () => {
+    renderPanelCard();
+    const header = document.querySelector("[data-card-header][aria-expanded]") as HTMLElement;
+    expect(header.getAttribute("aria-label")).toBe("Note card");
+    expect(header.getAttribute("aria-label")).not.toMatch(/expand|collapse/i);
   });
 
   it("a popped card's header is inert (no expansion axis when floating)", () => {
     renderPanelCard({ isPoppedOut: true, onTogglePopout: vi.fn() });
-    expect(screen.queryByLabelText("Expand card")).toBeNull();
-    expect(screen.queryByLabelText("Collapse card")).toBeNull();
+    expect(document.querySelector('[data-card-header][aria-expanded="false"]')).toBeNull();
+    expect(document.querySelector('[data-card-header][aria-expanded="true"]')).toBeNull();
   });
 });
 
@@ -132,7 +142,7 @@ describe("suppress-click guard after a lift gesture", () => {
   it("the trailing click of a completed lift fires neither header toggle nor root onClick", () => {
     const onTogglePopout = vi.fn();
     const { props } = renderPanelCard({ cardKey: "note:n1", onTogglePopout });
-    const header = screen.getByLabelText("Expand card");
+    const header = (document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement);
 
     // Press on the header, drag past the 5px threshold → lift triggers.
     fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
@@ -156,7 +166,7 @@ describe("suppress-click guard after a lift gesture", () => {
   it("task 1152: the suppression ends with the gesture — a later activation with no press is NOT swallowed", async () => {
     const onTogglePopout = vi.fn();
     const { props } = renderPanelCard({ cardKey: "note:n1", onTogglePopout });
-    const header = screen.getByLabelText("Expand card");
+    const header = (document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement);
 
     fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
     fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40, buttons: 1 }));
@@ -238,7 +248,7 @@ describe("lift spawn rect + handoff (backlog #20 wiring)", () => {
   }
 
   function driveLift() {
-    const header = screen.getByLabelText(/Expand card|Collapse card/);
+    const header = (document.querySelector("[data-card-header][aria-expanded]") as HTMLElement);
     fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
     fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40, buttons: 1 }));
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
@@ -303,7 +313,7 @@ describe("lift spawn rect + handoff (backlog #20 wiring)", () => {
     expect(poppedCtx.popOutAtRect).not.toHaveBeenCalled();
     expect(consumeCardLiftHandoff("note:n1")).toBeNull();
     // The residue header still works as a plain disclosure click.
-    fireEvent.click(screen.getByLabelText(/Expand card|Collapse card/));
+    fireEvent.click((document.querySelector("[data-card-header][aria-expanded]") as HTMLElement));
     expect(props.onHeaderActivate).toHaveBeenCalledTimes(1);
   });
 });

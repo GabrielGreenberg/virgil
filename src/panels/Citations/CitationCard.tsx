@@ -1144,7 +1144,7 @@ export function CitationCard({
         isDraft ? () => cardStore.select(ac.ref) : ac.onHeaderActivate
       }
       // Select-only activation must not advertise disclosure semantics
-      // (aria-expanded/"Collapse card") for the pinned-open draft body.
+      // (aria-expanded + the stable kind-label name) for the pinned-open draft body.
       headerDisclosure={!isDraft}
       isDropTarget={isDropTarget}
       // Click selects (not while drafting); the grab cursor is the shell's,

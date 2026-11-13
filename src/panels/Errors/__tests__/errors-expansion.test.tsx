@@ -91,7 +91,7 @@ describe("ErrorsPanel controlled expansion contract (R5)", () => {
     const { props } = renderPanel();
     // The whole unified header is the disclosure trigger now (the per-card
     // expand chevron was retired); it keeps the stateful aria-label.
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(props.onToggleExpanded).toHaveBeenCalledTimes(1);
     expect(props.onToggleExpanded).toHaveBeenCalledWith(ERR.id);
     expect(props.onSelect).toHaveBeenCalledTimes(1);
@@ -102,7 +102,7 @@ describe("ErrorsPanel controlled expansion contract (R5)", () => {
 
   it("Enter on the focused header fires the same composition (keyboard a11y)", () => {
     const { props } = renderPanel();
-    const header = screen.getByLabelText("Expand card");
+    const header = (document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement);
     fireEvent.keyDown(header, { key: "Enter" });
     expect(props.onToggleExpanded).toHaveBeenCalledTimes(1);
     expect(props.onSelect).toHaveBeenCalledWith(ERR.id);
@@ -122,13 +122,13 @@ describe("ErrorsPanel controlled expansion contract (R5)", () => {
     expect(screen.queryByText("warning")).toBeNull();
     // Clicking the chevron does NOT expand locally (controlled component —
     // the callback fired, but with unchanged props the card stays closed).
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     expect(screen.queryByText("warning")).toBeNull();
     // Only a prop change opens it.
     rerender(
       <ErrorsPanel {...props} expandedIds={new Set([ERR.id])} />,
     );
     expect(screen.getByText("warning")).toBeTruthy();
-    expect(screen.getByLabelText("Collapse card")).toBeTruthy();
+    expect((document.querySelector('[data-card-header][aria-expanded="true"]') as HTMLElement)).toBeTruthy();
   });
 });

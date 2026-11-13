@@ -14,9 +14,9 @@
  *   - {@link FOLD_CHEVRON_CLASS} — the shared stylesheet class (globals.css
  *     `.margin-fold-chevron`) carrying every common rule; the per-kind class
  *     keeps only what legitimately differs (`top`, read-only visibility).
- *   - {@link foldChevronAttrs} — the state-dependent attributes: the hint +
- *     accessible name through {@link iconHint} (one label, both consumers),
- *     and `aria-expanded`. React spreads it; vanilla DOM paints it through
+ *   - {@link foldChevronAttrs} — the state-dependent attributes: a stable
+ *     accessible name + an action-worded hint through {@link iconHint}, and
+ *     `aria-expanded`. React spreads it; vanilla DOM paints it through
  *     {@link paintFoldChevron}.
  */
 import { iconHint, type IconHintAttributes } from "@/components/Hint";
@@ -33,17 +33,25 @@ export type FoldChevronAttributes = IconHintAttributes & {
 
 /**
  * The attributes a fold chevron carries in a given state. `subject` names
- * what folds ("section", or a pod's kind label) — the label reads
- * "Collapse <subject>" while expanded and "Expand <subject>" while folded.
- * `aria-expanded` describes the CONTROLLED content, so it is `"true"` when
- * NOT folded.
+ * what folds ("section", or a pod's kind label).
+ *
+ * The WAI-ARIA disclosure pattern (task 1610): the accessible NAME is the
+ * subject and never changes — `aria-expanded` alone carries the state, so a
+ * screen reader says "Section, expanded" rather than "Collapse section,
+ * expanded" (the state twice). Only the SIGHTED tooltip keeps its action
+ * wording ("Collapse section"), because a hover hint reads as what a click
+ * will do. `aria-expanded` describes the CONTROLLED content, so it is
+ * `"true"` when NOT folded.
  */
 export function foldChevronAttrs(
   folded: boolean,
   subject: string,
 ): FoldChevronAttributes {
   return {
-    ...iconHint({ label: `${folded ? "Expand" : "Collapse"} ${subject}` }),
+    ...iconHint({
+      label: subject.charAt(0).toUpperCase() + subject.slice(1),
+      hint: `${folded ? "Expand" : "Collapse"} ${subject}`,
+    }),
     "aria-expanded": folded ? "false" : "true",
   };
 }

@@ -76,7 +76,7 @@ function renderCard(command: string, bibPackage: string) {
     onUpdateCitation,
   };
   render(<CitationCard {...props} />);
-  fireEvent.click(screen.getByLabelText("Expand card"));
+  fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
   return { onUpdateCitation };
 }
 

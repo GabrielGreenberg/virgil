@@ -100,7 +100,7 @@ describe("CitationCard — raw Code edit resyncs local state (task 078)", () => 
     render(<Harness emitted={emitted} />);
 
     // Expand the (non-draft) card so the Code row + Type/overflow strip render.
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
 
     // Open the raw Code editor and add a second key.
     fireEvent.click(screen.getByLabelText("Edit raw LaTeX"));
@@ -132,7 +132,7 @@ describe("CitationCard — raw Code edit resyncs local state (task 078)", () => 
   it("the Type select after a Code edit also preserves the added key", () => {
     const emitted: string[] = [];
     render(<Harness emitted={emitted} />);
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
 
     fireEvent.click(screen.getByLabelText("Edit raw LaTeX"));
     const codeInput = screen.getByDisplayValue("\\cite{smith}");
@@ -162,7 +162,7 @@ describe("citation overflow menu — task 181", () => {
   it("survives a run of toggles and closes on Escape", async () => {
     const emitted: string[] = [];
     render(<Harness emitted={emitted} />);
-    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click((document.querySelector('[data-card-header][aria-expanded="false"]') as HTMLElement));
     fireEvent.click(screen.getByLabelText("More options"));
     await settleMenu();
 
