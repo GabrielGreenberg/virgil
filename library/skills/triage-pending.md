@@ -267,6 +267,16 @@ directory).
      `triage-bib-summary`, `triage-bib-parse-failed`,
      `triage-bib-cleanup-failed` — so a count of notifications is not a
      count of rows
+   - closes each file's own **triage request** — the
+     `.virgil/queue/_triage-<slug>.json` the app filed when the file was
+     dropped (task 1600). It claims it before the file's rows and, after,
+     RETIRES it when the file has left `unsorted/` (moved, parked,
+     deleted) or carries a never-triageable verdict (`unsupported-ext`),
+     and RELEASES it (`failed`, the row's summary as the error) when the
+     file is still there (a `collision`, an `unsafe-citekey`, an `error`).
+     Each settled request prints a `[request <result>] <filename>` line. A
+     request another worker holds is left alone; a file with no request
+     (hand-dropped) has nothing to close
    - bumps `.virgil/catalog-version.txt` once at the end
 
    Capture the script's per-row output and final summary in your reply,
@@ -275,7 +285,9 @@ directory).
 
 4. **Drain the queue.** After triage, the queue holds the pending
    `index` requests apply wrote, plus an `authenticate` request per
-   imported `.bib` entry. Run `/library/index-pending` — it drains every
+   imported `.bib` entry — and a `triage` request only for a file apply
+   RELEASED (still in `unsorted/`), which the drain retries through
+   `/library/triage-pdf`. Run `/library/index-pending` — it drains every
    kind. `drain_queue.py` on its own is NOT a substitute: it processes
    only `queue_slot.DRAIN_NATIVE_KINDS` (`index`/`reindex`) and skips
    every other kind with a note, so it never authenticates a bib.
