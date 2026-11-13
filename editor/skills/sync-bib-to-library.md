@@ -87,22 +87,23 @@ top of step 1.
    lib_args=()
    [ -n "$LIBRARY" ] && lib_args=(--library "$LIBRARY")
 
-   # Synced PWA folders have library_path.py under .virgil/scripts/editor/.
-   # The Virgil source repo has it under editor/scripts/. Either is fine.
-   library_path_py=""
-   for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
-     [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+   # Synced PWA folders have the editor scripts under .virgil/scripts/editor;
+   # the Virgil source repo has them under editor/scripts. Same no-slash
+   # dual-path loop as /editor/answer-bib-review (the bundle build's path
+   # rewrite deliberately leaves the no-slash candidate intact).
+   scripts_dir=""
+   for candidate in .virgil/scripts/editor editor/scripts; do
+     [ -f "$candidate/library_path.py" ] && { scripts_dir="$candidate"; break; }
    done
-   if [ -z "$library_path_py" ]; then
+   library_path_py="$scripts_dir/library_path.py"
+   if [ -z "$scripts_dir" ]; then
      echo "This folder doesn't look Virgil-managed (no editor scripts found)."
      echo "Open the paper in Virgil first so cowork tooling syncs into it."
      exit 1
    fi
    library_root=$(python3 "$library_path_py" --get "${lib_args[@]}") || true
-   # Derive the editor scripts directory from the resolved library_path.py.
-   # Used below for `bib_match_library.py` etc. so we stay consistent
-   # with whichever location the resolver was found in.
-   scripts_dir="$(dirname "$library_path_py")"
+   # `$scripts_dir` is used below for `bib_match_library.py` etc., so every
+   # helper comes from the same location the resolver was found in.
    ```
    If the second command failed (no `library_root` populated), surface a
    clean message and stop:
@@ -232,9 +233,11 @@ top of step 1.
 
    d. **Leave the bundle alone.** `triage_apply.py` owns its
       disposition: it deletes the bundle from `unsorted/` when every row
-      applied, and deliberately KEEPS it — reporting to the library inbox —
-      when any row failed, so the failed entries are not lost. Never `rm`
-      it yourself; a kept bundle is the evidence for that report.
+      applied, and PARKS it in `unsorted/_pending/` when any row failed
+      (filing a `triage-bib-parse-failed` library-inbox item whose
+      `parkedAs` names where it went), so the failed entries are not lost.
+      Never `rm` or move it yourself; the parked bundle is the evidence for
+      that report.
 
    e. **Authenticate each new citekey.** For every citekey produced
       by step (c), invoke `/library/authenticate-bib <citekey>` from
@@ -339,7 +342,7 @@ is step 8's single run-closing notification.
   non-`authenticated` state in the report so the user knows to follow up
   in the library.
 - **Don't delete entries from `references.bib` that aren't in
-  `paper.tex`.** Some users keep an extended bibliography. Reconcile
+  `document.tex`.** Some users keep an extended bibliography. Reconcile
   fields, but don't prune.
 
 ## Reply format
