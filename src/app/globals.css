@@ -7088,6 +7088,17 @@ body.perf-contain .static-borrowed-text {
   align-items: center;
   margin: var(--gutter-inset) 4px 0 var(--gutter-matte-clear);
 }
+/* A sticky box travels only inside its containing block, so the lozenge's
+   host spans the document's scroll range — never just what it holds. Its
+   contents give it no height when the side has no anchored cards (unanchored
+   cards live in the bin; the cards are absolute, so the omni pod's height is
+   only its measured minimum, 0 when nothing is anchored) or when the side is
+   collapsed, and the lozenge then scrolled away with the page (task 1604).
+   No last-stretch correction like the tool gutter's: the lozenge is short, so
+   the host's end never reaches it. */
+[data-gutter-side-host] {
+  min-height: var(--row-bound-h, 100%);
+}
 /* ── Reading lists (Gabriel, 2026-11-08) ─────────────────────────────
    Footnotes, bibliography and examples as lists a person reads. A row is
    SANS and its item is RENDERED (citations, \ref, math through the static
