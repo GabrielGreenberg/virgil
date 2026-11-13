@@ -216,6 +216,27 @@ export function renderPrefCssBlockBody(seed, indent) {
 }
 
 /**
+ * Tokens declared inside a managed-block body that no table row writes — a
+ * hand edit inside the GENERATED region. The promoter refuses to re-render a
+ * block that holds one (task 1599): re-rendering would DELETE it silently,
+ * and the nightly promote cron would commit that deletion onto main (task
+ * 1593's `--chrome-glass` was erased that way on the 2026-11-13 release
+ * run). A row retired from the table also lands here, so its line is
+ * deleted by hand — one deliberate edit, never a side effect.
+ *
+ * @param {string} body
+ * @returns {string[]}
+ */
+export function foreignPrefCssDeclarations(body) {
+  const known = new Set(PREF_CSS_ROWS.map((row) => row.cssVar));
+  const out = [];
+  for (const m of body.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)) {
+    if (!known.has(m[1]) && !out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
+/**
  * The guards' one failure sentence when the block is not the promoter's render.
  * It names the generator, because the usual cause is a hand edit inside the
  * block, and the fix is to move it — not to re-run anything.

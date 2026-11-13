@@ -225,4 +225,33 @@ describe("promoter bakes colour transforms into the shipped palette", () => {
     expect(again.status, again.stderr).toBe(0);
     expect(again.changed).toEqual([]);
   });
+
+  // Task 1599: a hand-written token INSIDE the generated block (1344, 1351,
+  // 1593's --chrome-glass) used to be silently DELETED by the next promote —
+  // the nightly cron would commit the deletion onto main. The promoter now
+  // refuses by name, and writes nothing (task 1488's plan-before-write).
+  it("refuses — and writes nothing — when the block holds a token no row writes", () => {
+    const cssPath = path.join(tmp, "src/app/globals.css");
+    const prefsPath = path.join(tmp, "src/hooks/usePreferences.defaults.json");
+    const edited = readFileSync(cssPath, "utf-8").replace(
+      "/* PROMOTE-DEFAULTS-END */",
+      "--hand-written-token: red;\n  /* PROMOTE-DEFAULTS-END */",
+    );
+    writeFileSync(cssPath, edited);
+    const prefsBefore = readFileSync(prefsPath, "utf-8");
+    const snap = path.join(tmp, "snapshot.json");
+    writeFileSync(snap, JSON.stringify({
+      source: "test",
+      "virgil-editor-prefs": { ...DEFAULT_PREFS, backgroundColor: "#a0b0c0" },
+    }));
+    const r = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "tools/promote-defaults.mjs"), "--root", tmp, "--snapshot", snap],
+      { encoding: "utf-8" },
+    );
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("--hand-written-token");
+    expect(readFileSync(cssPath, "utf-8")).toBe(edited);
+    expect(readFileSync(prefsPath, "utf-8")).toBe(prefsBefore);
+  });
 });
