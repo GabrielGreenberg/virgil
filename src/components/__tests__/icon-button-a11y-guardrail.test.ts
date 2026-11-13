@@ -2285,7 +2285,6 @@ const PERMITTED_BARE_OUTLINE_STRIPS: Record<string, string> = {
   ".heading-label-input":
     "a transient inline-rename field: mounted only for its edit session and focused on mount, so focus is the only state it has — its underline + caret are the indicator",
   ".par-title-input": "a transient inline-rename field (see .heading-label-input)",
-  ".card-title-input": "a transient inline-rename field (see .heading-label-input)",
   ".figure-block .figure-label-input":
     "a transient inline-rename field, the figure twin of .heading-label-input (STYLE_GUIDE → chrome that mirrors the document) — mounted only while editing",
 };
