@@ -65,9 +65,10 @@ directory).
    a request: `pending-reviews.json` is the app's bib-review manifest and
    `*.done.json` a retirement marker — the drain never counts them
    (`queue_slot.request_files`). To see what is waiting to be picked up
-   without running anything: `python3 .virgil/scripts/library/queue_slot.py pending`
-   (`status: requested` only — `outstanding` adds failed retries and requests
-   a worker is working right now).
+   without running anything: `python3 .virgil/scripts/library/queue_slot.py claimable`
+   (what a worker may claim now — waiting, failed retries, abandoned claims;
+   the drain's own `is_claimable` gate. `pending` is `status: requested`
+   only; `outstanding` adds requests a worker is working right now).
 
    Only `index` and `reindex` are native (`queue_slot.DRAIN_NATIVE_KINDS`).
    **Every other kind is deferred**: the drain lists it under

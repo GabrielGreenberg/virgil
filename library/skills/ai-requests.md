@@ -99,12 +99,14 @@ A queue entry is an AI request when **any** of these is true:
 
 ## Procedure
 
-1. **Find the candidates.** List the pending requests with
-   `python3 .virgil/scripts/library/queue_slot.py pending` (the requests
-   waiting to be picked up — `status: requested`, so one another worker has
-   already claimed is not a candidate; one JSON line per request, naming its
-   `file`; `pending-reviews.json` and `.done` markers are
-   not requests and never appear), read each file, and select the ones
+1. **Find the candidates.** List the requests you may claim with
+   `python3 .virgil/scripts/library/queue_slot.py claimable` (task 1598 —
+   what `claim` will take: a waiting request, a `failed` one an earlier run
+   RELEASED, or an abandoned claim; one another worker is working right now
+   is not a candidate; one JSON line per request, naming its `file`;
+   `pending-reviews.json` and `.done` markers are not requests and never
+   appear). Not `pending` — that lists `status: requested` only, so a
+   released request would never be retried. Read each file, and select the ones
    matching the criteria above. Build a working list with
    citekey, kind, scope (`bib` or `paper`), and note.
 
@@ -216,6 +218,10 @@ A queue entry is an AI request when **any** of these is true:
      - **7** — the entry has unbalanced braces, nothing written. Report
        stderr verbatim and **release** (do not retire); it needs a human
        repair.
+     - **anything else** (1 = a crash) — the shim vouches for no write.
+       Report it verbatim, **release** (do not retire), and stop this
+       request: skip the resync and catalog steps, and do not run step 3
+       (Mark done) below.
 
      Do not pass `--bib-state` or `--allow-field-drop`. Then run that skill's step 3
      (`resync_paper_bib.py`) and step 4 (catalog `fieldChanges`, with

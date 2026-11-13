@@ -68,9 +68,9 @@ The right answer depends on what kind of folder this is.
 
 1. **Check setup.** Run `python3 -c "import fitz, requests" 2>&1`. If pymupdf or
    requests are missing, run the install command from the **Setup** section.
-2. **Inspect the queue.** Run `python3 .virgil/scripts/library/queue_slot.py pending`
-   — one line per request waiting to be picked up (`outstanding` also lists
-   failed retries and requests being worked). (Not every `.virgil/queue/*.json` is one:
+2. **Inspect the queue.** Run `python3 .virgil/scripts/library/queue_slot.py claimable`
+   — one line per request a worker may claim now: waiting, a failed retry,
+   or an abandoned claim (`outstanding` also lists requests being worked). (Not every `.virgil/queue/*.json` is one:
    `pending-reviews.json` is a manifest and `*.done.json` a marker.)
 3. **Process pending work:** run `/library:index-pending`. Its step 2 is the
    one dispatch table — every queue kind has a route there, and a

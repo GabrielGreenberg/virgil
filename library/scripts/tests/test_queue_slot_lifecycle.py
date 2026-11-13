@@ -393,6 +393,48 @@ def test_outstanding_counts_the_claimed_and_the_failed_task_1468(tmp_path, capsy
         ("e-auth.json", "running"), ("f.json", "running")}
 
 
+def test_claimable_lists_what_a_released_run_left_for_the_next_task_1598(tmp_path, capsys):
+    """A skill that finds its own work (ai-requests) lists CLAIMABLE, not
+    pending: `release` turns the request into a `failed` retry, which
+    `pending` (`status: requested` only) never shows — the promised retry
+    never came. The listing is `is_claimable`, the gate `claim` applies, so
+    what it lists `claim` takes."""
+    lib = str(tmp_path)
+
+    def run(*argv: str) -> list[dict]:
+        assert _cli([*argv, "--library", lib]) in (0, 3)
+        out = capsys.readouterr().out
+        return [json.loads(x) for x in out.splitlines() if x.strip()]
+
+    run("write", "--kind", "authenticate", "--citekey", "x", "--note", "fix it")
+    claimed = run("claim", "--kind", "authenticate", "--citekey", "x")[0]
+    assert claimed["result"] == "claimed"
+    # Live claim: not claimable (another worker holds it).
+    assert run("claimable") == []
+    run("release", "--kind", "authenticate", "--citekey", "x",
+        "--requested-at", claimed["requestedAt"], "--error", "crashed")
+
+    assert run("pending") == []
+    listed = run("claimable")
+    assert [(r["citekey"], r["status"]) for r in listed] == [("x", "failed")]
+    assert run("claim", "--kind", "authenticate", "--citekey", "x")[0]["result"] == "claimed"
+
+    # Poisoned and live-running are out; an abandoned claim is in.
+    q = _qdir(tmp_path)
+    for p in q.glob("*.json"):
+        if p.name != queue_slot.PENDING_REVIEWS_FILENAME:
+            p.unlink()
+    base = dict(requestedAt="2026-09-01T00:00:00Z", attempts=3)
+    _put(q / "p.json", kind="index", status="poisoned", citekey="p", **base)
+    _put(q / "r.json", kind="index", status="running", citekey="r",
+         startedAt=queue_slot._now(), **base)
+    _put(q / "s.json", kind="index", status="running", citekey="s",
+         startedAt="2026-01-01T00:00:00Z", **base)
+    assert [r["file"] for r in run("claimable")] == ["s.json"]
+    assert _cli(["claimable", "--count", "--library", lib]) == 0
+    assert capsys.readouterr().out.strip() == "1"
+
+
 def test_drain_skips_running_and_retries_failed(tmp_path):
     q = _qdir(tmp_path)
     base = dict(requestedAt="2026-09-01T00:00:00Z", attempts=1)
