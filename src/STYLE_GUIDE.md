@@ -3907,7 +3907,11 @@ right margin already states, docs/agents/laws/editor-geometry.md → "The orderi
 - `--margin-col-label` (default `52px`) — the **block-label column**: Title,
   Author, Date, a heading's type and `\label`, a figure's and an example's
   label. It sits outboard of the chevron, right-aligned, so labels stay off the
-  paper and out of flow. See "Block labels" below.
+  paper and out of flow. See "Block labels" below. Its WIDTH is one token,
+  `--margin-label-col-width` (`--editor-pl` less this inset less
+  `--margin-label-outboard-gap`, default `8px`), declared on the side-mode
+  pod's `.tiptap` so it substitutes `--editor-pl` where the labels sit; every
+  side label reads it rather than re-spelling the calc.
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS

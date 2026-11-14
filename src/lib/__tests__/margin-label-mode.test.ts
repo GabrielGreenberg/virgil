@@ -34,6 +34,20 @@ describe("the block-label column", () => {
     expect(css).toContain(`--margin-col-label: ${MARGIN_LABEL_INSET}px;`);
   });
 
+  it("spells the column's width once, and every side label reads it (task 1615)", () => {
+    // The census: `- var(--margin-col-label) -` (the width arithmetic) appears
+    // only in the token's own declaration, which sits on the pod's .tiptap so
+    // it substitutes --editor-pl where the labels do.
+    const spellings = css.match(/- var\(--margin-col-label\) -/g) ?? [];
+    expect(spellings).toHaveLength(1);
+    expect(css).toMatch(
+      /\[data-margin-labels="side"\] \.tiptap \{\s*--margin-label-col-width: calc\(var\(--editor-pl, 88px\) - var\(--margin-col-label\) - var\(--margin-label-outboard-gap\)\);/,
+    );
+    expect(css).toContain("--margin-label-outboard-gap: 8px;");
+    const readers = css.match(/width: var\(--margin-label-col-width\);/g) ?? [];
+    expect(readers).toHaveLength(4);
+  });
+
   it("takes every label out of flow, so no mode can move the text", () => {
     const side = /\[data-margin-labels="side"\] \.heading-annotation,\s*\[data-margin-labels="side"\] \.title-field-annotation \{[^}]*position: absolute/;
     const hover = /\[data-margin-labels="hover"\] \.heading-annotation,\s*\[data-margin-labels="hover"\] \.title-field-annotation \{[^}]*position: absolute/;
