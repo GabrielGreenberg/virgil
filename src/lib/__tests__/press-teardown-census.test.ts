@@ -45,8 +45,8 @@ const NON_REACT_TEARDOWN: Record<string, { token: RegExp; why: string }> = {
     why: "post-threshold lift subscribes to its drop session's end, which a pane teardown/Escape ends",
   },
   "src/components/FloatingPanel.tsx": {
-    token: /kind: "cancel"/,
-    why: "task 1095: the float's unmount is a named {kind:'cancel'} ending of its move/resize gesture",
+    token: /kind: "detach"/,
+    why: "task 1095: the float's unmount is a named {kind:'detach'} ending of its move/resize gesture (task 1617 split it from the Escape {kind:'cancel'}, which restores)",
   },
   "src/lib/pane-resize/pointer-invariants.ts": {
     token: /return disarm;/,
