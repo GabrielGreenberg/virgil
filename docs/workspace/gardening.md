@@ -1,4 +1,4 @@
-<!-- last-verified: 58798cc7 2026-11-13 -->
+<!-- last-verified: 4a74caec 2026-11-14 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
