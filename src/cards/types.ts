@@ -208,6 +208,12 @@ export interface CardMeta {
    *  (`cardBodyPlaceholder`) is not the right prompt — a DECLARED override
    *  (task 825), e.g. a request kind whose body is a question. */
   bodyPlaceholder?: string;
+  /** The kind's noun in running text, when the lower-cased `label` plus a
+   *  plain `s` (`cardKindNoun`) is not right — a DECLARED override (task
+   *  1626), e.g. the bib kind, labelled "Bibliography" but counted as
+   *  "bibliography entries". Both forms are declared together so the
+   *  singular and plural cannot drift apart. */
+  noun?: { readonly one: string; readonly many: string };
   /** `CARD_THEMES` key (was the scattered per-card `themeKey` lookups). */
   themeKey: ThemeKey;
   /** Whether this kind participates in collab focus-claims (R28/D-2): its

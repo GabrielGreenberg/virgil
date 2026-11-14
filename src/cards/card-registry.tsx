@@ -741,6 +741,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   },
   bib: {
     label: "Bibliography",
+    noun: { one: "bibliography entry", many: "bibliography entries" },
     titleLabel: null,
     themeKey: "bib",
     collabClaims: false,
