@@ -95,3 +95,30 @@ describe("print flatten ⇔ ATOM_REGISTRY `chip` (task 1443)", () => {
     expect(rule![2]).toMatch(/color:\s*inherit\s*!important/);
   });
 });
+
+describe("`\\today` is plain prose, so it is not a chip (task 1620)", () => {
+  const meta = ATOM_REGISTRY.dynamic;
+  /** The declarations of a top-level rule whose selector is exactly `sel`. */
+  const ruleBody = (sel: string): string => {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = CSS.match(new RegExp(`(?:^|\\})\\s*${esc}\\s*\\{([^{}]*)\\}`));
+    expect(m, `no rule for ${sel}`).toBeTruthy();
+    return m![1];
+  };
+
+  it("its rest rule paints no frame — so `chip: false` is TRUE, not a waiver", () => {
+    expect(meta.chip).toBe(false);
+    const rest = ruleBody(`.${meta.domClass}`);
+    // Re-framing it (fill / border / padding at rest) makes it a chip again:
+    // flip `chip` back to true and the print flatten census follows.
+    expect(rest).not.toMatch(/(?:^|;)\s*background\s*:/);
+    expect(rest).not.toMatch(/(?:^|;)\s*border\s*:/);
+    expect(rest).not.toMatch(/(?:^|;)\s*padding\s*:/);
+  });
+
+  it("its hover wash is the neutral atom hover, not another kind's ink", () => {
+    const hover = ruleBody(`.${meta.domClass}:hover`);
+    expect(hover).toMatch(/background:\s*var\(--code-bg\)/);
+    expect(hover, "a date is not a cross-reference — recoloring \\ref must not move it").not.toMatch(/--label-ref-/);
+  });
+});

@@ -5265,10 +5265,12 @@ body.perf-contain .static-borrowed-text {
    it reads as part of the sentence (a date), not as a link or a field. Nothing
    opens on click, so no `pointer` (task 1443): its registry row says
    `opensOnClick: false`, so it rests on `default` and is upgraded to `grab` only
-   where the gesture is live — the chip moves with the text. With no frame at
-   rest, the wash under the pointer is how it can be found at all. On paper it
-   flattens to plain prose with the other chips (`chip: true`; the print block
-   below). */
+   where the gesture is live — the atom moves with the text. With no frame at
+   rest, the wash under the pointer is how it can be found at all. That wash is
+   the NEUTRAL atom hover (`--code-bg`, the one `.inline-math` wears), not
+   another kind's ink: a date is not a cross-reference, so recoloring `\ref`
+   must not move it (task 1620). Not a chip (`AtomMeta.chip: false`): nothing
+   rests on it to flatten, so the print block below does not list it. */
 .latex-dynamic-node {
   display: inline;
   border-radius: var(--radius-sm);
@@ -5276,7 +5278,7 @@ body.perf-contain .static-borrowed-text {
   cursor: default;
 }
 .latex-dynamic-node:hover {
-  background: var(--label-ref-bg);
+  background: var(--code-bg);
 }
 
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
@@ -6742,16 +6744,16 @@ body.perf-contain .static-borrowed-text {
      NodeView chrome. `!important` because a member's screen rule may set
      `display` at higher specificity (`.figure-block .figure-annotation`).
 
-     Inline chip atoms (citation, label-ref, computed `\today`) are DOCUMENT
+     Inline chip atoms (citation, label-ref) are DOCUMENT
      content and keep their text; they lose the chip border and tinted
      background so they read as plain prose. The selector list is EXACTLY the
      `ATOM_REGISTRY` rows marked `chip: true` — pinned by
      `print-atom-chip-posture.test.ts`, so a new chip atom fails CI by name
-     rather than printing boxed (task 1443; the `\today` chip did). */
+     rather than printing boxed (task 1443; the then-framed `\today` did —
+     since the Sand page it rests unframed and is no longer a chip, task 1620). */
   .virgil-chrome-only { display: none !important; }
   .citation-node,
-  .label-ref-node,
-  .latex-dynamic-node {
+  .label-ref-node {
     background: transparent !important;
     border: 0 !important;
     padding: 0 !important;
