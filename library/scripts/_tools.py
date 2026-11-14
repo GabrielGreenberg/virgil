@@ -1149,6 +1149,73 @@ def split_lock_held(row: "dict | None", fields: dict) -> "tuple[dict, list[str]]
     return writable, held
 
 
+# The same pin, spelled in master.bib's vocabulary: the bib fields the
+# catalog's `BIBLIOGRAPHIC_TOP_KEYS` are derived from. The catalog's
+# `authors` list is the bib's one `author` field; the rest share a name.
+_TOP_KEY_TO_BIB_FIELD = {"authors": "author"}
+BIBLIOGRAPHIC_BIB_FIELDS: frozenset[str] = frozenset(
+    _TOP_KEY_TO_BIB_FIELD.get(k, k) for k in BIBLIOGRAPHIC_TOP_KEYS)
+
+
+def hold_pinned_bib_fields(
+    existing: "dict[str, str] | None", fields: dict[str, str],
+) -> "tuple[dict[str, str], list[str]]":
+    """The master.bib half of `split_lock_held` (task 1624): return `fields`
+    with every pinned bib field (`BIBLIOGRAPHIC_BIB_FIELDS`) set back to what
+    `existing` carries — present or absent — and the names the hold actually
+    kept from changing. Field names compare case-insensitively, as
+    `read_master_bib` lowercases them. `existing` None (an APPEND) holds
+    nothing: a new entry has no pinned value to keep.
+    """
+    if existing is None:
+        return dict(fields), []
+    kept_vals = {k.lower(): v for k, v in existing.items()}
+    asked_vals = {k.lower(): v for k, v in fields.items()}
+    out = {k: v for k, v in fields.items()
+           if k.lower() not in BIBLIOGRAPHIC_BIB_FIELDS}
+    held = []
+    for name in sorted(BIBLIOGRAPHIC_BIB_FIELDS):
+        if name in kept_vals:
+            out[name] = kept_vals[name]
+        if asked_vals.get(name) != kept_vals.get(name):
+            held.append(name)
+    return out, held
+
+
+# `metadata_lock_held` reads catalog.json once per (mtime, size) and serves
+# every later ask from the parsed set: the master.bib door asks it on EVERY
+# replace, and a bulk import replaces hundreds of entries in one process.
+_LOCKED_CACHE: dict[Path, "tuple[tuple[int, int], frozenset[str]]"] = {}
+
+
+def metadata_lock_held(library: Path, citekey: str) -> bool:
+    """Does `citekey`'s catalog row carry the operator's `metadataLock`?
+
+    Read without `lock_catalog` (atomic writes make the unlocked read whole),
+    so it may be taken from inside `lock_master_bib` without a lock-order
+    hazard. No row, no catalog, or an unreadable one → False: the pin lives
+    only on a row, and a writer is not refused for a file it cannot read.
+    """
+    path = library / ".virgil" / "catalog.json"
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    stamp = (st.st_mtime_ns, st.st_size)
+    cached = _LOCKED_CACHE.get(path)
+    if cached is None or cached[0] != stamp:
+        try:
+            entries = read_catalog(library).get("entries", [])
+        except Exception:
+            return False
+        locked = frozenset(
+            normalize_citekey(e.get("citekey", "")) for e in entries
+            if isinstance(e, dict) and e.get(METADATA_LOCK_KEY))
+        cached = (stamp, locked)
+        _LOCKED_CACHE[path] = cached
+    return normalize_citekey(citekey) in cached[1]
+
+
 def _deep_merge(dst: dict, src: dict) -> None:
     """Recursively merge `src` into `dst`.
 
@@ -1300,8 +1367,22 @@ def update_catalog_entry(
     patch: dict,
     *,
     recompute_warning_kinds=None,
-) -> None:
+    honour_lock: bool = False,
+) -> list[str]:
     """Apply `patch` to the catalog entry for `citekey`. Self-locks.
+
+    Returns the bibliographic keys the operator's metadata lock HELD (always
+    `[]` unless `honour_lock`).
+
+    `honour_lock` (keyword-only, default off)
+    -----------------------------------------
+    This door is the OPERATOR's: the lock pins against the pipeline, not
+    against the person who set it, so by default it writes whatever it is
+    handed. A PIPELINE caller that shells out to the shim
+    (`apply_metadata_mismatch_policy`) passes it, and the lock is then read
+    INSIDE `lock_catalog`, from the very row about to be written, and applied
+    through `split_lock_held` — so a lock set while the caller was doing slow
+    work is still honoured (task 1624; a pre-lock read of the row is not).
 
     Deep-merge semantics: nested objects merge, arrays/scalars replace.
     Also stamps `updatedAt` on the entry, refreshes `generatedAt` on
@@ -1399,9 +1480,13 @@ def update_catalog_entry(
                 **patch,
                 "indexed": {**patch["indexed"], "warnings": merged},
             }
+        held: list[str] = []
+        if honour_lock:
+            patch, held = split_lock_held(target, patch)
         _deep_merge(target, patch)
         target["updatedAt"] = _now()
         write_catalog(library, catalog)
+    return held
 
 
 def upsert_catalog_entry(
@@ -2262,6 +2347,8 @@ def update_master_bib_entry(
     *,
     allow_downgrade: bool = False,
     compose: "Callable[[dict | None], tuple[str, dict[str, str]] | None] | None" = None,
+    override_lock: bool = False,
+    lock_held: "list[str] | None" = None,
 ) -> str:
     """Replace (or append) one entry in master.bib. Self-locks.
 
@@ -2299,6 +2386,20 @@ def update_master_bib_entry(
     land in between and be erased by a merge that never saw it. The lock is
     not re-entrant (`flock` on a fresh descriptor), so `compose` must not take
     `lock_master_bib` itself.
+
+    **The operator's metadata lock is honoured HERE** (task 1624). `_doctrine.md`
+    §4: a locked row means "do not touch master.bib or the catalog title". Task
+    1470 put the catalog half at one door (`split_lock_held`); this is the
+    master.bib half, so no pipeline writer — index_paper's re-authentication,
+    merge_paper_references, triage, the mismatch policy, an auth skill through
+    the shim — has to remember it. On a REPLACE of an entry whose catalog row
+    carries `metadataLock`, every pinned field (`BIBLIOGRAPHIC_BIB_FIELDS`) is
+    held at the value being replaced (`hold_pinned_bib_fields`); the state and
+    every other field still land. The lock is read inside this lock, after
+    `compose`, so it judges the exact write. The held names are appended to
+    `lock_held` when the caller passes a list. `override_lock=True` is the ONE
+    named bypass, for the person who set the pin (the Library's manual bib
+    edit): the lock pins against the pipeline, not against its owner.
     """
     import unicodedata
     master_path = library / "master.bib"
@@ -2321,6 +2422,12 @@ def update_master_bib_entry(
             if composed is None:
                 return span.state if span else ""
             entry_type, fields = composed
+        if span and not override_lock and metadata_lock_held(library, citekey):
+            existing = master_entry_for(library, citekey, text=text)
+            fields, held = hold_pinned_bib_fields(
+                (existing or {}).get("fields"), fields)
+            if lock_held is not None:
+                lock_held.extend(held)
         if span:
             entry_start = span.block_start
             entry_end = span.end

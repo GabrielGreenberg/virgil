@@ -62,7 +62,10 @@ from _tools import (
     StateFileUnreadable,
     read_catalog,
     is_terminal_bib_state,
+    BIBLIOGRAPHIC_BIB_FIELDS,
+    hold_pinned_bib_fields,
     master_entry_for,
+    metadata_lock_held,
     resolve_paper_source,
     settle_catalog_bib,
     settle_master_bib_state,
@@ -455,6 +458,13 @@ def _authenticate_master_entry(library: Path, citekey: str, bib_entry: dict,
     # door holds the state regardless; skipping here is what keeps the
     # FIELDS. The row carries the settled state rather than a default.
     bib_status = _unauthenticated_bib_status(bib_entry)
+    # The operator's metadata pin (task 1624). The master.bib door holds the
+    # pinned fields on its own; this keeps the IN-MEMORY `fields` — which step 8
+    # writes to references.bib and the catalog sync reads — equal to what the
+    # door will keep, and keeps `fieldChanges` from recording a change nothing
+    # shows.
+    pinned = metadata_lock_held(library, citekey)
+    pinned_base = dict(fields)
     if is_terminal_bib_state(bib_status["state"]):
         log(f"Step 7: skipped (bib.state={bib_status['state']} is settled; "
             "not re-authenticating)")
@@ -502,6 +512,16 @@ def _authenticate_master_entry(library: Path, citekey: str, bib_entry: dict,
                 if not clean:
                     log(f"  TITLE-SUSPECT: {reason}")
                     bib_status["titleSuspect"] = reason
+                if pinned:
+                    kept, held = hold_pinned_bib_fields(pinned_base, fields)
+                    fields.clear()
+                    fields.update(kept)
+                    bib_status["fieldChanges"] = [
+                        fc for fc in (result.field_changes or [])
+                        if fc.get("field", "").lower() not in BIBLIOGRAPHIC_BIB_FIELDS]
+                    if held:
+                        bib_status["lockHeld"] = held
+                        log(f"  metadataLock held: {', '.join(held)}")
                 update_master_bib_entry(
                     library,
                     citekey,
@@ -509,7 +529,7 @@ def _authenticate_master_entry(library: Path, citekey: str, bib_entry: dict,
                     fields,
                     bib_state=result.state,
                 )
-                log(f"  Updated master.bib ({len(result.field_changes)} field changes, state={result.state})")
+                log(f"  Updated master.bib ({len(bib_status['fieldChanges'])} field changes, state={result.state})")
             log(f"  bib state: {result.state}, score={result.score:.2f}, sources={result.sources}")
         except Exception as e:
             log(f"  bib auth FAILED: {e}")

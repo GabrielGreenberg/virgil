@@ -265,7 +265,9 @@ nothing then, so the release is a no-op).
 
    **Branch on the exit code** (the ONE table:
    `update_master_bib_entry.py --help`, task 796). Only on **0** go on to the
-   catalog patch below. **6** — the entry is not in master.bib (a change-set
+   catalog patch below — or on **5**, which here means the row's
+   `metadataLock` held the pinned fields stderr lists (task 1624): the rest
+   landed, so continue, and leave those fields out of every later edit. **6** — the entry is not in master.bib (a change-set
    cannot create one): report it and skip the backfill. **2** (mis-built
    command), **7** (unbalanced braces — needs a human repair) or anything
    else — nothing was written: report stderr verbatim and skip the catalog
@@ -477,7 +479,7 @@ nothing then, so the release is a no-op).
    ```
 
    Same exit branch as step 3's backfill (`--help` table): continue only on
-   **0**; on **6** (entry not in master.bib), **2** (mis-built command),
+   **0** or **5** (pinned fields held by `metadataLock`); on **6** (entry not in master.bib), **2** (mis-built command),
    **7** (unbalanced braces) or anything else, nothing was written — report
    stderr verbatim and skip the `references.bib` / `main.tex` sync below.
 

@@ -274,6 +274,11 @@ def _pdf_page_count(pdf: Path) -> int:
     return 0
 
 
+# Both write shims' "written EXCEPT what the metadata lock held" code
+# (update_master_bib_entry.py's EXIT_TABLE `held`; update_catalog_entry.py).
+_EXIT_HELD = 5
+
+
 def apply(citekey: str, dry_run: bool = False) -> dict:
     """Run the policy; EVERY result carries `metadataLock: true|false`.
 
@@ -409,8 +414,13 @@ def _apply(
     ) as fh:
         json.dump(fields, fh)
         fields_file = fh.name
+    # The lock check above read the row BEFORE the slow cover-page work, so a
+    # pin set since then is judged again by each write door, inside its own
+    # lock (task 1624): the master.bib door holds pinned fields on its own and
+    # the shim reports that as exit 5; the catalog shim does the same under
+    # `--honour-metadata-lock`. Either one answering 5 is the block, late.
     try:
-        subprocess.run(
+        rc = subprocess.run(
             [
                 "python3", str(scripts_dir / "update_master_bib_entry.py"),
                 citekey, "--entry-type", "book",
@@ -421,12 +431,15 @@ def _apply(
                 "--allow-downgrade",
                 "--merge-existing",
             ],
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
+        ).returncode
+    finally:
         unlink_tolerant(fields_file, what="temp fields file")
-        return {"error": f"update_master_bib_entry failed: {e}", "applied": False}
-    unlink_tolerant(fields_file, what="temp fields file")
+    if rc == _EXIT_HELD:
+        return {"applied": False, "blocked": True,
+                "reason": METADATA_LOCK_BLOCK_REASON}
+    if rc != 0:
+        return {"error": f"update_master_bib_entry failed: exit {rc}",
+                "applied": False}
 
     # Update catalog row.
     patch = {"title": title, "bib": {"state": POLICY_BIB_STATE}}
@@ -436,17 +449,21 @@ def _apply(
         json.dump(patch, fh)
         patch_file = fh.name
     try:
-        subprocess.run(
+        rc = subprocess.run(
             [
                 "python3", str(scripts_dir / "update_catalog_entry.py"),
                 citekey, "--patch-file", patch_file,
+                "--honour-metadata-lock",
             ],
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
+        ).returncode
+    finally:
         unlink_tolerant(patch_file, what="temp patch file")
-        return {"error": f"update_catalog_entry failed: {e}", "applied": False}
-    unlink_tolerant(patch_file, what="temp patch file")
+    if rc == _EXIT_HELD:
+        return {"applied": False, "blocked": True,
+                "reason": METADATA_LOCK_BLOCK_REASON}
+    if rc != 0:
+        return {"error": f"update_catalog_entry failed: exit {rc}",
+                "applied": False}
 
     # Update \title{...} in main.tex.
     tex = tex_path.read_text(encoding="utf-8")

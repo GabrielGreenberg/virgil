@@ -147,11 +147,17 @@ All paths below are relative to the library root.
      --merge-existing \
      --drop-field "<one per name in bibEdit.remove>" \
      --base-raw-file "$t/base.bib" \
-     --base-type "<bibEdit.baseType>"
+     --base-type "<bibEdit.baseType>" \
+     --override-metadata-lock
    rc=$?
    rm -rf "$t"
    echo "exit=$rc"
    ```
+
+   `--override-metadata-lock` is right HERE and nowhere else: this is the
+   user's own edit, and the catalog row's `metadataLock` pins against the
+   pipeline, not against the person who set it (task 1624). Every other
+   caller omits it and has pinned fields held (exit 5).
 
    Repeat `--drop-field` once per name in `remove` (none when it is empty).
    Write `set` exactly as queued (an empty `{}` is fine). If `baseRaw` is
