@@ -68,7 +68,18 @@ The contract, stated once:
    STOPS releases its claim (`queue_slot.py release`, task 1575; census
    `queue-door-skill-census.test.ts`), so the request is `failed` at once —
    re-fileable from the app, re-claimable (`claim` addresses
-   `CLAIM_ADDRESS_STATUSES`), and charged an attempt. "Is there a live request?" is ONE predicate in both silos:
+   `CLAIM_ADDRESS_STATUSES`), and charged an attempt.
+   A claim is OWNED (task 1622): `claim_request` writes a fresh `claimId`,
+   and a settle that carries one (`_claim_still_holds`) acts only on THAT
+   claim — so a run that outlived the TTL, whose request a second worker
+   re-claimed, cannot retire or release the second run's live claim. A
+   long run keeps its claim live with `renew_claim` (`queue_slot.py renew`,
+   once per deep-index pass). In-process callers claim through ONE scope,
+   `claimed(path)`, which settles on EVERY exit — an exception (or a body
+   that forgets) releases the claim with the reason, so no Python claimant
+   can strand a request `running` for the TTL. And `write_request` reads
+   and writes the slot under the same `_slot_lock` the claim takes, so a
+   claim can never land between its decision and its write. "Is there a live request?" is ONE predicate in both silos:
    `LIVE_STATUSES` over `slot_kinds` (`index` ≈ `reindex`), pinned by
    `queue-slot-parity.test.ts`.
 
@@ -101,7 +112,8 @@ CLI (the door for skill prompts that enqueue work)::
     python3 queue_slot.py write --kind index --citekey smith2020 [--library .]
     python3 queue_slot.py write --kind deepIndex --citekey smith2020 [--note "…"]
     python3 queue_slot.py claim --kind index --citekey smith2020
-    python3 queue_slot.py retire --kind index --citekey smith2020 --requested-at <claimed>
+    python3 queue_slot.py retire --kind index --citekey smith2020 --requested-at <claimed> [--claim-id <id>]
+    python3 queue_slot.py renew  --kind deepIndex --citekey smith2020 --requested-at <claimed> --claim-id <id>
     python3 queue_slot.py claim  --kind triage --file "Smith 2020.pdf"
     python3 queue_slot.py retire --kind triage --file "Smith 2020.pdf" --requested-at <claimed>
     python3 queue_slot.py pending [--native] [--count]
@@ -131,9 +143,11 @@ import argparse
 import json
 import re
 import sys
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -533,29 +547,36 @@ def write_request(
     path = qdir / name
     if name == f"{citekey}.json" and not _migrate_legacy_occupant(qdir, citekey, kind):
         return OCCUPIED, path
-    cur = _read(path) if path.exists() else None
-    if cur is not None:
-        status = cur.get("status")
-        if is_in_flight(cur):
-            return IN_FLIGHT, path
-        if (
-            status == "requested"
-            and not replace_requested
-            and cur.get("kind") == kind
-            and not done_retires(path, path.with_suffix(".done"))
-        ):
-            return ALREADY_QUEUED, path
-    retire_done(qdir, path.stem)
-    entry: dict[str, Any] = {
-        "kind": kind,
-        "status": "requested",
-        "citekey": citekey,
-        "requestedAt": _now(),
-        "attempts": 0,
-    }
-    if extra:
-        entry.update(extra)
-    _atomic_write_text(path, json.dumps(entry, indent=2) + "\n")
+    # The read → decide → write runs under the slot lock `claim_request`
+    # takes (task 1622): a Python claim landing between the in-flight check
+    # and the write would otherwise be overwritten by a fresh `requested`,
+    # which a second worker could claim while the first still runs. (The
+    # app's writer cannot take the flock; the claim's `claimId` is what makes
+    # its mid-claim write safe.)
+    with _flock_path(_slot_lock(path)):
+        cur = _read(path) if path.exists() else None
+        if cur is not None:
+            status = cur.get("status")
+            if is_in_flight(cur):
+                return IN_FLIGHT, path
+            if (
+                status == "requested"
+                and not replace_requested
+                and cur.get("kind") == kind
+                and not done_retires(path, path.with_suffix(".done"))
+            ):
+                return ALREADY_QUEUED, path
+        retire_done(qdir, path.stem)
+        entry: dict[str, Any] = {
+            "kind": kind,
+            "status": "requested",
+            "citekey": citekey,
+            "requestedAt": _now(),
+            "attempts": 0,
+        }
+        if extra:
+            entry.update(extra)
+        _atomic_write_text(path, json.dumps(entry, indent=2) + "\n")
     if normalize_kind(kind) == REVIEW_KIND:
         add_pending_review(library, citekey, entry["requestedAt"])
     return WRITTEN, path
@@ -640,7 +661,8 @@ def claim_request(path: Path) -> Optional[dict[str, Any]]:
     `retire_claimed` / `release_claimed` check — or None when there is
     nothing claimable there (absent, unreadable, already in flight, poisoned,
     done). An ABANDONED claim (`is_in_flight` false on a running entry) is
-    re-claimable."""
+    re-claimable — under a NEW `claimId`, so the abandoned run can no longer
+    settle it (task 1622)."""
     with _flock_path(_slot_lock(path)):
         cur = _read(path) if path.exists() else None
         if cur is None:
@@ -649,13 +671,40 @@ def claim_request(path: Path) -> Optional[dict[str, Any]]:
             return None
         cur["status"] = RUNNING_STATUS
         cur["startedAt"] = _now()
+        cur["claimId"] = uuid.uuid4().hex
         _atomic_write_text(path, json.dumps(cur, indent=2) + "\n")
         return cur
 
 
 def _claim_still_holds(path: Path, claimed: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """The slot's entry when it still holds what `claimed` names: the same
+    request (`same_request`) and — when `claimed` carries a `claimId` — the
+    same CLAIM (task 1622). A claimant that names no `claimId` (a skill that
+    predates the token, or a hand-built identity) is checked by request
+    alone, as before."""
     cur = _read(path) if path.exists() else None
-    return cur if same_request(cur, claimed) else None
+    if not same_request(cur, claimed):
+        return None
+    token = claimed.get("claimId")
+    if token and cur.get("claimId") != token:
+        return None
+    return cur
+
+
+def renew_claim(path: Path, claimed: dict[str, Any]) -> bool:
+    """Keep a LONG run's claim live: restamp `startedAt` while the slot still
+    holds this claim, so `is_in_flight` stays true past `RUNNING_TTL_SECONDS`
+    for as long as the run keeps renewing (task 1622 — deep-index's
+    convergence loop is uncapped). Returns False when the claim is gone (a
+    newer request, or another worker re-claimed an abandoned claim): the
+    run's claim is no longer its own."""
+    with _flock_path(_slot_lock(path)):
+        cur = _claim_still_holds(path, claimed)
+        if cur is None or cur.get("status") != RUNNING_STATUS:
+            return False
+        cur["startedAt"] = _now()
+        _atomic_write_text(path, json.dumps(cur, indent=2) + "\n")
+        return True
 
 
 def retire_claimed(path: Path, claimed: dict[str, Any]) -> bool:
@@ -694,8 +743,62 @@ def release_claimed(path: Path, claimed: dict[str, Any], error: str) -> Optional
         cur["lastError"] = error[:1000]
         cur["lastAttemptAt"] = _now()
         cur.pop("startedAt", None)
+        cur.pop("claimId", None)  # the claim is over; a repeat settle is refused
         _atomic_write_text(path, json.dumps(cur, indent=2) + "\n")
         return cur["status"]
+
+
+class ClaimScope:
+    """One claim, held by `claimed(path)`. `retire()` / `release(error)`
+    settle it (each at most once — the first settle wins); `renew()` keeps a
+    long run live. `settled` is the outcome: "retired", the released status,
+    or "superseded" (the slot no longer held this claim)."""
+
+    def __init__(self, path: Path, entry: dict[str, Any]):
+        self.path = path
+        self.entry = entry
+        self.settled: Optional[str] = None
+
+    def retire(self) -> bool:
+        if self.settled is None:
+            self.settled = "retired" if retire_claimed(self.path, self.entry) else "superseded"
+        return self.settled == "retired"
+
+    def release(self, error: str) -> Optional[str]:
+        if self.settled is None:
+            self.settled = release_claimed(self.path, self.entry, error) or "superseded"
+        return self.settled if self.settled in ("failed", "poisoned") else None
+
+    def renew(self) -> bool:
+        return renew_claim(self.path, self.entry)
+
+
+@contextmanager
+def claimed(path: Path) -> Iterator[Optional[ClaimScope]]:
+    """THE in-process claim (task 1622): claim `path` and yield a
+    `ClaimScope` — or None when nothing there is claimable — and on ANY exit
+    settle a claim the body left unsettled: an exception releases it with
+    the exception's text (and re-raises); a body that returns without
+    settling releases it too, as an unfinished run. So a crash anywhere
+    after the claim — a refused catalog read, an OSError from a subprocess
+    or a write — leaves the request `failed` (retryable, charged one
+    attempt), never stranded `running` for `RUNNING_TTL_SECONDS`."""
+    entry = claim_request(path)
+    if entry is None:
+        yield None
+        return
+    scope = ClaimScope(path, entry)
+    try:
+        yield scope
+    except BaseException as e:
+        if scope.settled is None:
+            try:
+                scope.release(f"{type(e).__name__}: {e}")
+            except Exception:
+                pass  # the original failure is the one to surface
+        raise
+    if scope.settled is None:
+        scope.release("worker exited without settling its claim")
 
 
 def in_flight_requests(qdir: Path) -> list[Path]:
@@ -801,6 +904,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     r.add_argument("--requested-at", default=None,
                    help="retire only the request `claim` returned (its requestedAt); "
                         "\"\" = this run claimed nothing, so retire nothing")
+    r.add_argument("--claim-id", default=None,
+                   help="the claimId `claim` printed: settle only THIS claim, never "
+                        "a re-claim another worker took after this one lapsed")
     rel = sub.add_parser("release", help="release a claimed request whose run STOPPED "
                                          "without finishing it (charges one attempt)")
     rel.add_argument("--kind", required=True)
@@ -813,6 +919,20 @@ def main(argv: Optional[list[str]] = None) -> int:
                           "\"\" = this run claimed nothing, so release nothing")
     rel.add_argument("--error", required=True,
                      help="one line saying why the run stopped (stored as lastError)")
+    rel.add_argument("--claim-id", default=None,
+                   help="the claimId `claim` printed: settle only THIS claim, never "
+                        "a re-claim another worker took after this one lapsed")
+    rn = sub.add_parser("renew", help="keep a long run's claim live past the abandon TTL")
+    rn.add_argument("--kind", required=True)
+    rn.add_argument("--citekey", default=None)
+    rn.add_argument("--file", default=None,
+                    help="triage only: the dropped file's name in unsorted/")
+    rn.add_argument("--library", default=None)
+    rn.add_argument("--requested-at", required=True,
+                    help="the requestedAt `claim` printed (\"\" = nothing claimed)")
+    rn.add_argument("--claim-id", default=None,
+                   help="the claimId `claim` printed: settle only THIS claim, never "
+                        "a re-claim another worker took after this one lapsed")
     for name, help_ in (
         ("pending", "list (or count) the requests waiting to be picked up"),
         ("claimable", "list (or count) the requests a worker may claim now: "
@@ -874,16 +994,33 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.cmd == "claim":
         return claim(path)
     if args.cmd == "release":
-        return release(path, requested_at=args.requested_at, error=args.error)
+        return release(path, requested_at=args.requested_at, error=args.error,
+                       claim_id=args.claim_id)
+    if args.cmd == "renew":
+        return renew(path, requested_at=args.requested_at, claim_id=args.claim_id)
 
-    return retire(library, args.kind, args.citekey, path, requested_at=args.requested_at)
+    return retire(library, args.kind, args.citekey, path, requested_at=args.requested_at,
+                  claim_id=args.claim_id)
+
+
+def _cli_claimed(cur: dict[str, Any], requested_at: str,
+                 claim_id: Optional[str]) -> dict[str, Any]:
+    """The identity a CLI settle checks: the request (kind + the
+    `requestedAt` the skill kept) and, when the skill kept it, the claim's
+    `claimId` (task 1622)."""
+    out: dict[str, Any] = {"kind": cur.get("kind"), "requestedAt": requested_at}
+    if claim_id:
+        out["claimId"] = claim_id
+    return out
 
 
 def claim(path: Optional[Path]) -> int:
     """CLI half of `claim_request`: claim the live request at `path`
     (`request_path`) before working it. Prints `{"result": "claimed",
-    "file", "requestedAt"}` — the `requestedAt` a skill hands back to
-    `retire --requested-at` — or `{"result": "nothing-claimable"}` (no
+    "file", "requestedAt", "claimId"}` — the `requestedAt` a skill hands back
+    to `retire --requested-at`, and the claim's own token, which
+    `retire`/`release`/`renew --claim-id` hand back (task 1622) — or
+    `{"result": "nothing-claimable"}` (no
     request queued: the skill was invoked directly; or it is already in
     flight) — the skill then retires with `--requested-at ""`. Always
     exits 0: a skill run with nothing queued still does its work."""
@@ -894,7 +1031,8 @@ def claim(path: Optional[Path]) -> int:
             out["file"] = path.name
     else:
         out = {"result": "claimed", "file": path.name,
-               "requestedAt": claimed.get("requestedAt")}
+               "requestedAt": claimed.get("requestedAt"),
+               "claimId": claimed.get("claimId")}
     print(json.dumps(out))
     return 0
 
@@ -906,6 +1044,7 @@ def retire(
     path: Optional[Path],
     *,
     requested_at: Optional[str] = None,
+    claim_id: Optional[str] = None,
 ) -> int:
     """Mark the live request at `path` (`request_path`) done. With
     `requested_at` (what `claim` printed) only THAT request is retired: a
@@ -926,9 +1065,9 @@ def retire(
         out = {"result": "not-claimed", "file": path.name}
     else:
         cur = _read(path) or {}
-        claimed = dict(cur) if requested_at is None else {
-            "kind": cur.get("kind"), "requestedAt": requested_at,
-        }
+        claimed = dict(cur) if requested_at is None else _cli_claimed(
+            cur, requested_at, claim_id,
+        )
         if retire_claimed(path, claimed):
             out = {"result": "retired", "file": path.with_suffix(".done").name}
         else:
@@ -940,7 +1079,8 @@ def retire(
     return 0
 
 
-def release(path: Optional[Path], *, requested_at: str, error: str) -> int:
+def release(path: Optional[Path], *, requested_at: str, error: str,
+            claim_id: Optional[str] = None) -> int:
     """CLI half of `release_claimed` (task 1575): the ONE non-retire exit of
     a claimed skill run. Every STOP branch after a `claim` ends here, so the
     request is never stranded `running` until `RUNNING_TTL_SECONDS`: it
@@ -966,9 +1106,32 @@ def release(path: Optional[Path], *, requested_at: str, error: str) -> int:
         status = None
         if isinstance(cur, dict) and cur.get("status") == RUNNING_STATUS:
             status = release_claimed(
-                path, {"kind": cur.get("kind"), "requestedAt": requested_at}, error,
+                path, _cli_claimed(cur, requested_at, claim_id), error,
             )
         out = {"result": status or "superseded", "file": path.name}
+    print(json.dumps(out))
+    return 0
+
+
+def renew(path: Optional[Path], *, requested_at: str,
+          claim_id: Optional[str] = None) -> int:
+    """CLI half of `renew_claim` (task 1622): a long skill run (deep-index's
+    uncapped convergence loop) calls it once per pass so its claim never
+    lapses into an abandoned one another worker may re-claim. Prints
+    `{"result": "renewed"}`, or `"lost"` — the slot no longer holds this
+    claim (re-filed, or re-claimed after it lapsed) — or `"not-claimed"` /
+    `"nothing-queued"`. Always exits 0."""
+    out: dict[str, Any]
+    if path is None:
+        out = {"result": "nothing-queued"}
+    elif requested_at == "":
+        out = {"result": "not-claimed", "file": path.name}
+    else:
+        cur = _read(path) if path.exists() else None
+        ok = isinstance(cur, dict) and renew_claim(
+            path, _cli_claimed(cur, requested_at, claim_id),
+        )
+        out = {"result": "renewed" if ok else "lost", "file": path.name}
     print(json.dumps(out))
     return 0
 
