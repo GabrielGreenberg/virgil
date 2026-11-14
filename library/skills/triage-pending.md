@@ -240,11 +240,26 @@ directory).
      `bib-imported` or `bib-ignored`; any other status (a `bib-folded`
      duplicate, a missing citekey, a parse error) parks the whole file under
      `_pending/`.
-   - **otherwise** → appends a stub to `master.bib`, moves the file to
-     `papers/<citekey>/<citekey>.<ext>`, queues `.virgil/queue/<citekey>.json` (kind=index)
-     through the queue-slot door (`queue_slot.py`). A row whose request the
+   - **otherwise** → appends a stub to `master.bib` and moves the file to
+     `papers/<citekey>/<citekey>.<ext>`. What it queues is decided by
+     `triage_apply.supersede_verdict` (task 1601) against any source the
+     paper ALREADY holds: nothing held → `.virgil/queue/<citekey>.json`
+     (kind=index), status `triaged`; a held source the new format OUTRANKS
+     → placed alongside, kind=reindex queued, status `triaged` (the old
+     source stays as an archive); a held source the new format ranks BELOW
+     → kept alongside, nothing queued, status `archived`; the SAME format →
+     refused as a `collision` (the file stays in `unsorted/`). Requests go
+     through the queue-slot door (`queue_slot.py`); a row whose request the
      slot refused (it is being processed) comes back `triaged-unqueued` with
-     "index NOT queued" in its summary — report it; the paper is not indexed
+     "NOT queued" in its summary — report it; the paper is not (re)indexed
+   - returns each row's status from an **OPEN** vocabulary the script
+     declares once (`triage_apply.ROW_STATUSES`) and prints as
+     `[<status>]` on that row's line. Ask it rather than reading a list:
+     ```bash
+     python3 .virgil/scripts/library/triage_apply.py --print-row-statuses
+     ```
+     `archived` means ONLY the lower-format supersede above — a
+     variant-copy drop is `variant`
    - emits notifications from an **OPEN** vocabulary the script declares
      once (`triage_apply.NOTIFICATION_KINDS`, with the
      `triage-bib-ignored-<state>` family derived from
@@ -284,7 +299,7 @@ directory).
    apply failed — the fix is to edit that JSONL and re-run, below).
 
 4. **Drain the queue.** After triage, the queue holds the pending
-   `index` requests apply wrote, plus an `authenticate` request per
+   `index` / `reindex` requests apply wrote, plus an `authenticate` request per
    imported `.bib` entry — and a `triage` request only for a file apply
    RELEASED (still in `unsorted/`), which the drain retries through
    `/library/triage-pdf`. Run `/library/index-pending` — it drains every
@@ -298,7 +313,8 @@ Three blocks:
 
 1. The summary table from step 2 (proposed counts by flag/type)
 2. The per-row output from `triage_apply.py` (one line per file)
-3. A final line: `Triaged N files: <indexed> queued, <handbooks> need chapter info, <variants> archived, <skipped> skipped.`
+3. A final line from apply's own per-status counts (its `Done. N rows: …`
+   line): `Triaged N files: <triaged> queued (index or reindex), <archived> archived (lower format kept, nothing queued), <variant> kept as variants, <handbooks> need chapter info, <skipped> skipped.` — plus any other status apply counted, by its own name.
 
 If anything went wrong in apply, paste the relevant error message and stop —
 do not try to manually re-run portions; rerun `triage_apply.py` after
