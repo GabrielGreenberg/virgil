@@ -4,6 +4,20 @@
 
 @import "katex/dist/katex.min.css";
 
+/* `pointer-hover:` — a HOVER CUE that a keyboard-navigating list quiets (task
+   1618). Same as Tailwind's `hover:` except inside a `[data-kbd-nav]` list,
+   which `markKeyboardNav` (panel-primitives.tsx) stamps on an arrow key and
+   clears on the list's next real pointer input. Paint only: hit-testing is
+   untouched, so a still-mouse click or wheel still lands on the list. The
+   `:where()` keeps specificity equal to plain `hover:`. */
+@custom-variant pointer-hover {
+  @media (hover: hover) {
+    &:hover:where(:not([data-kbd-nav] *)) {
+      @slot;
+    }
+  }
+}
+
 :root {
   /* ONE declaration per token (task 1417). Every PREFERENCE-backed token —
      --background, --accent, --border-light, --topbar-bg, --editor-font-size,
@@ -4667,7 +4681,7 @@ textarea {
  * `themedCardStyle` from `selectionHaloRing`. The pref keeps only its HOVER
  * role (and the popped-window ring below). */
 .card-outline-chrome [data-card][data-card-hovered="true"],
-.card-outline-chrome [data-card]:hover {
+.card-outline-chrome [data-card]:hover:where(:not([data-kbd-nav] *)) {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
 }

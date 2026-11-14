@@ -2304,6 +2304,15 @@ wires `useCycle`/`useListNavKeys` itself; the five that never copied those
 lines had no keyboard nav at all. Task 964, pinned by
 `panels/_shared/__tests__/card-list-keyboard-nav.test.tsx`.
 
+**Arrowing quiets hover as PAINT, never by disabling input.** The mouse usually
+rests over some card while the user arrows, and its `:hover` would compete with
+the keyboard selection. An arrow calls `markKeyboardNav(list)`, which stamps
+`data-kbd-nav` until the list's next pointer move or press; a card hover cue
+written `pointer-hover:` (the globals.css variant: `hover:` minus that list)
+goes quiet meanwhile. Never `pointer-events:none` the list for this: a
+still-mouse click or wheel would then go through it (task 1618, pinned by
+`components/__tests__/keyboard-nav-hover.test.tsx`).
+
 The panel strip (`IconStrip` in `EditorPane.tsx`; vertical column of
 toggles) has a **stated** width, `--icon-strip-w` (46px, globals.css) — not a
 content-sized one: zen derives normal view's page width from it

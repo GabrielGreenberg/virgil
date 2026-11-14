@@ -39,6 +39,7 @@ import { useFieldDraft } from "./field-draft";
 import { FOCUS_OUTLINE_CLASS, withFocusIndicator } from "./focus-indicator";
 import { chromeOnly } from "@/lib/view-only-chrome";
 import { useFieldEditSession } from "@/lib/field-edit-session";
+import { notePointerInput } from "@/lib/input-modality";
 import { useConfirmDialog } from "./ConfirmDialog";
 import {
   CARD_DELETE_CONFIRM_MESSAGE,
@@ -622,28 +623,45 @@ const CARD_BASE =
 // a hovered card never lifts. The omni cascade also rests one step behind the
 // paper while `omniDimResting` is on (globals.css). The COLORED hover outline is
 // separate (globals.css, gated behind the `card-outline-chrome` pref).
-const CARD_DEFAULT = "bg-surface hover:border-edge-hover";
+// `pointer-hover:` (globals.css) is `:hover` that a keyboard-navigating list
+// quiets — see `markKeyboardNav`.
+const CARD_DEFAULT = "bg-surface pointer-hover:border-edge-hover";
+
+/** The list-local "the user is arrowing through this list" stamp. */
+export const KBD_NAV_ATTR = "data-kbd-nav";
 
 /**
- * Call from arrow-key handlers to clear the stale CSS :hover on the
- * card the mouse is still resting on. Briefly sets pointer-events:none
- * on the container so the browser drops :hover, then restores on the
- * next pointer movement.
+ * Call from a list's arrow-key handler. The mouse is usually still resting
+ * over SOME card, whose `:hover` cue would then compete with the keyboard
+ * selection. This quiets that cue as PAINT only: it stamps `data-kbd-nav` on
+ * the list, which the hover rules (`pointer-hover:` variant, the outline
+ * chrome in globals.css) exclude, and clears it on the list's next real
+ * pointer input (move or press), which is also reported to the input-modality
+ * SSOT.
+ *
+ * Hit-testing never changes (task 1618). The predecessor set
+ * `pointer-events:none` on the list until the next `pointermove`, so a
+ * still-mouse click or a trackpad scroll went THROUGH the list.
+ *
+ * Idempotent: a burst of arrows arms one pair of list-scoped listeners.
  */
-export function clearStaleHover(container: HTMLElement | null) {
-  if (!container) return;
-  container.style.pointerEvents = "none";
-  const restore = () => {
-    container.style.pointerEvents = "";
-    document.removeEventListener("pointermove", restore);
+export function markKeyboardNav(container: HTMLElement | null) {
+  if (!container || container.hasAttribute(KBD_NAV_ATTR)) return;
+  container.setAttribute(KBD_NAV_ATTR, "");
+  const end = () => {
+    container.removeAttribute(KBD_NAV_ATTR);
+    container.removeEventListener("pointermove", end);
+    container.removeEventListener("pointerdown", end);
+    notePointerInput();
   };
-  document.addEventListener("pointermove", restore);
+  container.addEventListener("pointermove", end, { passive: true });
+  container.addEventListener("pointerdown", end, { passive: true });
 }
 
 /**
  * Shared ArrowUp/Down list-navigation keydown handler for cardful list panels
  * (Citations / Footnotes / Examples / Bibliography). ArrowDown → `next`,
- * ArrowUp → `prev`, each followed by `clearStaleHover` on the scroll body.
+ * ArrowUp → `prev`, each followed by `markKeyboardNav` on the scroll body.
  *
  * Events originating from an editable target are ignored (see
  * `isEditableEventTarget`) so arrows edit text inside a card's inputs rather
@@ -664,11 +682,11 @@ export function useListNavKeys(
       if (e.key === "ArrowDown") {
         e.preventDefault();
         next();
-        clearStaleHover(e.currentTarget as HTMLElement);
+        markKeyboardNav(e.currentTarget as HTMLElement);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         prev();
-        clearStaleHover(e.currentTarget as HTMLElement);
+        markKeyboardNav(e.currentTarget as HTMLElement);
       }
     },
     [count, next, prev],

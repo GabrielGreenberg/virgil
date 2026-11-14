@@ -13,7 +13,7 @@ import {
   cardFrameProps,
   PANEL,
   PrevNextCounter,
-  clearStaleHover,
+  markKeyboardNav,
   useCycle,
 } from "@/components/panel-primitives";
 import type { PanelId } from "@/hooks/useViewPrefs";
@@ -979,15 +979,15 @@ function SearchPanel({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         goNext();
-        clearStaleHover(listRef.current);
+        markKeyboardNav(listRef.current);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         goPrev();
-        clearStaleHover(listRef.current);
+        markKeyboardNav(listRef.current);
       } else if (isCommitEnter(e)) {
         e.preventDefault();
         goNext();
-        clearStaleHover(listRef.current);
+        markKeyboardNav(listRef.current);
       }
     },
     [results, goNext, goPrev],
