@@ -331,6 +331,17 @@ lifetime in one slot, ends it on the doc-switch `resetKey`, and reads its
 source through a latest-ref so no per-doc value (the collab) is captured stale.
 CI: [useParaNavHistory.test.tsx](../../../src/hooks/__tests__/useParaNavHistory.test.tsx).
 
+**The owner is whoever outlives the effect (task 1619).** A timer that undoes
+a MODULE store's state belongs to that store, not to the component that set
+it — above all when the setter is about to unmount. The card lift's 150 ms
+outline pulse is `pulseCardLiftTarget` in `src/components/card-lift.ts`: the
+store holds ONE pending clear (a newer pulse replaces it, the task-1451 latch
+shape) and clears by IDENTITY, so an earlier lift's fade cannot wipe a later
+lift's outline. Owning it on the lifted card's `useViewLifetime` would be
+wrong: the lift pops the card out, the docked card unmounts, the timer is
+disposed unfired, and the outline sticks.
+CI: [card-lift-pulse.test.ts](../../../src/components/__tests__/card-lift-pulse.test.ts).
+
 #### The identity half: a session also ends zero times when its ELEMENT is re-minted
 
 The same sweep found the defect twice more on the same card, wearing identity

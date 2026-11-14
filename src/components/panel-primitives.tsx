@@ -73,7 +73,7 @@ import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useTrailingClickGuard } from "@/hooks/useTrailingClickGuard";
-import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
+import { pulseCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
 import { pressFromInteractiveControl, isEditableEventTarget } from "@/lib/drag-blocklist";
 import { cardTypeLabel } from "@/panels/panel-registry";
@@ -3210,7 +3210,6 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // stray mouse movement popped the card out spontaneously.
       if (isMissedRelease(ev)) {
         cleanup();
-        setCardLiftTarget(null);
         return;
       }
       const dx = ev.clientX - startX;
@@ -3223,7 +3222,10 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // Snapshot the source card's rect before any DOM churn (the card
       // may unmount on the next render once it flips to popped).
       const r = cardEl.getBoundingClientRect();
-      setCardLiftTarget({
+      // A brief outline pulse on lift-off. The STORE owns its fade (the
+      // card is about to unmount) and clears by identity, so a quick second
+      // lift keeps its own outline (task 1619).
+      pulseCardLiftTarget({
         cardKey,
         rect: { left: r.left, top: r.top, width: r.width, height: r.height },
       });
@@ -3276,15 +3278,12 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           pinnedWrapper?.dataset.omniEntryWrapper ?? cardKey,
         );
       }
-      // Schedule the highlight's fade-out — a brief pulse on lift-off.
-      window.setTimeout(() => setCardLiftTarget(null), 150);
       cleanup();
     };
+    // A press that never crossed the threshold set no outline, so its
+    // endings clear none — the outline on screen (if any) is another lift's
+    // pulse, and the store fades it (task 1619).
     const onUp = () => {
-      if (!triggered) {
-        // Pure click — never showed the highlight, nothing to fade.
-        setCardLiftTarget(null);
-      }
       cleanup();
     };
     const cleanup = () => {
@@ -3296,7 +3295,6 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       if (liftPressEndingRef.current === onUnmount) liftPressEndingRef.current = null;
     };
     const onUnmount = () => {
-      if (!triggered) setCardLiftTarget(null);
       cleanup();
     };
     liftPressEndingRef.current?.();

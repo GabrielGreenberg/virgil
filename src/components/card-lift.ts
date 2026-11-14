@@ -7,8 +7,9 @@ import { useEffect, useState } from "react";
  * its panel to spawn a popped-out floater). Two pieces of state:
  *
  *   - `liftTarget`: which card's bounding rect the lift outline should
- *     highlight. Set when the drag-out gesture crosses the activation
- *     threshold; cleared shortly after to drive the fade-out.
+ *     highlight. PULSED (`pulseCardLiftTarget`) when the drag-out gesture
+ *     crosses the activation threshold: the STORE sets it and owns the
+ *     brief clear that drives the fade-out (task 1618's sibling, 1619).
  *   - `liftHandoff`: one-shot drag handoff payload consumed by the
  *     freshly-mounted FloatingPanel. Lets the spawned float pick up the
  *     ongoing mouse drag at the cursor's current position so the user
@@ -65,6 +66,43 @@ export function setCardLiftTarget(target: CardLiftTarget | null) {
   if (same) return;
   activeTarget = target;
   targetListeners.forEach((l) => l());
+}
+
+/** How long a lift's outline pulse holds before it fades out. */
+export const CARD_LIFT_PULSE_MS = 150;
+
+let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Clear the target only if it is still `expected` — a NEWER lift's target is
+ * not this caller's to clear. Mirrors the omni pin store's `clearPin`
+ * identity guard.
+ */
+export function clearCardLiftTarget(expected: CardLiftTarget) {
+  if (activeTarget !== expected) return;
+  setCardLiftTarget(null);
+}
+
+/**
+ * Show `target`'s lift outline for {@link CARD_LIFT_PULSE_MS}, then fade it.
+ *
+ * The clear timer is the STORE's, not the lifted card's (task 1619): the lift
+ * pops the card out, which UNMOUNTS the docked card on the next render — so a
+ * timer owned by the card's view lifetime would be disposed before it fired
+ * and the outline would stick. One pending clear at a time: a newer pulse
+ * replaces it, and the clear is identity-guarded, so an earlier lift's fade
+ * can never wipe a later lift's outline.
+ */
+export function pulseCardLiftTarget(target: CardLiftTarget) {
+  if (pulseTimer !== null) clearTimeout(pulseTimer);
+  setCardLiftTarget(target);
+  // `activeTarget` may be an equal pre-existing object (setCardLiftTarget
+  // bails on an equal rect), so guard on what the store actually holds.
+  const held = activeTarget;
+  pulseTimer = setTimeout(() => {
+    pulseTimer = null;
+    if (held) clearCardLiftTarget(held);
+  }, CARD_LIFT_PULSE_MS);
 }
 
 export function getCardLiftTarget(): CardLiftTarget | null {
