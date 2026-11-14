@@ -260,6 +260,50 @@ describe("CompileService — degraded (last-good retention)", () => {
     expect(new TextDecoder().decode(result.pdf!)).toBe("GOOD");
   });
 
+  // Task 1621: a later pass that REJECTS (timeout / lost worker) leaves no log
+  // of its own. The degraded result must still carry its reason — in the log
+  // AND as an Errors-panel record — not only the earlier, clean pass's log.
+  it("a later pass that TIMES OUT keeps the earlier PDF and names the timeout", async () => {
+    vi.useFakeTimers();
+    passQueue = [
+      { kind: "ok", log: "LaTeX Warning: Label(s) may have changed.", pdf: enc("GOOD") },
+      { kind: "hang" },
+    ];
+    const svc = new CompileService();
+    const promise = svc.compile({
+      files: texFile("See \\ref{x}."),
+      mainTexFilename: "main.tex", docId: "doc-test",
+    });
+    await vi.advanceTimersByTimeAsync(200_000);
+    const result = await promise;
+    expect(result.status).toBe("degraded");
+    expect(new TextDecoder().decode(result.pdf!)).toBe("GOOD");
+    expect(result.log).toMatch(/pass 2 of \d+ did not finish/);
+    expect(result.log).toMatch(/timed out/i);
+    const abort = (result.diagnostics ?? []).filter((d) => d.ruleId === "compile-abort");
+    expect(abort).toHaveLength(1);
+    expect(abort[0].severity).toBe("error");
+    expect(abort[0].message).toMatch(/timed out/i);
+  });
+
+  it("a later pass whose worker DIES keeps the earlier PDF and names the error", async () => {
+    passQueue = [
+      { kind: "ok", log: "pass1", pdf: enc("GOOD") },
+      { kind: "reject", error: new Error("worker died") },
+    ];
+    const svc = new CompileService();
+    const result = await svc.compile({
+      files: texFile("See \\ref{x}."),
+      mainTexFilename: "main.tex", docId: "doc-test",
+    });
+    expect(result.status).toBe("degraded");
+    expect(new TextDecoder().decode(result.pdf!)).toBe("GOOD");
+    expect(result.log).toContain("worker died");
+    const abort = (result.diagnostics ?? []).filter((d) => d.ruleId === "compile-abort");
+    expect(abort).toHaveLength(1);
+    expect(abort[0].message).toContain("worker died");
+  });
+
   it("returns failed when the FIRST pass fails with no prior PDF", async () => {
     passQueue = [{ kind: "fail", log: "! Undefined control sequence" }];
     const svc = new CompileService();

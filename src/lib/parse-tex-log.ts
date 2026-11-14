@@ -321,20 +321,34 @@ export function parseTexLog(
   // off the last non-empty log line for a hint at what went wrong.
   if (status !== 0 && out.length === 0) {
     const tail = lastNonEmptyLine(physical);
-    const message = tail
-      ? `Compilation aborted (status ${status}) — ${tail}`
-      : `Compilation aborted (status ${status}) — no diagnostics recovered from the log.`;
-    out.push({
-      id: makeErrorId({ source: "compile", line: 0, message, ordinal: 0 }),
-      source: "compile",
-      severity: "error",
-      line: 0,
-      message,
-      ruleId: LATEX_RULE.compileAbort,
-    });
+    out.push(
+      compileAbortRecord(
+        tail
+          ? `Compilation aborted (status ${status}) — ${tail}`
+          : `Compilation aborted (status ${status}) — no diagnostics recovered from the log.`,
+      ),
+    );
   }
 
   return out;
+}
+
+/**
+ * The ONE shape of a `compile-abort` diagnostic — a whole-compile failure with
+ * no source line. Used by the synthetic fallback above and by the compile
+ * service when a pass REJECTS (timeout / lost worker) after an earlier pass
+ * already produced a PDF (task 1621), so both say "the compile stopped" the
+ * same way in the Errors panel.
+ */
+export function compileAbortRecord(message: string): LatexError {
+  return {
+    id: makeErrorId({ source: "compile", line: 0, message, ordinal: 0 }),
+    source: "compile",
+    severity: "error",
+    line: 0,
+    message,
+    ruleId: LATEX_RULE.compileAbort,
+  };
 }
 
 function lastNonEmptyLine(physical: string[]): string | undefined {

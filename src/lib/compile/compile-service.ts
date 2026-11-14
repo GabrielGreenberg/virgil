@@ -55,7 +55,7 @@ import {
   type PackageLoad,
 } from "@/lib/latex-lexer";
 import { captureNewAssets } from "@/lib/tex-assets";
-import { parseTexLog } from "@/lib/parse-tex-log";
+import { compileAbortRecord, parseTexLog } from "@/lib/parse-tex-log";
 import { stampSourceLines } from "@/lib/latex-errors";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
@@ -134,6 +134,29 @@ const TEXT_EXTS = new Set([
 // biber (no bibliography).
 const LOAD_CARRYING_EXTS = new Set(["tex", "sty", "cls"]);
 
+/**
+ * Turn a pass that REJECTED (timeout or worker-error) into the record the
+ * result carries: a user-facing `reason` naming the pass, and the `log` — the
+ * previous pass's log with the reason appended, since a rejected pass leaves
+ * no log of its own (task 1621).
+ */
+function rejectedPassOutcome(
+  err: unknown,
+  pass: number,
+  passes: number,
+  priorLog: string,
+): { reason: string; log: string } {
+  const detail =
+    err instanceof TimeoutError
+      ? `it timed out after ${Math.round(err.ms / 1000)} seconds (${err.message})`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+  const which = passes > 1 ? `Compile pass ${pass} of ${passes}` : "The compile";
+  const reason = `${which} did not finish — ${detail}`;
+  return { reason, log: (priorLog ? priorLog + "\n\n" : "") + reason };
+}
+
 function extOf(path: string): string {
   return path.split(".").pop()?.toLowerCase() ?? "";
 }
@@ -184,7 +207,7 @@ function rewriteBiblatexLoad(load: PackageLoad, original: string): string {
 }
 
 class TimeoutError extends Error {
-  constructor(ms: number) {
+  constructor(readonly ms: number) {
     super(`Compile exceeded ${ms}ms budget`);
     this.name = "TimeoutError";
   }
@@ -416,6 +439,12 @@ class CompileService {
     const offlineMisses = new Set<string>();
 
     const downloadFailures: { name: string; reason: string }[] = [];
+    // Task 1621: the reason a pass REJECTED (timeout / lost worker) after an
+    // earlier pass already produced a PDF. A rejected pass returns no log of
+    // its own, so without this the degraded result carried only the earlier,
+    // SUCCESSFUL pass's log and no diagnostic — while its message sent the
+    // user to an Errors panel that said nothing about the failure.
+    let rejectedPassReason: string | null = null;
 
     for (let pass = 1; pass <= passPlan.passes; pass++) {
       notePass(docId, pass, passPlan.passes);
@@ -445,16 +474,23 @@ class CompileService {
             ? "keep-draining"
             : "terminate",
         );
+        // The pass that ended the loop owns the result's log and diagnostic,
+        // whichever way it ended (resolved non-zero, or rejected) — ONE record
+        // for both arms below, so they cannot drift.
+        const rejected = rejectedPassOutcome(err, pass, passPlan.passes, lastLog);
         // If an earlier pass produced a good PDF, keep it as degraded.
+        // (A productive later-pass timeout is NOT continued by
+        // `continueUntilSettled` — it settles as `degraded` here, not
+        // `timeout`. Rare: packages load on pass 1.)
         if (lastGood) {
+          lastLog = rejected.log;
+          rejectedPassReason = rejected.reason;
           hardFailure = true;
           break;
         }
         return {
           status: "timeout",
-          log:
-            (lastLog ? lastLog + "\n\n" : "") +
-            (err instanceof Error ? err.message : String(err)),
+          log: rejected.log,
           ranPasses,
           bibtexStatus: "absent",
           diagnostics: [],
@@ -509,12 +545,21 @@ class CompileService {
       // A PDF exists (status 0 for the fallback's purposes — never synthesize an
       // abort card when we have output). On a later-pass failure keep the errors;
       // on a clean run keep only warnings.
+      // A REJECTED later pass: the log is the good pass's plus the reason, so
+      // parse it as the good pass it was and lead with the abort record (the
+      // parser's own synthetic fallback cannot be relied on — it fires only
+      // when the log yields ZERO records, and a good pass usually has warnings).
       const diagnostics = stampSourceLines(
-        hardFailure
-          ? parseTexLog(lastLog, lastPassStatus, { mainFile: mainTexFilename })
-          : parseTexLog(lastLog, 0, { mainFile: mainTexFilename }).filter(
-              (d) => d.severity !== "error",
-            ),
+        rejectedPassReason !== null
+          ? [
+              compileAbortRecord(rejectedPassReason),
+              ...parseTexLog(lastLog, 0, { mainFile: mainTexFilename }),
+            ]
+          : hardFailure
+            ? parseTexLog(lastLog, lastPassStatus, { mainFile: mainTexFilename })
+            : parseTexLog(lastLog, 0, { mainFile: mainTexFilename }).filter(
+                (d) => d.severity !== "error",
+              ),
         compiledMainText,
       );
       // An offline miss makes even a produced PDF degraded (a package the doc
