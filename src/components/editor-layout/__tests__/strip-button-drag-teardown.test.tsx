@@ -439,8 +439,8 @@ describe("StripButton move-path cost (task 439)", () => {
 // listener and the leg would pass vacuously.
 describe("StripButton Escape cancel (task 1617)", () => {
   function owners() {
-    const docCapture = vi.fn();
-    const winBubble = vi.fn();
+    const docCapture = vi.fn<(e: KeyboardEvent) => void>();
+    const winBubble = vi.fn<(e: KeyboardEvent) => void>();
     document.addEventListener("keydown", docCapture, true);
     window.addEventListener("keydown", winBubble);
     return {

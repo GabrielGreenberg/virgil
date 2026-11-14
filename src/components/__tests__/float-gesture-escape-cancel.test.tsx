@@ -37,8 +37,8 @@ function flushFrames() {
   });
 }
 
-let docCapture: ReturnType<typeof vi.fn>;
-let winBubble: ReturnType<typeof vi.fn>;
+let docCapture: ReturnType<typeof vi.fn<(e: KeyboardEvent) => void>>;
+let winBubble: ReturnType<typeof vi.fn<(e: KeyboardEvent) => void>>;
 beforeEach(() => {
   frames.clear();
   window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
@@ -48,8 +48,8 @@ beforeEach(() => {
   window.cancelAnimationFrame = ((id: number) => {
     frames.delete(id);
   }) as typeof window.cancelAnimationFrame;
-  docCapture = vi.fn();
-  winBubble = vi.fn();
+  docCapture = vi.fn<(e: KeyboardEvent) => void>();
+  winBubble = vi.fn<(e: KeyboardEvent) => void>();
   document.addEventListener("keydown", docCapture, true);
   window.addEventListener("keydown", winBubble);
 });

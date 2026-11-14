@@ -542,6 +542,25 @@ FSA-masked): margin-edit on with two guides dragged and Preferences open, start
 dragging a block, press Escape — the drag cancels, the guides stay, the mode
 stays open, Preferences stays open.
 
+**The last two held commits answer too, and the census has no "not done yet"
+verdict (task 1617).** Task 1167's Escape census (`PERMITTED_ESCAPELESS_GESTURES`
+in `pane-drag-guardrail.test.ts`) parked the float move/resize and the
+strip-icon reorder under an `[owed: …]` tag — and the tag let both sit unrouted
+for months while the census read green. Both now cancel on a claimed Escape:
+`FloatingPanel` inline (window-capture `onKey` torn down beside its move/up
+listeners → `endGesture({ kind: "cancel" })`, which RESTORES — the live
+translate dropped, a resize's per-frame commits undone, a docked start that
+undocked mid-drag returned to its band with its saved float rect written back;
+the unmount ending is now a separate `{ kind: "detach" }` that restores
+nothing), and the strip reorder through a new door, `armGestureEscape(onCancel)`
+in `pointer-invariants.ts`, for a gesture whose pointer listeners are
+element-scoped and so has no window-teardown block to hang the inline shape on
+(the census's `answersEscape` reads both shapes). `owed` is deleted from
+`ESCAPE_VERDICT_TAG`: a held gesture that commits durably answers Escape; it is
+not listed. CI: `float-gesture-escape-cancel.test.tsx`, the Escape legs of
+`strip-button-drag-teardown.test.tsx`. Preview eyeball owed: drag a popped card,
+press Escape — it snaps back.
+
 ### The third ghost: one cursor-following channel, not three copies (task 773)
 
 The inline-atom drag ghost (`DropGhost` ← `drop-ghost.ts`) was the third copy of the cursor-following overlay and the one that never converged: its store emitted a new state per RAW mousemove, so every event re-rendered the portal and wrote `left`/`top` on a `position:fixed` node. It now moves on [`createTransformChannel`](../../../src/lib/transform-channel.ts) — the ONE shape (COALESCE to a frame, BAIL on value + target identity, record nothing while no target is mounted, `cancel()` on the end path), which `LiftHost` also now runs instead of its hand-rolled copy. The store emits on EDGES only (lift, end); the ghost's base box sits at the viewport origin and its whole placement, including the off-cursor flip, is one transform; its ref (`attachGhostNode`) flushes the live cursor synchronously at mount so it never paints at the origin. A new cursor-following overlay takes this channel rather than a fourth copy. Since task 1404 the store is the SHARED drop ghost (`drop-ghost.ts` → `<DropGhost>`): the card re-anchor gestures riding `beginCardDropGesture` lift into it too (`ghostFrom`, plus a `data-drop-mode-source` dim on the pressed element), and its lifetime is the SESSION's — the controller's `onMove` is its one cursor feed and its commit entry + `endDropSession` clear it, so no producer owns a cursor listener or an end path of its own. CI: `marker-drag-subject.test.tsx`. CI: [drop-ghost-motion-cost.test.tsx](../../../src/components/drop-mode/__tests__/drop-ghost-motion-cost.test.tsx) (driven through the real grab; 4 of 5 legs fail on the pre-773 code, the end-path leg guards the channel's `cancel`), plus the unchanged `lift-overlay-motion-cost.test.tsx`.
