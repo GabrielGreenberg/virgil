@@ -141,8 +141,8 @@ const LEDGER: Record<string, Row> = {
   },
   "components/panel-primitives.tsx": {
     scope: "gesture",
-    events: ["document.pointermove", "window.mousemove", "window.mouseup"],
-    why: "one-shot stale-hover restore after an arrow key; a card drag pair",
+    events: ["window.mousemove", "window.mouseup"],
+    why: "a card drag pair (the keyboard-nav hover quiet is LIST-scoped since task 1618, not a document listener)",
   },
   "components/dialog-contract.ts": {
     scope: "open-state",

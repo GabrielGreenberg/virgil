@@ -109,7 +109,7 @@ describe("task 1367 — the card frame has ONE door (CENSUS)", () => {
 
   it("frame CHROME keys on the frame marker, not on card identity", () => {
     const css = fs.readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
-    expect(css).toContain(".card-outline-chrome [data-card]:hover {");
+    expect(css).toContain(".card-outline-chrome [data-card]:hover:where(:not([data-kbd-nav] *)) {");
     expect(css).not.toMatch(/\.card-outline-chrome \[data-card-key\]:hover/);
   });
 });

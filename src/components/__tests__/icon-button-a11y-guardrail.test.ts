@@ -1865,7 +1865,9 @@ describe("a SHELL that owns a focusable element supplies its indicator", () => {
       // inline selection halo instead), so a keyboard-focused selected card
       // shows the class's own edge — the pref can only win on hover.
       '.card-outline-chrome [data-card][data-card-hovered="true"],\n' +
-        ".card-outline-chrome [data-card]:hover",
+        // `:where()` (task 1618: a keyboard-navigating list quiets it) adds
+        // no specificity, so the (0,3,0) above still holds.
+        ".card-outline-chrome [data-card]:hover:where(:not([data-kbd-nav] *))",
       // The popped-card suppression — (0,4,0), so it beat the class too, and
       // unscoped it deleted the indicator on EVERY popped card. Task 554
       // scoped it to `:not(:focus-visible)`, which is what its own sentence
