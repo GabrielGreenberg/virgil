@@ -1005,11 +1005,13 @@ entries flagged for that subskill.
 
 Run `/library/setup` once per library to install everything below in one shot.
 The skill also pre-downloads marker's ML weights into the library's two
-caches — `<library>/.virgil/models/huggingface/` (huggingface_hub) and
-`.../datalab/` (surya's ~3 GB layout/table/OCR weights) — so they're cached
-library-locally (not in `~/.cache/huggingface/` or `~/Library/Caches/datalab/`)
-and shared across index-paper + deep-index PDF re-reads. `setup.py`'s Step 5
-(or `--verify-only`) reports both caches and any global pollution.
+caches — `.../datalab/` (surya's ~3 GB layout/table/OCR weights, the one
+REQUIRED cache) and `<library>/.virgil/models/huggingface/` (a guard redirect
+for huggingface_hub; normally empty) — so they're cached library-locally (not
+in `~/.cache/huggingface/` or `~/Library/Caches/datalab/`) and shared across
+index-paper + deep-index PDF re-reads. `setup.py`'s Step 5 (or `--verify-only`)
+reports both caches and any global pollution; its `CACHES` table says which
+are required and `cache_state` is the one populated-ness rule (task 1625).
 
 - Python 3.10+
 - Poppler (`brew install poppler`) — provides `pdfinfo`, `pdftotext`, `pdffonts`

@@ -7,9 +7,11 @@ models into the library's two caches (`<library>/.virgil/models/
 huggingface/` and `.../datalab/` — see "Two caches" below) instead of
 the user's global caches, writes a manifest at
 `<library>/.virgil/models/manifest.json` recording versions + paths,
-then VERIFIES both caches (Step 5: size + populated, and whether either
+then VERIFIES the caches (Step 5: size + populated, and whether either
 global default location holds weights). `/library/setup` reads that
-verdict rather than hand-checking paths (task 1603).
+verdict rather than hand-checking paths (task 1603). Only `datalab/` is
+REQUIRED — the current surya fetches every checkpoint from s3 into it,
+so `huggingface/` normally stays empty (task 1625; see `CACHES`).
 
 Idempotent: re-running detects the existing manifest and only
 installs/downloads what's missing or stale. Pass `--force` to redo
@@ -35,8 +37,9 @@ Design notes:
   after `brew install tesseract`.
 - Two caches get redirected into the library — both must be set
   before any marker / surya import:
-    * `HF_HOME` + `TRANSFORMERS_CACHE` → marker's huggingface_hub
-      downloads land in `<library>/.virgil/models/huggingface/`.
+    * `HF_HOME` + `TRANSFORMERS_CACHE` → any huggingface_hub fetch
+      lands in `<library>/.virgil/models/huggingface/` instead of `~`
+      (a guard: the current extractor fetches nothing there).
     * `MODEL_CACHE_DIR` → surya-ocr's pydantic-settings reads this
       and stamps `<library>/.virgil/models/datalab/<model>/<date>/`
       for the bulk (~3 GB) of marker's footprint. Surya does NOT
@@ -405,27 +408,84 @@ def _human(n: int) -> str:
     return f"{n} B"
 
 
+# The library-local model caches, and whether a working extraction NEEDS
+# each one (task 1625). The installed surya declares every checkpoint as
+# an `s3://…` URL fetched into MODEL_CACHE_DIR (`datalab/`), and its
+# tokenizer/config `from_pretrained` calls read that local checkpoint —
+# so a healthy install leaves `huggingface/` at 0 B. huggingface/ is
+# still redirected (HF_HOME) so a stray hub fetch can't pollute `~`, and
+# is still MEASURED (and its global default still checked for
+# pollution), but it is not required: an empty huggingface/ is the
+# normal state, and a stray `version.txt` there would prove nothing.
+#
+# `checkpoint_depth`: surya stamps `datalab/<model>/<date>/`, and its
+# `get_local_path` mkdirs that leaf BEFORE downloading — so a failed
+# fetch leaves an empty checkpoint folder behind. A cache with any
+# empty checkpoint folder is PARTIAL, not populated.
+CACHES: tuple[dict, ...] = (
+    {"name": "datalab", "dir": datalab_cache_dir, "required": True,
+     "checkpoint_depth": 2},
+    {"name": "huggingface", "dir": hf_cache_dir, "required": False,
+     "checkpoint_depth": None},
+)
+
+
+def _checkpoint_dirs(path: Path, depth: int) -> list[Path]:
+    """The directories exactly `depth` levels below `path`."""
+    level = [path] if path.is_dir() else []
+    for _ in range(depth):
+        level = sorted(d for parent in level for d in parent.iterdir()
+                       if d.is_dir())
+    return level
+
+
+def cache_state(path: Path, *, checkpoint_depth: Optional[int] = None) -> dict:
+    """THE populated-ness rule for one model cache (task 1625).
+
+    Populated = it holds file bytes (existence proves nothing:
+    `ensure_model_env` mkdirs both caches) AND, where the cache has a
+    checkpoint layout, no checkpoint folder is empty (a failed download
+    leaves one). Step 3's skip decision and Step 5's verdict both ask
+    this, so they cannot disagree.
+    """
+    size = _tree_bytes(path)
+    empty: list[str] = []
+    if checkpoint_depth:
+        empty = [str(d.relative_to(path))
+                 for d in _checkpoint_dirs(path, checkpoint_depth)
+                 if _tree_bytes(d) == 0]
+    return {"bytes": size, "emptyCheckpoints": empty,
+            "populated": size > 0 and not empty}
+
+
+def _cache_spec(name: str) -> dict:
+    return next(c for c in CACHES if c["name"] == name)
+
+
+def library_cache_state(library: Path, name: str) -> dict:
+    spec = _cache_spec(name)
+    return cache_state(spec["dir"](library),
+                       checkpoint_depth=spec["checkpoint_depth"])
+
+
 def verify_caches(library: Path, *, home: Optional[Path] = None,
                   env: Optional[dict] = None) -> dict:
-    """The cache verdict /library/setup reports (task 1603).
+    """The cache verdict /library/setup reports (tasks 1603, 1625).
 
-    Measures BOTH library-local caches — `huggingface/` (marker's
-    huggingface_hub snapshots) and `datalab/` (surya's layout/table/OCR
-    weights, the ~3 GB bulk) — and every global default location either
-    would fall back to. A cache counts as populated when it holds file
-    bytes, not merely when the directory exists: `ensure_model_env`
-    mkdirs both, so existence proves nothing.
+    Measures every library-local cache in `CACHES` — `datalab/` (surya's
+    layout/table/OCR weights, the ~3 GB bulk; REQUIRED) and
+    `huggingface/` (redirected but not fetched into by the current
+    extractor; measured, not required) — and every global default
+    either would fall back to. `allPopulated` is true when every
+    REQUIRED cache is populated per `cache_state`.
     """
     library = library.expanduser().resolve()
-    local = {
-        "huggingface": hf_cache_dir(library),
-        "datalab": datalab_cache_dir(library),
-    }
     caches = []
-    for name, path in local.items():
-        size = _tree_bytes(path)
-        caches.append({"name": name, "path": str(path),
-                       "bytes": size, "populated": size > 0})
+    for spec in CACHES:
+        path = spec["dir"](library)
+        state = cache_state(path, checkpoint_depth=spec["checkpoint_depth"])
+        caches.append({"name": spec["name"], "path": str(path),
+                       "required": spec["required"], **state})
     pollution = []
     for name, paths in global_cache_defaults(home, env).items():
         for path in paths:
@@ -434,15 +494,31 @@ def verify_caches(library: Path, *, home: Optional[Path] = None,
                 pollution.append({"name": name, "path": str(path), "bytes": size})
     return {
         "caches": caches,
-        "allPopulated": all(c["populated"] for c in caches),
+        "allPopulated": all(c["populated"] for c in caches if c["required"]),
         "globalPollution": pollution,
     }
 
 
+def incomplete_caches(verdict: dict) -> list[str]:
+    """Names of the REQUIRED caches the verdict found not populated."""
+    return [c["name"] for c in verdict.get("caches", [])
+            if c.get("required", True) and not c["populated"]]
+
+
 def print_cache_verdict(verdict: dict) -> None:
     for c in verdict["caches"]:
-        state = "ok" if c["populated"] else "EMPTY"
-        print(f"  CACHE {c['name']}: {state} {_human(c['bytes'])} at {c['path']}")
+        if c["populated"]:
+            state = "ok"
+        elif c["emptyCheckpoints"] and c["bytes"]:
+            state = "PARTIAL"
+        elif c["required"]:
+            state = "EMPTY"
+        else:
+            state = "empty (not required)"
+        line = f"  CACHE {c['name']}: {state} {_human(c['bytes'])} at {c['path']}"
+        if c["emptyCheckpoints"]:
+            line += f" — empty checkpoint(s): {', '.join(c['emptyCheckpoints'])}"
+        print(line)
     if verdict["globalPollution"]:
         for g in verdict["globalPollution"]:
             print(f"  GLOBAL CACHE {g['name']}: {_human(g['bytes'])} at {g['path']}")
@@ -468,8 +544,9 @@ def run_setup(library: Path, *, force: bool = False) -> dict:
 
     print(f"Virgil Library setup → {library}")
     print(f"  Model cache: {models_root}")
-    print(f"    huggingface/ — marker text/layout weights via huggingface_hub")
-    print(f"    datalab/     — surya-ocr layout/table/OCR weights (~3 GB)")
+    print(f"    datalab/     — surya-ocr layout/table/OCR weights (~3 GB; required)")
+    print(f"    huggingface/ — redirect target for any huggingface_hub fetch "
+          "(normally empty; not required)")
     print()
 
     # 1. Install pip packages. Two passes so a failure in the heavy
@@ -510,10 +587,14 @@ def run_setup(library: Path, *, force: bool = False) -> dict:
     if not marker_present:
         print("  Skipping — marker-pdf failed to install (see step 1).")
     else:
-        already_cached = datalab.exists() and any(datalab.iterdir())
-        if already_cached and not force:
-            print(f"  Already cached at {datalab}; skipping download.")
+        cached = library_cache_state(library, "datalab")
+        if cached["populated"] and not force:
+            print(f"  Already cached at {datalab} ({_human(cached['bytes'])}); "
+                  "skipping download. Pass --force to re-download.")
         else:
+            if cached["emptyCheckpoints"]:
+                print("  Empty checkpoint(s) from an earlier failed download: "
+                      f"{', '.join(cached['emptyCheckpoints'])} — re-fetching.")
             try:
                 _predownload_marker(library)
             except Exception as e:
@@ -606,8 +687,7 @@ def _main(argv: list[str]) -> int:
     print(_summary_line(manifest))
     verdict = manifest.get("cacheVerify") or {}
     if not verdict.get("allPopulated", True):
-        empty = [c["name"] for c in verdict["caches"] if not c["populated"]]
-        print(f"  CACHE INCOMPLETE — empty: {', '.join(empty)} "
+        print(f"  CACHE INCOMPLETE — {', '.join(incomplete_caches(verdict))} "
               "(see Step 3 for a PREDOWNLOAD FAILED line)")
     if verdict.get("globalPollution"):
         print("  GLOBAL CACHE IN USE — weights sit outside the library "
