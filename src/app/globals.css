@@ -389,6 +389,11 @@
   /* The block-label column's right edge, left of the text edge: past the
      chevron column plus a gap. MARGIN_LABEL_INSET in marginalia.ts. */
   --margin-col-label: 52px;
+  /* The side-label column's outboard gap: the clear space a label keeps from
+     the pod edge (the column's LEFT end), so a long label stops short of the
+     pod border rather than touching it. Read once, by
+     --margin-label-col-width below. */
+  --margin-label-outboard-gap: 8px;
   --margin-col-chevron-width: 14px;
   --margin-col-handle-inset: 22px;
   /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
@@ -2495,6 +2500,17 @@ textarea {
              a raised pill above the block, on hover or keyboard focus.
    Both are out of flow, so a label can never move the text. Surfaces outside
    the pod (floats, card editors) carry no attribute and keep them in flow. */
+/* The side-label column's WIDTH, stated once: the editor's left padding
+   less the column's inset from the text edge (--margin-col-label) and its
+   outboard gap from the pod edge. Declared on the pod's .tiptap — not :root —
+   because --editor-pl is set on the editor column (EditorPane) and zeroed on
+   .tiptap in print, and a custom property substitutes its var()s where it is
+   DECLARED; every consumer below sits inside .tiptap, so each reads the value
+   it computed when it spelled this calc itself (task 1615). */
+[data-margin-labels="side"] .tiptap {
+  --margin-label-col-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - var(--margin-label-outboard-gap));
+}
+
 [data-margin-labels] .heading-wrapper {
   margin-bottom: 1em;
 }
@@ -2505,7 +2521,7 @@ textarea {
   right: calc(100% + var(--margin-col-label));
   top: 0.4em;
   width: max-content;
-  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  max-width: var(--margin-label-col-width);
   margin: 0;
   line-height: 14px;
   text-align: right;
@@ -2524,7 +2540,7 @@ textarea {
 [data-margin-labels="side"] .heading-annotation-numbered-toggle { grid-area: 1 / 2; margin: 0; opacity: 0; }
 [data-margin-labels="side"] .heading-annotation-sep { display: none; }
 [data-margin-labels="side"] :is(.heading-label-input, .figure-label-input) {
-  width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  width: var(--margin-label-col-width);
   text-align: right;
 }
 [data-margin-labels="side"] :is(.heading-label-text, .heading-label-warning) {
@@ -2573,7 +2589,7 @@ textarea {
   top: auto;
   bottom: auto;
   margin: 0;
-  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  max-width: var(--margin-label-col-width);
   background: none;
   box-shadow: none;
   padding: 0;
@@ -3896,7 +3912,7 @@ textarea {
   right: calc(100% + var(--margin-col-label));
   top: 0;
   width: max-content;
-  max-width: calc(var(--editor-pl, 88px) - var(--margin-col-label) - 8px);
+  max-width: var(--margin-label-col-width);
   margin: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
