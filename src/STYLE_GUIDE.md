@@ -2745,7 +2745,8 @@ its own chrome must be on `PERMITTED_BESPOKE_FIELDS` (empty; a hit is
 migrate-it), and the accent-focus and ring bans hold over primitive calls
 too, since `className="focus:ring-1"` is the same defect one indirection in.
 
-Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
+There is no on/off switch control. A binary setting is a checkbox (`CheckSquare`,
+below); a pick-one-of-N is a `SegmentedToggle` ("Buttons" above).
 
 ### The checkbox glyph
 
@@ -2994,8 +2995,8 @@ button on every row or in a resting footer. The confirm it raises may be red.
 **A menu opened inside a modal** rides `MODAL_MENU_Z`: `SystemDialog` raises
 `MenuLayerContext` for everything inside it, so no call site has to know.
 
-Buttons render through the `Button` primitive (`<SystemDialogButton>` maps
-the legacy `primary/secondary/danger/accent` names onto it). The affirmative
+Buttons render through the `Button` primitive (`<SystemDialogButton>` takes
+the `primary/secondary/danger` subset of its variants — `SystemDialogButtonVariant`). The affirmative
 button is `variant="primary"`, filled with **`--btn-primary`** (aliases the
 taupe `--control-selected`, NOT the saturated `--accent` brown) so it reads
 as a darker shade of the paper. Destructive confirms use `variant="danger"`.
@@ -3208,7 +3209,7 @@ that matches the surface, don't reinvent the shell:
 
 | surface | `variant` | scrim | z-tier |
 | --- | --- | --- | --- |
-| modal / global-centered (confirm, alert, prompt, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
+| modal / global-centered (confirm, alert, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
 | draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
 | context menu / anchored dropdown (`ItemMenu`, the bar's ⋯ menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
 | caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
@@ -3256,9 +3257,13 @@ that matches the surface, don't reinvent the shell:
 
 **Imperative dialogs.** `useSystemDialog()` (from
 `src/components/system-dialog-host.tsx`, provider mounted app-wide) exposes
-`alert` / `confirm` / `prompt` — promise-returning replacements for the
-native `window.*` dialogs that render through the same `SystemDialog` chrome.
+`alert` / `confirm` — promise-returning replacements for the native
+`window.alert` / `window.confirm` dialogs that render through the same `SystemDialog` chrome.
 Reach for these instead of hand-rolling a one-off modal.
+
+CI: [system-dialog-guide-census.test.ts](__tests__/system-dialog-guide-census.test.ts)
+— the members named here equal `SystemDialogApi`'s, and the `<SystemDialogButton>`
+variant list above equals `SystemDialogButtonVariant` (task 1613).
 
 Don't nest modals. Use a popover for transients over a modal.
 
