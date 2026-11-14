@@ -235,12 +235,17 @@ export function cardBodyPlaceholder(kind: CardKind): string {
 
 /** THE noun for a card kind (task 1581): its registry label, lower-cased,
  *  pluralized with a plain `s` when `count !== 1` — "note"/"notes", "report
- *  request"/"report requests". Every sentence that counts or names cards by
- *  kind reads this; there is no second pluralizer. NOTE: two pairs of kinds
- *  share a label ("Request", "Revision"), so a noun is not a kind — a
- *  sentence that may mix both families must qualify (see
- *  `qualifiedCardKindNouns`). */
+ *  request"/"report requests" — unless the registry DECLARES the kind's
+ *  `noun` forms (task 1626: "Bibliography" counts as "bibliography
+ *  entries", not "bibliographys"). Every sentence that counts or names cards
+ *  by kind reads this; there is no second pluralizer, and the
+ *  card-kind-noun census pins every kind's plural as declared or regular.
+ *  NOTE: two pairs of kinds share a label ("Request", "Revision"), so a noun
+ *  is not a kind — a sentence that may mix both families must qualify (see
+ *  `cardKindQualifiers`). */
 export function cardKindNoun(kind: CardKind, count: number): string {
+  const declared = CARD_REGISTRY[kind].noun;
+  if (declared) return count === 1 ? declared.one : declared.many;
   const noun = CARD_TYPE_LABELS[kind].toLowerCase();
   return count === 1 ? noun : `${noun}s`;
 }

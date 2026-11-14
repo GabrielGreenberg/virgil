@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import { cardTypeLabel, panelEmptySentence } from "@/panels/panel-registry";
+import { cardKindNoun, panelEmptySentence } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 
 describe("panelEmptySentence", () => {
@@ -29,7 +29,10 @@ describe("panelEmptySentence", () => {
     for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
       const panel = CARD_REGISTRY[k].panel;
       if (!panel) continue;
-      expect(panelEmptySentence(panel)).toContain(`${cardTypeLabel(k).toLowerCase()}s`);
+      // The plural is `cardKindNoun`'s (task 1626: a kind may declare its
+      // noun forms — "bibliography entries"); the census of those forms is
+      // `card-kind-noun-census.test.ts`.
+      expect(panelEmptySentence(panel)).toContain(cardKindNoun(k, 2));
     }
   });
 

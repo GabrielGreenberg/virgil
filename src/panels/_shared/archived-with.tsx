@@ -96,8 +96,8 @@ export function useArchivedWith(): ArchivedWithApi {
 }
 
 /** Each present kind's noun phrase, qualified by its hosting panel only when
- *  another PRESENT kind shares its noun: `(kind, count) → "revisions
- *  request"`-style text. One row, one qualification — the summary, the chips
+ *  another PRESENT kind shares its noun: `(kind, count) → "Revisions
+ *  request"`-style text (the qualifier is the panel label, not lower-cased). One row, one qualification — the summary, the chips
  *  and the chip hints all read it (task 1581). */
 function rowNouns(entries: readonly ArchivedWithEntry[]) {
   const qualifiers = cardKindQualifiers(entries.map((e) => e.kind));
