@@ -339,6 +339,30 @@ export async function clearMirrorOffer(
   }
 }
 
+/**
+ * Task 1616 — does this doc id hold work only the user's answer may end: a
+ * live slot, or any unanswered offer slot? Asked by the retirement door
+ * before a FORGET (`purgeDoc` clears both), so forgetting a paper never
+ * deletes unlanded work silently.
+ *
+ * Asks by KEY, not by a validated read: a slot that exists but cannot be
+ * read is still somebody's unsaved work, and an unreadable store is not
+ * evidence there is none — both answer "yes" (fail safe: one extra confirm,
+ * never one lost mirror).
+ */
+export async function hasUnlandedWork(docId: string): Promise<boolean> {
+  try {
+    const live = keyFor(docId);
+    const prefix = offerPrefixFor(docId);
+    return (await keys(store)).some(
+      (k) => typeof k === "string" && (k === live || k.startsWith(prefix)),
+    );
+  } catch (err) {
+    console.warn("[emergency-mirror] unlanded-work probe failed", err);
+    return true;
+  }
+}
+
 /** Every offer slot of a RETIRED doc id (`purgeDoc` — task 604's door). */
 export async function clearMirrorOffers(docId: string): Promise<void> {
   try {

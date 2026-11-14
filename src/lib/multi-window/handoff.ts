@@ -28,6 +28,7 @@ export interface HandoffDialog {
     message: string;
     confirmLabel?: string;
     cancelLabel?: string;
+    tone?: "default" | "danger";
   }): Promise<boolean>;
   alert(opts: {
     title: string;
@@ -97,6 +98,34 @@ export async function claimDocWithHandoff(
 }
 
 /**
+ * Task 1616 — the door's SECOND refusal: retiring a doc id deletes its
+ * emergency mirror and unanswered recovery offers, the only copy of work
+ * that never reached its folder, which by doctrine ends only by the user's
+ * ANSWER (task 851). A FORGET passes this probe and the door asks — a
+ * `danger` confirm (Cancel cued) naming what is lost and how to keep it.
+ * Nothing unlanded → no question: forget stays one click. A gesture that
+ * already confirmed a destruction naming the loss (reset example) omits it.
+ */
+export interface RetireUnlandedGuard {
+  hasUnlandedWork: (docId: string) => Promise<boolean>;
+}
+
+/** The confirm a forget of a doc holding unlanded work must win. */
+export function unlandedWorkConfirm(target: HandoffTarget) {
+  return {
+    title: "Delete unsaved changes?",
+    message:
+      `${labelFor(target)} has unsaved changes that never reached its folder, ` +
+      "which Virgil kept for this paper. Removing it from Recents deletes them. " +
+      "To keep them, Cancel and open the paper — use Locate folder… if Virgil " +
+      "can't find its folder.",
+    confirmLabel: "Remove and delete changes",
+    cancelLabel: "Cancel",
+    tone: "danger" as const,
+  };
+}
+
+/**
  * The ONE door for retiring a doc's identity from this window — forgetting
  * it from Recents / the unreachable-paper gate, resetting the example
  * (task 1105). `retire` deletes the doc's folder handle, emergency mirror
@@ -109,14 +138,27 @@ export async function claimDocWithHandoff(
  * Refuse rather than hand off: a handoff would close the paper in the
  * other window only to delete it here, which is never what "forget" or
  * "reset" in one window asked for.
+ *
+ * With an `unlanded` guard (task 1616) it also refuses to delete this
+ * window's own unlanded work without the user's answer — a declined
+ * confirm resolves false quietly, because declining IS the answer.
  */
 export async function retireDocUnlessOpenElsewhere(
   target: HandoffTarget,
   dialog: HandoffDialog,
   retire: () => Promise<void>,
+  unlanded?: RetireUnlandedGuard,
 ): Promise<boolean> {
-  const result = await withDocIfUnclaimed(target.id, retire);
-  if (result.ran) return true;
+  // Asked UNDER the doc's lock, so nothing can arm a mirror between the
+  // probe and the purge; a peer-held doc is refused before anything is asked.
+  const result = await withDocIfUnclaimed(target.id, async () => {
+    if (unlanded && (await unlanded.hasUnlandedWork(target.id))) {
+      if (!(await dialog.confirm(unlandedWorkConfirm(target)))) return false;
+    }
+    await retire();
+    return true;
+  });
+  if (result.ran) return result.value;
   await dialog.alert({
     title: "Document is open in another window",
     message: `${labelFor(target)} is open in another Virgil window. Close it there first, then try again.`,
