@@ -32,14 +32,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from queue_slot import (  # noqa: E402
     DRAIN_NATIVE_KINDS,
-    claim_request,
+    ClaimScope,
+    claimed,
     done_retires,
     is_claimable,
     is_in_flight,
     normalize_kind,
-    release_claimed,
     request_files,
-    retire_claimed,
     retire_done,
 )
 
@@ -207,10 +206,17 @@ def _process_one(entry: dict, library: Path) -> dict:
     # Claim (task 1291): the slot reads `running` while we work it, so
     # neither writer replaces it, and retirement below touches only the
     # request we claimed — one queued mid-run stays queued.
-    claimed = claim_request(path)
-    if claimed is None:
-        return {"citekey": citekey, "kind": kind, "status": "skipped-claimed",
-                "summary": "claimed by another worker"}
+    # The claim SCOPE (task 1622) settles on every exit: an OSError from the
+    # subprocess or a write releases the claim with its reason instead of
+    # stranding the request `running` for the abandon TTL.
+    with claimed(path) as claim:
+        if claim is None:
+            return {"citekey": citekey, "kind": kind, "status": "skipped-claimed",
+                    "summary": "claimed by another worker"}
+        return _run_claimed(claim, library, citekey, kind)
+
+
+def _run_claimed(claim: ClaimScope, library: Path, citekey: str, kind: str) -> dict:
     try:
         proc = subprocess.run(
             [sys.executable, str(SCRIPT_DIR / "index_paper.py"), citekey,
@@ -218,13 +224,19 @@ def _process_one(entry: dict, library: Path) -> dict:
             capture_output=True, text=True, timeout=600, check=False,
         )
     except subprocess.TimeoutExpired:
-        status = release_claimed(path, claimed, "timeout")
+        status = claim.release("timeout")
         return {"citekey": citekey, "kind": kind,
                 "status": status or "failed", "symbol": "X",
                 "summary": "timeout (10m)" + _superseded_note(status)}
     if proc.returncode == 0:
-        symbol, desc = _classify_entry(library, citekey)
-        retired = retire_claimed(path, claimed)
+        # Retire FIRST: the index succeeded, and the classification below is
+        # a report — a catalog read that refuses (task 893's door) must not
+        # turn a finished index into a crashed drain or a re-run.
+        retired = claim.retire()
+        try:
+            symbol, desc = _classify_entry(library, citekey)
+        except Exception as e:  # noqa: BLE001 — a report, never the verdict
+            symbol, desc = "?", f"indexed; catalog unreadable ({type(e).__name__}: {e})"
         return {
             "citekey": citekey,
             "kind": kind,
@@ -234,7 +246,7 @@ def _process_one(entry: dict, library: Path) -> dict:
                                " (a newer request arrived mid-run; left queued)"),
         }
     err = (proc.stderr or proc.stdout or "").strip()[-1000:]
-    status = release_claimed(path, claimed, err)
+    status = claim.release(err)
     return {
         "citekey": citekey,
         "kind": kind,

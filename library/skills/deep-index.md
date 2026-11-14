@@ -130,19 +130,31 @@ not retired unworked (task 1431):
 ```bash
 python3 .virgil/scripts/library/queue_slot.py claim --kind deepIndex --citekey $ARGUMENTS
 ```
-It prints `{"result": "claimed", "requestedAt": …}` — keep that
-`requestedAt` for §7 — or `{"result": "nothing-claimable"}` (run
+It prints `{"result": "claimed", "requestedAt": …, "claimId": …}` — keep
+BOTH for §7 (the `claimId` makes your settle act on YOUR claim only, never
+on a re-claim another worker took — task 1622) — or `{"result": "nothing-claimable"}` (run
 directly with nothing queued, or another worker holds it: carry on, and
 pass `""` there, which retires nothing).
 If a coexisting `paper-review` request will be incorporated in this pass
 (§2), claim it the same way (`--kind paper-review`) and keep its
 `requestedAt` too.
 
+**Renew the claim at the start of EVERY convergence pass** (task 1622).
+The loop has no cap, and a claim not renewed for an hour reads as
+abandoned — another worker may re-claim the paper and run beside you:
+```bash
+python3 .virgil/scripts/library/queue_slot.py renew --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>" --claim-id "<claimId from §Claim, or empty>"
+```
+`{"result": "renewed"}` — carry on. `"lost"` — the claim is no longer
+yours (the user re-filed, or it lapsed and was re-claimed): finish the
+pass you are in, then stop without retiring. (`"not-claimed"` — you
+claimed nothing; carry on.)
+
 **Every STOP after this claim RELEASES it** (task 1575) — a
 `PREFLIGHT_BLOCKED` stop, a validator abort, any `DEEP_INDEX_STALLED`
 pass, any error that ends the run before §7. Report first, then:
 ```bash
-python3 .virgil/scripts/library/queue_slot.py release --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>" --error "<one line: the stall reason or error>"
+python3 .virgil/scripts/library/queue_slot.py release --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>" --claim-id "<claimId from §Claim, or empty>" --error "<one line: the stall reason or error>"
 ```
 (and the same for a claimed `paper-review`, `--kind paper-review` with its
 own `requestedAt`). A claim left behind stays `running` for an hour — the
@@ -636,7 +648,7 @@ Retire the request through the queue-slot door (task 618) — never delete
 the queue file by hand:
 
 ```bash
-python3 .virgil/scripts/library/queue_slot.py retire --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>"
+python3 .virgil/scripts/library/queue_slot.py retire --kind deepIndex --citekey $ARGUMENTS --requested-at "<requestedAt from §Claim, or empty>" --claim-id "<claimId from §Claim, or empty>"
 ```
 
 It finds the request in `<citekey>-deepindex.json` or the legacy
