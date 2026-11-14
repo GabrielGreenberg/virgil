@@ -64,6 +64,8 @@ const REPEAT_LEDGER: Record<string, string> = {
   "src/panels/Citations/CitationCard.tsx": FIELD,
   "src/lib/pane-resize/use-pane-resize-handle.ts": GESTURE,
   "src/panels/Outline/focus-band-drag.ts": GESTURE,
+  "src/components/FloatingPanel.tsx": GESTURE,
+  "src/lib/pane-resize/pointer-invariants.ts": GESTURE,
   "src/text-objects/TextObjectGrabHandle.tsx": GESTURE,
   "src/components/drop-mode/pending-session.ts": GESTURE,
   "src/components/drop-mode/controller.ts": GESTURE,

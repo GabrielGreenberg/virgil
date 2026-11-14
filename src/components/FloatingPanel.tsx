@@ -23,7 +23,12 @@ import {
 // The two pointer invariants EVERY drag gesture in the app honors — imported
 // from the engine's SSOT, never re-derived (docs/agents/laws/pane-drag-stability.md "Pane-drag stability";
 // task 185). A bespoke gesture buys a different SHAPE, not an exemption.
-import { isMissedRelease, isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
+import {
+  claimGestureKey,
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
+import { isCancelEscape } from "@/lib/key-intent";
 import {
   onLayoutGestureSetChange,
   parkDuringLayoutGesture,
@@ -467,6 +472,14 @@ function FloatingPanelInner({
         // beginDragAt, or floating-mode header drags).
         dockedWidth: number | null;
         dockedHeight: number | null;
+        // Where an Escape puts a gesture that began DOCKED back (task 1617):
+        // the band it lifted out of, and the saved float rect the undock
+        // overwrote. Null for a gesture that began floating.
+        undockOrigin: {
+          side: Side;
+          index: number;
+          savedFloatRect: { x: number; y: number; width: number; height: number };
+        } | null;
         // Can this float be captured onto the Stack? Resolved ONCE here, at
         // gesture start, from the registry (`canCaptureToStack`) — never per
         // mousemove, since a registry read cannot change mid-gesture (the rule
@@ -970,15 +983,48 @@ function FloatingPanelInner({
       document.body.style.cursor = "";
     };
     /**
+     * Put the float back where the gesture found it (the Escape ending, task
+     * 1617). Nothing here persisted mid-gesture except the undock, so that is
+     * the one durable write to reverse:
+     *  - a MOVE never committed `pos` per frame — only the imperative
+     *    translate, which is dropped here (the RAF was cancelled by the caller);
+     *  - a RESIZE commits `pos` per frame (React owns width/height), so its
+     *    captured original geometry is committed back — `pos` only, never
+     *    `onChange`, because no resize frame persisted either;
+     *  - a move that UNDOCKED wrote the float rect and the floating mode; the
+     *    saved rect goes back and the panel redocks into the band it left
+     *    (`redockAt` at the same index — the stack it rejoins is the one it
+     *    was lifted out of).
+     */
+    const restorePreGesture = (s: NonNullable<typeof dragStateRef.current>) => {
+      const el = rootRef.current;
+      appliedTranslateRef.current = null;
+      if (el) el.style.transform = "";
+      if (s.mode === "resize") {
+        commitPos({ x: s.origX, y: s.origY, width: s.origW, height: s.origH });
+        return;
+      }
+      const origin = s.undockOrigin;
+      if (origin && !s.pendingUndock) {
+        commitPos(origin.savedFloatRect);
+        handlersRef.current.onChange(origin.savedFloatRect);
+        handlersRef.current.onMaybeRedock?.({ side: origin.side, index: origin.index });
+      }
+    };
+    /**
      * THE end edge — one path for every ending, so no variant can skip the
      * chrome teardown or the single persistence commit (the engine's
      * finally-style discipline).
      *
-     * Two kinds of ending. A RELEASE commits; a CANCEL (the float unmounting
-     * mid-gesture — Cmd-W while dragging, any programmatic close) only tears
-     * the chrome down: no geometry write, no redock, no stack capture. A float
-     * that is going away has nothing to commit, and under the Escape/cancel
-     * doctrine an ending the user did not perform must not decide a move.
+     * Three kinds of ending. A RELEASE commits. A CANCEL (Escape, task 1617)
+     * abandons: no stack capture, no redock target, and the float goes back to
+     * where the gesture found it — the live translate dropped, a resize's
+     * per-frame commits undone, and a float that undocked mid-drag returned to
+     * its band with its saved float rect restored. A DETACH (the float
+     * unmounting mid-gesture — Cmd-W while dragging, any programmatic close)
+     * only tears the chrome down: a float that is going away has nothing to
+     * commit or restore, and under the Escape/cancel doctrine an ending the
+     * user did not perform must not decide a move.
      *
      * A release of a gesture that never moved ends the same way: it is a click,
      * and the release tests below answer from where the float RESTS. A float
@@ -998,7 +1044,8 @@ function FloatingPanelInner({
     const endGesture = (
       ending:
         | { kind: "release"; cursor: { x: number; y: number } | null }
-        | { kind: "cancel" },
+        | { kind: "cancel" }
+        | { kind: "detach" },
     ) => {
       const s = dragStateRef.current;
       if (!s) return;
@@ -1011,7 +1058,12 @@ function FloatingPanelInner({
       // never ran still persist where the user dragged to.
       cancelTranslate();
       cancelResize();
-      if (ending.kind === "cancel" || !s.moved) {
+      if (ending.kind === "cancel") {
+        clearGestureChrome(s);
+        restorePreGesture(s);
+        return;
+      }
+      if (ending.kind === "detach" || !s.moved) {
         clearGestureChrome(s);
         return;
       }
@@ -1115,8 +1167,20 @@ function FloatingPanelInner({
     const onUp = (e: MouseEvent) => {
       endGesture({ kind: "release", cursor: { x: e.clientX, y: e.clientY } });
     };
+    // Escape abandons the move/resize (task 1617, the "Escape means cancel"
+    // law). Window CAPTURE, like the engine's, and CLAIMED: a live gesture is
+    // the innermost transient thing on screen, so the press must not also
+    // close a dialog behind it, cancel a margin-edit session, or — for an
+    // opt-in dialog float — reach this shell's own `useNonModalDialogKeys`
+    // and close the whole window. With no gesture live it answers nothing.
+    const onKey = (e: KeyboardEvent) => {
+      if (!isCancelEscape(e) || !dragStateRef.current) return;
+      claimGestureKey(e);
+      endGesture({ kind: "cancel" });
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("keydown", onKey, true);
     // A window-resize burst is the one real invalidation of the gesture
     // snapshot (an external display, Stage Manager, a live OS window resize
     // that overlaps the drag). The bus publishes membership changes, never
@@ -1139,12 +1203,13 @@ function FloatingPanelInner({
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("keydown", onKey, true);
       unsubscribeGestureBus();
       // Unmount is the gesture's third ending: a float closed mid-drag or
       // mid-resize must not strand the app with text selection disabled, a
-      // resize cursor, or a lit dock outline (task 1095). A cancel — it
-      // commits nothing; with no live gesture it is a no-op.
-      endGesture({ kind: "cancel" });
+      // resize cursor, or a lit dock outline (task 1095). A detach — it
+      // commits and restores nothing; with no live gesture it is a no-op.
+      endGesture({ kind: "detach" });
       cancelTranslate();
       cancelResize();
     };
@@ -1222,6 +1287,16 @@ function FloatingPanelInner({
       // the band's visual frame.
       dockedWidth: pendingUndock && primaryRect ? primaryRect.width : null,
       dockedHeight: pendingUndock && primaryRect ? primaryRect.height : null,
+      // The slot key is `<side>-<band index>`; the float rect is what React
+      // renders while docked — the saved one the undock is about to replace.
+      undockOrigin:
+        socketSlot && sourceSide
+          ? {
+              side: sourceSide,
+              index: Number(socketSlot.slice(socketSlot.indexOf("-") + 1)),
+              savedFloatRect: { ...pos },
+            }
+          : null,
       canCapture: cardKey != null && canCaptureToStack(cardKey),
       lastCursor: { x: e.clientX, y: e.clientY },
       moved: false,
@@ -1253,6 +1328,7 @@ function FloatingPanelInner({
         sourceGhost: null,
         dockedWidth: null,
         dockedHeight: null,
+        undockOrigin: null,
         canCapture: (() => {
           const key = handlersRef.current.cardKey;
           return key != null && canCaptureToStack(key);

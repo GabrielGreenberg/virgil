@@ -371,9 +371,13 @@ const PERMITTED_UNCLAIMED_GESTURE_KEYS: Record<string, string> = {};
 //                          move straight back (a scroll offset, a dialog's
 //                          on-screen position) — nothing outlives it to cancel;
 //   [mode-owned: …]        the gesture stages into an enclosing MODE whose own
-//                          Escape abandons the whole staged session;
-//   [owed: …]              a durable commit with no Escape cancel yet — a KNOWN
-//                          gap, stated rather than hidden, so it can be routed.
+//                          Escape abandons the whole staged session.
+//
+// There is no "not done yet" verdict (task 1617). Task 1167 had a fourth,
+// `[owed: …]`, for a durable commit with no Escape cancel; its two rows (the
+// float move/resize and the strip-icon reorder) sat unrouted for months while
+// the census read green. A held gesture that commits durably answers Escape —
+// it is not parked here.
 //
 // A new gesture lands RED here until it answers. Prefer wiring the Escape
 // (window capture keydown + `claimGestureKey` + the one end path's non-commit
@@ -391,13 +395,9 @@ const PERMITTED_ESCAPELESS_GESTURES: Record<string, string> = {
     "[no-durable-commit: the Preferences window's on-screen position IS session state and is never persisted]",
   "src/hooks/useMarginEdit.ts":
     "[mode-owned: guide drags stage into the margin-edit session's liveMargins; nothing is written until Save, and the MODE's own Escape (mirroring its Cancel button) abandons the whole staged session]",
-  "src/components/FloatingPanel.tsx":
-    "[owed: a move/resize release persists the float's rect (and may redock or stack-capture); the end path already has a non-committing `cancel` ending, but no Escape reaches it, and a cancel would also have to drop the live translate / restore the pre-gesture size]",
-  "src/components/editor-layout/drag-drop.tsx":
-    "[owed: the strip-icon reorder commits a durable panel move (`onMove`) on release; there is no Escape cancel]",
 };
 
-const ESCAPE_VERDICT_TAG = /^\[(hands-off|no-durable-commit|mode-owned|owed): \S/;
+const ESCAPE_VERDICT_TAG = /^\[(hands-off|no-durable-commit|mode-owned): \S/;
 
 // ── The allowlist registry + the [cost: …] tag rule (task 334) ───────────────
 // `keystroke-subscriber-guardrail` has enforced a `[cost: …]` prefix on every
@@ -1039,8 +1039,12 @@ export function ownsHeldPointerGesture(source: string): boolean {
  */
 export function answersEscape(source: string): boolean {
   return (
-    findGestureScopedKeyHandlers(source).length > 0 &&
-    findUnclaimedGestureKeys(source).length === 0
+    (findGestureScopedKeyHandlers(source).length > 0 &&
+      findUnclaimedGestureKeys(source).length === 0) ||
+    // The DOOR shape (task 1617): `armGestureEscape` claims by construction,
+    // for a gesture whose pointer listeners are element-scoped and so has no
+    // window-teardown block for the inline shape to live in.
+    /\barmGestureEscape\s*\(/.test(stripComments(source))
   );
 }
 
@@ -1869,6 +1873,8 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
     // stopped matching would leave this leg vacuously green rather than
     // obviously broken. Both known members must always be in it.
     expect(scoped.map((f) => f.rel).sort()).toEqual([
+      // Task 1617 — the float move/resize claims the Escape that abandons it.
+      "src/components/FloatingPanel.tsx",
       "src/components/drop-mode/controller.ts",
       // Task 1192 — the pending drop press claims Escape before it is a drag.
       "src/components/drop-mode/pending-session.ts",
@@ -2091,8 +2097,12 @@ describe("pane-drag guardrail — Escape-answer census (task 1167)", () => {
   it("the known Escape answerers are in the population (the census can see)", () => {
     const answering = gestures.filter((f) => answersEscape(f.source)).map((f) => f.rel).sort();
     expect(answering).toEqual([
+      // Task 1617 — the float move/resize (inline) and the strip-icon
+      // reorder (the `armGestureEscape` door).
+      "src/components/FloatingPanel.tsx",
       "src/components/drop-mode/controller.ts",
       "src/components/drop-mode/pending-session.ts",
+      "src/components/editor-layout/drag-drop.tsx",
       "src/panels/Outline/focus-band-drag.ts",
       // Task 1444 — the grab handle's pre-threshold press cancels on Escape.
       "src/text-objects/TextObjectGrabHandle.tsx",

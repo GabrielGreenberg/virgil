@@ -7,10 +7,11 @@ import { paneRootOf, paneStrip, usePaneRoot, type PaneScope } from "./pane-dom";
 import { onLayoutGestureSetChange } from "@/lib/pane-resize";
 import { DROP_INDICATOR_Z } from "@/floats/float-policy";
 import { stampDragGhostLayer } from "@/lib/drag-ghost";
-// The two pointer invariants every held gesture in the app takes from the ONE
+// The pointer invariants every held gesture in the app takes from the ONE
 // SSOT — imported, never re-derived (docs/agents/laws/pane-drag-stability.md "Pane-drag stability"; the
 // census's no-twins allowlist is EMPTY).
 import {
+  armGestureEscape,
   isMissedRelease,
   isPrimaryDragStart,
 } from "@/lib/pane-resize/pointer-invariants";
@@ -324,6 +325,8 @@ export function StripButton({
   // drop it and BOTH readers re-capture (never a raw ref read on one side).
   const geomRef = useRef<StripDragGeometry | null>(null);
   const unsubscribeBusRef = useRef<(() => void) | null>(null);
+  /** Disarms the live drag's claimed Escape (task 1617). Null between drags. */
+  const disarmEscapeRef = useRef<(() => void) | null>(null);
 
   const geometry = useCallback((): StripDragGeometry => {
     let g = geomRef.current;
@@ -335,7 +338,7 @@ export function StripButton({
   }, [panelId, side]);
 
   // Single teardown for every drag terminator (up / cancel / capture-loss /
-  // missed release / unmount): cancel the queued frame FIRST (a bailed gesture
+  // missed release / Escape / unmount): cancel the queued frame FIRST (a bailed gesture
   // must not commit one frame behind itself — task 333's rule), reclaim the
   // body-appended ghost + drop-indicator nodes, drop the snapshot and its bus
   // subscription, and reset the drag latches. Idempotent — safe to call when
@@ -347,6 +350,8 @@ export function StripButton({
     }
     unsubscribeBusRef.current?.();
     unsubscribeBusRef.current = null;
+    disarmEscapeRef.current?.();
+    disarmEscapeRef.current = null;
     ghostRef.current?.remove();
     ghostRef.current = null;
     indicatorRef.current?.remove();
@@ -474,6 +479,15 @@ export function StripButton({
         geomRef.current = null;
         unsubscribeBusRef.current = onLayoutGestureSetChange(() => {
           geomRef.current = null;
+        });
+        // Escape abandons the reorder (task 1617): the press is CLAIMED, so it
+        // cannot also close a dialog behind the strip or cancel a margin-edit
+        // session, and the drag ends through the ONE teardown with no
+        // `onMove`. The release that follows finds nothing armed, and the
+        // trailing click is marked consumed so it can't toggle the panel.
+        disarmEscapeRef.current = armGestureEscape(() => {
+          handledByPointer.current = true;
+          cleanupDragArtifacts();
         });
         // Clone the icon as ghost
         const ghost = document.createElement("div");

@@ -86,8 +86,8 @@ const LEDGER: Record<string, Row> = {
   },
   "components/FloatingPanel.tsx": {
     scope: "gesture",
-    events: ["window.mousemove", "window.mouseup"],
-    why: "float drag, armed on the header mousedown",
+    events: ["window.mousemove", "window.mouseup", "window.keydown"],
+    why: "float drag, armed on the header mousedown; the keydown answers only a LIVE gesture's Escape (claimed cancel, task 1617)",
   },
   "components/PendingChangePill.tsx": {
     scope: "visible",
@@ -272,8 +272,8 @@ const LEDGER: Record<string, Row> = {
   },
   "lib/pane-resize/pointer-invariants.ts": {
     scope: "gesture",
-    events: ["window.mouseup", "window.mousemove", "window.contextmenu", "window.blur"],
-    why: "watchHeldPress: a press latch's end edge, armed at the press in the pane it started in and removed on the first end event (task 993)",
+    events: ["window.mouseup", "window.mousemove", "window.contextmenu", "window.blur", "window.keydown"],
+    why: "watchHeldPress: a press latch's end edge, armed at the press in the pane it started in and removed on the first end event (task 993); armGestureEscape: a drag's claimed Escape, armed on its threshold and disarmed by its one teardown (task 1617)",
   },
   "lib/pane-resize/use-pane-resize-handle.ts": {
     scope: "gesture",

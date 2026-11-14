@@ -429,3 +429,76 @@ describe("StripButton move-path cost (task 439)", () => {
     restore.mockRestore();
   });
 });
+
+// Task 1617 — Escape abandons the reorder, and the press is CLAIMED: a live
+// gesture is the innermost transient thing on screen, so one press ends
+// exactly one thing. The two owners registered below are the 471 harness
+// shape — a `document` CAPTURE owner (the dialog stack) and a `window` BUBBLE
+// owner (`useMarginEdit`) — and the press is dispatched from INSIDE the
+// document, since one dispatched at `window` could never reach a `document`
+// listener and the leg would pass vacuously.
+describe("StripButton Escape cancel (task 1617)", () => {
+  function owners() {
+    const docCapture = vi.fn<(e: KeyboardEvent) => void>();
+    const winBubble = vi.fn<(e: KeyboardEvent) => void>();
+    document.addEventListener("keydown", docCapture, true);
+    window.addEventListener("keydown", winBubble);
+    return {
+      docCapture,
+      winBubble,
+      dispose() {
+        document.removeEventListener("keydown", docCapture, true);
+        window.removeEventListener("keydown", winBubble);
+      },
+    };
+  }
+
+  it("Escape mid-drag abandons without onMove, tears down, and reaches no other owner", () => {
+    const restore = stubRects();
+    const o = owners();
+    const { btn, onMove, onClick } = renderButton();
+    startDrag(btn);
+    expect(document.getElementById("virgil-drag-ghost")).not.toBeNull();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(o.docCapture).not.toHaveBeenCalled();
+    expect(o.winBubble).not.toHaveBeenCalled();
+    expect(document.getElementById("virgil-drag-ghost")).toBeNull();
+    expect(document.getElementById("virgil-drop-indicator")).toBeNull();
+
+    // The release and its trailing click decide nothing.
+    fireEvent.pointerUp(btn, held(20, 20));
+    fireEvent.click(btn);
+    expect(onMove).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+
+    // The listener died with the gesture: the next Escape travels on.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(o.docCapture).toHaveBeenCalledTimes(1);
+    expect(o.winBubble).toHaveBeenCalledTimes(1);
+    o.dispose();
+    restore.mockRestore();
+  });
+
+  it("control: with no drag live, Escape reaches both owners", () => {
+    const o = owners();
+    renderButton();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(o.docCapture).toHaveBeenCalledTimes(1);
+    expect(o.winBubble).toHaveBeenCalledTimes(1);
+    o.dispose();
+  });
+
+  it("a normal release disarms the Escape too", () => {
+    const restore = stubRects();
+    const o = owners();
+    const { btn, onMove } = renderButton();
+    startDrag(btn);
+    fireEvent.pointerUp(btn, held(20, 20));
+    expect(onMove).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(o.docCapture).toHaveBeenCalledTimes(1);
+    o.dispose();
+    restore.mockRestore();
+  });
+});

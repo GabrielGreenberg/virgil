@@ -13,6 +13,7 @@
  * A bespoke gesture imports these; it does not re-derive them.
  */
 
+import { isCancelEscape } from "@/lib/key-intent";
 import { isMac } from "@/lib/platform";
 
 /**
@@ -167,4 +168,37 @@ export function watchHeldPress(onEnd: () => void): () => void {
 export function claimGestureKey(e: KeyboardEvent): void {
   e.preventDefault();
   e.stopPropagation();
+}
+
+/**
+ * Arm a gesture's Escape cancel — the third invariant packaged as a DOOR, for
+ * a held gesture whose pointer listeners are ELEMENT-scoped (React props, or
+ * pointer capture) and so has no window-listener teardown block to hang a
+ * keydown removal on (task 1617: the strip-icon reorder). A window CAPTURE
+ * keydown that, on the first non-IME Escape, CLAIMS the press
+ * (`claimGestureKey` — one press ends exactly one thing) and fires `onCancel`
+ * once, disarming itself first. The returned disposer disarms without firing;
+ * the gesture's one teardown calls it, so the listener lives exactly as long
+ * as the gesture and costs nothing between gestures.
+ *
+ * A gesture that already owns a window-listener teardown block (FloatingPanel,
+ * focus-band-drag) wires the same three lines inline there instead — the
+ * Escape census reads both shapes (`answersEscape` in
+ * `pane-drag-guardrail.test.ts`).
+ */
+export function armGestureEscape(onCancel: () => void): () => void {
+  let armed = true;
+  const disarm = () => {
+    if (!armed) return;
+    armed = false;
+    window.removeEventListener("keydown", onKey, true);
+  };
+  function onKey(e: KeyboardEvent) {
+    if (!isCancelEscape(e)) return;
+    claimGestureKey(e);
+    disarm();
+    onCancel();
+  }
+  window.addEventListener("keydown", onKey, true);
+  return disarm;
 }
