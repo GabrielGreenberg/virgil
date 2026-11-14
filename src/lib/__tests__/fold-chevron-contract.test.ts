@@ -40,7 +40,7 @@ describe("fold-chevron contract (task 830)", () => {
       expect(body).not.toMatch(/-\s*7px/);
     }
     expect(css).toMatch(
-      /\.heading-wrapper-l1 \.heading-fold-chevron\s*\{\s*top:\s*calc\([^;]*var\(--margin-col-chevron-width[^;]*\/ 2\)/,
+      /\.heading-fold-chevron\s*\{\s*top:\s*calc\(var\(--heading-size\)[^;]*var\(--margin-col-chevron-width[^;]*\/ 2\)/,
     );
   });
 

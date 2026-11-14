@@ -915,6 +915,24 @@
   /* PROMOTE-DEFAULTS-END */
 }
 
+/* Heading-level type tokens the preference registry does not carry (it has
+   rows for h1–h3 only — pref-css-table.mjs). Declared here, OUTSIDE the
+   generated PROMOTE-DEFAULTS block, so every level in HEADING_TYPES
+   (heading-types.ts) has a real size + weight token, not a per-reader
+   fallback literal (task 1614: h4 had none, and fell back to Tailwind
+   preflight's body-text `h4 { font-size: inherit }`).
+   heading-level-typography-census.test.ts pins one size token per level. */
+:root {
+  --font-headers-h0-size: 2.1rem;
+  --font-headers-h0-weight: 700;
+  --font-headers-h4-size: 1.05rem;
+  --font-headers-h4-weight: 600;
+  --font-headers-h5-size: 1rem;
+  --font-headers-h5-weight: 700;
+  --font-headers-h6-size: 0.95rem;
+  --font-headers-h6-weight: 600;
+}
+
 /* Canvas PAINT vs canvas COLOUR (task 1177).
    --background is the canvas COLOUR: ~20 consumers read it as a solid value
    (background-color, color-mix(), box-shadow spreads, gradient stops), so it
@@ -1755,8 +1773,34 @@ textarea {
   font-size: var(--editor-font-size);
 }
 
+/* ONE size per heading level (task 1614). Each level's size token is stamped
+   ONCE as --heading-size — on the wrapper (so the fold chevron, a sibling of
+   the heading, reads it) and on the element itself (so a heading outside a
+   wrapper — a card editor, a cloned ghost — still gets it). The heading's
+   font-size and the chevron's centring offset both read --heading-size, so
+   a level can no longer be typed into one hand list and missing from the
+   other. */
+.heading-wrapper-l0, .tiptap h0 { --heading-size: var(--font-headers-h0-size); }
+.heading-wrapper-l1, .tiptap h1 { --heading-size: var(--font-headers-h1-size); }
+.heading-wrapper-l2, .tiptap h2 { --heading-size: var(--font-headers-h2-size); }
+.heading-wrapper-l3, .tiptap h3 { --heading-size: var(--font-headers-h3-size); }
+
+/* \subsubsection — a step between \subsection (h3) and the run-in
+   \paragraph head (h5). */
+.tiptap h4 {
+  font-size: var(--heading-size);
+  font-weight: var(--font-headers-h4-weight);
+  margin-top: 0.95em;
+  margin-bottom: 0.15em;
+  color: var(--h2h3-color, #2a2a2a);
+  font-family: var(--font-headers-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
+}
+.heading-wrapper-l4, .tiptap h4 { --heading-size: var(--font-headers-h4-size); }
+.heading-wrapper-l5, .tiptap h5 { --heading-size: var(--font-headers-h5-size); }
+.heading-wrapper-l6, .tiptap h6 { --heading-size: var(--font-headers-h6-size); }
+
 .tiptap h1 {
-  font-size: var(--font-headers-h1-size, 1.75rem);
+  font-size: var(--heading-size);
   font-weight: var(--font-headers-h1-weight);
   margin-top: 1.5em;
   margin-bottom: 0.15em;
@@ -1765,7 +1809,7 @@ textarea {
 }
 
 .tiptap h2 {
-  font-size: var(--font-headers-h2-size, 1.35rem);
+  font-size: var(--heading-size);
   font-weight: var(--font-headers-h2-weight, 600);
   margin-top: 1.25em;
   margin-bottom: 0.15em;
@@ -1774,7 +1818,7 @@ textarea {
 }
 
 .tiptap h3 {
-  font-size: var(--font-headers-h3-size, 1.15rem);
+  font-size: var(--heading-size);
   font-weight: var(--font-headers-h3-weight, 600);
   margin-top: 1em;
   margin-bottom: 0.15em;
@@ -1786,7 +1830,7 @@ textarea {
    we style it via the wrapper-class descendant selector. */
 .tiptap .heading-wrapper-l0 > h0 {
   display: block;
-  font-size: var(--font-headers-h0-size, 2.1rem);
+  font-size: var(--heading-size);
   font-weight: var(--font-headers-h0-weight, 700);
   margin-top: 1.5em;
   margin-bottom: 0.15em;
@@ -1797,7 +1841,7 @@ textarea {
 /* \paragraph and \subparagraph — small inline-style heads; render as
    body-size bold runs that nonetheless sit on their own line. */
 .tiptap h5 {
-  font-size: var(--font-headers-h5-size, 1rem);
+  font-size: var(--heading-size);
   font-weight: var(--font-headers-h5-weight, 700);
   margin-top: 0.9em;
   margin-bottom: 0.1em;
@@ -1805,7 +1849,7 @@ textarea {
   font-family: var(--font-headers-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
 }
 .tiptap h6 {
-  font-size: var(--font-headers-h6-size, 0.95rem);
+  font-size: var(--heading-size);
   font-weight: var(--font-headers-h6-weight, 600);
   margin-top: 0.8em;
   margin-bottom: 0.1em;
@@ -1888,40 +1932,17 @@ textarea {
   filter: brightness(0.85);
 }
 
-/* Heading chevron: centred on the heading's first line (level rules below). */
+/* Heading chevron: centred on the heading's first line — half the heading's
+   line-box minus half the chevron's height (half the column-width token,
+   never a typed literal — task 830). Assumes the inherited line-height of
+   1.5, so half-line = font-size × 0.75. ONE rule for every level: it reads
+   the --heading-size its wrapper stamps (task 1614 — level classes, not
+   :has(hN): the NodeView stamps heading-wrapper-l{N} at construction and a
+   level change recreates the view, so the class is always correct; :has()
+   with descendant-change triggers was a per-keystroke style-invalidation
+   amplifier in large docs, perf Wave 0, plan P5.1). */
 .heading-fold-chevron {
-  top: 0.5em;
-}
-
-/* Vertical centering — half the heading's line-box minus half the
-   chevron's height (half the column-width token, never a typed literal —
-   task 830). Assumes the inherited line-height of 1.5,
-   so half-line = font-size × 0.75. */
-.heading-wrapper-l0 .heading-fold-chevron {
-  top: calc(var(--font-headers-h0-size, 2.1rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
-}
-/* Level classes, not :has(hN): the NodeView stamps heading-wrapper-l{N} at
-   construction and a level change recreates the view (update() returns false
-   on level diff — editor-extensions.ts), so the class is always correct.
-   :has() with descendant-change triggers was a per-keystroke style-
-   invalidation amplifier in large docs (perf Wave 0, plan P5.1). */
-.heading-wrapper-l1 .heading-fold-chevron {
-  top: calc(var(--font-headers-h1-size, 1.75rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
-}
-.heading-wrapper-l2 .heading-fold-chevron {
-  top: calc(var(--font-headers-h2-size, 1.35rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
-}
-.heading-wrapper-l3 .heading-fold-chevron {
-  top: calc(var(--font-headers-h3-size, 1.15rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
-}
-.heading-wrapper-l4 .heading-fold-chevron {
-  top: calc(1rem * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
-}
-.heading-wrapper-l5 .heading-fold-chevron {
-  top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
-}
-.heading-wrapper-l6 .heading-fold-chevron {
-  top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
+  top: calc(var(--heading-size) * 0.75 - var(--margin-col-chevron-width, 14px) / 2);
 }
 
 /* ── Screen-only fold suppression ─────────────────────────────────
@@ -2315,6 +2336,7 @@ textarea {
 .heading-wrapper h1,
 .heading-wrapper h2,
 .heading-wrapper h3,
+.heading-wrapper h4,
 .heading-wrapper-l0 > h0 {
   margin-top: 0.2em;
   margin-bottom: -0.1em;

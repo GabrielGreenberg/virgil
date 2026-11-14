@@ -193,20 +193,6 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
   // `--surface`: tasks 2026-10-23-1261 (margin half) and 2026-10-24-1263.)
   "--doc-title-leadin": "title lead-in height; fallback 40px is the shipped value",
 
-  // The heading-typography preference registry (`preferences-tree.ts`:345-350)
-  // has exactly six rows: h1 / h2 / h3 × size + weight. The stylesheet reads
-  // h0 / h5 / h6 prefs nothing ever writes, so those levels silently ignore
-  // the user's heading font settings. (h4 has no pref row AND no stylesheet
-  // read — the level is simply absent from the typography system, which is
-  // why it is not a phantom here.) Wiring the missing rows adds preference
-  // UI — a product call.
-  "--font-headers-h0-size": "heading pref registry covers h1–h3 only; h0 unwired",
-  "--font-headers-h0-weight": "heading pref registry covers h1–h3 only; h0 unwired",
-  "--font-headers-h5-size": "heading pref registry covers h1–h3 only; h5 unwired",
-  "--font-headers-h5-weight": "heading pref registry covers h1–h3 only; h5 unwired",
-  "--font-headers-h6-size": "heading pref registry covers h1–h3 only; h6 unwired",
-  "--font-headers-h6-weight": "heading pref registry covers h1–h3 only; h6 unwired",
-
   // Library-silo status vocabulary, same shape as --mono/--serif but honest
   // about it. Which live token each should take is a color decision.
   //
