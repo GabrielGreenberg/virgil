@@ -303,9 +303,13 @@ every other pending drop too):
    notifications (an OPEN vocabulary —
    `python3 .virgil/scripts/library/triage_apply.py --print-notification-kinds`),
    closing this file's triage request (`[request <result>] <filename>`), and
-   the one catalog-version bump. Its per-row statuses are stated in
-   `/library/triage-pending` step 3; the ones you will meet for one file:
-   `triaged` (queued for indexing), `archived` (a lower-priority format kept
+   the one catalog-version bump. Its per-row statuses are an OPEN set the
+   script declares once —
+   `python3 .virgil/scripts/library/triage_apply.py --print-row-statuses`;
+   the supersede outcomes come from `triage_apply.supersede_verdict`. The
+   ones you will meet for one file:
+   `triaged` (queued for indexing — or for a `reindex` when it outranks a
+   held format), `archived` (a lower-priority format kept
    beside the held source; nothing queued), `variant`, `needs-chapter-info`,
    `needs-title`, `needs-metadata`, `collision` (refused — the file stays in
    `unsorted/` and its request is released), `triaged-unqueued` (moved, but

@@ -114,6 +114,16 @@ function emittedKinds(src: string): string[] {
   return [...out].sort();
 }
 
+/** Every status literal a row result is built with: the `"status": "…"` key
+ *  of a returned dict, and the `status = "…"` assignments the triaged/
+ *  archived/unqueued tail picks from before building its dict (task 1623). */
+function emittedStatuses(src: string): string[] {
+  const out = new Set<string>();
+  for (const m of src.matchAll(/"status":\s*"([^"]+)"/g)) out.add(m[1]);
+  for (const m of src.matchAll(/^\s*status\s*=\s*"([^"]+)"/gm)) out.add(m[1]);
+  return [...out].sort();
+}
+
 /** Members of the `TERMINAL_BIB_STATES: frozenset[str] = frozenset({…})`. */
 function terminalBibStates(src: string): string[] {
   const start = src.indexOf("TERMINAL_BIB_STATES: frozenset[str] = frozenset({");
@@ -151,6 +161,19 @@ describe("triage vocabularies", () => {
     expect(declaredTuple(src, "NOTIFICATION_KINDS")).toEqual(emitted);
   });
 
+  it("declares exactly the per-row statuses triage_apply.py returns", () => {
+    const src = pyCode(read(APPLY));
+    const emitted = emittedStatuses(src);
+    // The three tail assignments must be SEEN, or `archived` could go stale
+    // unnoticed — the gap task 1623 was filed for.
+    for (const s of ["triaged", "triaged-unqueued", "archived"]) {
+      expect(emitted).toContain(s);
+    }
+    expect(emitted.length).toBeGreaterThan(12);
+    expect(declaredTuple(src, "ROW_STATUSES")).toEqual(emitted);
+    expect(printed(APPLY, "--print-row-statuses")).toEqual(emitted);
+  });
+
   it("derives the `triage-bib-ignored-<state>` family from TERMINAL_BIB_STATES", () => {
     const states = terminalBibStates(pyCode(read(TOOLS)));
     expect(states.length).toBeGreaterThan(1);
@@ -186,5 +209,24 @@ describe("triage vocabularies", () => {
     // The pre-510 closed-list spellings must not come back.
     expect(skill).not.toContain('`flags`: subset of `[');
     expect(skill).not.toMatch(/emits a `triaged` \/ /);
+  });
+
+  it("points BOTH triage skills at the one row-status door (task 1623)", () => {
+    // The status list was stated in triage-pending step 3 and cited from
+    // triage-pdf; 1601 added `archived` + the `reindex` queue to the engine
+    // and the list never learned them. Now both skills read the door.
+    for (const rel of ["library/skills/triage-pending.md", "library/skills/triage-pdf.md"]) {
+      const skill = read(rel);
+      expect(skill, rel).toContain("triage_apply.py --print-row-statuses");
+      expect(skill, rel).toContain("supersede_verdict");
+    }
+    const pending = read("library/skills/triage-pending.md");
+    // Step 4's queue description names both drain-native kinds apply writes.
+    expect(pending).toMatch(/`index`\s*\/\s*`reindex` requests apply wrote/);
+    // "archived" names ONE status: a lower-format supersede, never variants.
+    expect(pending).not.toMatch(/<variants> archived/);
+    expect(read("library/skills/triage-pdf.md")).not.toContain(
+      "Its per-row statuses are stated in",
+    );
   });
 });

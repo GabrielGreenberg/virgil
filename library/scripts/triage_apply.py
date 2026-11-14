@@ -151,6 +151,41 @@ NOTIFICATION_KINDS: tuple[str, ...] = (
 NOTIFICATION_KIND_FAMILY_HEAD = "triage-bib-ignored-"
 
 
+# ── The per-row status vocabulary ────────────────────────────────────────
+#
+# Every `status` `apply_row` (and the `_apply_rows` exception catch) can
+# return, DECLARED once (task 1623). Both triage skills read it through
+# `--print-row-statuses` rather than carrying a list, so a status added here
+# — as task 1601's supersede outcome `archived` was — reaches them without a
+# prose edit. Held to the code by `library/lib/__tests__/triage-vocabulary.test.ts`,
+# which discovers the returned set from this file's `"status": "…"` and
+# `status = "…"` literals.
+#
+# The supersede outcomes (`supersede_verdict`): a drop whose format OUTRANKS
+# the held one is `triaged` with a `reindex` queued; a LOWER one is `archived`
+# (kept beside the held source, nothing queued); the SAME format is a refused
+# `collision`. `archived` means only that — a `variant-copy` drop is `variant`.
+ROW_STATUSES: tuple[str, ...] = (
+    "triaged",
+    "triaged-unqueued",
+    "archived",
+    "variant",
+    "collision",
+    "skipped",
+    "unsafe-citekey",
+    "needs-chapter-info",
+    "needs-title",
+    "needs-metadata",
+    "bib-imported",
+    "bib-ignored",
+    "bib-folded",
+    "bib-skipped-no-citekey",
+    "bib-parse-failed",
+    "bib-master-unreadable",
+    "error",
+)
+
+
 def notification_kinds() -> list[str]:
     """The full emitted vocabulary, family expanded — the reader's door."""
     return sorted(NOTIFICATION_KINDS) + sorted(
@@ -893,7 +928,17 @@ def main() -> int:
                        "`triage-bib-ignored-<state>` family expanded) and "
                        "exit. The DOOR for any reader that needs the set."
                    ))
+    p.add_argument("--print-row-statuses", action="store_true",
+                   help=(
+                       "Print the per-row status vocabulary (one per line) "
+                       "and exit. The DOOR both triage skills cite."
+                   ))
     args = p.parse_args()
+
+    if args.print_row_statuses:
+        for status in ROW_STATUSES:
+            print(status)
+        return 0
 
     if args.print_notification_kinds:
         for kind in notification_kinds():
