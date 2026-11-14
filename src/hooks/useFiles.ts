@@ -48,6 +48,7 @@ import {
   type HandoffTarget,
 } from "@/lib/multi-window/handoff";
 import { subscribe, type BusEvent } from "@/lib/multi-window/bus";
+import { hasUnlandedWork } from "@/lib/emergency-mirror";
 import { onTabReturn } from "@/lib/tab-hidden";
 import { useSystemDialog } from "@/components/system-dialog-host";
 
@@ -891,7 +892,7 @@ export function useFiles() {
     const ok = await dialog.confirm({
       title: "Reset example document?",
       message:
-        "This discards your edits and AI annotations to the example and restores the original.",
+        "This discards your edits (including any unsaved changes) and AI annotations to the example and restores the original.",
       confirmLabel: "Reset",
       cancelLabel: "Cancel",
       tone: "danger",
@@ -1005,12 +1006,15 @@ export function useFiles() {
         // index entry is gone.
         await drainDoc(id);
         // Never under a peer window's live editor (task 1105): the
-        // purge takes its folder handle and its emergency mirror.
+        // purge takes its folder handle and its emergency mirror. Nor over
+        // this paper's own unlanded work without the user's answer (task
+        // 1616) — the mirror is the only copy of edits that never landed.
         const meta = docsRef.current.find((d) => d.id === id);
         const retired = await retireDocUnlessOpenElsewhere(
           { id, name: meta?.name, folderName: meta?.folderName },
           dialog,
           () => deleteDocFromIndex(id),
+          { hasUnlandedWork },
         );
         if (!retired) return false;
         setDocs((prev) => prev.filter((d) => d.id !== id));
