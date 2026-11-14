@@ -91,14 +91,17 @@ export interface AtomMeta {
    * in `globals.css` flattens exactly the `chip: true` rows' `domClass`es
    * (`background`/`border`/`padding` → 0, `color: inherit`).
    *
-   * `true` for citation / ref / dynamic. `false` for the footnote marker and
-   * inline math: they are GLYPH atoms — a superscript, a typeset formula —
-   * that print as themselves in their own ink (see the "PRINT, deliberately
-   * unscoped" note on `.inline-math` in `globals.css`).
+   * `true` for citation / ref. `false` for the footnote marker and inline
+   * math: they are GLYPH atoms — a superscript, a typeset formula — that print
+   * as themselves in their own ink (see the "PRINT, deliberately unscoped" note
+   * on `.inline-math` in `globals.css`). `false` for dynamic (`\today`) too:
+   * since the Sand page (`36296bde`) it rests as plain prose — no fill, border
+   * or padding — with only a hover wash, so there is nothing to flatten and it
+   * is not a chip by this facet's own definition (task 1620).
    *
    * Pinned by `print-atom-chip-posture.test.ts`: the print flatten's selector
    * list is EXACTLY these rows, so the next chip atom fails CI by name instead
-   * of printing inside a grey box (the miss task 1335's `\today` chip made).
+   * of printing inside a grey box (the miss task 1335's then-framed `\today` made).
    */
   chip: boolean;
   /**
@@ -194,7 +197,7 @@ export const ATOM_REGISTRY = {
     idAttr: null,
     domIdAttr: null,
     selectable: false,
-    chip: true,
+    chip: false,
     opensOnClick: false,
   },
   // `as const satisfies` rather than a plain `Record<AtomKind, AtomMeta>`

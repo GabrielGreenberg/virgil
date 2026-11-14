@@ -593,13 +593,16 @@ The token scales:
   censuses each registry kind's rest rule for raw literals AND checks every
   token it reads resolves to a live preference — so a new atom kind inherits
   both halves the moment its registry row lands.
-  The `\today` chip (`.latex-dynamic-node`, task 1335) BORROWS the label-ref
-  frame tokens (`--label-ref-bg`/`-border-color`) with `color: inherit`: it is
-  a computed WORD of the sentence (a date), so it wears the prose ink and no
-  hover wash — the frame alone says "this is computed, not typed". Nothing
-  opens on click, so it rests on `cursor: default` (never `pointer`), upgraded
-  to `grab` only where atoms are graspable; on paper it flattens to plain prose
-  like `\ref`/`\cite` (task 1443). Both are REGISTRY facets, not per-kind CSS
+  The `\today` atom (`.latex-dynamic-node`, task 1335) is NOT a chip: since
+  the Sand page it rests as plain prose — no fill, border or padding,
+  `color: inherit` — because it is a computed WORD of the sentence (a date).
+  With no frame at rest, a hover wash is how it can be found at all, and that
+  wash is the NEUTRAL atom hover `--code-bg` (the one `.inline-math` wears),
+  never another kind's ink — a date is not a cross-reference, so recoloring
+  `\ref` must not move it (task 1620). Nothing opens on click, so it rests on
+  `cursor: default` (never `pointer`), upgraded to `grab` only where atoms are
+  graspable; with nothing framed at rest it prints as itself and sits outside
+  the print flatten (`chip: false`). Both are REGISTRY facets, not per-kind CSS
   folklore: `AtomMeta.opensOnClick` decides `pointer` vs `default`
   (`atom-grab-affordance.test.ts`), and `AtomMeta.chip` puts a kind in the
   print flatten (`print-atom-chip-posture.test.ts`).
@@ -610,8 +613,8 @@ The token scales:
   `currentColor` two ways — `border-color` on `.katex *` (the fraction bar is a
   border-bottom) and `fill/stroke` on `.katex svg` (the sqrt radical is an SVG
   path) — so the wrapper's color is the whole mechanism. It prints in the
-  user's ink: the print block flattens only the two CHIP atoms
-  (`.citation-node`, `.label-ref-node`) to `color: inherit`, while the non-chip
+  user's ink: the print block flattens only the CHIP atoms (the
+  `ATOM_REGISTRY` rows marked `chip: true`) to `color: inherit`, while the non-chip
   colored atoms (footnote marker, LaTeX comment) already print in theirs.
   **A preference is a promise that some
   pixel reads it**: this pref shipped fully plumbed — field, default, dialog
