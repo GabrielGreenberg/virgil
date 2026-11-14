@@ -77,6 +77,7 @@ from _tools import (
     resolve_paper_source,
     safe_move,
     update_master_bib_entry,
+    hold_pinned_bib_fields,
     write_catalog,
     write_paper_bib_entry,
 )
@@ -578,7 +579,16 @@ def apply_bib_row(
             entry_type = existing_entry["type"]
 
     final_state = "manuscript" if proposed_state == "manuscript" else "unverified"
-    update_master_bib_entry(library, citekey, entry_type, merged_fields, bib_state=final_state)
+    bib_lock_held: list[str] = []
+    update_master_bib_entry(library, citekey, entry_type, merged_fields,
+                            bib_state=final_state, lock_held=bib_lock_held)
+    if bib_lock_held:
+        # The write door held the row's pinned fields (task 1624); the
+        # references.bib mirror and the recorded changes follow what it kept.
+        merged_fields, _ = hold_pinned_bib_fields(
+            (existing_entry or {}).get("fields"), merged_fields)
+        field_changes = [fc for fc in field_changes
+                         if fc.get("field", "").lower() not in bib_lock_held]
 
     if original_citekey:
         _record_alias(

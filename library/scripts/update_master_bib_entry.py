@@ -169,7 +169,8 @@ EXIT_TABLE: tuple[tuple[int, str, str, str, str], ...] = (
      "lists them); re-run with --merge-existing / --drop-field"),
     (EXIT_HELD, "held", "partly", "yes",
      "written EXCEPT the changes stderr lists as held — they moved on disk "
-     "since --base-raw-file was read; the newer value was kept. Report them"),
+     "since --base-raw-file was read, or the catalog row's metadataLock pins "
+     "them; the on-disk value was kept. Report them"),
     (EXIT_CANNOT_APPLY, "cannot-apply", "no", "yes",
      "a change-set with nothing to apply to: the entry is gone from "
      "master.bib, or --base-raw-file holds no entry. Retrying re-fails"),
@@ -286,6 +287,14 @@ def main() -> int:
         help="Permit --bib-state to LOWER a settled state (authenticated / "
         "manuscript / canonical → anything else). Without it the settled state "
         "is held and only the fields are written.",
+    )
+    ap.add_argument(
+        "--override-metadata-lock",
+        action="store_true",
+        help="Write the pinned fields (title/author/year/doi) even when the "
+        "catalog row carries metadataLock. ONLY for the person who set the pin "
+        "(the Library's manual bib edit, /library/apply-bib-edit). Without it a "
+        "locked entry's pinned fields are held and the shim exits 5.",
     )
     args = ap.parse_args()
 
@@ -426,6 +435,8 @@ def main() -> int:
         return entry_type, new_fields
 
     wrote = False
+    # Pinned fields the write door held for the row's metadataLock (task 1624).
+    lock_held: list[str] = []
 
     def compose_and_mark(existing_entry):
         nonlocal wrote
@@ -439,6 +450,8 @@ def main() -> int:
             bib_state=args.bib_state,
             allow_downgrade=args.allow_downgrade,
             compose=compose_and_mark,
+            override_lock=args.override_metadata_lock,
+            lock_held=lock_held,
         )
     except _Refused as r:
         print(str(r), file=sys.stderr)
@@ -447,6 +460,7 @@ def main() -> int:
         print(str(e), file=sys.stderr)
         return EXIT_UNBALANCED
 
+    refused += [f"{f}: pinned by metadataLock on the catalog row" for f in lock_held]
     if not wrote:
         _report_refused(args.citekey, refused)
         if not refused:
@@ -523,8 +537,9 @@ def _hold_changed_since_base(
 def _report_refused(citekey: str, refused: list[str]) -> None:
     if not refused:
         return
-    print(f"held {len(refused)} change(s) to {citekey} that the entry had "
-          f"already moved past:", file=sys.stderr)
+    print(f"held {len(refused)} change(s) to {citekey} (moved on disk since "
+          f"the base read, or pinned by the operator's metadata lock):",
+          file=sys.stderr)
     for line in refused:
         print(f"  - {line}", file=sys.stderr)
 

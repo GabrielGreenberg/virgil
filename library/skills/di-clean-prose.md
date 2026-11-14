@@ -129,8 +129,11 @@ mismatch, the policy script in preflight already updated
 2. Choose the longest reasonable candidate title from the cover. If
    ambiguous, prefer the larger artifact (book over chapter,
    proceedings over paper, reprint over original).
-3. Use `update_master_bib_entry.py` and `update_catalog_entry.py`
-   (NOT direct Write) to acquire the file locks safely. **The bib
+3. Use `update_master_bib_entry.py` and `update_catalog_entry.py
+   --honour-metadata-lock` (NOT direct Write) to acquire the file locks
+   safely — both then re-judge the metadata lock inside their own lock,
+   and exit **5** if it held a pinned field (treat that as the lock block
+   below; task 1624). **The bib
    shim's write is a whole-block replacement, not a diff** — it
    re-emits the entry from exactly the fields file. What you have here
    is a cover-page *correction* (a title, maybe publisher/isbn), so

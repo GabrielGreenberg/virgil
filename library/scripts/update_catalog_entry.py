@@ -8,6 +8,7 @@ Usage:
   python3 update_catalog_entry.py <citekey> --patch-file <path>
                                  [--library <path>]
                                  [--recompute-warning-kind <kind> ...]
+                                 [--honour-metadata-lock]
 
 The patch file is a JSON object that is deep-merged into the existing
 catalog entry (nested objects merge; arrays and scalars replace).
@@ -41,6 +42,11 @@ with a kind declared correctly clears that kind's stale lines.
       --patch-file /tmp/warn.json \
       --recompute-warning-kind missing-bib-entry \
       --recompute-warning-kind ambiguous-citation
+
+Exit codes: 0 written; 1 no catalog row for the citekey; 2 unreadable patch
+or a refused warnings merge; 5 written EXCEPT the bibliographic keys stderr
+lists, held by the row's `metadataLock` (only with `--honour-metadata-lock`,
+the pipeline's opt-in — task 1624; the operator's own write is never held).
 
 The script also bumps `.virgil/catalog-version.txt` so the frontend
 picks up the change on its next poll.
@@ -86,6 +92,17 @@ def main() -> int:
             "Declare only the kinds this pass recomputed."
         ),
     )
+    ap.add_argument(
+        "--honour-metadata-lock",
+        action="store_true",
+        help=(
+            "For a PIPELINE caller: hold the bibliographic fields (title/"
+            "authors/year/doi) when the row carries metadataLock, judged inside "
+            "the catalog lock. Exits 5 when anything was held (the rest of the "
+            "patch is written). Without it this is the operator's door and "
+            "writes the patch as given."
+        ),
+    )
     args = ap.parse_args()
 
     library = _resolve_library(args.library)
@@ -107,11 +124,12 @@ def main() -> int:
         return 2
 
     try:
-        update_catalog_entry(
+        held = update_catalog_entry(
             library,
             args.citekey,
             patch,
             recompute_warning_kinds=args.recompute_warning_kinds or None,
+            honour_lock=args.honour_metadata_lock,
         )
     except KeyError as e:
         print(str(e), file=sys.stderr)
@@ -120,6 +138,9 @@ def main() -> int:
         print(str(e), file=sys.stderr)
         return 2
     print(f"updated catalog row for {args.citekey} in {library}")
+    if held:
+        print(f"held by metadataLock: {', '.join(held)}", file=sys.stderr)
+        return 5
     return 0
 
 

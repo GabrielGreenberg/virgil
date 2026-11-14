@@ -496,7 +496,9 @@ review-manifest row in place: the request is still live.
    `update_master_bib_entry.py --help` (task 796):
 
    - **0** — applied. Continue with step 6.
-   - **5** — applied EXCEPT the changes stderr lists as held. Continue with
+   - **5** — applied EXCEPT the changes stderr lists as held (moved on disk
+     since step 1, or pinned by the row's `metadataLock` — the write door
+     holds title/author/year/doi of a locked row, task 1624). Continue with
      step 6, but delete the held fields' entries from `fieldChanges` in
      `<runDir>/verdict.json` (step 7 records that file) and name
      them in the reply ("kept your edit to `title`").
