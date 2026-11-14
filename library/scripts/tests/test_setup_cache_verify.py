@@ -44,7 +44,8 @@ def test_both_caches_reported_and_empty_dirs_are_not_populated(tmp_path):
     by = {c["name"]: c for c in v["caches"]}
     assert set(by) == {"huggingface", "datalab"}
     assert by["huggingface"]["populated"] and by["huggingface"]["bytes"] == 10
-    # ensure_model_env mkdirs datalab/, so existence alone must not pass.
+    # ensure_model_env mkdirs datalab/, so existence alone must not pass —
+    # and bytes in the NOT-required huggingface/ cannot rescue it.
     assert not by["datalab"]["populated"]
     assert v["allPopulated"] is False
 
@@ -56,6 +57,53 @@ def test_all_populated_when_datalab_holds_weights(tmp_path):
     v = setup.verify_caches(lib, home=tmp_path / "home", env={})
     assert v["allPopulated"] is True
     assert v["globalPollution"] == []
+
+
+# Task 1625: the observed healthy install — surya fetches every checkpoint
+# from s3 into datalab/<model>/<date>/, nothing into huggingface/.
+def test_healthy_install_with_empty_huggingface_is_complete(tmp_path):
+    lib = _lib(tmp_path)
+    for model in ("layout/2025_09_23", "text_detection/2025_05_07"):
+        _write(lib / f".virgil/models/datalab/{model}/model.safetensors", 9)
+    v = setup.verify_caches(lib, home=tmp_path / "home", env={})
+    by = {c["name"]: c for c in v["caches"]}
+    assert by["datalab"]["required"] and by["datalab"]["populated"]
+    assert not by["huggingface"]["required"]
+    assert not by["huggingface"]["populated"]
+    assert v["allPopulated"] is True
+    buf = StringIO()
+    with redirect_stdout(buf):
+        rc = setup._main([str(lib), "--verify-only"])
+    assert rc == 0
+    assert "CACHE huggingface: empty (not required)" in buf.getvalue()
+
+
+def test_empty_checkpoint_folder_makes_datalab_partial(tmp_path):
+    # surya's get_local_path mkdirs the leaf BEFORE downloading, so a failed
+    # fetch leaves an empty <model>/<date>/ beside the good ones.
+    lib = _lib(tmp_path)
+    _write(lib / ".virgil/models/datalab/layout/2025_09_23/w", 9)
+    (lib / ".virgil/models/datalab/text_detection/2025_05_07").mkdir(parents=True)
+    v = setup.verify_caches(lib, home=tmp_path / "home", env={})
+    dl = {c["name"]: c for c in v["caches"]}["datalab"]
+    assert dl["emptyCheckpoints"] == ["text_detection/2025_05_07"]
+    assert not dl["populated"] and v["allPopulated"] is False
+    assert setup.incomplete_caches(v) == ["datalab"]
+    buf = StringIO()
+    with redirect_stdout(buf):
+        rc = setup._main([str(lib), "--verify-only"])
+    assert rc == 1
+    assert "CACHE datalab: PARTIAL" in buf.getvalue()
+
+
+def test_step3_and_step5_share_one_rule(tmp_path):
+    # Step 3's old `any(datalab.iterdir())` called a datalab holding only an
+    # empty checkpoint folder "Already cached" — and skipped forever.
+    lib = _lib(tmp_path)
+    (lib / ".virgil/models/datalab/text_detection/2025_05_07").mkdir(parents=True)
+    assert not setup.library_cache_state(lib, "datalab")["populated"]
+    _write(lib / ".virgil/models/datalab/text_detection/2025_05_07/w", 3)
+    assert setup.library_cache_state(lib, "datalab")["populated"]
 
 
 def test_pollution_in_macos_datalab_default_is_caught(tmp_path):
@@ -104,7 +152,7 @@ def test_verify_only_text_names_both_caches_and_fails_when_empty(tmp_path):
     with redirect_stdout(buf):
         rc = setup._main([str(lib), "--verify-only"])
     text = buf.getvalue()
-    assert "CACHE huggingface: EMPTY" in text
+    assert "CACHE huggingface: empty (not required)" in text
     assert "CACHE datalab: EMPTY" in text
     assert rc == 1
 

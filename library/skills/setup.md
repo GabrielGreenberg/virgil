@@ -52,11 +52,12 @@ library folder rather than the user's global cache. The result is:
 - **Heavy deps** (may fail on incompatible platforms — see "Platform
   notes" below): `marker-pdf>=1.0` (the default PDF extractor),
   `ocrmypdf` (scanned-PDF preprocessing).
-- **Model caches** (two — `setup.py` names both at its start): marker's
-  huggingface_hub snapshots land in `<library>/.virgil/models/huggingface/`
-  (not `~/.cache/huggingface/`), and surya's layout/table/OCR weights —
-  the ~3 GB bulk — in `<library>/.virgil/models/datalab/` (not
-  `~/Library/Caches/datalab/`).
+- **Model caches** (two — `setup.py` names both at its start): surya's
+  layout/table/OCR weights — the ~3 GB bulk, fetched from s3 — land in
+  `<library>/.virgil/models/datalab/` (not `~/Library/Caches/datalab/`);
+  this is the one REQUIRED cache. `<library>/.virgil/models/huggingface/`
+  is only a redirect target so any stray huggingface_hub fetch stays out
+  of `~/.cache/huggingface/` — on a healthy install it is normally EMPTY.
 - **System binary**: `tesseract` is verified — if missing, the script
   prints an install hint (we don't auto-install system packages).
 - **Manifest**: `<library>/.virgil/models/manifest.json` records
@@ -159,22 +160,27 @@ warning in your reply if you see it.
    Step 5 measures both library caches itself and prints one line each:
 
    ```
-     CACHE huggingface: ok 1.1 GB at <library>/.virgil/models/huggingface
      CACHE datalab: ok 3.2 GB at <library>/.virgil/models/datalab
+     CACHE huggingface: empty (not required) 0 B at <library>/.virgil/models/huggingface
    ```
 
-   A cache is `EMPTY` when it holds no file bytes (the directory always
-   exists — setup creates it). An `EMPTY` cache after a run means the
-   download did not land: Step 3 will show either a `PREDOWNLOAD FAILED:`
-   line (quote it in your reply) or `Skipping — marker-pdf failed to
-   install` (the Step 1 heavy-deps failure is the cause). To re-check
-   later without installing anything:
+   Only `datalab` is required; `huggingface: empty (not required)` is the
+   normal healthy state — never report it as a problem. `datalab` is
+   `EMPTY` when it holds no file bytes (the directory always exists —
+   setup creates it) and `PARTIAL` when some `<model>/<date>/` checkpoint
+   folder is empty (a failed fetch leaves one; the line names it). Either
+   means the download did not land: Step 3 will show either a
+   `PREDOWNLOAD FAILED:` line (quote it in your reply) or `Skipping —
+   marker-pdf failed to install` (the Step 1 heavy-deps failure is the
+   cause). Step 3 decides "Already cached" by the same rule, so a re-run
+   re-fetches a PARTIAL cache; `--force` re-downloads a complete one. To
+   re-check later without installing anything:
 
    ```bash
    "$PY" .virgil/scripts/library/setup.py --verify-only        # add --json for the dict
    ```
 
-   (exit 1 when either cache is empty).
+   (exit 1 when the required `datalab` cache is EMPTY or PARTIAL).
 
 5. **Report global cache pollution from the same verdict.** Step 5 also
    checks every global default either cache falls back to when its
@@ -193,7 +199,7 @@ warning in your reply if you see it.
 
 Three lines:
 1. `Setup complete — marker-pdf <version>, ocrmypdf <version>, tesseract <version>`
-2. `Models cached: huggingface <size>, datalab <size> at .virgil/models/` (from Step 5's `CACHE` lines; add `— global cache: <size> at <path>` when Step 5 lists one)
+2. `Models cached: datalab <size> at .virgil/models/` (from Step 5's `CACHE datalab` line; add `— global cache: <size> at <path>` when Step 5 lists one)
 3. `Manifest: .virgil/models/manifest.json`
 
 If anything's missing (especially tesseract on a fresh machine),
