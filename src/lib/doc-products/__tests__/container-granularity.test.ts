@@ -29,6 +29,12 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { getBlockJson, getBlockLatex, blockCacheStats } from "../block-caches";
 import { serializeTopLevelBlock } from "@/lib/latex-serializer";
+import {
+  blockCategoryCounts,
+  buildPerBlockCounts,
+  computeCategoryCounts,
+  getBlockTallyCacheStats,
+} from "@/lib/word-count-core";
 
 let editor: Editor | null = null;
 
@@ -330,5 +336,63 @@ describe("container-granular doc products", () => {
     expect(d.latexMisses).toBe(1);
     // A textblock is NOT composed, so no child-part entries are minted.
     expect(d.partMisses).toBe(0);
+  });
+});
+
+/**
+ * The THIRD product on the composed JSON — the word tally (task 1631). Before
+ * it, `blockCategoryCounts` cached on the TOP-LEVEL block only, and the list
+ * JSON is a new object after any keystroke inside it, so every typing pause
+ * re-walked the whole container in Tier B and in the Outline's render.
+ */
+describe("container-granular word tally (task 1631)", () => {
+  function docJson(ed: Editor): JSONContent {
+    const doc = ed.state.doc;
+    const content: JSONContent[] = [];
+    for (let i = 0; i < doc.childCount; i++) content.push(getBlockJson(doc.child(i)));
+    return { type: "doc", content };
+  }
+
+  it("a keystroke inside a 100-item list recounts the touched PATH, not the list", () => {
+    const ed = makeEditor(bigListHtml());
+    const cold = computeCategoryCounts(docJson(ed));
+    buildPerBlockCounts(docJson(ed));
+
+    typeInItem(ed, 50, "X ");
+    const json = docJson(ed);
+    const before = getBlockTallyCacheStats();
+    const warm = computeCategoryCounts(json);
+    const per = buildPerBlockCounts(json);
+    const after = getBlockTallyCacheStats();
+
+    // Tier B pass: the list, item 50, its paragraph — three misses — while
+    // the 99 untouched items and the 2 sibling paragraphs HIT. The hit count
+    // is the leg with teeth: the pre-1631 cache misses ONCE (the list) and
+    // walks it whole, satisfying any upper bound on misses alone.
+    expect(after.misses - before.misses).toBe(3);
+    // + the Outline pass right after: all 3 top-level blocks hit.
+    expect(after.hits - before.hits).toBe(N - 1 + 2 + 3);
+
+    // …and the numbers are the direct walk's, one word more than before.
+    const direct = computeCategoryCounts(ed.state.doc.toJSON() as JSONContent);
+    expect(warm).toEqual(direct);
+    expect(warm.words.mainText).toBe(cold.words.mainText + 1);
+    expect(per[1]).toBe(blockCategoryCounts(json.content![1]).words);
+  });
+
+  it("nested lists and blockquotes tally exactly as the direct walk, before and after a deep edit", () => {
+    const ed = makeEditor(
+      "<ul><li><p>outer <strong>bo</strong>ld</p><ol><li><p>inner one</p></li><li><p>inner two</p></li></ol></li>" +
+        "<li><p>second</p></li></ul>" +
+        "<blockquote><p>q one</p><blockquote><p>q two</p></blockquote></blockquote>",
+    );
+    const check = () => {
+      const direct = computeCategoryCounts(ed.state.doc.toJSON() as JSONContent);
+      expect(computeCategoryCounts(docJson(ed))).toEqual(direct);
+      expect(direct.words.mainText).toBeGreaterThan(0);
+    };
+    check();
+    typeInItem(ed, 1, "Z "); // the nested "inner one" item
+    check();
   });
 });

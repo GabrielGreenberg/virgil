@@ -23,7 +23,10 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { JSONContent } from "@tiptap/react";
 import { ALL_CATEGORIES, computeCategoryCounts } from "@/lib/word-count-core";
+import { getBlockJson } from "@/lib/doc-products/block-caches";
 
 let editor: Editor | null = null;
 afterEach(() => {
@@ -79,6 +82,50 @@ describe("every textblock the live schema declares counts its words", () => {
       "proseGlossRow",
       "glossCell",
     ]) {
+      expect(swept).toContain(name);
+    }
+  });
+});
+
+// Task 1631 — the per-block tally cache RECURSES into every container the
+// JSON cache composes (`isBlock && !isTextblock`), summing its children's
+// tallies each counted from `mainText`. That is sound only while no container
+// takes a context-changing walker arm. So: for EVERY container the live
+// schema declares, the composed (recursive) tally must equal the direct walk
+// of the same node's fresh `toJSON()` — in every category.
+describe("every container the live schema declares tallies additively (task 1631)", () => {
+  it("recursive tally of composed JSON === direct walk, per container kind", () => {
+    const schema = mountMain().state.schema;
+    // Fill every empty textblock of a minimal instance with a word, so the
+    // comparison is not 0 === 0.
+    const fill = (node: PMNode): PMNode => {
+      if (node.isTextblock) {
+        if (node.content.size > 0) return node;
+        try {
+          return node.type.createChecked(node.attrs, schema.text("word"), node.marks);
+        } catch {
+          return node;
+        }
+      }
+      if (node.isLeaf) return node;
+      const kids: PMNode[] = [];
+      node.forEach((c) => kids.push(fill(c)));
+      return node.type.create(node.attrs, kids, node.marks);
+    };
+    const swept: string[] = [];
+    const mismatched: string[] = [];
+    for (const [name, type] of Object.entries(schema.nodes)) {
+      if (!type.isBlock || type.isTextblock || type.isLeaf || name === "doc") continue;
+      const raw = type.createAndFill();
+      if (!raw || raw.content.size === 0) continue;
+      const node = fill(raw);
+      const composed = computeCategoryCounts({ type: "doc", content: [getBlockJson(node)] });
+      const direct = computeCategoryCounts(node.toJSON() as JSONContent);
+      swept.push(name);
+      if (JSON.stringify(composed) !== JSON.stringify(direct)) mismatched.push(name);
+    }
+    expect(mismatched, "containers whose recursive tally drifts from the direct walk").toEqual([]);
+    for (const name of ["bulletList", "orderedList", "listItem", "blockquote", "exampleItem", "exampleGloss"]) {
       expect(swept).toContain(name);
     }
   });

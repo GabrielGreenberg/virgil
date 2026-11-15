@@ -53,6 +53,7 @@ import {
   type SerializeMemo,
   type TopLevelBlockLatex,
 } from "@/lib/latex-serializer";
+import { markComposedJson } from "./composed-json";
 
 const nodeJsonCache = new WeakMap<PMNode, JSONContent>();
 const blockLatexCache = new WeakMap<PMNode, TopLevelBlockLatex>();
@@ -99,6 +100,8 @@ function composeJson(node: PMNode): JSONContent {
   });
   if (content.length) obj.content = content;
   if (node.marks.length) obj.marks = node.marks.map((m) => m.toJSON());
+  // Per-child sums over this JSON (the word tally) recurse exactly here.
+  markComposedJson(obj);
   return obj;
 }
 
