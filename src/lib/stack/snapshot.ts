@@ -18,6 +18,7 @@ import { bibFieldDisplay } from "@/lib/bib-parser";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
 import { resolveLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { storedAnchorText, type CardWithLinks } from "@/links/links";
 import type { TextObjectRef } from "@/text-objects/types";
 import {
   TEXT_OBJECT_REGISTRY,
@@ -446,7 +447,8 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
           text = c.data.title || richJsonToPlainText(c.data.content);
           break;
         case "highlight":
-          text = "(highlight)";
+          // A highlight's identity IS its anchored words — the shared
+          // fallback below supplies them. The kind is already the header's.
           break;
         case "footnote":
           text = c.data.title || richJsonToPlainText(c.data.content);
@@ -485,6 +487,10 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
           break;
         }
       }
+      // The shared fallback (task 2026-11-15-1630): a card whose own text came
+      // out empty is named by the words it is anchored to, carried in the
+      // snapshot's links — the same door the Notes panel's highlight card reads.
+      if (!text.trim()) text = storedAnchorText(c.data as CardWithLinks);
       break;
     }
     default: {

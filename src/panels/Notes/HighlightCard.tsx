@@ -13,8 +13,7 @@ import {
   cardBodyScroll,
 } from "@/components/panel-primitives";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
-import { getTextAnchor, type CardWithLinks } from "@/links/links";
-import { isModeB } from "@/links/_shared/types";
+import { getTextAnchor, storedAnchorText } from "@/links/links";
 import { useLinkedAnchorPassage } from "@/links/_shared/useLinkedAnchorPassage";
 import { morphOptionsFor } from "@/cards/card-registry";
 import type { CardMorphHandler } from "@/cards/types";
@@ -85,7 +84,7 @@ export function HighlightCard({
 
   // No yellow pill inside the card — the in-doc tint is the actual
   // highlight; the H badge tells the user this card is a highlight.
-  const storedText = live ? "" : storedHighlightText(card).replace(/\s+/g, " ").trim();
+  const storedText = live ? "" : storedAnchorText(card).replace(/\s+/g, " ").trim();
   const passage = useMemo(
     () =>
       live
@@ -170,22 +169,4 @@ export function HighlightCard({
       {deleteConfirmDialog}
     </>
   );
-}
-
-/**
- * The highlighted words as last STORED — the display fallback for a highlight
- * whose mark is gone. A live Mode-B link carries them as `textSnapshot`; a
- * highlight the snapshot rung relocated to Mode-A
- * (`resolve-card-anchor.ts` `relocateBySnapshot`) carries the same words as
- * its `paragraphSnapshot`, so it no longer reads "empty highlight" while it is
- * still anchored.
- */
-function storedHighlightText(card: CardWithLinks): string {
-  const ranged = getTextAnchor(card);
-  if (ranged) return ranged.anchorText;
-  for (const link of card.links ?? []) {
-    if (link.anchor.type !== "textObject" || isModeB(link)) continue;
-    if (link.anchor.paragraphSnapshot) return link.anchor.paragraphSnapshot;
-  }
-  return "";
 }
