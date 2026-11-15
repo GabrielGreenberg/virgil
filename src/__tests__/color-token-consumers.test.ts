@@ -493,6 +493,9 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
   const ANNOT = "the annotation-lozenge register (heading/figure label chips) — its own named border/danger tokens";
   const CHROME = "non-control chrome (scrollbar / drag grip / dim lift) — a state of a surface, not a button";
   const POPOVER = "the label-ref popover's accent-light option register";
+  /** Task 1637: a FRAMELESS atom has no identity colour to wash in — its hover
+   *  is the neutral atom find-me wash (`--code-bg`), so it is not a WASH row. */
+  const NEUTRAL_ATOM = "a frameless atom's neutral find-me wash (--code-bg) — no identity colour (task 1620)";
   /** Same defect shape as 1438's figure chrome, not yet converted — listed so
    *  the debt is VISIBLE and cannot grow; converting one deletes its row. */
   const DEBT = "UNCONVERTED neutral hover on a control (task 1438 residual) — convert to .hover-on-light";
@@ -520,7 +523,7 @@ describe("a stylesheet :hover paints a fill only as the SSOT or a stated role", 
     ".note-marker:hover": WASH,
     ".latex-comment:hover": WASH,
     ".latex-comment-handle:hover": WASH,
-    ".latex-dynamic-node:hover": WASH,
+    ".latex-dynamic-node:hover": NEUTRAL_ATOM,
     '.marginalia-marker:hover, .marginalia-marker[data-card-hovered="true"], .marginalia-marker[data-card-selected="true"]': WASH,
     ".citation-node:hover": WASH,
     ".label-ref-node:hover": WASH,

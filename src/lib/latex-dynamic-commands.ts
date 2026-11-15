@@ -15,14 +15,14 @@
  * This module is the import-free leaf both inline parsers, both inline
  * serializers and the node read: the vocabulary ({@link DYNAMIC_COMMANDS}),
  * the parse matcher, the emit rule, and the one "LaTeX today" formatter.
- * A future member (the `\LaTeX` / `\TeX` logo chips are the obvious
+ * A future member (the `\LaTeX` / `\TeX` logos are the obvious
  * candidates) joins by adding a row.
  */
 
 import { markWrapSignature, type MarkLike } from "@/lib/mark-composition";
 
 /** LaTeX's default `\today` format: "October 27, 2026". The ONE formatter —
- *  the node's chip, the `\date` insert action and the title paths all read it. */
+ *  the node's view, the `\date` insert action and the title paths all read it. */
 export function formatLatexToday(date: Date = new Date()): string {
   return date.toLocaleDateString("en-US", {
     year: "numeric",
@@ -48,9 +48,9 @@ export const LATEX_DYNAMIC_NODE = "latexDynamic";
  *  - a WHITESPACE run (`" "`, `"  "`, `" \n"`, …) — the spaces TeX SKIPS after
  *    a control word (task 1492). The run belongs to the command, not to the
  *    text after it: TeX never typesets it, so the editor must not show it
- *    either. `\today x` therefore reads as chip + "x" and prints "…2026x" in
+ *    either. `\today x` therefore reads as date + "x" and prints "…2026x" in
  *    both places, and re-emits byte-identically from the term.
- * A freshly inserted chip takes `"{}"`, the spelling that is safe before
+ * A freshly inserted atom takes `"{}"`, the spelling that is safe before
  * anything — TeX gobbles the space after a bare control word, so `\today x`
  * would typeset "October 27, 2026x".
  */
@@ -71,7 +71,7 @@ export function isDynamicCommand(name: string): boolean {
   return Object.prototype.hasOwnProperty.call(DYNAMIC_COMMANDS, name);
 }
 
-/** The value a chip shows; the raw command when the name is unknown. */
+/** The value the atom shows; the raw command when the name is unknown. */
 export function renderDynamicCommand(name: string): string {
   return isDynamicCommand(name) ? DYNAMIC_COMMANDS[name]() : `\\${name}`;
 }
@@ -112,7 +112,7 @@ interface InlineLike {
  * SKIPS every space after it, so a term other than `{}` is only safe while
  * the text that directly follows is neither a letter (`\todayx` would be one
  * word) nor whitespace (the editor shows a space the PDF would gobble — task
- * 1492). When one now follows (the user typed it after the chip), the token
+ * 1492). When one now follows (the user typed it after the date), the token
  * break is re-emitted:
  *  - a bare term (`""`) appends `{}` — `\today{}x`, `\today{} x`;
  *  - a gobbled-space term before more whitespace becomes `{}` — the gobbled

@@ -122,3 +122,38 @@ describe("`\\today` is plain prose, so it is not a chip (task 1620)", () => {
     expect(hover, "a date is not a cross-reference — recoloring \\ref must not move it").not.toMatch(/--label-ref-/);
   });
 });
+
+/**
+ * Task 1637 — the VOCABULARY half. After 1620 the registry said `chip: false`
+ * for `\today` while its own node and command files still called it "the
+ * chip" — prose that invites the next author to re-frame it (and then forget
+ * the print flatten). A non-chip kind's own source files may not call it one.
+ * Every `chip: false` row declares its files here, so a new one joins by name.
+ */
+describe("a non-chip atom's own files do not call it a chip (task 1637)", () => {
+  const OWN_FILES: Record<string, readonly string[]> = {
+    footnote: ["src/lib/tiptap/footnote.ts"],
+    "inline-math": ["src/lib/tiptap/math.ts"],
+    dynamic: ["src/lib/tiptap/latex-dynamic.ts", "src/lib/latex-dynamic-commands.ts"],
+  };
+  /** "chip"/"chips" as a word — but not the facet's own name (`.chip`,
+   *  `chip:`) nor a roadmap milestone label (`CHIP 7b`). */
+  const CHIP_WORD = /(?<![.\w])chips?\b(?!\s*:)(?!\s+\d)/i;
+
+  it("every chip:false kind declares its own files", () => {
+    const nonChip = Object.entries(ATOM_REGISTRY).filter(([, m]) => !m.chip).map(([k]) => k);
+    expect(Object.keys(OWN_FILES).sort()).toEqual(nonChip.sort());
+  });
+
+  for (const [kind, files] of Object.entries(OWN_FILES)) {
+    for (const rel of files) {
+      it(`${kind}: ${rel} never calls it a chip`, () => {
+        const lines = readFileSync(join(REPO_ROOT, rel), "utf8").split("\n");
+        const hits = lines
+          .map((l, i) => (CHIP_WORD.test(l) ? `${i + 1}: ${l.trim()}` : null))
+          .filter(Boolean);
+        expect(hits, `ATOM_REGISTRY["${kind}"].chip is false — say "atom" / "date" / "marker"`).toEqual([]);
+      });
+    }
+  }
+});
