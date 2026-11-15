@@ -49,6 +49,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { RefObject } from "react";
 import { surfaceIsEditable } from "./surface-editable";
+import { trackPos, type TrackedPos } from "./tracked-pos";
 import {
   isMissedRelease,
   isPrimaryDragStart,
@@ -170,7 +171,12 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
 
     let pending: {
       meta: AtomMeta;
-      pos: number;
+      /**
+       * The atom's position, FOLLOWED from mousedown (task 1635) — owned here
+       * until the threshold hands it to the source slot (then `null`), so a
+       * press that never becomes a drag disposes it in `cleanup()`.
+       */
+      at: TrackedPos | null;
       /** The grabbed atom's entity id, or null for the id-less kinds. */
       atomId: string | null;
       /** The grabbed node at mousedown — the id-less kinds' identity (task 1574). */
@@ -215,6 +221,7 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
       offSessionEnd = null;
       off?.();
       clearGhost();
+      pending?.at?.dispose();
       pending = null;
     };
 
@@ -327,8 +334,11 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         // neighbour shifted into this position passes.
         atomNode: pending.atomNode,
         editor,
-        pos: pending.pos,
+        // ...and the position, still FOLLOWING the document (task 1635): the
+        // slot owns the tracker from here and disposes it when it is cleared.
+        at: pending.at!,
       });
+      pending.at = null;
       const started = beginDropSession({
         cardKey: `atom-grab:${pending.token}`,
         origin: { x: pending.startX, y: pending.startY },
@@ -473,7 +483,10 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
               if (!atomNode) return false;
               pending = {
                 meta,
-                pos,
+                // Followed from the press on, so whatever lands before the
+                // drop is mapped through it. `assoc: 1` — a NODE's start:
+                // content inserted exactly at it goes before the atom.
+                at: trackPos(editor, pos, { assoc: 1 }),
                 atomId: atomIdOf(view, pos, meta),
                 atomNode,
                 atomEl,

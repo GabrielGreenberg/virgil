@@ -690,8 +690,9 @@ function locateAtom(
  *
  * Only the Card-bearing kinds have an id to ask by (`ATOM_REGISTRY.idAttr` —
  * footnote / citation). `ref`, `inline-math` and `dynamic` own no Card and no
- * id; their identity is their CONTENT, asked by {@link findAtomByContent}
- * (task 1574). The rule: id where the registry has one, content otherwise.
+ * id; their identity is their CONTENT ({@link atomContentEquals}, task 1574),
+ * confirmed at the grab's FOLLOWED position (task 1635) — never re-found by a
+ * nearest-match scan. The rule: id where the registry has one, content otherwise.
  */
 export function findAtomById(
   editor: Editor,
@@ -721,33 +722,6 @@ export function atomContentEquals(node: PMNode, captured: PMNode): boolean {
     node.hasMarkup(captured.type, captured.attrs, node.marks) &&
     node.content.eq(captured.content)
   );
-}
-
-/**
- * The id-less atom content-equal to `captured`, in THIS editor's document,
- * NEAREST to `nearPos` (the position it was captured at) — the id-less kinds'
- * answer to {@link findAtomById} (task 1574). Content-equal atoms are
- * interchangeable, so among several the nearest is the one the gesture meant;
- * none at all means the atom is gone, and the caller refuses.
- */
-export function findAtomByContent(
-  editor: Editor,
-  captured: PMNode,
-  nearPos: number,
-): AtomLocation | null {
-  let found: AtomLocation | null = null;
-  let bestDist = Infinity;
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type !== captured.type) return true;
-    if (!atomContentEquals(node, captured)) return false;
-    const dist = Math.abs(pos - nearPos);
-    if (dist < bestDist) {
-      bestDist = dist;
-      found = { editor, node, from: pos, to: pos + node.nodeSize };
-    }
-    return false;
-  });
-  return found;
 }
 
 function extractId(cardKey: string): string | null {

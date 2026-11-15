@@ -46,6 +46,7 @@ import {
   stashInlineAtomSource,
 } from "../util/inline-atom-source";
 import { resolveAtomPos } from "@/lib/tiptap/inline-atom-grab";
+import { trackPos } from "@/lib/tiptap/tracked-pos";
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import type { DropCtx, Placement } from "../types";
 
@@ -110,8 +111,15 @@ function mockEditor(
 ) {
   let state = EditorState.create({ schema, doc });
   const dispatched: Transaction[] = [];
+  // The `transaction` event `trackPos` follows (task 1635) — emitted only for
+  // a transaction that actually applied.
+  type TxListener = (e: { transaction: Transaction }) => void;
+  const listeners = new Set<TxListener>();
   const editor = {
     schema,
+    isDestroyed: false,
+    on: (_event: "transaction", fn: TxListener) => void listeners.add(fn),
+    off: (_event: "transaction", fn: TxListener) => void listeners.delete(fn),
     get state() {
       return state;
     },
@@ -124,6 +132,7 @@ function mockEditor(
         dispatched.push(tr);
         if (opts.mode === "veto-doc-changes" && tr.docChanged) return;
         state = state.apply(tr);
+        for (const fn of listeners) fn({ transaction: tr });
       },
       focus: () => {},
     },
@@ -385,7 +394,7 @@ describe("two adjacent same-kind atoms — the one you grab is the one that move
       atomId: "c-b",
       atomNode: harness.getDoc().nodeAt(CITE_B_POS)!,
       editor: harness.editor,
-      pos: CITE_B_POS,
+      at: trackPos(harness.editor, CITE_B_POS, { assoc: 1 }),
     });
     // A peer inserts one character at the head of the paragraph: every atom
     // shifts by one, so the CAPTURED position now holds citation "c-a" — the
@@ -437,7 +446,7 @@ function stashRef(harness: ReturnType<typeof mockEditor>, token: string) {
     atomId: null,
     atomNode: harness.getDoc().nodeAt(REF_POS)!,
     editor: harness.editor,
-    pos: REF_POS,
+    at: trackPos(harness.editor, REF_POS, { assoc: 1 }),
   });
 }
 
@@ -496,6 +505,109 @@ describe("an id-less atom (\\ref) — the one you grab is the one that moves", (
       clearInlineAtomSource();
     }
     expect(harness.getDoc().eq(before)).toBe(true);
+  });
+});
+
+// ── 3c. The grab position FOLLOWS the document (task 1635) ──────────────────
+
+/** `<p>A \\ref{x} mid B \\ref{x}</p>` — two content-equal id-less atoms
+ *  (the `$x$ … $x$` shape of the finding, spelled in this schema's id-less kind). */
+function docWithTwoMath() {
+  const math = () => MAIN.nodes.labelRef.create({ label: "x" });
+  return MAIN.node("doc", null, [
+    MAIN.node("paragraph", null, [
+      MAIN.text("A "),
+      math(),
+      MAIN.text(" mid B "),
+      math(),
+    ]),
+  ]);
+}
+
+/** Positions of the two `$x$` atoms in {@link docWithTwoMath}. */
+const MATH_A_POS = 3;
+const MATH_B_POS = 11;
+
+/** The paragraph's text with each atom spelled `@`. */
+function shape(doc: PMNode): string {
+  let out = "";
+  doc.firstChild!.forEach((n) => {
+    out += n.isText ? n.text : "@";
+  });
+  return out;
+}
+
+function stashMathB(harness: ReturnType<typeof mockEditor>, token: string) {
+  stashInlineAtomSource({
+    token,
+    kind: "ref",
+    nodeName: "labelRef",
+    atomId: null,
+    atomNode: harness.getDoc().nodeAt(MATH_B_POS)!,
+    editor: harness.editor,
+    at: trackPos(harness.editor, MATH_B_POS, { assoc: 1 }),
+  });
+}
+
+describe("an in-text grab follows its atom through a mid-drag edit (task 1635)", () => {
+  it("fixture: two content-equal atoms where the test says", () => {
+    const doc = docWithTwoMath();
+    expect(doc.nodeAt(MATH_A_POS)?.type.name).toBe("labelRef");
+    expect(doc.nodeAt(MATH_B_POS)?.type.name).toBe("labelRef");
+    expect(shape(doc)).toBe("A @ mid B @");
+  });
+
+  it("an insertion before the grabbed atom shifts it — the GRABBED one moves, its twin stays", () => {
+    const harness = mockEditor(MAIN, docWithTwoMath());
+    const ctx = { mainEditor: harness.editor } as unknown as DropCtx;
+    stashMathB(harness, "m1");
+    // A writeback lands mid-drag: twelve characters inserted just before B —
+    // B shifts far from its captured offset, A is now NEAREST that offset (the pre-1635 guess).
+    harness.editor.view.dispatch(
+      harness.editor.state.tr.insertText("zzzzzzzzzzzz", MATH_B_POS - 1),
+    );
+    try {
+      // Drop at the very head of the paragraph.
+      inTextAtomGrabSpec.applyDrop(inlineCursor(harness.editor, 1), "atom-grab:m1", ctx);
+    } finally {
+      clearInlineAtomSource();
+    }
+    // B moved to the head; A still sits after "A ".
+    expect(shape(harness.getDoc())).toBe("@A @ mid Bzzzzzzzzzzzz ");
+  });
+
+  it("the grabbed atom deleted mid-drag is a silent no-op — never its twin", () => {
+    const harness = mockEditor(MAIN, docWithTwoMath());
+    const ctx = { mainEditor: harness.editor } as unknown as DropCtx;
+    stashMathB(harness, "m2");
+    harness.editor.view.dispatch(
+      harness.editor.state.tr.delete(MATH_B_POS - 7, MATH_B_POS + 1),
+    );
+    const before = harness.getDoc();
+    expect(shape(before)).toBe("A @");
+    try {
+      inTextAtomGrabSpec.applyDrop(inlineCursor(harness.editor, 1), "atom-grab:m2", ctx);
+    } finally {
+      clearInlineAtomSource();
+    }
+    expect(harness.getDoc().eq(before)).toBe(true);
+  });
+
+  it("clearing the slot disposes the tracker it owns", () => {
+    const harness = mockEditor(MAIN, docWithTwoMath());
+    const at = trackPos(harness.editor, MATH_B_POS, { assoc: 1 });
+    const dispose = vi.spyOn(at, "dispose");
+    stashInlineAtomSource({
+      token: "m3",
+      kind: "ref",
+      nodeName: "labelRef",
+      atomId: null,
+      atomNode: harness.getDoc().nodeAt(MATH_B_POS)!,
+      editor: harness.editor,
+      at,
+    });
+    clearInlineAtomSource();
+    expect(dispose).toHaveBeenCalled();
   });
 });
 

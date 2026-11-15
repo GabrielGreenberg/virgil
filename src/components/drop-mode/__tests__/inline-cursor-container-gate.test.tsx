@@ -87,6 +87,7 @@ import {
   clearInlineAtomSource,
 } from "../util/inline-atom-source";
 import type { DropCtx, DropSpec, Placement } from "../types";
+import { trackPos } from "@/lib/tiptap/tracked-pos";
 import {
   STACK_PULL_PREFIX,
   STACK_STORAGE_KEY,
@@ -478,7 +479,7 @@ describe("every inline splice refuses rather than tear the block", () => {
       atomId: "c-1",
       atomNode: atom,
       editor,
-      pos: at,
+      at: trackPos(editor, at, { assoc: 1 }),
     });
     const placement = caretAt(editor, midOf(editor, "codeBlock"));
     const ctx = ctxFor(editor);
