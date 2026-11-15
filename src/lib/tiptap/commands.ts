@@ -294,7 +294,7 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // `\ref` rides the bridge; it carries the SAME CHIP 7b collab gate as the rest
   // (task 297) and is routed via the EXACT live `view` (multi-doc keep-alive).
   bridgeRow("ref"),
-  // Task 1335: `\today` → the `latexDynamic` date chip, via the registry's
+  // Task 1335: `\today` → the `latexDynamic` date atom (frameless text), via the registry's
   // `todayRun`. Pure ProseMirror (a caret insert on the view), so NO bridge.
   viewRow("today"),
   // CHIP 5c: `\ex` routes through the SINGLE canonical `exampleRun`

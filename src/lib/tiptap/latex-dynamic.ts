@@ -11,7 +11,7 @@ import {
 const DYNAMIC_ATOM = ATOM_REGISTRY.dynamic;
 
 /**
- * What the chip shows for `command` — the ONE answer the NodeView's `paint`
+ * What the atom shows for `command` — the ONE answer the NodeView's `paint`
  * and the static `renderHTML` both read (task 1421), so the static card tier
  * (T1, `STATIC_TWIN_NODE_TYPES`) paints exactly what the live view paints.
  */
@@ -28,7 +28,7 @@ export function dynamicAtomDisplay(command: unknown): {
  * `\today` (and any future {@link DYNAMIC_COMMANDS} member) — an inline atom
  * that holds the command NAME and paints its computed value (task 1335).
  *
- * The document never holds the rendered date: the chip is a view, the `.tex`
+ * The document never holds the rendered date: the atom is a view, the `.tex`
  * keeps `\today`, and pdfTeX expands it at compile time (the PDF shows the
  * compile date — LaTeX's own semantics). `term` remembers how the source ended
  * the control word (`""` / `"{}"`) so the round trip is byte-identical; see
@@ -40,7 +40,8 @@ export const LatexDynamic = Node.create({
   inline: true,
   atom: true,
   // Same reason as `\ref` (ATOM_REGISTRY.dynamic.selectable): a resting
-  // NodeSelection on the leaf scrolls; the chip owns no selection chrome.
+  // NodeSelection on the leaf scrolls; the atom owns no selection chrome. It
+  // is frameless dynamic TEXT (`AtomMeta.chip` is false, task 1620).
   selectable: false,
 
   addAttributes() {
@@ -48,7 +49,7 @@ export const LatexDynamic = Node.create({
     // every inline atom's attrs (attr-codec census).
     return withClipboardCodec({
       command: { default: "today" },
-      // A fresh chip (slash insert) takes the `{}` break — the spelling that
+      // A fresh atom (slash insert) takes the `{}` break — the spelling that
       // is safe before anything.
       term: { default: "{}" },
     });
