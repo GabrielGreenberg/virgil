@@ -27,8 +27,9 @@
 // (the dev server), the placeholders are valid values and the worker bypasses
 // itself on localhost anyway.
 //
-// Update strategy: we DO NOT call skipWaiting() or clients.claim() on
-// install/activate. A new SW enters "waiting" state and stays there
+// Update strategy: we DO NOT call skipWaiting() on install, nor
+// clients.claim() on an update's activate (the first install alone claims —
+// see the activate listener, task 1633). A new SW enters "waiting" state and stays there
 // until the app posts {type:"SKIP_WAITING"} from a user click on the
 // "Update available" banner in the Virgil bar. This keeps existing tabs
 // stable across silent background SW installs and lets the user pick
@@ -130,8 +131,9 @@ const IS_DEV =
 
 // Scope root, e.g. "/" or "/tools/virgil/" depending on basePath. This is
 // also the manifest start_url. A stamped build lists it in BUILD_PRECACHE, so
-// it is cached at install — the first visit's page is not yet controlled by
-// the worker (no clients.claim()), so runtime caching alone would miss it.
+// it is cached at install — the first visit's page is not controlled by the
+// worker while it installs (it is claimed only once the first activation
+// lands), so runtime caching alone would miss it.
 const OFFLINE_FALLBACK = new URL("./", self.location.href).href;
 
 // Same-origin hashed build output, e.g. "/virgil/_next/static/".
@@ -276,11 +278,28 @@ function withSha(resp, sha) {
 
 self.addEventListener("activate", (event) => {
   if (IS_DEV) return;
-  // Do NOT clients.claim() here. Once the user accepts the update, the app
-  // reloads on `controllerchange`; the new SW takes over cleanly on the fresh
-  // page. Auto-claiming would also seize control of any other open tabs the
-  // user hasn't explicitly refreshed, which is the exact behavior we removed.
-  event.waitUntil(sweepBuildCaches({ activating: true }));
+  // Do NOT clients.claim() on an UPDATE. Once the user accepts the update, the
+  // app reloads on `controllerchange`; the new SW takes over cleanly on the
+  // fresh page. Auto-claiming would also seize control of any other open tabs
+  // the user hasn't explicitly refreshed, which is the exact behavior we
+  // removed (tasks 391/610).
+  //
+  // The FIRST activation is not an update (task 1633): no earlier worker ever
+  // activated and no build cache is held, so every open window is running THIS
+  // build, uncontrolled only because it is the page that installed us. Left
+  // unclaimed, that window — the first tab of a fresh install, the one papers
+  // are opened in — stays uncontrolled for its whole life: no offline, its lazy
+  // chunks 404 after the next deploy, and since an active worker controlling no
+  // client lets the next build activate at once, it never sees the update
+  // chip. So that one activation claims; the page takes the claim without
+  // reloading (ServiceWorkerRegistration.tsx). A Shift-reloaded window under a
+  // LATER worker is uncontrolled by browser rule and stays so — claiming it
+  // would be the seizure above.
+  event.waitUntil(
+    sweepBuildCaches({ activating: true }).then((firstInstall) =>
+      firstInstall && self.clients ? self.clients.claim() : undefined,
+    ),
+  );
 });
 
 // Delete every build cache no window can still need (task 887 — see
@@ -288,6 +307,12 @@ self.addEventListener("activate", (event) => {
 // cache, the ledger's last two activated builds, and every build a live window
 // reports running. Best-effort: a failure here leaves caches in place, never
 // breaks install or activation.
+//
+// Resolves true exactly when an activation is the worker's FIRST INSTALL: an
+// empty activation ledger AND no other build cache. Both are needed — a user
+// whose last worker predates the ledger (task 887) also has an empty ledger,
+// but holds that worker's build cache and has windows it controls. A failure
+// resolves false (never claim on a guess).
 async function sweepBuildCaches({ activating }) {
   try {
     const meta = await caches.open(META_CACHE);
@@ -295,7 +320,7 @@ async function sweepBuildCaches({ activating }) {
     // At install the ledger's newest entry is the ACTIVE build, and the one
     // before it is what the active worker is still retaining. With no ledger
     // yet (the first worker to keep one), nothing is known to be safe to drop.
-    if (!activating && prior.length === 0) return;
+    if (!activating && prior.length === 0) return false;
     const ledger = activating ? await recordActivation(meta, prior) : prior;
     const keys = await caches.keys();
     const builds = keys.filter(
@@ -311,8 +336,10 @@ async function sweepBuildCaches({ activating }) {
     await Promise.all(
       builds.filter((k) => !keep.has(k)).map((k) => caches.delete(k)),
     );
+    return activating && prior.length === 0 && builds.length === 0;
   } catch {
     // caches unavailable — nothing to sweep.
+    return false;
   }
 }
 

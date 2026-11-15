@@ -36,12 +36,12 @@ armInstallPromptCapture();
 // The hashed scripts this page booted from identify its build to the worker
 // (public/sw.js → "Build-cache retention"). Posted to the ACTIVE worker, which
 // stores it in the build-independent meta cache that every later worker reads.
-function reportClientBuild(reg: ServiceWorkerRegistration) {
+function reportClientBuild(worker: ServiceWorker | null | undefined) {
   const scripts = Array.from(document.scripts, (s) => s.src).filter((src) =>
     src.includes("/_next/static/"),
   );
   if (scripts.length === 0) return;
-  (reg.active ?? navigator.serviceWorker.controller)?.postMessage({
+  worker?.postMessage({
     type: "VIRGIL_CLIENT_BUILD",
     scripts,
   });
@@ -57,6 +57,12 @@ export default function ServiceWorkerRegistration() {
 
     let cancelled = false;
     let reloadOnControllerChange = false;
+    // Task 1633 — a page that mounted with no controller is either the page
+    // that installed the worker or a Shift-reload. Its FIRST controllerchange
+    // is the first install's `clients.claim()` (public/sw.js → activate): this
+    // page already runs the claiming build, so it is a takeover, not an
+    // update, and must not reload.
+    let awaitingFirstClaim = !navigator.serviceWorker.controller;
     let stopUpdateChecks: (() => void) | null = null;
 
     // The SW deliberately does NOT call skipWaiting()/clients.claim()
@@ -74,7 +80,7 @@ export default function ServiceWorkerRegistration() {
         // Task 887 — tell the worker which build this window runs, so a later
         // activation keeps that build's cache while this window is open (its
         // lazy chunks are gone from the server after the next deploy).
-        reportClientBuild(reg);
+        reportClientBuild(reg.active ?? navigator.serviceWorker.controller);
 
         // Already a waiting SW when we registered (e.g. user reloaded
         // while an update was sitting waiting in another tab).
@@ -121,6 +127,14 @@ export default function ServiceWorkerRegistration() {
       });
 
     const onControllerChange = () => {
+      if (awaitingFirstClaim) {
+        awaitingFirstClaim = false;
+        // Now controlled: tell the worker which build this window runs (at
+        // registration there was no active worker to tell), and stay put.
+        // Later controllerchanges are real updates and take the path below.
+        reportClientBuild(navigator.serviceWorker.controller);
+        return;
+      }
       if (!reloadOnControllerChange) return;
       reloadOnControllerChange = false;
       // TASK 391 / 610 — this is the app's ONLY programmatic reload, and it
