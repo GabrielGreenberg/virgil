@@ -2032,12 +2032,23 @@ def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
         summary["noop"] = True
         return summary
 
+    # 0) the bib's keys AS THEY STAND BEFORE the rename (task 1634): the
+    #    rewriters' key-equality door (`RC.cites_renamed_entry`, the app's
+    #    `citesRenamedEntry`) follows a cite iff the readers resolved it to
+    #    `old` — so `\cite{smith2020}` follows a rename of `Smith2020`, while an
+    #    exact-case twin entry keeps its own cites. Read from disk now: any
+    #    same-op bibEdit is still only queued in the txn.
+    import bib_resolve as BR
+
+    bib = find_bib_file(doc)
+    bib_keys = BR.citekeys_in_order(read_text_or_empty(bib)) if bib is not None else None
+
     # 1) the .tex \cite*{} commands — a TRANSFORM, re-run in the pen on the
     #    text as it is then (task 1108), so a \cite{old} the user typed in the
     #    window is retargeted too and their other edits survive.
     tex_path = find_tex_file(doc)
-    n_tex = RC.rewrite_tex(read_text_or_empty(tex_path), old, new)[1]
-    txn.add_text(tex_path, lambda t: RC.rewrite_tex(t, old, new)[0])
+    n_tex = RC.rewrite_tex(read_text_or_empty(tex_path), old, new, bib_keys)[1]
+    txn.add_text(tex_path, lambda t: RC.rewrite_tex(t, old, new, bib_keys)[0])
     summary["texCommandsChanged"] = n_tex
 
     # 2) EVERY citekey-keyed sidecar (task 615) — the list is the shared
@@ -2051,7 +2062,7 @@ def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
     for name, rule in CS.rekey_plan():
         path = sidecar(doc, name)
         data = txn.jget(path, CS.EMPTY_STATE[rule]())
-        rekey = (lambda d, r=rule: CS.REKEYERS[r](d, old, new))
+        rekey = (lambda d, r=rule: CS.REKEYERS[r](d, old, new, bib_keys))
         n = rekey(data)
         if n:
             txn.mark(path)

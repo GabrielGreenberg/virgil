@@ -127,6 +127,34 @@ def test_rewrite_many_is_simultaneous():
     assert out == "\\cite{b} \\cite{c}"
 
 
+def test_rewrite_follows_case_variant_cites_but_not_an_exact_twin():
+    # Task 1634: the editor's key-equality door — a cite follows iff the
+    # readers resolve it to the renamed entry over the pre-rename bib keys.
+    tex = "\\cite{smith2020foo} \\autocites{SMITH2020FOO}[p.~2]{x}"
+    out, n = rewrite_cite_keys(tex, "Smith2020foo", "jones2020foo", ["Smith2020foo", "x"])
+    assert n == 2
+    assert out == "\\cite{jones2020foo} \\autocites{jones2020foo}[p.~2]{x}"
+    out, n = rewrite_cite_keys("\\cite{smith2020foo}", "Smith2020foo", "j", ["Smith2020foo", "smith2020foo"])
+    assert n == 0
+
+
+def test_rename_in_paper_carries_a_case_variant_cite_and_card(tmp_path):
+    from _citekey_rename import rename_citekey_in_paper
+
+    paper = tmp_path / "p"
+    (paper / "virgil").mkdir(parents=True)
+    (paper / "references.bib").write_text("@book{Smith2020foo,\n t={1}\n}\n")
+    (paper / "main.tex").write_text("As \\citet{smith2020foo} shows.\n")
+    (paper / "virgil" / "citations.json").write_text(
+        '{"citations": [{"keys": ["smith2020foo"], "command": "\\\\citet{smith2020foo}"}]}'
+    )
+    steps = rename_citekey_in_paper(paper, "Smith2020foo", "jones2020foo")
+    assert "cite:main.tex:1" in steps
+    assert (paper / "main.tex").read_text() == "As \\citet{jones2020foo} shows.\n"
+    card = json.loads((paper / "virgil" / "citations.json").read_text())["citations"][0]
+    assert card == {"keys": ["jones2020foo"], "command": "\\citet{jones2020foo}"}
+
+
 def test_no_private_backslash_b_cite_regex_in_library_scripts():
     offenders = []
     for p in sorted(SCRIPTS.glob("*.py")):

@@ -153,6 +153,43 @@ _, n = RC.rewrite_citations_json(cj, "smith2020", "NEW")
 check(n == 1 and cj["citations"][0]["command"] == "\\citep [p.~4]{NEW}",
       "citations.json command with a gap is retargeted too")
 
+# ============================================================ 3b. key equality
+print("\n=== the key-equality door (task 1634 — parity with citesRenamedEntry) ===")
+# The SAME rows as src/lib/identity/__tests__/identity-cascade.test.ts
+# "citesRenamedEntry: the rename's key-equality door" — a drift on either side
+# shows up as a disagreement here.
+names = RC.cites_renamed_entry("Smith2020")
+check([names(k) for k in ("Smith2020", "smith2020", "SMITH2020")] == [True, True, True],
+      "no twin known: the exact key and every case-variant match")
+check(not names("Smith2020a"), "a longer key does not match")
+names = RC.cites_renamed_entry("Smith2020", ["Smith2020", "smith2020", "other"])
+check(names("Smith2020") and not names("smith2020"), "an exact-case twin keeps its own spelling")
+check(names("SMITH2020"), "a third spelling goes to the FIRST case-variant in source order")
+check(not RC.cites_renamed_entry("smith2020", ["Smith2020", "smith2020"])("SMITH2020"),
+      "…which is not the renamed one when it comes second")
+check(not RC.cites_renamed_entry("Smith2020", ["smith2020"])("smith2020"),
+      "old absent from the bib: an exact other entry keeps its cites")
+
+got, n = RC.rewrite_tex(r"\citep[see Smith][p.~2]{ smith2020 ,foo}", "Smith2020", "Jones2020")
+check(got == r"\citep[see Smith][p.~2]{ Jones2020 ,foo}" and n == 1,
+      f"a case-variant cite follows, written as the new key verbatim (got {got!r})")
+twin_bib = ["Smith2020", "smith2020"]
+src = r"\cite{Smith2020} \cite{smith2020} \autocites{SMITH2020}[p.~4]{Smith2020}{x}"
+got, n = RC.rewrite_tex(src, "Smith2020", "Jones2020", twin_bib)
+check(got == r"\cite{Jones2020} \cite{smith2020} \autocites{Jones2020}[p.~4]{Jones2020}{x}" and n == 2,
+      f"twin untouched; every group of a multi-cite rewritten (got {got!r}, n={n})")
+cj = {"citations": [
+    {"keys": ["smith2020", "x"], "command": r"\citet[p.~1]{smith2020,x}"},
+    {"keys": ["Smith2020"], "command": r"\cite{Smith2020}"},
+]}
+_, n = RC.rewrite_citations_json(cj, "Smith2020", "Jones2020", ["Smith2020"])
+check(n == 2 and cj["citations"][0]["keys"] == ["Jones2020", "x"]
+      and cj["citations"][0]["command"] == r"\citet[p.~1]{Jones2020,x}",
+      "citations.json: a case-variant card's keys AND command follow")
+cj = {"citations": [{"keys": ["smith2020"], "command": r"\cite{smith2020}"}]}
+_, n = RC.rewrite_citations_json(cj, "Smith2020", "Jones2020", twin_bib)
+check(n == 0 and cj["citations"][0]["keys"] == ["smith2020"], "citations.json: a twin's card is untouched")
+
 # ============================================================ 4. end to end
 LIB_GRAFTON = ("@article{graftonAnthony1997,\n  author = {Anthony Grafton},\n"
                "  title = {The Footnote: A Curious History},\n  year = {1997},\n}")
@@ -178,6 +215,22 @@ check(ann.get("genette1997", "").startswith("The foundational"), "annotations.js
 rows = load(sb, "bib-review-requests.json")["requests"]
 check(not any(r["bibKey"] == "grafton1997" for r in rows), "bib-review: no row left on the retired key")
 check(any(r["bibKey"] == "graftonAnthony1997" for r in rows), "bib-review: the row follows the rename")
+
+print("\n=== e2e: a case-variant cite + card follow the library-sync swap (task 1634) ===")
+sb = sandbox()
+texp = sb / "document.tex"
+texp.write_text(texp.read_text().replace(r"\citet[ch.~3]{grafton1997}", r"\citet[ch.~3]{Grafton1997}", 1))
+cits = load(sb, "citations.json")
+cits["citations"].append({"keys": ["GRAFTON1997"], "command": r"\cite{GRAFTON1997}"})
+dump(sb, "citations.json", cits)
+r = run(APPLY, str(sb), "complete-only", json.dumps(SWAP))
+check(r.returncode == 0, f"swap exited 0 (stderr={r.stderr.strip()[:200]})")
+tex = texp.read_text()
+check(r"\citet[ch.~3]{graftonAnthony1997}" in tex and "Grafton1997" not in tex,
+      "document.tex: the case-variant \\citet follows the rename")
+dumped = json.dumps(load(sb, "citations.json"))
+check("GRAFTON1997" not in dumped and "grafton1997" not in dumped,
+      "citations.json: no card left on any spelling of the retired key")
 
 print("\n=== e2e: the V2 shape (flag ON) — orphan re-keyed, byUid untouched ===")
 sb = sandbox()

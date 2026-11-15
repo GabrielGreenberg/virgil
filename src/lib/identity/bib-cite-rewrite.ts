@@ -60,6 +60,10 @@ import { bibKeyIndex } from "@/lib/bib-address";
  *
  * `bibKeys` omitted ⇒ no twin is known, and every case-variant of `oldKey`
  * matches.
+ *
+ * Python twin: `cites_renamed_entry` in editor/scripts/rename_citekey.py (task
+ * 1634) — the agent-driven rename (`renameCitekey` op, library repairs) asks
+ * the same question; its suite replays this door's test rows.
  */
 export function citesRenamedEntry(
   oldKey: string,
