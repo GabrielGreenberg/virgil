@@ -1115,6 +1115,24 @@ export function getTextAnchor(
   return getTextAnchorFromLinks(card.links ?? []);
 }
 
+/** The words this card is anchored to, as last STORED — the snapshot every
+ *  surface that names a card by its anchor reads when the live mark is not at
+ *  hand. A live Mode-B link carries them as `textSnapshot`; a card the snapshot
+ *  rung relocated to Mode-A (`resolve-card-anchor.ts` `relocateBySnapshot`)
+ *  carries the same words as its `paragraphSnapshot`. A dormant link is
+ *  excluded (via {@link getTextAnchor}): its snapshot names archived text.
+ *  Read by the Notes panel's highlight card (its display fallback) and the
+ *  Stack thumbnail (task 2026-11-15-1630), which share this ONE door. */
+export function storedAnchorText(card: CardWithLinks): string {
+  const ranged = getTextAnchor(card);
+  if (ranged) return ranged.anchorText;
+  for (const link of card.links ?? []) {
+    if (link.anchor.type !== "textObject" || isModeB(link)) continue;
+    if (link.anchor.paragraphSnapshot) return link.anchor.paragraphSnapshot;
+  }
+  return "";
+}
+
 export function hasTextAnchor(card: CardWithLinks): boolean {
   return getTextAnchor(card) !== null;
 }

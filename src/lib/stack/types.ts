@@ -8,8 +8,9 @@
  * session that inserts a fresh copy at the placement (paste-as-new); the
  * Stack item itself is preserved (pull is a copy, not a pop).
  *
- * Persistence: window-scoped localStorage (cross-document scope per the
- * approved plan). Schema is wrapped in a versioned envelope so old blobs
+ * Persistence: localStorage, shared by every window of the origin and kept
+ * in step by the `storage` event (`useStack` → `subscribeToStorageKey`);
+ * cross-document scope per the approved plan. Schema is wrapped in a versioned envelope so old blobs
  * can be migrated rather than discarded.
  */
 import type { JSONContent } from "@tiptap/react";
@@ -178,8 +179,8 @@ export const STACK_MAX_ITEMS = 200;
  *  capture that did not happen (task 591). */
 export const STACK_MAX_CHARS = 2_000_000;
 
-/** localStorage key for the Stack envelope. Window-scoped: every Virgil
- *  window has its own. */
+/** localStorage key for the Stack envelope. Shared by every window of the
+ *  origin, kept in step by the `storage` event (`useStack`). */
 export const STACK_STORAGE_KEY = "virgil-stack-v1";
 
 /** Synthetic card-key prefix used by stack-pull drop sessions. The
