@@ -247,6 +247,7 @@ function mountPainters(editor: Editor, k: KindCase, state: State) {
         store: cardStore,
         panelSides: {},
         archivedCardIds: archivedCardIds([cards]),
+        paneRootId: null,
       });
       useRequestWash(editor, cards.filter(isRequestCard), true);
     },

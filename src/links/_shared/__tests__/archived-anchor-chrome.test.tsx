@@ -575,6 +575,7 @@ describe("useAnchorHighlightReconciler — an archived card paints no IN-DOCUMEN
         store: cardStore,
         panelSides: {},
         archivedCardIds: new Set([ARCHIVED_CARD]),
+        paneRootId: null,
       }),
     );
     await waitForEditorInit(editor);
@@ -597,6 +598,7 @@ describe("useAnchorHighlightReconciler — an archived card paints no IN-DOCUMEN
         store: cardStore,
         panelSides: {},
         archivedCardIds: new Set([ARCHIVED_CARD]),
+        paneRootId: null,
       }),
     );
     await waitForEditorInit(editor);
@@ -620,6 +622,7 @@ describe("useAnchorHighlightReconciler — an archived card paints no IN-DOCUMEN
           store: cardStore,
           panelSides: {},
           archivedCardIds: archived,
+          paneRootId: null,
         }),
       { initialProps: { archived: new Set([ARCHIVED_CARD]) as ReadonlySet<string> } },
     );

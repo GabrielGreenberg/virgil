@@ -449,14 +449,17 @@ describe("pane-dom census — no document-global resolution of a per-pane marker
  * same-repo builder call; a selector computed at runtime is still unseen.
  */
 const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
-  // ── per-CARD, not per-PANE. The door's header scopes these OUT by name and
-  //    states why (`omni-card-placement.ts` already answers this question for
-  //    the card family; widening the pane door to every `data-*` in the app is
-  //    the broadest-blast-radius mistake). They are a real hazard one level
-  //    down — a card key can exist in two mounted panes — but they are a
-  //    DIFFERENT door's business, and moving them here would hide that.
-  "data-card-key": "per-CARD lookup — owned by the card-placement door, not this one",
-  "data-pristine-card-id": "per-CARD sweep (drop-mode) — same family as data-card-key",
+  // ── per-CARD markers. Task 1639 RETIRED this block's `data-card-key`,
+  //    `data-card-selected`, `data-card-hovered`, `data-contains-active-card`
+  //    (and, below, `data-floating-panel`) exemptions: their one earner was the
+  //    anchor reconciler's document-wide panel-card sweep, which let a
+  //    keep-alive neighbour's run strip another pane's stamps (and a card key is
+  //    unique only per DOCUMENT, so a second pane of the same doc mounts a twin).
+  //    The sweep and `focusNewCard` now resolve through `resolvePaneMarkers`
+  //    with their pane's scope, so a NEW document-global card hunt fails this
+  //    leg on its first commit. No card-key read is exempt.
+  "data-pristine-card-id":
+    "per-CARD containment test (pristine discard): the listener is pane-scoped (task 598) and asks only whether the click landed INSIDE any copy, so a twin can only spare a card, never discard one",
   // Task 873: `data-footnote-id` / `data-citation-id` were listed here, earned
   // only by `marker-clicks.ts` reads whose element nobody used. Those reads are
   // gone, and so are the exemptions — a per-ATOM id is unique only per
@@ -464,19 +467,8 @@ const EXEMPT_GLOBAL_MARKERS: Record<string, string> = {
   // link-SSOT reads the builder fold surfaced (`data-link-id`, `-card`,
   // `data-omni-entry`) went through `resolvePaneMarker` instead of onto this
   // list, for the same reason.
-  "data-contains-active-card":
-    "per-CARD state flag, read only alongside [data-floating-panel]",
-  // Task 600: these two were always read off `document` (the reconciler's
-  // panel-card sweep, through DATA_CARD_SELECTED / DATA_CARD_HOVERED); the
-  // regex needle never saw them because the selector spells only constants.
-  "data-card-selected":
-    "per-CARD state flag, swept alongside [data-card-key] in the anchor-highlight reconciler",
-  "data-card-hovered":
-    "per-CARD state flag, swept alongside [data-card-key] in the anchor-highlight reconciler",
 
   // ── genuinely DOCUMENT-level: one instance per window, by construction.
-  "data-floating-panel":
-    "floats portal to <body>, so the float layer is document-level — there is no per-pane set to pick from",
   "data-swiftlatex":
     "the <script> tag in the app shell — one per window, above every pane",
   "data-virgil-drag-ghost":
@@ -555,6 +547,19 @@ describe("pane-dom census, derived — any document-global data-* read is listed
     const names = globalMarkerNames(synthetic).map((h) => h.name);
     expect(names).toEqual(["data-editor-page"]);
     expect(names[0] in EXEMPT_GLOBAL_MARKERS).toBe(false);
+  });
+
+  it("a document-global card-key hunt fails (task 1639's actual lines)", () => {
+    // The reconciler's pre-1639 sweep and restamp, as written — each must now
+    // name a marker no exemption covers.
+    for (const line of [
+      'export const f = (k: string) => document.querySelectorAll<HTMLElement>(`[data-card-key="${k}"]`);',
+      'export const g = () => document.querySelectorAll<HTMLElement>("[data-floating-panel][data-contains-active-card]");',
+    ]) {
+      const names = globalMarkerNames(scanSynthetic(line)).map((h) => h.name);
+      expect(names.length).toBeGreaterThan(0);
+      expect(names.some((n) => !(n in EXEMPT_GLOBAL_MARKERS)), line).toBe(true);
+    }
   });
 });
 

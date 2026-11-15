@@ -32,6 +32,7 @@ import { attrSelector } from "@/lib/attr-selector";
 import { migrateLegacyKeyToFloat } from "@/floats/float-key";
 import { cardStampsPrimaryField, findCardPrimaryField } from "@/lib/card-primary-field";
 import { pickCardPresence } from "@/lib/card-presence";
+import { resolvePaneMarkers, type PaneScope } from "@/components/editor-layout/pane-dom";
 import type { ViewLifetime, ViewTimer } from "@/lib/tiptap/view-lifetime";
 
 /** The one pending request (focus is window-global — see the header). */
@@ -49,6 +50,12 @@ export interface FocusNewCardOptions {
    *  than settling on the dock, and accept the dock only on the last attempt
    *  (task 1536). */
   awaitFloat?: boolean;
+  /** The requesting pane's root (task 1639). Card keys are unique only per
+   *  DOCUMENT, so a second pane mounting the same doc renders a twin of the
+   *  new card; with the scope, the hunt searches only this pane's territory
+   *  (its root + the floats it portals). Absent, it takes the pane-dom
+   *  ladder (visible matches, else all) — the caller has no pane in hand. */
+  scope?: PaneScope;
 }
 
 export function focusNewCard(
@@ -88,8 +95,9 @@ export function focusNewCard(
     // user is looking at (the float portals to <body>, AFTER the dock), so
     // the choice is `pickCardPresence`'s stated ladder: the card's own float,
     // then the visible copy, then the first match (task 1536).
-    const candidates = Array.from(
-      document.querySelectorAll<HTMLElement>(attrSelector("data-card-key", domKey)),
+    const candidates = resolvePaneMarkers(
+      attrSelector("data-card-key", domKey),
+      opts.scope,
     );
     const presence = pickCardPresence(candidates, domKey);
     const lastAttempt = attempts + 1 >= MAX_ATTEMPTS;

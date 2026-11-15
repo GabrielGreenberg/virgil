@@ -566,6 +566,7 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
         // Nothing archived in these fixtures — stated rather than defaulted
         // (task 497: an archived card paints no in-document chrome).
         archivedCardIds: NONE_ARCHIVED,
+        paneRootId: null,
       }),
     );
     await waitForEditorInit(editor);
@@ -610,6 +611,7 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
         // Nothing archived in these fixtures — stated rather than defaulted
         // (task 497: an archived card paints no in-document chrome).
         archivedCardIds: NONE_ARCHIVED,
+        paneRootId: null,
       }),
     );
     await waitForEditorInit(editor);
@@ -639,6 +641,7 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
         // Nothing archived in these fixtures — stated rather than defaulted
         // (task 497: an archived card paints no in-document chrome).
         archivedCardIds: NONE_ARCHIVED,
+        paneRootId: null,
       }),
     );
     await waitForEditorInit(editor);

@@ -98,6 +98,13 @@
  * `PaneClickHost.getPaneRoot`, or `paneRootOf(editor.view.dom)`. The census's
  * ownership block makes them pass it.
  *
+ * SWEEPS too (task 1639): the anchor reconciler's panel-card leg (strip + restamp
+ * `data-card-selected` / `-hovered` and a float's `data-contains-active-card`)
+ * and `focusNewCard`'s hunt ask `resolvePaneMarkers` with their pane's scope. A
+ * document-wide sweep is the "departing owner removes another's entry" bug: one
+ * pane's run stripped a keep-alive neighbour's stamps. The census's derived leg
+ * no longer exempts any card-key marker, so a new global card hunt fails CI.
+ *
  * What they DO share is the visibility rung. Since task 873 the per-document id
  * lookups that used to take the first match off `document` — `findOmniEntry`,
  * `openForCard`'s presence check and scroll targets —

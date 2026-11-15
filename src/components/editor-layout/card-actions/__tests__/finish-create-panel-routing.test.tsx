@@ -41,7 +41,7 @@ function makeDeps(over: Partial<CardDeps> = {}): CardDeps {
   const inert = (() => ({})) as never;
   const noop = (() => {}) as never;
   return {
-    editorRef: { current: {} } as never,
+    editorRef: { current: { getEditor: () => null } } as never,
     addNote: (() => ({ id: "note-1" })) as never,
     addHighlight: inert,
     deleteNote: noop,

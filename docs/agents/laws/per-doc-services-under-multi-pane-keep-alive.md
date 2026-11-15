@@ -769,3 +769,23 @@ compile record's identity epoch (`compileEpoch` → `recordCompileResult` /
 identity. Guard: `doc-forget-census.test.ts` classifies every empty,
 string-keyed module-level `Map`/`Set` in `src/`, so the next new per-doc store
 cannot skip the question.
+
+### The SWEEP half: a per-pane DOM sweep strips only its own pane's stamps (task 1639)
+
+The DOM form of "a departing owner removes only its OWN entry." Every mounted
+`EditorPane` runs its own `useAnchorHighlightReconciler`, whose panel-card leg
+sweeps and restamps `data-card-selected` / `data-card-hovered` on
+`[data-card-key]` cards and `data-contains-active-card` on their float. Those
+queries ran off `document`, so pane B's run stripped pane A's stamps — and A's
+effect does not re-run on return, so with the card-outline-chrome pref ON a
+popped card's window ring in A was gone until the next hover in A. Card keys are
+unique only per DOCUMENT, so the document-wide STAMP also lit a twin in a second
+pane of the same doc.
+
+The reconciler now takes a REQUIRED `paneRootId` (it runs in the `EditorPane`
+body, above `PaneRootContext`, so it cannot `usePaneRoot()`), and every query
+goes through `resolvePaneMarkers(selector, paneRootById(paneRootId))` — the
+pane's TERRITORY, its root plus the floats it portals. `focusNewCard` takes the
+same `scope` option from both its callers. The pane-dom census's derived leg no
+longer exempts `data-card-key` or its state flags, so a new document-global card
+hunt fails CI. Suite: `reconciler-pane-scope.test.tsx`.

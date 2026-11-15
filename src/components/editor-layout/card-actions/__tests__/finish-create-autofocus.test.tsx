@@ -44,7 +44,7 @@ function makeDeps(over: Partial<CardDeps> = {}): CardDeps {
   const inert = (() => ({})) as never;
   const noop = (() => {}) as never;
   return {
-    editorRef: { current: {} } as never,
+    editorRef: { current: { getEditor: () => null } } as never,
     addNote: (() => ({ id: "note-1" })) as never,
     addHighlight: (() => ({ id: "hl-1" })) as never,
     deleteNote: noop,
@@ -105,6 +105,7 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
     expect(focusMock).toHaveBeenCalledTimes(1);
     expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"), expect.anything(), {
       awaitFloat: false,
+      scope: null,
     });
   });
 
@@ -121,6 +122,7 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
     expect(popCardAtAnchor).toHaveBeenCalledTimes(1);
     expect(focusMock).toHaveBeenCalledWith(cardPopKey("note", "note-1"), expect.anything(), {
       awaitFloat: true,
+      scope: null,
     });
   });
 
@@ -159,6 +161,7 @@ describe("finishCreate caret-into-body (CHIP B)", () => {
     });
     expect(focusMock).toHaveBeenCalledWith(cardPopKey("todo", "todo-1"), expect.anything(), {
       awaitFloat: false,
+      scope: null,
     });
 
     focusMock.mockClear();
