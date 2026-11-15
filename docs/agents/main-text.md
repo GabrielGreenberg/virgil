@@ -1,4 +1,4 @@
-<!-- last-verified: 4a74caec 2026-11-14 -->
+<!-- last-verified: 2242df20 2026-11-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 

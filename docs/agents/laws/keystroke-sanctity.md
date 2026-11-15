@@ -1,4 +1,4 @@
-<!-- last-verified: 170ddd3a 2026-11-12 -->
+<!-- last-verified: 2242df20 2026-11-15 -->
 <!-- derives-from: AGENTS.md#laws -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
