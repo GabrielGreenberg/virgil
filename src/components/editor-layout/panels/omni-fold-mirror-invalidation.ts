@@ -43,9 +43,11 @@ import { sectionFoldingPluginKey } from "@/lib/section-folding";
  *  1. `onAnyChange` fires on the bus's own (deliberately narrower) wake
  *     predicate, `diffWakesStructuralWatchers`, which omits exactly
  *     `changedBlocks` / `changedFootnotes` / `changedExamples` — the three
- *     sets whose co-set order/structure flag (`blockOrderChanged` /
- *     `footnoteOrderChanged` / `exampleStructureChanged`) wakes the channel in
- *     their stead. That relationship is pinned by
+ *     sets whose co-set flag (`blockOrderChanged` / `blockParTitleChanged` /
+ *     `blockKindChanged`, `footnoteOrderChanged`, `exampleStructureChanged`)
+ *     wakes the channel in their stead — task 1638 closed the one hole, a
+ *     `setNode` kind change that used to ride `changedBlocks` alone. That
+ *     relationship is pinned by
  *     `doc-structure/__tests__/diff-predicate-congruence.test.ts`, so gating a
  *     generic subscription on `diffHasStructuralEntries` is equivalent to
  *     asking the plugin's predicate directly.

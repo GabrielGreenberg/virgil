@@ -30,9 +30,11 @@ function singleFieldDiff(field: keyof StructureDiff): StructureDiff {
 
 /** Which single fields each category reacts to — the declared contract.
  *  Deliberate omissions: `changedBlocks` / `changedFootnotes` /
- *  `changedExamples` (their order/structure flag is co-set, and they do not
- *  wake the bus), `changedAnchors` (a moved anchor neither entered nor left —
- *  task 1128), `blockParTitleChanged` (not a doc-order input). */
+ *  `changedExamples` (a co-set flag always rides them, and they do not wake
+ *  the bus), `changedAnchors` (a moved anchor neither entered nor left — task
+ *  1128), `blockParTitleChanged` (neither a doc-order nor a kind input).
+ *  `blockKindChanged` IS a `blocks` input (task 1638): a `setNode` changes the
+ *  block table a kind-reading consumer keys on. */
 const EXPECTED: Record<keyof typeof STRUCTURAL_REVISION_PREDICATES, (keyof StructureDiff)[]> = {
   footnotes: ["addedFootnotes", "removedFootnotes", "footnoteOrderChanged"],
   citations: [
@@ -44,7 +46,7 @@ const EXPECTED: Record<keyof typeof STRUCTURAL_REVISION_PREDICATES, (keyof Struc
   ],
   examples: ["addedExamples", "removedExamples", "exampleStructureChanged"],
   anchors: ["addedAnchors", "removedAnchors"],
-  blocks: ["addedBlocks", "removedBlocks", "blockOrderChanged"],
+  blocks: ["addedBlocks", "removedBlocks", "blockOrderChanged", "blockKindChanged"],
   headings: ["addedHeadings", "removedHeadings", "changedHeadings"],
   figures: ["addedFigures", "removedFigures", "changedFigures"],
   labels: ["addedLabels", "removedLabels", "changedLabels"],

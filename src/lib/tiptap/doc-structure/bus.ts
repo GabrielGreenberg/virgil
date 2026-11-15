@@ -217,9 +217,11 @@ function makeKeyedList(label: string): {
  * True when a diff should wake the STRUCTURAL watchers — i.e. bump `emitCount`
  * and fire `onAnyChange`. This is the bus's keystroke-sanctity predicate, and
  * it is DELIBERATELY NARROWER than `diffHasStructuralEntries` (types.ts): it
- * omits `changedBlocks` / `changedFootnotes` / `changedExamples` because
- * `blockOrderChanged` / `footnoteOrderChanged` / `exampleStructureChanged` are
- * co-set on those transactions, so a same-uuid change already reaches
+ * omits `changedBlocks` / `changedFootnotes` / `changedExamples` because a
+ * flag is co-set on every such transaction — `blockOrderChanged` /
+ * `blockParTitleChanged` / `blockKindChanged` for a block (task 1638: a
+ * `setNode` kind change used to ride `changedBlocks` ALONE and wake nothing),
+ * `footnoteOrderChanged`, `exampleStructureChanged` — so a same-uuid change already reaches
  * position-keyed consumers without waking every structural watcher — and it
  * omits `changedAnchors` (task 1128 — an anchor that moved neither entered
  * nor left, and every anchor reader resolves the snapshot lazily), and it
@@ -236,6 +238,7 @@ export function diffWakesStructuralWatchers(diff: StructureDiff): boolean {
     diff.removedBlocks.length > 0 ||
     diff.blockOrderChanged ||
     diff.blockParTitleChanged ||
+    diff.blockKindChanged ||
     diff.addedHeadings.length > 0 ||
     diff.removedHeadings.length > 0 ||
     diff.changedHeadings.length > 0 ||

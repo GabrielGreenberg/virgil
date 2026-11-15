@@ -13,12 +13,14 @@ import { describe, expect, it } from "vitest";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { inspectSteps } from "../step-inspector";
+import { asMutable, createDocStructureBus } from "../bus";
 import { applyDiff, buildInitial } from "../structure-index";
-import type { DocStructure, StructureDiff } from "../types";
+import { EMPTY_STRUCTURE, type DocStructure, type StructureDiff } from "../types";
 import { doc, figureBlock, heading, paragraph, testSchema } from "./fixtures";
 
 const P = testSchema.nodes.paragraph;
 const H = testSchema.nodes.heading;
+const T = testSchema.nodes.texBlock;
 
 function run(
   oldDoc: PMNode,
@@ -59,9 +61,11 @@ describe("inspectSteps — same-uuid kind change (task 921)", () => {
     );
     expect(diff.removedHeadings.map((h) => h.uuid)).toEqual(["h1"]);
     expect(diff.changedBlocks.map((b) => `${b.uuid}:${b.typeName}`)).toEqual(["h1:paragraph"]);
-    // Nothing moved and no title flipped — position-keyed consumers stay asleep.
+    // Nothing moved and no title flipped — position-keyed consumers stay
+    // asleep; the KIND flag carries the change (task 1638).
     expect(diff.blockOrderChanged).toBe(false);
     expect(diff.blockParTitleChanged).toBe(false);
+    expect(diff.blockKindChanged).toBe(true);
     // The block identity survives: not removed, not re-added.
     expect(diff.removedBlocks).toEqual([]);
     expect(diff.addedBlocks).toEqual([]);
@@ -131,6 +135,53 @@ describe("inspectSteps — same-uuid kind change (task 921)", () => {
     expect(diff.changedHeadings.map((h) => h.uuid)).toEqual(["h1"]);
     expect(diff.removedHeadings).toEqual([]);
     expect(diff.changedBlocks).toEqual([]);
+    expect(diff.blockKindChanged).toBe(false);
     expectCongruent(next, fresh);
+  });
+});
+
+// Task 1638 — a kind pair with NO kind-keyed sub-view (paragraph ↔ texBlock /
+// codeBlock) used to report itself ONLY through `changedBlocks`, which the bus
+// wake predicate omits on the claim that a co-set flag always rides it. The
+// index refreshed `typeName` silently: no `emitCount`, no `onAnyChange`, no
+// `blocks` revision. `blockKindChanged` is that co-set flag.
+describe("a sub-view-less kind change wakes the bus (task 1638)", () => {
+  for (const [label, from, toType] of [
+    ["paragraph → texBlock", () => paragraph("p1", "x = 1"), T],
+    ["texBlock → paragraph", () => T.create({ uuid: "p1" }, testSchema.text("x = 1")), P],
+  ] as const) {
+    it(`${label}: changedBlocks + blockKindChanged, and the bus emits once`, () => {
+      const { diff, next, fresh } = run(doc(from(), paragraph("p2", "y")), (tr) =>
+        tr.setNodeMarkup(0, toType, { uuid: "p1" }),
+      );
+      expect(diff.changedBlocks.map((b) => `${b.uuid}:${b.typeName}`)).toEqual([
+        `p1:${toType.name}`,
+      ]);
+      expect(diff.blockKindChanged).toBe(true);
+      expect(diff.blockOrderChanged).toBe(false);
+      expect(diff.blockParTitleChanged).toBe(false);
+      // No kind-keyed sub-view reports it — the flag is the ONLY wake.
+      expect(diff.addedHeadings).toEqual([]);
+      expect(diff.removedHeadings).toEqual([]);
+      expect(next.blocks.get("p1")?.typeName).toBe(toType.name);
+      expectCongruent(next, fresh);
+
+      const bus = createDocStructureBus();
+      let any = 0;
+      bus.onAnyChange(() => any++);
+      asMutable(bus)._emit(diff, next);
+      expect(bus.emitCount).toBe(1);
+      expect(any).toBe(1);
+    });
+  }
+
+  it("typing inside the texBlock afterwards is content-only — emitCount stays flat", () => {
+    const { diff } = run(doc(T.create({ uuid: "t1" }, testSchema.text("x")), paragraph("p2", "y")), (tr) =>
+      tr.insertText("z", 2),
+    );
+    expect(diff.blockKindChanged).toBe(false);
+    const bus = createDocStructureBus();
+    asMutable(bus)._emit(diff, EMPTY_STRUCTURE);
+    expect(bus.emitCount).toBe(0);
   });
 });

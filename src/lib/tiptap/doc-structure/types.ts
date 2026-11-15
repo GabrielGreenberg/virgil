@@ -56,6 +56,7 @@ export interface BlockReturnVerdict {
   changed: boolean;
   blockOrderChanged: boolean;
   blockParTitleChanged: boolean;
+  blockKindChanged: boolean;
 }
 
 /**
@@ -73,10 +74,14 @@ export interface BlockReturnVerdict {
  * historical — see `mapStructureDiffPositions`), and a block re-created by a
  * later transaction has a NEW DOM node regardless, so it passes `true`.
  *
- *   moved                → changed + order (+ par-title if the flag flipped)
+ *   moved                → changed + order (+ par-title / kind if those flipped)
  *   same pos, title flip → changed + par-title (nothing moved)
- *   same pos, type change→ changed only (the kind-keyed sub-views report it)
+ *   same pos, type change→ changed + kind (task 1638 — never a silent change)
  *   otherwise            → nothing (a round trip)
+ *
+ * Every `changed: true` verdict sets at least one flag — the invariant that
+ * lets the bus leave `changedBlocks` out of its wake predicate (pinned by
+ * `diff-predicate-congruence.test.ts`).
  */
 export function compareReturnedBlock(
   before: BlockEntry,
@@ -84,10 +89,12 @@ export function compareReturnedBlock(
   moved: boolean,
 ): BlockReturnVerdict {
   const titleFlipped = before.parTitled !== after.parTitled;
+  const kindChanged = before.typeName !== after.typeName;
   return {
-    changed: moved || titleFlipped || before.typeName !== after.typeName,
+    changed: moved || titleFlipped || kindChanged,
     blockOrderChanged: moved,
     blockParTitleChanged: titleFlipped,
+    blockKindChanged: kindChanged,
   };
 }
 
@@ -418,9 +425,10 @@ export interface StructureDiff {
    *  position-keyed resolve (focus band) reads the wrong index. Also carries
    *  a same-uuid, same-pos TYPE change (a heading demoted to a paragraph by
    *  `setNode`, which keeps the uuid — task 921) so the index's `typeName` is
-   *  refreshed; that case wakes neither `blockOrderChanged` nor
-   *  `blockParTitleChanged`, and the kind-keyed sub-views (headings, figures,
-   *  examples) report the kind change themselves. */
+   *  refreshed; that case sets `blockKindChanged` (task 1638). Every entry here
+   *  rides at least one of `blockOrderChanged` / `blockParTitleChanged` /
+   *  `blockKindChanged` — the co-set invariant the bus wake predicate relies
+   *  on to omit this field. */
   changedBlocks: readonly BlockEntry[];
   /** True iff a top-level block was REORDERED with its UUID preserved (i.e.
    *  `changedBlocks` is non-empty): no block identity entered or left, but
@@ -438,6 +446,13 @@ export interface StructureDiff {
    *  the string without flipping the boolean → no entry, no flag — the
    *  keystroke-sanctity path for title editing. */
   blockParTitleChanged: boolean;
+  /** True iff some block kept its uuid AND position but changed node TYPE (a
+   *  `setNode` — paragraph ↔ texBlock / codeBlock / heading, task 921). The
+   *  entry rides `changedBlocks` so the index's `typeName` is refreshed; this
+   *  flag is what makes that change WAKE (`onAnyChange`, the `blocks` revision)
+   *  rather than refresh the index silently (task 1638). A `setNode` is a
+   *  gesture, never a keystroke, so keystroke sanctity is unaffected. */
+  blockKindChanged: boolean;
 
   // Sub-views — independently consumable so subscribers don't have to
   // filter `addedBlocks` themselves.
@@ -543,6 +558,7 @@ export const EMPTY_DIFF: StructureDiff = {
   changedBlocks: [],
   blockOrderChanged: false,
   blockParTitleChanged: false,
+  blockKindChanged: false,
   addedHeadings: [],
   removedHeadings: [],
   changedHeadings: [],
@@ -607,6 +623,7 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     diff.changedBlocks.length === 0 &&
     !diff.blockOrderChanged &&
     !diff.blockParTitleChanged &&
+    !diff.blockKindChanged &&
     diff.addedHeadings.length === 0 &&
     diff.removedHeadings.length === 0 &&
     diff.changedHeadings.length === 0 &&
@@ -719,14 +736,18 @@ export function diffAnchorsRecomputable(diff: StructureDiff): boolean {
   return diff.addedAnchors.length > 0 || diff.removedAnchors.length > 0;
 }
 
-/** An anchorable block entered, left, or changed order. A same-uuid change
- *  (`changedBlocks`) always co-sets `blockOrderChanged`. A par-title FLIP
- *  (`blockParTitleChanged`) is not a doc-order input, so it is out. */
+/** An anchorable block entered, left, changed order, or changed KIND. A
+ *  same-uuid change (`changedBlocks`) co-sets `blockOrderChanged` (a move) or
+ *  `blockKindChanged` (a `setNode`, task 1638) — the block table a kind-reading
+ *  consumer keys on changed either way. A par-title FLIP alone
+ *  (`blockParTitleChanged`) is neither a doc-order nor a kind input, so it is
+ *  out (its entry wakes the section-path consumers instead). */
 export function diffBlocksRecomputable(diff: StructureDiff): boolean {
   return (
     diff.addedBlocks.length > 0 ||
     diff.removedBlocks.length > 0 ||
-    diff.blockOrderChanged
+    diff.blockOrderChanged ||
+    diff.blockKindChanged
   );
 }
 
@@ -833,6 +854,7 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
   // need no such pass: their removal alone already sets the kind's flag in `a`.)
   let blockOrderChanged = a.blockOrderChanged || b.blockOrderChanged;
   let blockParTitleChanged = a.blockParTitleChanged || b.blockParTitleChanged;
+  let blockKindChanged = a.blockKindChanged || b.blockKindChanged;
   if (a.removedBlocks.length > 0 && b.addedBlocks.length > 0) {
     const leftInA = new Map(a.removedBlocks.map((e) => [byUuid(e), e]));
     for (const back of b.addedBlocks) {
@@ -841,6 +863,7 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
       const verdict = compareReturnedBlock(before, back, true);
       blockOrderChanged ||= verdict.blockOrderChanged;
       blockParTitleChanged ||= verdict.blockParTitleChanged;
+      blockKindChanged ||= verdict.blockKindChanged;
     }
   }
 
@@ -850,6 +873,7 @@ export function mergeStructureDiffs(a: StructureDiff, b: StructureDiff): Structu
     changedBlocks: blocks.changed,
     blockOrderChanged,
     blockParTitleChanged,
+    blockKindChanged,
     addedHeadings: headings.added,
     removedHeadings: headings.removed,
     changedHeadings: headings.changed,
