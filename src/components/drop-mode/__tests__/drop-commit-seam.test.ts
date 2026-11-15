@@ -39,7 +39,7 @@ import { join } from "node:path";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import { inlineAtomMoveSpec } from "../util/inline-atom-move";
+import { findAtomById, inlineAtomMoveSpec } from "../util/inline-atom-move";
 import { inTextAtomGrabSpec } from "../specs/in-text-atom-grab";
 import {
   clearInlineAtomSource,
@@ -47,7 +47,7 @@ import {
 } from "../util/inline-atom-source";
 import { resolveAtomPos } from "@/lib/tiptap/inline-atom-grab";
 import { trackPos } from "@/lib/tiptap/tracked-pos";
-import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { ATOM_REGISTRY, cardAtomEntityId } from "@/lib/tiptap/atom-registry";
 import type { DropCtx, Placement } from "../types";
 
 // ── Two vocabularies, as in `cross-editor-adoption.test.ts` ─────────────────
@@ -65,7 +65,11 @@ function schemaWithAtoms() {
         inline: true,
         atom: true,
         selectable: false,
-        attrs: { footnoteId: { default: "" }, content: { default: null } },
+        attrs: {
+          footnoteId: { default: "" },
+          linkId: { default: "" },
+          content: { default: null },
+        },
         toDOM: () => ["span", { "data-type": "footnote" }, "1"],
       },
       citation: {
@@ -73,7 +77,11 @@ function schemaWithAtoms() {
         inline: true,
         atom: true,
         selectable: false,
-        attrs: { citationId: { default: "" }, command: { default: "" } },
+        attrs: {
+          citationId: { default: "" },
+          linkId: { default: "" },
+          command: { default: "" },
+        },
         toDOM: () => ["span", { "data-type": "citation" }, "c"],
       },
       // An id-less kind (`ATOM_REGISTRY.ref.idAttr: null`) — its identity is
@@ -362,6 +370,13 @@ function docWithTwoCitations() {
   ]);
 }
 
+/** A grabbed atom's DOM element, carrying one id attribute. */
+function domWithId(attr: string | null, id: string): HTMLElement {
+  return {
+    getAttribute: (name: string) => (name === attr ? id : null),
+  } as unknown as HTMLElement;
+}
+
 const CITE_A_POS = 12;
 const CITE_B_POS = 13;
 
@@ -374,7 +389,7 @@ describe("two adjacent same-kind atoms — the one you grab is the one that move
       posAtDOM: () => CITE_A_POS,
       state: editor.state,
     } as unknown as Parameters<typeof resolveAtomPos>[0];
-    const atomEl = { dataset: { citationId: "c-b" } } as unknown as HTMLElement;
+    const atomEl = domWithId(ATOM_REGISTRY.citation.domIdAttr, "c-b");
 
     expect(resolveAtomPos(view, atomEl, ATOM_REGISTRY.citation)).toBe(CITE_B_POS);
   });
@@ -417,6 +432,83 @@ describe("two adjacent same-kind atoms — the one you grab is the one that move
       "c-b",
       "c-a",
     ]);
+  });
+});
+
+// ── 3a. "What is this atom's id" is the REGISTRY's door (task 1636) ─────────
+// The drag path used to read only the per-kind attr (`footnoteId` /
+// `citationId`), so an atom whose per-kind id is empty but whose `linkId`
+// mirror names its card was id-less to the grab and unfindable to the
+// card-header locate — which then minted a SECOND marker.
+
+/** `<p>alpha omega[cite a][cite (linkId) b]</p>` — B's id lives only in the mirror. */
+function docWithMirrorOnlyCitation() {
+  return MAIN.node("doc", null, [
+    MAIN.node("paragraph", null, [
+      MAIN.text("alpha omega"),
+      MAIN.nodes.citation.create({ citationId: "c-a", command: "\\cite{a}" }),
+      MAIN.nodes.citation.create({ citationId: "", linkId: "c-b", command: "\\cite{b}" }),
+    ]),
+  ]);
+}
+
+/** MAIN-schema doc holding one footnote whose id lives only in `linkId`. */
+function mainWithMirrorOnlyFootnote() {
+  return MAIN.node("doc", null, [
+    MAIN.node("paragraph", null, [
+      MAIN.text("alpha "),
+      MAIN.nodes.footnote.create({ footnoteId: "", linkId: "x", content: FOOTNOTE_BODY }),
+    ]),
+  ]);
+}
+
+describe("the drag path reads an atom's id through the registry door (task 1636)", () => {
+  it("cardAtomEntityId: per-kind id first, else the linkId mirror, else empty", () => {
+    expect(cardAtomEntityId(MAIN.nodes.footnote.create({ footnoteId: "f", linkId: "g" }))).toBe("f");
+    expect(cardAtomEntityId(MAIN.nodes.footnote.create({ footnoteId: "", linkId: "x" }))).toBe("x");
+    expect(cardAtomEntityId(MAIN.nodes.footnote.create({}))).toBe("");
+    expect(cardAtomEntityId(MAIN.nodes.labelRef.create({ label: "x" }))).toBe("");
+  });
+
+  it("findAtomById finds a footnote whose id is only in the mirror", () => {
+    const { editor } = mockEditor(MAIN, mainWithMirrorOnlyFootnote());
+    const found = findAtomById(editor, "footnote", "x");
+    expect(found?.from).toBe(7);
+  });
+
+  it("a card-header drag of a mirror-only footnote MOVES it — no second marker", () => {
+    const source = mockEditor(MAIN, mainWithMirrorOnlyFootnote());
+    const target = mockEditor(CARD, cardBody());
+    const ctx = { mainEditor: source.editor } as unknown as DropCtx;
+
+    footnoteMove.applyDrop(inlineCursor(target.editor, 1), "float:card:footnote:x", ctx);
+
+    expect(atomIds(source.getDoc(), "footnote", "linkId")).toEqual([]);
+    expect(atomIds(target.getDoc(), "footnote", "linkId")).toEqual(["x"]);
+  });
+
+  it("resolveAtomPos matches the DOM id against the door, so a mirror-only neighbour resolves", () => {
+    const { editor } = mockEditor(MAIN, docWithMirrorOnlyCitation());
+    const view = {
+      posAtDOM: () => CITE_A_POS,
+      state: editor.state,
+    } as unknown as Parameters<typeof resolveAtomPos>[0];
+    // The NodeView writes `cardAtomEntityId(node)` — "c-b" — to its declared
+    // `domIdAttr`; the probe must read THAT attribute and compare to the door.
+    const atomEl = domWithId(ATOM_REGISTRY.citation.domIdAttr, "c-b");
+    expect(resolveAtomPos(view, atomEl, ATOM_REGISTRY.citation)).toBe(CITE_B_POS);
+  });
+
+  it("source census: no per-kind `attrs[...idAttr]` read on the drag path", () => {
+    for (const rel of [
+      "src/lib/tiptap/inline-atom-grab.ts",
+      "src/components/drop-mode/util/inline-atom-move.ts",
+      "src/components/drop-mode/specs/in-text-atom-grab.ts",
+    ]) {
+      const src = readFileSync(join(process.cwd(), rel), "utf8");
+      expect(src, rel).not.toMatch(/attrs\??\.?\[[^\]]*idAttr/);
+      expect(src, rel).not.toMatch(/dataset\??\.?\[/);
+    }
   });
 });
 

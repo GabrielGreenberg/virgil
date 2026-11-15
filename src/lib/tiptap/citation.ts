@@ -41,7 +41,7 @@ import {
 // Task 232: structural DOM facets (`data-type` / `class`) come from the atom
 // SSOT rather than hardcoded literals, so a NodeView rename can't drift from
 // ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
-import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { ATOM_REGISTRY, cardAtomEntityId } from "@/lib/tiptap/atom-registry";
 import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
 import { rangeHoldsOnlyText } from "@/lib/tiptap/typed-prose-gate";
 import { withClipboardCodec } from "@/lib/tiptap/attr-clipboard-codec";
@@ -306,7 +306,9 @@ export const Citation = Node.create<CitationOptions>({
           // The `data-citation-id` SPELLING comes from the row, like `data-type`
           // and the class (task 645) — it is what the drag ghost strips and
           // the hover bridge reads, and both of those now read it from there too.
-          setAttrIfChanged(dom, CITATION_ATOM.domIdAttr, next.attrs.citationId || "");
+          // The VALUE is the registry's id door (task 1636): per-kind id, else
+          // the `linkId` mirror — what the grab compares it against.
+          setAttrIfChanged(dom, CITATION_ATOM.domIdAttr, cardAtomEntityId(next));
           // The content rebuild (`replaceChildren`) runs only when what it is
           // derived from moved (task 840).
           if (

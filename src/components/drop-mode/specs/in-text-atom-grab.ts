@@ -20,7 +20,7 @@ import {
   type AtomLocation,
 } from "../util/inline-atom-move";
 import { readInlineAtomSource } from "../util/inline-atom-source";
-import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
+import { cardAtomEntityId } from "@/lib/tiptap/atom-registry";
 
 /**
  * Resolve the grabbed atom from the source captured at mousedown — at its
@@ -52,19 +52,20 @@ function resolveCapturedSource(cardKey: string): AtomLocation | null {
   const token = sep > 0 ? cardKey.slice(sep + 1) : "";
   const src = readInlineAtomSource(token);
   if (!src) return null;
-  const idAttr = atomMetaForNodeName(src.nodeName)?.idAttr ?? null;
-  const byId = !!idAttr && !!src.atomId;
+  // `atomId` is set only for a Card-bearing atom (the grab read it through
+  // the registry's id door, task 1636), so its presence IS the by-id test.
+  const byId = !!src.atomId;
   const pos = src.at.get();
   const node = pos === null ? null : src.editor.state.doc.nodeAt(pos);
   if (pos !== null && node && node.type.name === src.nodeName) {
     const confirmed = byId
-      ? node.attrs?.[idAttr!] === src.atomId
+      ? cardAtomEntityId(node) === src.atomId
       : atomContentEquals(node, src.atomNode);
     if (confirmed) {
       return { editor: src.editor, node, from: pos, to: pos + node.nodeSize };
     }
   }
-  if (byId) return findAtomById(src.editor, src.nodeName, idAttr!, src.atomId!);
+  if (byId) return findAtomById(src.editor, src.nodeName, src.atomId!);
   return null;
 }
 
