@@ -52,7 +52,8 @@ vi.mock("@/lib/storage", async () =>
 );
 
 import { ActionsMenuPanel } from "../../ActionsMenuPanel";
-import { formatShortcut, keysFromKeybinding } from "../../Kbd";
+import { formatShortcut } from "../../Kbd";
+import { keysFromKeybinding } from "@/lib/keybinding";
 import { VIRGIL_ACTION_REGISTRY } from "@/lib/actions/action-registry";
 import { DragHandleMenuProvider } from "../../editor-layout/card-actions/drag-handle-menu-context";
 

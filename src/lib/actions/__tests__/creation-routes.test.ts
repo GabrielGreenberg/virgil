@@ -28,6 +28,7 @@ import {
 } from "../creation-routes";
 import { VIRGIL_ACTION_REGISTRY, type ActionId } from "../action-registry";
 import { walkFiles } from "../../__tests__/_source-scan";
+import { keysFromKeybinding } from "@/lib/keybinding";
 
 /** The sentence a panel with no "+" of its own teaches. */
 const sentenceFor = (id: ActionId, hasAdd = false) =>
@@ -94,6 +95,66 @@ describe("the derived sentence names surfaces the registry declares", () => {
       expect(slash, `${id} should offer a slash route`).toBeTruthy();
       expect(VIRGIL_COMMAND_NAMES).toContain(slash!.token.replace(/^\\/, ""));
     }
+  });
+});
+
+describe("the typed and keyboard clauses READ the row (task 2026-11-15-1632)", () => {
+  it("names a chord through the one formatter, never the raw PM binding", () => {
+    // Bold is lightning + slash + keyboard; with room for five clauses the
+    // keyboard one is reached. Its token is the portable chord `<Kbd>` paints
+    // (⌘B on a Mac) — the same string the ⚡ grid's hint reads.
+    const kb = creationRoutesFor("bold", 5).find((r) => r.surface === "keyboard");
+    expect(kb).toBeTruthy();
+    expect(kb!.token).toBe(keysFromKeybinding("Mod-b"));
+    expect(kb!.token).not.toBe("Mod-b");
+    expect(kb!.tokenStyle).toBe("keys");
+  });
+
+  it("teaches the trigger a user actually types, not one invented from the slash name", () => {
+    const typed = (id: ActionId) =>
+      creationRoutesFor(id, 5).find((r) => r.surface === "typed")?.token;
+    // `\list{…}` does nothing; `- ` makes the list.
+    expect(typed("bullet-list")).toBe("- ");
+    expect(typed("ordered-list")).toBe("1. ");
+    expect(typed("blockquote")).toBe("> ");
+    expect(typed("footnote")).toBe("\\footnote{…}");
+    expect(typed("inline-math")).toBe("$…$");
+    for (const id of ["bullet-list", "ordered-list", "blockquote"] as const) {
+      expect(typed(id)).not.toMatch(/^\\/);
+    }
+  });
+
+  it("every typed clause is the row's declared example — and typing it fires the rule", () => {
+    // The coverage assertion carries the proof; this pins that it holds for
+    // every row the sentence could ever describe, and that it is not vacuous.
+    let checked = 0;
+    for (const row of Object.values(VIRGIL_ACTION_REGISTRY)) {
+      if (!row?.surfaces.typed) continue;
+      const example = row.typedExample;
+      expect(example, `${row.id} declares a typedExample`).toBeTruthy();
+      const re = new RegExp(row.inputRulePattern!.source, row.inputRulePattern!.flags);
+      const fires = [...example!].some((_, i) => re.test(example!.slice(0, i + 1)));
+      expect(fires, `${row.id}: typing ${JSON.stringify(example)} fires ${row.inputRulePattern}`).toBe(true);
+      const typed = creationRoutesFor(row.id, 5).find((r) => r.surface === "typed");
+      expect(typed?.token).toBe(example);
+      checked++;
+    }
+    expect(checked).toBeGreaterThanOrEqual(8);
+  });
+
+  it("the coverage assertion refuses an example that never fires its rule", async () => {
+    const { assertActionCoverage } = await import("../action-registry");
+    const restore = VIRGIL_ACTION_REGISTRY["bullet-list"];
+    (VIRGIL_ACTION_REGISTRY as Record<string, unknown>)["bullet-list"] = {
+      ...restore,
+      typedExample: "\\list{…}",
+    };
+    try {
+      expect(assertActionCoverage().join("\n")).toMatch(/bullet-list.*never fires/);
+    } finally {
+      (VIRGIL_ACTION_REGISTRY as Record<string, unknown>)["bullet-list"] = restore;
+    }
+    expect(assertActionCoverage().filter((p) => /typedExample/.test(p))).toEqual([]);
   });
 });
 

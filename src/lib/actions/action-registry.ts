@@ -901,6 +901,13 @@ export interface ActionSpec {
    *  (citation / footnote). The RegExp the plugin matches against the text
    *  before the caret. */
   inputRulePattern?: RegExp;
+  /** What a user literally TYPES to fire `inputRulePattern` (`"- "`, `$…$`,
+   *  `\cite{…}`), present iff `surfaces.typed` (task 2026-11-15-1632). The
+   *  pattern is a RegExp no sentence can quote, and the slash name is not the
+   *  trigger (`\list{…}` does nothing; `- ` makes the list) — so a sentence
+   *  that teaches the typed route reads THIS. `assertActionCoverage` proves it
+   *  true: typing it, one character at a time, must fire the row's pattern. */
+  typedExample?: string;
   /** Global keybinding string (TipTap/PM form, e.g. "Mod-b"), present iff
    *  `surfaces.keyboard`. */
   keybinding?: string;
@@ -3234,6 +3241,7 @@ const INLINE_MATH_ACTION_ROW: ActionSpec = {
   // else. The pattern is the census object the plugin itself matches with.
   surfaces: { lightning: true, typed: true },
   inputRulePattern: TYPED_LATEX_INPUT_RULES["inline-math"],
+  typedExample: "$…$",
   // Task 396: the CONTAINER-aware inline gate, not the bare `blockApplies` —
   // `$x$` in a `codeBlock` / `latexComment` splits the verbatim block.
   makes: { node: "inlineMath" },
@@ -3249,6 +3257,7 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   // Same correction as its inline twin above: `displayMathInput` owns `$$`.
   surfaces: { lightning: true, typed: true },
   inputRulePattern: TYPED_LATEX_INPUT_RULES["display-math"],
+  typedExample: "$$…$$",
   makes: { node: "displayMath" },
   applies: blockInsertApplies("displayMath", MATH_CAPTURE),
   refusal: blockInsertRefusal("displayMath", MATH_CAPTURE),
@@ -3557,6 +3566,8 @@ function formatToggleRow(
          */
         keybinding: string;
         inputRulePattern: RegExp;
+        /** What the user types to fire it (`"- "` / `"1. "` / `"> "`). */
+        typedExample: string;
       }
     | {
         mark: string;
@@ -3579,6 +3590,7 @@ function formatToggleRow(
   const slash = opts.wrapper !== undefined ? opts.slash : markSlash(opts.mark);
   const keybinding = opts.keybinding;
   const inputRulePattern = opts.wrapper !== undefined ? opts.inputRulePattern : undefined;
+  const typedExample = opts.wrapper !== undefined ? opts.typedExample : undefined;
   return {
     id,
     label,
@@ -3595,6 +3607,7 @@ function formatToggleRow(
     ...(slash?.aliases ? { slashAliases: slash.aliases } : {}),
     keybinding,
     ...(inputRulePattern ? { inputRulePattern } : {}),
+    ...(typedExample !== undefined ? { typedExample } : {}),
     makes: opts.wrapper !== undefined ? { node: opts.wrapper } : { mark: opts.mark },
     toggle: true,
     applies:
@@ -3686,9 +3699,9 @@ const MARK_TOGGLE_ACTION_ROWS: readonly ActionSpec[] = [
   SMALL_CAPS_ACTION_ROW,
   CODE_ACTION_ROW,
 ];
-const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] }, keybinding: "Mod-Shift-8", inputRulePattern: bulletListInputRegex });
-const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" }, keybinding: "Mod-Shift-7", inputRulePattern: orderedListInputRegex });
-const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: "blockquote", slash: { name: "quote", aliases: ["quotation"] }, keybinding: "Mod-Shift-b", inputRulePattern: blockquoteInputRegex });
+const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: "bulletList", slash: { name: "list", aliases: ["itemize"] }, keybinding: "Mod-Shift-8", inputRulePattern: bulletListInputRegex, typedExample: "- " });
+const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: "orderedList", slash: { name: "enumerate" }, keybinding: "Mod-Shift-7", inputRulePattern: orderedListInputRegex, typedExample: "1. " });
+const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: "blockquote", slash: { name: "quote", aliases: ["quotation"] }, keybinding: "Mod-Shift-b", inputRulePattern: blockquoteInputRegex, typedExample: "> " });
 
 /**
  * The text-color row (CHIP 6b). Unlike the toggles, this opens the
@@ -4071,8 +4084,10 @@ function cardRow(id: CardActionId): ActionSpec {
     // `@/lib/footnote-commands`). Both leaves are the SSOT the live input rules
     // ALSO import, so the four surfaces can never recognize a different
     // vocabulary — the single-sourcing is via that shared leaf, not via this row.
-    ...(isCitation ? { inputRulePattern: CITE_RE_FULL } : {}),
-    ...(isFootnote ? { inputRulePattern: FOOTNOTE_INPUT_RULE_PATTERN } : {}),
+    ...(isCitation ? { inputRulePattern: CITE_RE_FULL, typedExample: "\\cite{…}" } : {}),
+    ...(isFootnote
+      ? { inputRulePattern: FOOTNOTE_INPUT_RULE_PATTERN, typedExample: "\\footnote{…}" }
+      : {}),
     applies: (ctx) => cardApplies(id, ctx, selection),
     refusal: (ctx) => cardRefusal(id, ctx),
     resolveScope: (ctx) => cardResolveScope(id, ctx) ?? { from: 0, to: 0 },
@@ -4182,6 +4197,7 @@ const LATEX_COMMENT_ACTION_ROW: ActionSpec = {
   selection: "ignored",
   surfaces: { typed: true },
   inputRulePattern: TYPED_LATEX_INPUT_RULES["latex-comment"],
+  typedExample: "% ",
   // A comment can only be MADE from a paragraph — inside a verbatim block, a
   // title field or an atom block there is nothing to convert. Reported as
   // "disabled" (present, greyed) rather than "absent", matching every other
@@ -4560,6 +4576,23 @@ const COVERED_TITLE_IDS: readonly TitleActionId[] = keysOf(TITLE_ACTION_ROWS);
 const COVERED_LATEX_COMMENT_IDS: readonly LatexCommentActionId[] = keysOf(
   LATEX_COMMENT_ACTION_ROWS,
 );
+
+
+/**
+ * Does TYPING `example`, one character at a time, fire `pattern`? An input rule
+ * is tested against the text before the caret after each keystroke, so the
+ * honest question is whether SOME prefix matches — `$…$` fires the inline-math
+ * rule at `$…` (its closing `$` is the trigger character, not part of the
+ * match), `- ` fires the bullet rule only once the space lands. Task
+ * 2026-11-15-1632: what makes a `typedExample` provably true.
+ */
+function typingFires(example: string, pattern: RegExp): boolean {
+  const re = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ""));
+  for (let n = 1; n <= example.length; n++) {
+    if (re.test(example.slice(0, n))) return true;
+  }
+  return false;
+}
 
 /**
  * THE typed-surface partition — which ids own an input rule, DERIVED from live
@@ -5261,6 +5294,24 @@ export function assertActionCoverage(): string[] {
     if (!row.surfaces.typed && row.inputRulePattern) {
       problems.push(
         `[actions] row "${row.id}" records an inputRulePattern without claiming surfaces.typed`,
+      );
+    }
+    // Task 2026-11-15-1632: the example a sentence teaches stands or falls with
+    // the flag too, and must be TRUE — typing it fires the row's own pattern.
+    if (!!row.surfaces.typed !== (row.typedExample !== undefined)) {
+      problems.push(
+        row.surfaces.typed
+          ? `[actions] row "${row.id}" sets surfaces.typed but declares no typedExample (what the user types to fire it)`
+          : `[actions] row "${row.id}" declares a typedExample without claiming surfaces.typed`,
+      );
+    }
+    if (
+      row.inputRulePattern &&
+      row.typedExample !== undefined &&
+      !typingFires(row.typedExample, row.inputRulePattern)
+    ) {
+      problems.push(
+        `[actions] row "${row.id}"'s typedExample ${JSON.stringify(row.typedExample)} never fires its inputRulePattern ${row.inputRulePattern} when typed`,
       );
     }
   }

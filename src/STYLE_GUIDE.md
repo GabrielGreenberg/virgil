@@ -2950,7 +2950,9 @@ render a shortcut — no hardcoded `⌘…` strings. Used inside hint bubbles
 (`data-hint-keys`), menus, and popover hints. `useIsMac()` / `formatShortcut()`
 back it (`src/components/Kbd.tsx`). A chord an ACTION has is stated once, on
 its registry row (`keybinding`, ProseMirror form `Mod-Shift-s`), and a surface
-advertises it via `keysFromKeybinding(row.keybinding)` — never restated; the
+advertises it via `keysFromKeybinding(row.keybinding)` (a pure leaf,
+`src/lib/keybinding.ts`, so lib code that names a chord — the empty-state
+creation sentence — reads it without importing a component) — never restated; the
 chord never goes into a NAME/`aria-label`. `shortcut-glyph-census.test.ts`
 forbids modifier glyphs outside `Kbd.tsx`.
 

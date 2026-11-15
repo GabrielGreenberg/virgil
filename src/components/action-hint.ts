@@ -1,5 +1,5 @@
 import { iconHint } from "@/components/Hint";
-import { keysFromKeybinding } from "@/components/Kbd";
+import { keysFromKeybinding } from "@/lib/keybinding";
 import type { ActionSpec } from "@/lib/actions/action-registry";
 
 /**

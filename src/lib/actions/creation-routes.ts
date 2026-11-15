@@ -39,6 +39,7 @@ import {
   type ActionSpec,
   type ActionSurface,
 } from "./action-registry";
+import { keysFromKeybinding } from "@/lib/keybinding";
 
 /**
  * One way in, in the three pieces every clause is built from: an imperative
@@ -56,8 +57,9 @@ export interface CreationRoute {
   verb: string;
   /** What the user looks for: `\ex`, `Example`, `+`. */
   token: string;
-  /** How the token is painted: a LaTeX-ish literal vs. an on-screen control. */
-  tokenStyle: "code" | "control";
+  /** How the token is painted: a LaTeX-ish literal, an on-screen control, or a
+   *  portable chord (`Mod+b`) that the painter hands to `<Kbd>`. */
+  tokenStyle: "code" | "control" | "keys";
   /** The rest of the clause, e.g. " in the editor". Leading space included. */
   tail: string;
 }
@@ -126,14 +128,16 @@ function routeFor(spec: ActionSpec, surface: ActionSurface): CreationRoute | nul
         tail: " from a block’s grab bar",
       };
     case "typed":
-      // The input-rule trigger is a RegExp, which no sentence can quote. What a
-      // user types to fire it is the slash name in LaTeX form, so a row with no
-      // slash name has no describable typed route either.
-      return spec.slashName
+      // The input-rule trigger is a RegExp, which no sentence can quote — and
+      // the slash name is NOT what fires it (`\\list{…}` does nothing; `- `
+      // makes the list). The row declares what the user types, and the coverage
+      // assertion proves that typing it fires the row's own pattern
+      // (task 2026-11-15-1632). No declaration, no describable route.
+      return spec.typedExample !== undefined
         ? {
             surface,
             verb: "type",
-            token: `\\${spec.slashName}{…}`,
+            token: spec.typedExample,
             tokenStyle: "code",
             tail: " in the document",
           }
@@ -143,8 +147,11 @@ function routeFor(spec: ActionSpec, surface: ActionSurface): CreationRoute | nul
         ? {
             surface,
             verb: "press",
-            token: spec.keybinding,
-            tokenStyle: "control",
+            // The portable chord, through the ONE translation every printed
+            // shortcut reads — painted by `<Kbd>` (⌘B on a Mac), never the raw
+            // PM spelling `Mod-b` (task 2026-11-15-1632).
+            token: keysFromKeybinding(spec.keybinding),
+            tokenStyle: "keys",
             tail: "",
           }
         : null;
