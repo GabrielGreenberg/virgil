@@ -274,7 +274,7 @@ function makeWorld(network: Record<string, FakeResponse>) {
     if (!resp) throw new TypeError("Failed to fetch");
     return resp.clone();
   };
-  return { stores, fetched, caches, fetch };
+  return { stores, fetched, caches, fetch, claims: 0 };
 }
 
 function loadWorker(
@@ -289,7 +289,12 @@ function loadWorker(
       listeners[type] = fn;
     },
     skipWaiting: () => {},
-    clients: { matchAll: async () => liveWindows.map((id) => ({ id })) },
+    clients: {
+      matchAll: async () => liveWindows.map((id) => ({ id })),
+      claim: async () => {
+        world.claims++;
+      },
+    },
   };
   vm.runInNewContext(source, {
     self,
@@ -859,5 +864,48 @@ describe("task 1482 — a precached path requested with a query is the precached
     const body = SW_SOURCE.slice(SW_SOURCE.indexOf("async function handle("));
     expect(body).toContain("precacheKeyOf(request)");
     expect(body).not.toMatch(/\.match\(request\)|heldCopy\(cache, request\)|put(?:Pinned|Cached)\(cache, request\b|BUILD_SHAS\.get\(request/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// task 1633 — the FIRST install claims its windows; no update ever does
+// ---------------------------------------------------------------------------
+
+describe("task 1633 — claim on the first install only", () => {
+  it("an empty ledger and no other build cache: activate claims", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    await world.caches.open("virgil-fonts");
+    await world.caches.open(cacheName);
+    await loadWorker(source, world).activate();
+    expect(world.claims).toBe(1);
+  });
+
+  it("an update (a ledger on record) never claims", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    await world.caches.open("virgil-A");
+    await seedLedger(world, ["virgil-A"]);
+    await world.caches.open(cacheName);
+    await loadWorker(source, world).activate();
+    expect(world.claims).toBe(0);
+  });
+
+  it("a pre-ledger install (empty ledger, but an older build cache held) never claims", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    await world.caches.open("virgil-old");
+    await world.caches.open(cacheName);
+    await loadWorker(source, world).activate();
+    expect(world.claims).toBe(0);
+  });
+
+  it("re-activating the same build (ledger holds only itself) never claims", async () => {
+    const { source, cacheName } = stampedWorker();
+    const world = makeWorld({});
+    await seedLedger(world, [cacheName]);
+    await world.caches.open(cacheName);
+    await loadWorker(source, world).activate();
+    expect(world.claims).toBe(0);
   });
 });
