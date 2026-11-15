@@ -174,6 +174,14 @@ for table_name, table in (("_KIND_SKILL", _KIND_SKILL),
               f"{table_name}[{k!r}] = {v!r} is a skill or a declared writer")
 for k in AI_REQUEST_KINDS:
     check(k in _KIND_SKILL, f"wire kind {k!r} names its responder in _KIND_SKILL")
+# task 1629: a `virtual:<panel>:` id carries no kind, so every panel such an id
+# may name must name its responder — else the reflection files under "apply".
+from _common import VIRTUAL_ID_PANELS  # noqa: E402
+from apply_response import _write_skill  # noqa: E402
+for p in sorted(VIRTUAL_ID_PANELS):
+    check(p in _PANEL_SKILL, f"virtual-id panel {p!r} names its responder in _PANEL_SKILL")
+check(_write_skill(None, "examples") == "create-card",
+      "a Task-less example insert is filed under create-card, not the generic writer")
 check(MECHANICAL_WRITERS == {"revert", "apply", "card-op", "session"},
       "the non-skill writers are exactly the declared four (session: task 1430)")
 

@@ -73,7 +73,10 @@ from bib_family import (
     resolve_bib_family,
 )
 from _common import (
+    AI_REQUEST_KINDS,
+    AI_REQUEST_ROUTING,
     CardLocator,
+    is_ai_request_kind,
     is_dormant_link,
     is_virtual_request_id,
     parse_virtual_request_id,
@@ -515,27 +518,33 @@ CARDED_BUILDERS = {
 }
 
 # AiRequestKind (src/lib/types.ts) to stamp on a synthesized Task / assert on a
-# Workflow-A Task. report-request has no native AiRequestKind — it bridges to a
-# `report` Task (docs/workspace/cards.md → the Reports panel), so it remaps.
-TASK_KIND = {
-    "footnote": "footnote",
-    "citation": "citation",
-    "note": "note",
-    "todo": "todo",
-    "report": "report",
-    "report-request": "report",
-}
+# Workflow-A Task — DERIVED, never spelled (task 1629). A kind the app routes
+# through the card-flag bridge takes the routing manifest's `kind`
+# (ai_request_routing.json, the projection of CARD_REGISTRY[kind].aiRequest):
+# report-request has no native AiRequestKind and bridges to a `report` Task. A
+# kind with no routing row (citation, report — no card-flag of their own) is its
+# own AiRequestKind, asserted so at import. Before, a hand-copy here would keep
+# stamping the old token when the registry re-kinded a kind — the mislabelled-
+# Task class task 682 closed for `--synthesize`.
+def _task_kind(kind: str) -> str:
+    routed = AI_REQUEST_ROUTING.get(kind)
+    task_kind = routed["kind"] if routed else kind
+    if not is_ai_request_kind(task_kind):
+        raise RuntimeError(
+            f"create-card kind {kind!r} maps to {task_kind!r}, which is not an "
+            f"AiRequestKind ({AI_REQUEST_KINDS}) — add a routing row or a kind")
+    return task_kind
+
+
+TASK_KIND = {kind: _task_kind(kind) for kind in CARDED_BUILDERS}
 
 # Workflow-A: the Task `kind`(s) this create-card kind may drain. A 1:1 native
-# AiRequestKind asserts strictly; report-request has none of its own (it is
-# chiefly a Workflow-B / direct kind), so it skips the assertion.
+# AiRequestKind asserts strictly; a kind that only BRIDGES to another kind's
+# Task (report-request → report) has none of its own (it is chiefly a
+# Workflow-B / direct kind), so it skips the assertion.
 WORKFLOW_A_KINDS = {
-    "footnote": {"footnote"},
-    "citation": {"citation"},
-    "note": {"note"},
-    "todo": {"todo"},
-    "report": {"report"},
-    "report-request": set(),
+    kind: ({task_kind} if task_kind == kind else set())
+    for kind, task_kind in TASK_KIND.items()
 }
 
 # A Task flagged ON an existing card is an act-on-existing ask, and for these
@@ -713,10 +722,12 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
 
 
 # The kinds a span can pin (task 1197): every sidecar-anchored card the app can
-# itself anchor to a range (`LinkedAnchorKind`, src/links/links.ts) — and the
-# responder proposals. An atom (footnote / citation) is placed by its marker
-# and an example is a block, so neither takes one.
-RANGE_KINDS = {"note", "todo", "report", "report-request"} | {"suggestion", "comment"}
+# itself anchor to a range (`LinkedAnchorKind`, src/links/links.ts) — READ from
+# card_tables.json `rangeKinds`, pinned to LinkedAnchorKind by
+# card-tables-manifest.test.ts (task 1629) — and the responder proposals. An
+# atom (footnote / citation) is placed by its marker and an example is a block,
+# so neither takes one.
+RANGE_KINDS = set(AR._CARD_TABLES["rangeKinds"]) | {"suggestion", "comment"}
 
 # A suggestion pinned to a span must REWRITE words inside that span (else the
 # range markers split original_text, or the tint sits on words the proposal does

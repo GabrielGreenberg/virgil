@@ -27,6 +27,12 @@
     "                      noop = idempotent {ok, noop:true, reason}; refuse-applied = settle Keep/Revert in the editor first;",
     "                      refuse-terminal = already in the opposite terminal state. Each row's KEY SET is SUGGESTION_STATUSES",
     "                      (src/cards/suggestion-status.ts); the verb set is the doors that consult it.",
+    "  resolvedSuggestionStatuses  the TERMINAL suggestion statuses — src/cards/suggestion-status.ts RESOLVED_SUGGESTION_STATUSES,",
+    "                      verbatim (task 1629). apply_response.RESOLVED_SUGGESTION_STATUSES reads it (settled-proposal gates).",
+    "  safetyLevels        AiRequest.safetyLevel → apply_response subcommand (task 1629); the KEY SET is the app's",
+    "                      AI_REQUEST_SAFETY_LEVELS (src/lib/ai-request-kind.ts). Read as apply_response.SAFETY_LEVEL_SUBCOMMAND.",
+    "  rangeKinds          the create-card kinds a --range span may pin (task 1197/1629): each is a LinkedAnchorKind",
+    "                      (src/links/links.ts) the app itself anchors to a range. create_card.RANGE_KINDS = these | its responders.",
     "  atomBearingPanels   the panels whose cards are card-bearing ATOMS (id = a .tex \\v*id marker; task 1486) —",
     "                      CARD_ATOMS.map(m => panelForCardKind(m.kind)) (src/lib/tiptap/atom-registry.ts), in Python panel",
     "                      tokens via cardSidecars' tsPanel. apply_response.ATOM_BEARING_PANELS: archive/move refuse them,",
@@ -78,5 +84,8 @@
     "reject":  { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "refuse-terminal", "rejected": "noop" },
     "archive": { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "proceed",         "rejected": "proceed" },
     "update":  { "pending": "proceed", "applied": "refuse-applied", "stale": "proceed", "accepted": "proceed",         "rejected": "proceed" }
-  }
+  },
+  "resolvedSuggestionStatuses": ["accepted", "rejected"],
+  "safetyLevels": { "1": "write-silent", "2": "write-with-comment", "3": "complete-task" },
+  "rangeKinds": ["note", "todo", "report", "report-request"]
 }

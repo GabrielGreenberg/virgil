@@ -329,7 +329,17 @@ EXTRA_CARD_SIDECARS: dict[str, tuple[str, str]] = {
 ALL_CARD_SIDECARS: dict[str, tuple[str, str]] = {**PANEL_TO_SIDECAR, **EXTRA_CARD_SIDECARS}
 
 # Skills use this to pick a subcommand from a Task's safetyLevel (spec §8).
-SAFETY_LEVEL_SUBCOMMAND = {1: "write-silent", 2: "write-with-comment", 3: "complete-task"}
+# READ from card_tables.json (task 1629): its key set is pinned to the app's
+# AI_REQUEST_SAFETY_LEVELS, so a new level cannot reach a bare KeyError here.
+SAFETY_LEVEL_SUBCOMMAND: dict[int, str] = {
+    int(level): sub for level, sub in _CARD_TABLES["safetyLevels"].items()
+}
+
+# The TERMINAL suggestion statuses — the app's RESOLVED_SUGGESTION_STATUSES,
+# read from card_tables.json (task 1629) rather than spelled at each gate.
+RESOLVED_SUGGESTION_STATUSES: frozenset[str] = frozenset(
+    _CARD_TABLES["resolvedSuggestionStatuses"]
+)
 
 
 # --- Panel applicability: the ONE table every existing-card mutation op asks ---
@@ -2158,12 +2168,16 @@ _KIND_SKILL = {
 }
 # Source-card panel → responder skill. Names the answer-* skill for a card-flag
 # reply (a `virtual:<panel>:<cardId>` id carries no kind) and disambiguates a
-# bridged comment (kind "suggestion" + linkedTo.panel cutter/revisions).
+# bridged comment (kind "suggestion" + linkedTo.panel cutter/revisions). Its
+# keys cover every `_common.VIRTUAL_ID_PANELS` member (pinned by
+# test_reflect_capture_slice.py, task 1629): `examples` is create_card's own
+# Task-less example block, so its reflection is filed under create-card, not
+# the generic "apply".
 _PANEL_SKILL = {
     "notes": "answer-note-request", "todos": "answer-todo-request",
     "cutter": "answer-cutter-comment", "revisions": "answer-revision-request",
     "footnotes": "draft-footnote", "citations": "find-citation",
-    "reports": "answer-report-request",
+    "reports": "answer-report-request", "examples": "create-card",
 }
 _OP_SKILL = {
     "update": "edit-card", "archive": "archive-card", "restore": "restore-card",
@@ -2754,7 +2768,7 @@ def cmd_update(doc: Path, op: dict) -> dict:
         refusal = _proposal_door_refusal(kind, hit.card, "update")
         if refusal:
             die(refusal)
-        if (card.get("status") or "pending") not in ("accepted", "rejected"):
+        if (card.get("status") or "pending") not in RESOLVED_SUGGESTION_STATUSES:
             _guard_proposal_landing(doc, hit.panel, card)
     txn.mark(sidecar(doc, hit.filename))
 
@@ -2796,7 +2810,7 @@ def _leaving_proposal_origin(kind: str, card) -> str | None:
     accepted/rejected finalized its Task when it got there."""
     if kind not in SUGGESTION_KINDS or not isinstance(card, dict):
         return None
-    if card.get("status") in ("accepted", "rejected"):
+    if card.get("status") in RESOLVED_SUGGESTION_STATUSES:
         return None
     rid = card.get("aiOriginRequestId")
     return rid if isinstance(rid, str) and rid else None
