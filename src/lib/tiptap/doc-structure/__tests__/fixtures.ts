@@ -21,6 +21,16 @@ export const testSchema = new Schema({
       attrs: { uuid: { default: null }, parTitle: { default: null } },
       toDOM: () => ["p", 0],
     },
+    // A kind with NO kind-keyed sub-view (like production's texBlock /
+    // codeBlock): a paragraph ↔ texBlock `setNode` reports itself only through
+    // `changedBlocks` + `blockKindChanged` (task 1638).
+    texBlock: {
+      group: "block",
+      content: "text*",
+      code: true,
+      attrs: { uuid: { default: null } },
+      toDOM: () => ["pre", 0],
+    },
     heading: {
       group: "block",
       content: "inline*",

@@ -978,6 +978,7 @@ export function inspectSteps(
   const exampleContentChangedUuids = new Set<string>();
   let blockOrderChanged = false;
   let blockParTitleChanged = false;
+  let blockKindChanged = false;
 
   // THE LIVE SIDE (task 1493) — what `newDoc` actually holds, collected by the
   // SAME walk a rebuild runs (`collectStructure`), lazily and at most once per
@@ -1154,6 +1155,7 @@ export function inspectSteps(
       if (verdict.changed) changedBlocks.push(entry);
       blockOrderChanged ||= verdict.blockOrderChanged;
       blockParTitleChanged ||= verdict.blockParTitleChanged;
+      blockKindChanged ||= verdict.blockKindChanged;
       continue;
     }
     if (!wasRemoved && prevBlocks?.has(uuid)) {
@@ -1347,6 +1349,7 @@ export function inspectSteps(
     changedBlocks,
     blockOrderChanged,
     blockParTitleChanged,
+    blockKindChanged,
     addedHeadings: headings.added,
     removedHeadings: headings.removed,
     changedHeadings: headings.changed,

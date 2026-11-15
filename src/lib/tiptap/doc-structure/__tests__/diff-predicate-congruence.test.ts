@@ -28,9 +28,17 @@ import {
   diffExamplesRecomputable,
   diffFiguresRecomputable,
   diffLabelsRecomputable,
+  compareReturnedBlock,
+  mergeStructureDiffs,
+  type BlockEntry,
   type StructureDiff,
 } from "../types";
 import { asMutable, createDocStructureBus, diffWakesStructuralWatchers } from "../bus";
+import { EditorState, type Transaction } from "@tiptap/pm/state";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { inspectSteps } from "../step-inspector";
+import { buildInitial } from "../structure-index";
+import { doc, heading, paragraph, testSchema } from "./fixtures";
 import { EMPTY_STRUCTURE } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -58,14 +66,19 @@ interface FieldSpec {
 const MANIFEST: FieldSpec[] = [
   { name: "addedBlocks", kind: "array", structural: true, busEmit: true },
   { name: "removedBlocks", kind: "array", structural: true, busEmit: true },
-  // changedBlocks: structural (applyDiff folds it) but NOT a bus wake —
-  // blockOrderChanged is co-set.
+  // changedBlocks: structural (applyDiff folds it) but NOT a bus wake — one of
+  // blockOrderChanged / blockParTitleChanged / blockKindChanged is ALWAYS
+  // co-set (pinned by the "co-set invariant" block below, task 1638).
   { name: "changedBlocks", kind: "array", structural: true, busEmit: false },
   { name: "blockOrderChanged", kind: "boolean", structural: true, busEmit: true },
   // blockParTitleChanged: the co-set wake flag for an in-place parTitled FLIP
   // riding changedBlocks (same pattern as blockOrderChanged for moves). Typing
   // inside an existing title flips nothing, so this never fires per-keystroke.
   { name: "blockParTitleChanged", kind: "boolean", structural: true, busEmit: true },
+  // blockKindChanged (task 1638): the co-set wake flag for a same-pos TYPE
+  // change (`setNode`) riding changedBlocks — before it, a paragraph ↔ texBlock
+  // change was a changedBlocks entry with NO flag and woke nothing.
+  { name: "blockKindChanged", kind: "boolean", structural: true, busEmit: true },
   { name: "addedHeadings", kind: "array", structural: true, busEmit: true },
   { name: "removedHeadings", kind: "array", structural: true, busEmit: true },
   { name: "changedHeadings", kind: "array", structural: true, busEmit: true },
@@ -256,5 +269,95 @@ describe("per-kind recomputable predicates + diffTouchesNumberingInputs (task 92
         .map(([k]) => k);
       expect(fired.sort()).toEqual(expected.sort());
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 1638 — the CO-SET INVARIANT the bus wake predicate rests on. The bus
+// omits `changedBlocks` because a flag is supposed to ride every entry in it;
+// that claim was false for a same-pos kind change (task 921) and three
+// comments vouched for it anyway. Here it is a property, checked (a) over the
+// ONE comparator's whole verdict space and (b) over real diffs produced by the
+// inspector and the cross-transaction merge — so a future silent `changed`
+// verdict fails CI instead of hiding behind a comment.
+// ---------------------------------------------------------------------------
+
+function blockMaskHolds(d: StructureDiff): boolean {
+  return (
+    d.changedBlocks.length === 0 ||
+    d.blockOrderChanged ||
+    d.blockParTitleChanged ||
+    d.blockKindChanged
+  );
+}
+
+describe("co-set invariant: changedBlocks never rides alone (task 1638)", () => {
+  it("compareReturnedBlock: every `changed` verdict sets a flag (exhaustive)", () => {
+    const entry = (typeName: string, parTitled: boolean): BlockEntry =>
+      ({ uuid: "u", pos: 0, typeName, parTitled }) as BlockEntry;
+    for (const moved of [false, true])
+      for (const titleFlip of [false, true])
+        for (const kindChange of [false, true]) {
+          const v = compareReturnedBlock(
+            entry("paragraph", false),
+            entry(kindChange ? "texBlock" : "paragraph", titleFlip),
+            moved,
+          );
+          expect(v.changed).toBe(moved || titleFlip || kindChange);
+          if (v.changed) {
+            expect(v.blockOrderChanged || v.blockParTitleChanged || v.blockKindChanged).toBe(true);
+          }
+        }
+  });
+
+  const P = testSchema.nodes.paragraph;
+  const T = testSchema.nodes.texBlock;
+  const H = testSchema.nodes.heading;
+  const inspect = (oldDoc: PMNode, edit: (tr: Transaction) => Transaction) => {
+    const s = EditorState.create({ schema: testSchema, doc: oldDoc });
+    const tr = edit(s.tr);
+    return inspectSteps(tr, s.doc, tr.doc, buildInitial(oldDoc));
+  };
+  const base = () => doc(paragraph("a", "one"), heading("h", 1, "Two"), paragraph("b", "three"));
+  const CORPUS: [string, () => StructureDiff][] = [
+    ["paragraph → texBlock", () => inspect(base(), (tr) => tr.setNodeMarkup(0, T, { uuid: "a" }))],
+    ["heading → paragraph", () => inspect(base(), (tr) => tr.setNodeMarkup(5, P, { uuid: "h" }))],
+    ["paragraph → heading", () =>
+      inspect(base(), (tr) => tr.setNodeMarkup(0, H, { uuid: "a", level: 1 }))],
+    ["par-title flip", () =>
+      inspect(base(), (tr) => tr.setNodeMarkup(0, undefined, { uuid: "a", parTitle: "T" }))],
+    ["move (delete + re-insert)", () =>
+      inspect(base(), (tr) => {
+        const node = tr.doc.child(0);
+        tr.delete(0, node.nodeSize);
+        return tr.insert(tr.doc.content.size, node);
+      })],
+    ["typing", () => inspect(base(), (tr) => tr.insertText("x", 2))],
+    ["cross-transaction re-add as another kind", () => {
+      const d0 = base();
+      const s = EditorState.create({ schema: testSchema, doc: d0 });
+      const t1 = s.tr.delete(0, d0.child(0).nodeSize);
+      const a = inspectSteps(t1, d0, t1.doc, buildInitial(d0));
+      const s1 = EditorState.create({ schema: testSchema, doc: t1.doc });
+      const t2 = s1.tr.insert(0, T.create({ uuid: "a" }, testSchema.text("one")));
+      const b = inspectSteps(t2, t1.doc, t2.doc, buildInitial(t1.doc));
+      return mergeStructureDiffs(a, b);
+    }],
+  ];
+
+  for (const [label, make] of CORPUS) {
+    it(`${label}: changedBlocks ⇒ a co-set wake flag`, () => {
+      const d = make();
+      expect(blockMaskHolds(d)).toBe(true);
+      // …and therefore the bus wakes for every diff the index folds a block for.
+      if (d.changedBlocks.length > 0) expect(diffWakesStructuralWatchers(d)).toBe(true);
+    });
+  }
+
+  it("the corpus actually exercises a sub-view-less kind change (not vacuous)", () => {
+    const d = CORPUS[0][1]();
+    expect(d.changedBlocks.length).toBe(1);
+    expect(d.blockKindChanged).toBe(true);
+    expect(d.addedHeadings.length + d.removedHeadings.length).toBe(0);
   });
 });
