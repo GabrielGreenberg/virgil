@@ -14,26 +14,32 @@
  * a token embedded in the cardKey (`atom-grab:<token>`) so a stale slot
  * from an abandoned gesture can never satisfy a later one.
  *
- * The captured `pos` is valid for the gesture's lifetime because a
- * drop-mode gesture is synchronous (no typing mutates the doc between
- * grab and release) — but a COLLAB peer's edit is not the gesture's, and
- * that is the async gap the position cannot survive. So the capture also
- * carries the atom's durable `atomId` where its kind has one, and the spec
- * re-resolves by IDENTITY at commit (task 648, the "addressing the live
- * document across an async gap" law). The id-less kinds (`ref`,
- * `inline-math`, `dynamic` — no Card, `ATOM_REGISTRY.idAttr: null`) have no
- * id, so the capture carries the grabbed NODE itself and the commit confirms
- * by CONTENT (task 1574): two content-equal id-less atoms are interchangeable,
- * so content equality is exactly the identity a position hint needs. A kind
- * check alone is not — `\ref{c}` landing where `\ref{b}` was passes it.
+ * No typing mutates the doc between grab and release — but a COLLAB peer's
+ * edit, an agent writeback reloaded into the view, or a timed transaction is
+ * not the gesture's, and that is the async gap a raw position cannot survive.
+ * So the capture's position is FOLLOWED (`at`, a `trackPos` handle started at
+ * mousedown, task 1635): it is mapped through every transaction that lands
+ * mid-drag and reads `null` once the spot itself was deleted. The followed
+ * position is then CONFIRMED by identity (task 648, the "addressing the live
+ * document across an async gap" law): the durable `atomId` where the kind has
+ * one — which also re-finds the atom anywhere if the position fails — and, for
+ * the id-less kinds (`ref`, `inline-math`, `dynamic` — no Card,
+ * `ATOM_REGISTRY.idAttr: null`), the grabbed NODE's content (task 1574). An
+ * id-less atom has nothing to re-find it by, so a followed position that no
+ * longer holds it is a refusal, never a nearest-content-match guess (which
+ * moved a DIFFERENT identical `$x$` once the grabbed one had shifted).
  *
- * The rule, stated once: **id where the registry has one, content fingerprint
- * otherwise.**
+ * The rule, stated once: **follow the position; confirm by id where the
+ * registry has one, content fingerprint otherwise.**
+ *
+ * The slot OWNS the `at` handle: overwriting or clearing the slot disposes it,
+ * and the gesture clears the slot on every way its session ends.
  */
 
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { AtomKind } from "@/lib/tiptap/atom-registry";
+import type { TrackedPos } from "@/lib/tiptap/tracked-pos";
 
 export interface CapturedAtomSource {
   /** Opaque token echoed in the cardKey (`atom-grab:<token>`). */
@@ -53,13 +59,15 @@ export interface CapturedAtomSource {
   nodeName: string;
   /** The editor the atom lives in (main or a card-body editor). */
   editor: Editor;
-  /** Document position of the atom at grab time. */
-  pos: number;
+  /** The atom's position, FOLLOWED from mousedown through every transaction
+   *  that landed since (task 1635) — `get()` is `null` once the spot was
+   *  deleted. A hint the commit confirms by identity, never trusts alone. */
+  at: TrackedPos;
   /**
    * The atom's entity id (`footnoteId` / `citationId`) at grab time, or `null`
-   * for the id-less kinds. This — not `pos` — is what the commit resolves by
-   * when it is present: a position is an address in a document that may have
-   * moved under the gesture.
+   * for the id-less kinds. Where present it CONFIRMS the followed position and,
+   * should that fail, re-finds the atom anywhere in the document: the id is the
+   * same atom whatever the document did.
    */
   atomId: string | null;
   /**
@@ -73,8 +81,10 @@ export interface CapturedAtomSource {
 
 let current: CapturedAtomSource | null = null;
 
-/** Record the grabbed atom. Overwrites any prior slot (one session at a time). */
+/** Record the grabbed atom. Overwrites any prior slot (one session at a time),
+ *  disposing the tracker it held. */
 export function stashInlineAtomSource(source: CapturedAtomSource): void {
+  if (current && current.at !== source.at) current.at.dispose();
   current = source;
 }
 
@@ -85,5 +95,6 @@ export function readInlineAtomSource(token: string): CapturedAtomSource | null {
 
 /** Clear the slot — called on gesture commit, cancel, and cleanup. */
 export function clearInlineAtomSource(): void {
+  current?.at.dispose();
   current = null;
 }
