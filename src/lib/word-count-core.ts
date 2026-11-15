@@ -45,6 +45,7 @@ import {
   LATEX_VERBATIM_MARK,
 } from "@/lib/latex-lexer";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { isComposedJson } from "@/lib/doc-products/composed-json";
 
 export type Category =
   | "mainText"
@@ -342,22 +343,34 @@ function tallyParts(cats: Record<Category, string[]>): CategoryCounts {
 }
 
 /**
- * Per-BLOCK tally cache, keyed on block-JSON identity (task 1479).
+ * Per-BLOCK tally cache, keyed on block-JSON identity (tasks 1479, 1631).
  *
- * The tally is EXACTLY ADDITIVE over top-level blocks: entering any non-text
+ * The tally is EXACTLY ADDITIVE over block children: entering any non-text
  * node resets the walker's `glue`, so no part ever spans two blocks; parts are
  * joined with `" "`, so no word spans two blocks either; and `characters`
- * strips whitespace. The whole-document tally is therefore the per-category
- * SUM of per-block tallies — pinned against the direct walk in
- * `word-count-core.test.ts`.
+ * strips whitespace. A container's tally is therefore the per-category SUM of
+ * its block children's tallies — at the top level (the doc) and at EVERY
+ * depth below it — pinned against the direct walk in `word-count-core.test.ts`.
  *
  * The DocProducts pipeline hands every consumer a `docJson` whose unchanged
- * top-level children keep their object identity (block-caches.ts: composed
- * JSON is cached per PM node and never mutated), so a WeakMap keyed on the
- * block's JSON IS the incremental diff: a typing pause recounts the edited
- * blocks only, in the Outline AND in Tier B. A caller holding fresh JSON
- * (`doc.toJSON()`, a selection slice) simply misses every time — the same cost
- * as the direct walk, and the entries die with the JSON.
+ * children keep their object identity AT EVERY DEPTH (block-caches.ts: a
+ * container's JSON is COMPOSED from cached child entries, never mutated). PM
+ * re-creates every ancestor of an edited node, so a cache that stopped at the
+ * top-level block would miss on a whole list for a keystroke in one item and
+ * re-walk the container — the container-granularity rule of the keystroke
+ * law (task 337) says the cache RECURSES instead. It does so exactly where
+ * block-caches composed (`isComposedJson`, the outcome of its ONE schema-
+ * derived predicate `isBlock && !isTextblock`): a typing pause recounts the
+ * edited PATH only — O(depth) walks, in the Outline AND in Tier B.
+ *
+ * Sound because every composed container takes the walker's DEFAULT arm (no
+ * named arm is a container — the context-changing arms are textblocks, the
+ * footnote's body lives in attrs) and so walks its children in the context it
+ * was entered with, which for a block child is always `mainText`; pinned for
+ * every container the live schema declares in `word-count-schema-sweep.test.ts`.
+ * A caller holding fresh JSON (`doc.toJSON()`, a selection slice) is never
+ * composed, so it walks each block directly — the same cost as before, and the
+ * entries die with the JSON.
  *
  * Cached records are frozen: they are shared by every reader of that block.
  */
@@ -369,7 +382,8 @@ export function getBlockTallyCacheStats(): Readonly<typeof tallyCacheStats> {
   return { ...tallyCacheStats };
 }
 
-/** THE per-block door: one top-level block's tally, cached by JSON identity. */
+/** THE per-block door: one block's tally, cached by JSON identity — and,
+ *  for a composed container, the cached sum of its children's tallies. */
 export function blockCategoryCounts(block: JSONContent): CategoryCounts {
   const hit = blockTallyCache.get(block);
   if (hit) {
@@ -377,7 +391,10 @@ export function blockCategoryCounts(block: JSONContent): CategoryCounts {
     return hit;
   }
   tallyCacheStats.misses++;
-  const t = tallyParts(collectCategoryParts(block));
+  const t =
+    isComposedJson(block) && block.content
+      ? sumTallies(block.content)
+      : tallyParts(collectCategoryParts(block));
   Object.freeze(t.words);
   Object.freeze(t.characters);
   const frozen = Object.freeze(t);
@@ -388,7 +405,7 @@ export function blockCategoryCounts(block: JSONContent): CategoryCounts {
 /**
  * Precompute per-top-level-block category word counts so per-heading section
  * sums are O(blocks) instead of O(blocks × headings). Through the per-block
- * cache, so a re-render after a typing pause recounts only the changed blocks.
+ * cache, so a re-render after a typing pause recounts only the changed paths.
  */
 export function buildPerBlockCounts(doc: JSONContent | null): Record<Category, number>[] {
   if (!doc?.content) return [];
@@ -458,14 +475,19 @@ export function sumIncludedWords(
  */
 export function computeCategoryCounts(doc: JSONContent): CategoryCounts {
   // A whole document SUMS its cached per-block tallies (additivity: see
-  // `blockCategoryCounts`), so an idle recount costs O(changed blocks) walks
+  // `blockCategoryCounts`), so an idle recount costs O(changed paths) walks
   // plus O(blocks) integer adds. Any other subtree is walked directly.
   if (doc.type !== "doc" || !doc.content) {
     return tallyParts(collectCategoryParts(doc));
   }
+  return sumTallies(doc.content);
+}
+
+/** Per-category sum of block children's cached tallies (fresh records). */
+function sumTallies(blocks: readonly JSONContent[]): CategoryCounts {
   const words = zeroByCategory();
   const characters = zeroByCategory();
-  for (const block of doc.content) {
+  for (const block of blocks) {
     const t = blockCategoryCounts(block);
     for (const cat of ALL_CATEGORIES) {
       words[cat] += t.words[cat];
