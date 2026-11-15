@@ -166,7 +166,7 @@ def _move_key(bucket: dict, old: str, new: str) -> int:
     return 1
 
 
-def rekey_annotations(state: Any, old: str, new: str) -> int:
+def rekey_annotations(state: Any, old: str, new: str, bib_keys: list[str] | None = None) -> int:
     """Re-key `old → new` in either annotations shape. V2's `byUid` needs
     nothing (the uid survives the rename); its orphan bucket does."""
     if not isinstance(state, dict):
@@ -182,7 +182,7 @@ def rekey_annotations(state: Any, old: str, new: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def rekey_bib_review(state: Any, old: str, new: str) -> int:
+def rekey_bib_review(state: Any, old: str, new: str, bib_keys: list[str] | None = None) -> int:
     """Re-point every review row whose `bibKey` is `old`. A row with an
     `entryUid` already survives by uid; its `bibKey` is the readable mirror the
     skill side (and the flag-OFF app) still matches on, so it moves too."""
@@ -202,17 +202,22 @@ def rekey_bib_review(state: Any, old: str, new: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _rekey_citation_refs(state: Any, old: str, new: str) -> int:
+def _rekey_citation_refs(state: Any, old: str, new: str, bib_keys: list[str] | None = None) -> int:
     import rename_citekey as RC  # lazy: RC is the .tex rewriter's home
 
     if not isinstance(state, dict):
         return 0
-    _, n = RC.rewrite_citations_json(state, old, new)
+    _, n = RC.rewrite_citations_json(state, old, new, bib_keys)
     return n
 
 
-#: rule → in-place re-keyer `(state, old, new) -> n_changed`.
-REKEYERS: dict[str, Callable[[Any, str, str], int]] = {
+#: rule → in-place re-keyer `(state, old, new, bib_keys=None) -> n_changed`.
+#: `bib_keys` (the bib's keys BEFORE the rename) feeds the key-equality door
+#: `rename_citekey.cites_renamed_entry` (task 1634) where a rule matches CITED
+#: spellings (citation cards: `\cite{smith2020}` follows a rename of
+#: `Smith2020`). The annotation and bib-review rules key the ENTRY'S own
+#: spelling, which is `old` exactly, so they accept and ignore it.
+REKEYERS: dict[str, Callable[..., int]] = {
     "citation-refs": _rekey_citation_refs,
     "annotations": rekey_annotations,
     "bib-review": rekey_bib_review,

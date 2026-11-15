@@ -41,13 +41,58 @@ The vocabulary now comes from `cite_commands.py`, the silo's ported twin of
 `src/lib/cite-commands.ts`, so the rename reaches every command the app can
 represent and a registry addition on either side is a CI failure rather than a
 drift.
+
+KEY EQUALITY (task 1634). A cite follows the renamed entry iff the READERS'
+identity resolves it there — `cites_renamed_entry`, the ported twin of the app's
+`citesRenamedEntry` (src/lib/identity/bib-cite-rewrite.ts, task 1511), over the
+bib keys as they stood BEFORE the rename. Exact spelling wins; a case-variant
+(`\cite{smith2020}` against a bib entry `Smith2020`, which the app shows as
+resolved with the case-twin cue) follows, and is written as `<new>` verbatim;
+an exact-case twin in the bib keeps its own cites. Until 1634 these rewriters
+matched exactly, so an agent-driven rename (answer-bib-review --library-sync, a
+library repair) left such a cite — and its citation card — dangling.
 """
 
 from __future__ import annotations
 
 import re
 
+from typing import Callable
+
 from cite_commands import CITE_ARG_GROUP_RE, CITE_COMMAND_RE, cite_match_parts
+
+
+def citekey_identity(key: str) -> str:
+    """The readers' key fold — `citekeyIdentity` in src/lib/bib-address.ts
+    (`key.toLowerCase()`): two keys equal under it are one entry to every reader."""
+    return key.lower()
+
+
+def cites_renamed_entry(old: str, bib_keys: list[str] | None = None) -> Callable[[str], bool]:
+    r"""THE key-equality door of the python rename (task 1634): does the cited
+    spelling `token` name the entry being renamed from `old`?
+
+    Ported from the app's `citesRenamedEntry` (task 1511), which asks the
+    readers' `bibKeyIndex` — exact key first, else the FIRST entry (source
+    order) whose `citekey_identity` matches — of `bib_keys`, the bib AS IT
+    STOOD before the rename. So an exact-case twin (`smith2020` beside
+    `Smith2020`) keeps its own cites, and a third spelling goes wherever the
+    readers send it. `bib_keys` omitted ⇒ no twin is known, and every
+    case-variant of `old` matches. Parity with the TS door is pinned by
+    tests/test_rename_citekey_cascade.py ("the key-equality door").
+    """
+    keys = list(bib_keys) if bib_keys and old in bib_keys else [old, *(bib_keys or [])]
+    exact: set[str] = set(keys)
+    folded: dict[str, str] = {}
+    for key in keys:
+        folded.setdefault(citekey_identity(key), key)
+
+    def names(token: str) -> bool:
+        if token in exact:
+            return token == old
+        return folded.get(citekey_identity(token)) == old
+
+    return names
 
 
 def split_key_list(keys_blob: str) -> list[tuple[int, int]]:
@@ -88,14 +133,16 @@ def split_keys(keys_blob: str) -> list[str]:
     return [keys_blob[a:b] for a, b in split_key_list(keys_blob)]
 
 
-def _rewrite_keys(keys_blob: str, old: str, new: str) -> tuple[str, bool]:
-    r"""Replace `old` with `new` inside a `\citet{a, b, c}` key list, touching
-    nothing but the key itself. Returns (new_blob, changed)."""
+def _rewrite_keys(
+    keys_blob: str, names: Callable[[str], bool], new: str
+) -> tuple[str, bool]:
+    r"""Replace every key `names` accepts with `new` inside a `\citet{a, b, c}`
+    key list, touching nothing but the key itself. Returns (new_blob, changed)."""
     out: list[str] = []
     pos = 0
     changed = False
     for a, b in split_key_list(keys_blob):
-        if keys_blob[a:b] == old:
+        if names(keys_blob[a:b]):
             out.append(keys_blob[pos:a])
             out.append(new)
             pos = b
@@ -104,7 +151,9 @@ def _rewrite_keys(keys_blob: str, old: str, new: str) -> tuple[str, bool]:
     return "".join(out), changed
 
 
-def _rewrite_arg_run(arg_run: str, old: str, new: str) -> tuple[str, bool]:
+def _rewrite_arg_run(
+    arg_run: str, names: Callable[[str], bool], new: str
+) -> tuple[str, bool]:
     r"""Rewrite every key group inside a matched command's WHOLE argument run.
 
     A singular command's run is one `[pre][post]{keys}` group; a biblatex
@@ -118,7 +167,7 @@ def _rewrite_arg_run(arg_run: str, old: str, new: str) -> tuple[str, bool]:
     def _one(m: re.Match[str]) -> str:
         nonlocal changed
         brackets, keys_blob = m.group(1), m.group(2)
-        rewritten, hit = _rewrite_keys(keys_blob, old, new)
+        rewritten, hit = _rewrite_keys(keys_blob, names, new)
         if not hit:
             return m.group(0)
         changed = True
@@ -127,18 +176,22 @@ def _rewrite_arg_run(arg_run: str, old: str, new: str) -> tuple[str, bool]:
     return CITE_ARG_GROUP_RE.sub(_one, arg_run), changed
 
 
-def rewrite_tex(text: str, old: str, new: str) -> tuple[str, int]:
+def rewrite_tex(
+    text: str, old: str, new: str, bib_keys: list[str] | None = None
+) -> tuple[str, int]:
     r"""Rewrite every `\cite*{...,<old>,...}` in `text` to use `<new>`.
 
     Returns (new_text, n_commands_changed). A command is counted once
-    even if it has multiple keys in the list.
+    even if it has multiple keys in the list. Key equality is
+    `cites_renamed_entry(old, bib_keys)` — pass the pre-rename bib keys.
     """
     n = 0
+    names = cites_renamed_entry(old, bib_keys)
 
     def _sub(m: re.Match[str]) -> str:
         nonlocal n
         cmd, star, arg_run = cite_match_parts(m)
-        rewritten, changed = _rewrite_arg_run(arg_run, old, new)
+        rewritten, changed = _rewrite_arg_run(arg_run, names, new)
         if changed:
             n += 1
             return f"\\{cmd}{star}{rewritten}"
@@ -147,8 +200,12 @@ def rewrite_tex(text: str, old: str, new: str) -> tuple[str, int]:
     return CITE_COMMAND_RE.sub(_sub, text), n
 
 
-def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
-    """Rewrite citation cards. Returns (new_data, n_cards_changed)."""
+def rewrite_citations_json(
+    data: dict, old: str, new: str, bib_keys: list[str] | None = None
+) -> tuple[dict, int]:
+    """Rewrite citation cards (`keys` + `command`) by the same key-equality door
+    as `rewrite_tex`. Returns (new_data, n_cards_changed)."""
+    names = cites_renamed_entry(old, bib_keys)
     items = data.get("citations") if isinstance(data, dict) else None
     if not isinstance(items, list):
         return data, 0
@@ -159,14 +216,14 @@ def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
         changed_here = False
         keys = card.get("keys")
         if isinstance(keys, list):
-            new_keys = [new if k == old else k for k in keys]
+            new_keys = [new if isinstance(k, str) and names(k) else k for k in keys]
             if new_keys != keys:
                 card["keys"] = new_keys
                 changed_here = True
         cmd = card.get("command")
         if isinstance(cmd, str):
             rewritten = CITE_COMMAND_RE.sub(
-                lambda m: _sub_command(m, old, new), cmd
+                lambda m: _sub_command(m, names, new), cmd
             )
             if rewritten != cmd:
                 card["command"] = rewritten
@@ -176,9 +233,9 @@ def rewrite_citations_json(data: dict, old: str, new: str) -> tuple[dict, int]:
     return data, n
 
 
-def _sub_command(m: re.Match[str], old: str, new: str) -> str:
+def _sub_command(m: re.Match[str], names: Callable[[str], bool], new: str) -> str:
     cmd, star, arg_run = cite_match_parts(m)
-    rewritten, changed = _rewrite_arg_run(arg_run, old, new)
+    rewritten, changed = _rewrite_arg_run(arg_run, names, new)
     if not changed:
         return m.group(0)
     return f"\\{cmd}{star}{rewritten}"

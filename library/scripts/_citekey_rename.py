@@ -31,6 +31,14 @@ The `references.bib` half goes through `_bib_parse.rename_entry_text` (the
 per-paper door: LAST line-anchored entry, refuses an untrustworthy extent, and a
 merge onto a key the file already has REMOVES the old entry instead of minting a
 duplicate).
+
+Which cites follow (task 1634): the editor's key-equality door
+`rename_citekey.cites_renamed_entry` — a cite follows iff the readers resolve
+it to `old` over the paper's bib keys AS THEY STOOD BEFORE the rename, so
+`\cite{smith2020}` follows a rename of `Smith2020` and an exact-case twin entry
+keeps its own cites. The `old in tex` substring pre-check that used to gate the
+rewrite was exact too (it skipped a paper whose only cite was a case-variant);
+it is gone — the rewriter is a no-op on a paper that never names the entry.
 """
 
 from __future__ import annotations
@@ -39,7 +47,7 @@ import json
 import sys
 from pathlib import Path
 
-from _bib_parse import rename_entry_text
+from _bib_parse import parse_bib_text, rename_entry_text
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _silo_path import import_path_for  # noqa: E402  (the cross-silo door, task 1428)
@@ -59,14 +67,18 @@ def _editor_modules():
     return rename_citekey, citekey_sidecars
 
 
-def rewrite_cite_keys(tex: str, old: str, new: str) -> tuple[str, int]:
+def rewrite_cite_keys(
+    tex: str, old: str, new: str, bib_keys: list[str] | None = None
+) -> tuple[str, int]:
     r"""Every `\cite*{…}` naming `old` rewritten to `new`. Returns (tex, n_commands).
 
     THE library's cite-key rewriter — the editor's `rewrite_tex`: a key is
     delimited by `{`, `,`, `}`, whitespace and `%`-comments, and every optional
-    argument / multi-cite group is walked."""
+    argument / multi-cite group is walked. A cite "names" `old` by the editor's
+    key-equality door (`cites_renamed_entry(old, bib_keys)`, task 1634): pass
+    the paper's pre-rename bib keys so an exact-case twin keeps its cites."""
     rc, _ = _editor_modules()
-    return rc.rewrite_tex(tex, old, new)
+    return rc.rewrite_tex(tex, old, new, bib_keys)
 
 
 def rewrite_cite_keys_many(tex: str, renames: dict[str, str]) -> tuple[str, int]:
@@ -77,9 +89,12 @@ def rewrite_cite_keys_many(tex: str, renames: dict[str, str]) -> tuple[str, int]
     target."""
     n = 0
     parked: dict[str, str] = {}
+    # The renamed keys are the bib keys the door must tell apart: a rename of
+    # `a` must not park a cite of an `A` that is itself being renamed.
+    keys = list(renames)
     for i, old in enumerate(renames):
         token = f"\x00virgil-rename-{i}\x00"
-        tex, k = rewrite_cite_keys(tex, old, token)
+        tex, k = rewrite_cite_keys(tex, old, token, keys)
         n += k
         parked[token] = renames[old]
     for token, new in parked.items():
@@ -92,7 +107,9 @@ def _atomic_write(path: Path, text: str) -> None:
     _atomic_write_text(path, text)
 
 
-def rekey_paper_sidecars(paper_dir: Path, old: str, new: str) -> dict[str, int]:
+def rekey_paper_sidecars(
+    paper_dir: Path, old: str, new: str, bib_keys: list[str] | None = None
+) -> dict[str, int]:
     """Re-key every task-615 citekey-keyed sidecar under `<paper>/virgil/`.
 
     Returns `{filename: n_changed}` for the files that changed. A missing or
@@ -109,7 +126,7 @@ def rekey_paper_sidecars(paper_dir: Path, old: str, new: str) -> dict[str, int]:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        k = cs.REKEYERS[rule](data, old, new)
+        k = cs.REKEYERS[rule](data, old, new, bib_keys)
         if k:
             _atomic_write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
             out[name] = k
@@ -128,8 +145,10 @@ def rename_citekey_in_paper(paper_dir: Path, old: str, new: str) -> list[str]:
     steps: list[str] = []
     refs = paper_dir / "references.bib"
     bib_new = None
+    bib_keys: list[str] | None = None
     if refs.is_file():
         bib_text = refs.read_text(encoding="utf-8")
+        bib_keys = [e["citekey"] for e in parse_bib_text(bib_text)]
         if old in bib_text or _nfd(old) in bib_text:
             candidate, changed = rename_entry_text(bib_text, old, new)
             if changed:
@@ -138,15 +157,14 @@ def rename_citekey_in_paper(paper_dir: Path, old: str, new: str) -> list[str]:
     tex_new, n_tex = None, 0
     if tex_path.is_file():
         tex = tex_path.read_text(encoding="utf-8")
-        if old in tex:
-            tex_new, n_tex = rewrite_cite_keys(tex, old, new)
+        tex_new, n_tex = rewrite_cite_keys(tex, old, new, bib_keys)
     if bib_new is not None:
         _atomic_write(refs, bib_new)
         steps.append("references_bib:renamed")
     if n_tex:
         _atomic_write(tex_path, tex_new)
         steps.append(f"cite:main.tex:{n_tex}")
-    for name, k in rekey_paper_sidecars(paper_dir, old, new).items():
+    for name, k in rekey_paper_sidecars(paper_dir, old, new, bib_keys).items():
         steps.append(f"sidecar:{name}:{k}")
     return steps
 

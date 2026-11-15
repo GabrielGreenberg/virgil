@@ -182,10 +182,17 @@ def find_entry_block(text: str, key: str) -> tuple[str | None, str | None]:
     return text[start:end], (head.group(1) if head else None)
 
 
+def citekeys_in_order(text: str) -> list[str]:
+    """Every `@type{citekey,` key defined in a .bib's text, in FILE ORDER (a
+    duplicate repeats) — the same entries `find_entry_span` can edit (one scan,
+    `_iter_entries`). Order matters to the readers' case-folded lookup, which
+    resolves a third spelling to the FIRST case-variant (task 1634)."""
+    return [e[0] for e in _iter_entries(text.lstrip("\ufeff"))]
+
+
 def all_citekeys(text: str) -> set[str]:
-    """Every `@type{citekey,` key defined in a .bib's text — the same entries
-    `find_entry_span` can edit (one scan, `_iter_entries`)."""
-    return {e[0] for e in _iter_entries(text.lstrip("\ufeff"))}
+    """`citekeys_in_order` as a set — for presence checks."""
+    return set(citekeys_in_order(text))
 
 
 def citekey_of(entry_text: str) -> str | None:
