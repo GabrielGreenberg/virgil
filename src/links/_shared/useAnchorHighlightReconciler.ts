@@ -104,6 +104,11 @@ import {
   marginSideForCardKind,
   type PanelSideMap,
 } from "@/lib/margin-side";
+import { attrSelector } from "@/lib/attr-selector";
+import {
+  paneRootById,
+  resolvePaneMarkers,
+} from "@/components/editor-layout/pane-dom";
 
 const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
@@ -193,6 +198,26 @@ export interface UseAnchorHighlightReconcilerArgs {
    * with no type error and no test failure.
    */
   archivedCardIds: ReadonlySet<string>;
+  /**
+   * The owning `EditorPane`'s `[data-pane-root]` id (task 1639) — the SCOPE
+   * of the panel-card sweep + restamp below.
+   *
+   * N `EditorPane`s are mounted at once (multi-doc keep-alive, the Reader), and
+   * each runs its own reconciler. A document-wide sweep let pane B's run strip
+   * pane A's card stamps (`data-card-selected` / `-hovered`, a popped float's
+   * `data-contains-active-card`), and A's effect does not re-run on return —
+   * so A's window ring was gone until the next hover in A. Card keys are unique
+   * only per DOCUMENT, so a document-wide STAMP also lit a twin mounted by a
+   * second pane of the same doc. Scoped to the pane's TERRITORY (its root plus
+   * the floats it portals — `resolvePaneMarkers`), each run touches only its
+   * own cards: "a departing owner removes only its OWN entry".
+   *
+   * A threaded id, not `usePaneRoot()`: the reconciler runs in the
+   * `EditorPane` body, ABOVE the pane's own `PaneRootContext` provider.
+   * REQUIRED, like the two props above; `null` is the stated "no pane host"
+   * answer (the ladder: visible matches, else all — the pre-1639 reach).
+   */
+  paneRootId: string | null;
 }
 
 /** Walk the editor's footnote + citation nodes into a live atom-id set, for the
@@ -212,6 +237,7 @@ export function useAnchorHighlightReconciler({
   atomRevision,
   panelSides,
   archivedCardIds,
+  paneRootId,
 }: UseAnchorHighlightReconcilerArgs): void {
   const selected = useStoreSelection(store);
   const hover = useStoreHover(store);
@@ -484,14 +510,18 @@ export function useAnchorHighlightReconciler({
     // ── Panel cards live outside the editor root (some in portals) and are
     // React DOM, not PM nodes — raw setAttribute causes no redraw there, so
     // sweep + restamp the [data-card-key]-bearing subset independently. ────
+    // Every query below is scoped to THIS pane's territory (task 1639, see
+    // `paneRootId`): another mounted pane's stamps are its own reconciler's.
     // The popped-card window ring used to select the FloatingPanel via
     // `:has([data-card-hovered])` — the inner attr doesn't inherit up. That
     // :has() was a style-invalidation amplifier (perf Wave 0, plan P5.1), so
     // the reconciler now stamps `data-contains-active-card` UPWARD onto
     // `closest('[data-floating-panel]')` at write time — O(active cards),
     // exactly when it already stamps the card attrs.
-    const stalePanelHosts = document.querySelectorAll<HTMLElement>(
+    const scope = paneRootById(paneRootId);
+    const stalePanelHosts = resolvePaneMarkers(
       "[data-floating-panel][data-contains-active-card]",
+      scope,
     );
     for (const el of stalePanelHosts) {
       el.removeAttribute("data-contains-active-card");
@@ -501,26 +531,23 @@ export function useAnchorHighlightReconciler({
         .closest<HTMLElement>("[data-floating-panel]")
         ?.setAttribute("data-contains-active-card", "true");
     };
-    const stalePanelCards = document.querySelectorAll<HTMLElement>(
+    const stalePanelCards = resolvePaneMarkers(
       `[data-card-key][${DATA_CARD_SELECTED}], [data-card-key][${DATA_CARD_HOVERED}]`,
+      scope,
     );
     for (const el of stalePanelCards) {
       el.removeAttribute(DATA_CARD_SELECTED);
       el.removeAttribute(DATA_CARD_HOVERED);
     }
     for (const key of selectedCardKeys) {
-      const matches = document.querySelectorAll<HTMLElement>(
-        `[data-card-key="${key}"]`,
-      );
+      const matches = resolvePaneMarkers(attrSelector("data-card-key", key), scope);
       for (const el of matches) {
         el.setAttribute(DATA_CARD_SELECTED, "true");
         stampPanelHost(el);
       }
     }
     for (const key of hoveredCardKeys) {
-      const matches = document.querySelectorAll<HTMLElement>(
-        `[data-card-key="${key}"]`,
-      );
+      const matches = resolvePaneMarkers(attrSelector("data-card-key", key), scope);
       for (const el of matches) {
         el.setAttribute(DATA_CARD_HOVERED, "true");
         stampPanelHost(el);
@@ -534,7 +561,9 @@ export function useAnchorHighlightReconciler({
     // `archivedCardIds` is a dep so archiving (or restoring) the card that is
     // currently hovered/selected re-runs the sweep on the same commit — the
     // in-document chrome must vanish with the card, not on the next hover.
-  }, [editor, selected, hover, stableCollections, panelSides, archivedCardIds]);
+    // `paneRootId` is a `useId` — stable for the pane's life; listed for
+    // honesty, it never re-fires the sweep.
+  }, [editor, selected, hover, stableCollections, panelSides, archivedCardIds, paneRootId]);
 }
 
 /** A resolved in-editor NODE/ATOM target before the selected/hovered attr bag

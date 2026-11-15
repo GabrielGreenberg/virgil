@@ -391,7 +391,7 @@ import {
 } from "./PendingChangePill";
 import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
-import { PANE_ROOT_ATTR, PaneRootContext, paneRootById } from "./editor-layout/pane-dom";
+import { PANE_ROOT_ATTR, PaneRootContext, paneRootById, paneRootOf } from "./editor-layout/pane-dom";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import {
   OmniFilterMenu,
@@ -4767,7 +4767,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             prefs: deps.routingPrefs,
             setActiveLeft: deps.setActiveLeft,
             setActiveRight: deps.setActiveRight,
-            focusCard: (cardKey: string) => focusNewCard(cardKey, deps.focusLifetime),
+            // Scoped to THIS pane (task 1639): the card renders here, and a
+            // second pane of the same doc mounts a twin with the same key.
+            focusCard: (cardKey: string) =>
+              focusNewCard(cardKey, deps.focusLifetime, { scope: paneRootOf(ed.view.dom) }),
             // Backlog #2 soft-route reveal: un-collapse the panel's
             // docked side so the new card is visible in the always-on omni
             // background (`setActiveX("omni")` is a no-op in the band-stack
@@ -6239,6 +6242,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   useAnchorHighlightReconciler({
     editor,
     store: cardStoreInst,
+    // This pane's root id: the panel-card sweep + restamp reach only this
+    // pane's territory, never a keep-alive neighbour's cards (task 1639).
+    paneRootId,
     // The SAME live dock map `<Marginalia>` packs its grid against — so the
     // Mode-A anchor rail lands on the edge the card's marker is actually on,
     // not on a side frozen into the sidecar at create time (task 205).

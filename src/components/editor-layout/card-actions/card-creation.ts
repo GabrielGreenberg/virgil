@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateAction } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type {
   UserNote,
   HighlightCard,
@@ -24,6 +24,7 @@ import { panelForCardKind, focusesBodyOnCreate } from "@/cards/predicates";
 import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard } from "@/lib/focus-new-card";
+import { paneRootOf } from "../pane-dom";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import { useViewLifetime } from "@/hooks/useViewLifetime";
 import type { EditorHandle } from "../../Editor";
@@ -330,6 +331,13 @@ export interface CardCreationApi {
   } & AutoFocusOpt) => ArchivedSnippet;
 }
 
+/** The pane root that owns `ed`'s view — null for no (or a destroyed) editor,
+ *  which leaves the focus hunt on the pane-dom ladder. */
+function paneRootOfLiveEditor(ed: Editor | null): HTMLElement | null {
+  if (!ed || ed.isDestroyed) return null;
+  return paneRootOf(ed.view?.dom);
+}
+
 export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   // Owns the new-card focus retry (task 1146): unmount cancels it.
   const focusLifetime = useViewLifetime();
@@ -460,6 +468,9 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         // renders (task 1536).
         focusNewCard(cardPopKey(kind, id), focusLifetime, {
           awaitFloat: opts.mode !== "omni" && fromToolbar(opts),
+          // The card mounts in THIS pane's territory — never hunt a twin a
+          // second pane of the same doc renders (task 1639).
+          scope: paneRootOfLiveEditor(editorRef.current?.getEditor() ?? null),
         });
       }
       if (opts.mode === "omni") return;
@@ -468,7 +479,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // all 13 factories); the assertion documents that invariant.
       else ensurePanelActive(panelForCardKind(kind)!);
     },
-    [store, pin, ensurePanelActive, popCardAtAnchor, focusLifetime],
+    [store, pin, ensurePanelActive, popCardAtAnchor, focusLifetime, editorRef],
   );
 
   const createNote = useCallback<CardCreationApi["createNote"]>(

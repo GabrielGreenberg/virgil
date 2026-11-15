@@ -273,6 +273,7 @@ describe("margin side — the rail follows the DOCK, not a value frozen at creat
           panelSides,
           // Nothing archived in this fixture — stated rather than defaulted.
           archivedCardIds: NONE_ARCHIVED,
+          paneRootId: null,
         }),
       );
       await waitForEditorInit(editor);
