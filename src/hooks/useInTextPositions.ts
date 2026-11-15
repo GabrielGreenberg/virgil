@@ -627,7 +627,8 @@ export function useInTextPositions(
   // each hidden→visible transition by the re-show effect, and reset only by the
   // deferred converge that honours it (a cancelled converge leaves it standing).
   const dirtyWhileHiddenRef = useRef(false);
-  // Editor content width at the last VISIBLE measure. A width change invalidates
+  // Editor content width at the last COMPLETED measure (committed with the pass,
+  // never by a pass that rejects itself). A width change invalidates
   // pod-relative tops (wrap reflows anchors); height/scroll changes do not.
   const lastWidthRef = useRef(0);
   // On a re-show the display flip resizes the (display:none→flex) editor and every
@@ -915,12 +916,16 @@ export function useInTextPositions(
     // Read ONCE per pass and share: the band probes below and the deferred
     // branch's `editorTopInPod` all want it, and each read is a forced layout.
     const editorRect = editorDom.getBoundingClientRect();
-    // Dirty-gate width baseline: record the content width at each visible measure.
-    // A width change while hidden (window resize / panel toggle) re-wraps text and
-    // moves anchors, so the re-show effect compares against this to decide dirty.
-    // clientWidth reads layout without forcing a reflow beyond what follows.
+    // Width baseline: the content width at the last COMPLETED measure. A width
+    // change re-wraps text and moves anchors, so this pass reads it against the
+    // live width (full-pass gate below) and the re-show effect does the same
+    // (dirty gate). The live width is only STAGED here: like every other
+    // per-pass fact it is committed in the ONE commit block, so a pass that
+    // rejects itself (degenerate measure) leaves the width change standing for
+    // the pass that honours it (task 1627). clientWidth reads layout without
+    // forcing a reflow beyond what follows.
     const widthAtPassStart = lastWidthRef.current;
-    lastWidthRef.current = editorDom.clientWidth;
+    const widthNow = editorDom.clientWidth;
     const nextContentHeight = editorDom.scrollHeight;
     setEditorContentHeight((prev) =>
       prev === nextContentHeight ? prev : nextContentHeight,
@@ -1071,7 +1076,7 @@ export function useInTextPositions(
     const fullPass =
       fullPassPendingRef.current ||
       prevEdges === null ||
-      widthAtPassStart !== editorDom.clientWidth;
+      widthAtPassStart !== widthNow;
 
     const next = new Map<string, NaturalEntry>();
     const nextRaw = new Map<string, { top: number; pos: number }>();
@@ -1245,6 +1250,7 @@ export function useInTextPositions(
     floorRef.current = nextFloor;
     rawTopRef.current = nextRaw;
     prevEdgesRef.current = edges;
+    lastWidthRef.current = widthNow;
     fullPassPendingRef.current = false;
     if (changed) setMeasureVersion((v) => v + 1);
     // THE CONVERGENCE OBSERVATION. `changed` is already the task-328 epsilon
@@ -1543,7 +1549,8 @@ export function useInTextPositions(
     // cleanup cancels it — so a pane hidden again before the callback runs
     // would otherwise lose the verdict and take the CLEAN branch on the next
     // re-show, republishing stale anchor Ys. `widthChanged` already has that
-    // shape: its baseline (`lastWidthRef`) moves only inside a completed measure.
+    // shape: its baseline (`lastWidthRef`) moves only in measure()'s ONE commit
+    // block, never on a pass that rejects itself (task 1627).
     const dirty = dirtyWhileHiddenRef.current || widthChanged;
 
     // CLEAN: the cached deck is still correct (the doc took zero transactions

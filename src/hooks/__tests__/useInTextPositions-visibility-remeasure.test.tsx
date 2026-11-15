@@ -292,6 +292,103 @@ describe("useInTextPositions — keep-alive re-show is a republish, not a re-mea
     editor.destroy();
   });
 
+  it("a width change consumed by a REJECTED (degenerate) pass still reads dirty on the next re-show (task 1627)", async () => {
+    // The width baseline (`lastWidthRef`) is a per-pass fact like every other:
+    // it moves only in measure()'s ONE commit block. Pre-1627 it moved at the
+    // TOP of measure(), so a pass that then rejected itself as degenerate had
+    // already consumed the width change — the next re-show compared the live
+    // width against the advanced baseline, read CLEAN, and republished tops
+    // taken at the OLD width (and the next visible pass was a carry pass).
+    const editor = mountDoc();
+    const items: PositionItem[] = [
+      { id: "a", pos: 1 },
+      { id: "b", pos: 5 },
+    ];
+    // jsdom reports clientWidth 0, which the dirty gate treats as "no
+    // baseline"; drive a real width so the gate is live.
+    let width = 500;
+    Object.defineProperty(editor.view.dom, "clientWidth", {
+      configurable: true,
+      get: () => width,
+    });
+    // Good layout vs. the un-laid-out fingerprint: every distinct anchor
+    // strongly above the pod (jsdom's pod rect top is 0).
+    let degenerate = false;
+    const coordsSpy = vi
+      .spyOn(editor.view, "coordsAtPos")
+      .mockImplementation((pos: number) => {
+        const top = degenerate ? -1000 + pos : 10 + pos;
+        return { top, bottom: top + 12, left: 0, right: 0 };
+      });
+    const sink: { current: HookOut | null } = { current: null };
+
+    let visible = true;
+    const Tree = () => (
+      <KeepAliveVisibilityProvider isVisible={visible}>
+        <Harness editor={editor} items={items} bump={0} sink={sink} />
+      </KeepAliveVisibilityProvider>
+    );
+    const r = render(<Tree />);
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0); // good cache at width 500
+    await flushDeferred();
+
+    // Hide; the window resizes while hidden.
+    act(() => {
+      visible = false;
+      r.rerender(<Tree />);
+    });
+    width = 600;
+
+    // Re-show while layout is still settling: the width change reads DIRTY,
+    // the converge runs — and every pass it takes is degenerate, so each one
+    // REJECTS itself and commits nothing.
+    degenerate = true;
+    coordsSpy.mockClear();
+    act(() => {
+      visible = true;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0); // the rejected pass(es) ran
+
+    // Hide again before any pass committed; layout then finishes.
+    act(() => {
+      visible = false;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    degenerate = false;
+
+    // Return at the same (new) width with no edits: the cached deck is still
+    // the width-500 one, so the re-show must take the DIRTY branch and
+    // re-measure. Pre-fix the rejected pass had advanced the baseline to 600
+    // and this read CLEAN — zero coordsAtPos.
+    coordsSpy.mockClear();
+    act(() => {
+      visible = true;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0);
+
+    // And once a pass COMMITS at the new width, the baseline has moved: a
+    // further hide→re-show at that width is CLEAN again.
+    act(() => {
+      visible = false;
+      r.rerender(<Tree />);
+    });
+    coordsSpy.mockClear();
+    act(() => {
+      visible = true;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBe(0);
+
+    r.unmount();
+    editor.destroy();
+  });
+
   it("genuinely-disabled (enabledProp=false) clears + re-enable re-measures (distinct from hidden retention)", () => {
     const editor = mountDoc();
     const items: PositionItem[] = [
