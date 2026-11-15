@@ -317,6 +317,23 @@ export const CARD_ATOM_ID_ATTRS: ReadonlyArray<CardAtomIdAttr> = CARD_ATOMS.map(
  *  disagree on exactly that), and re-identification rewrites it alongside. */
 export const CARD_ATOM_MIRROR_ID_ATTR = "linkId";
 
+/** THE answer to "what is this atom's entity id" — the per-kind id attr, else
+ *  the {@link CARD_ATOM_MIRROR_ID_ATTR} mirror; `""` when both are unset or the
+ *  node is not a Card-bearing atom (ref / inline-math / dynamic own no id).
+ *  Every reader asks here — the entity extractor's `cardAtomIdOf`, the NodeViews'
+ *  DOM id write, the in-text grab and the by-id drag locate (task 1636) — so a
+ *  footnote with an empty `footnoteId` but a set `linkId` is ONE atom with ONE
+ *  id everywhere, never "id-less" on the drag path and "x" in the card store. */
+export function cardAtomEntityId(node: PMNode): string {
+  const m = BY_NODE_NAME.get(node.type.name);
+  if (!m || !isCardAtomMeta(m)) return "";
+  const attrs = (node.attrs ?? {}) as Record<string, unknown>;
+  const own = attrs[m.idAttr];
+  if (typeof own === "string" && own) return own;
+  const mirror = attrs[CARD_ATOM_MIRROR_ID_ATTR];
+  return typeof mirror === "string" ? mirror : "";
+}
+
 /** The DOM attrs those ids are written to (`data-footnote-id`, …). */
 export const CARD_ATOM_DOM_ID_ATTRS: ReadonlyArray<string> = CARD_ATOMS.map(
   (m) => m.domIdAttr,

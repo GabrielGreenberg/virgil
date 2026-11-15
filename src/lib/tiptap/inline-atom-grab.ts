@@ -57,6 +57,7 @@ import {
 import {
   ATOM_DOM_SELECTOR,
   atomMetaForDomType,
+  cardAtomEntityId,
   type AtomMeta,
 } from "./atom-registry";
 import {
@@ -487,7 +488,7 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
                 // drop is mapped through it. `assoc: 1` — a NODE's start:
                 // content inserted exactly at it goes before the atom.
                 at: trackPos(editor, pos, { assoc: 1 }),
-                atomId: atomIdOf(view, pos, meta),
+                atomId: atomIdOf(view, pos),
                 atomNode,
                 atomEl,
                 startX: event.clientX,
@@ -532,11 +533,13 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
  * neighbour at `pos ± 1`, so a kind-only check could resolve the neighbour and
  * the gesture would then promise a move of the atom under the cursor while
  * committing a move of the one beside it. Every Card-bearing atom's NodeView
- * writes its id into `dataset[idAttr]` (footnote.ts / citation.ts), spelled with
- * exactly the `ATOM_REGISTRY.idAttr` key, so the DOM the user grabbed names the
- * node the commit must find. `ref` / `inline-math` own no Card and no id
- * (`idAttr: null`), so for them the kind check is the whole question — and that
- * asymmetry is the registry's, stated there.
+ * writes {@link cardAtomEntityId} to its declared `AtomMeta.domIdAttr`
+ * (footnote.ts / citation.ts), and this reads that SAME attribute and compares
+ * it to the SAME door's answer for the node (task 1636) — never a
+ * camel→kebab `dataset` spelling, never the per-kind attr without its `linkId`
+ * mirror. `ref` / `inline-math` own no Card and no id (`domIdAttr: null`), so
+ * for them the kind check is the whole question — and that asymmetry is the
+ * registry's, stated there.
  */
 export function resolveAtomPos(
   view: EditorView,
@@ -549,7 +552,7 @@ export function resolveAtomPos(
   } catch {
     return null;
   }
-  const domId = meta.idAttr ? (atomEl.dataset?.[meta.idAttr] ?? null) : null;
+  const domId = meta.domIdAttr ? atomEl.getAttribute(meta.domIdAttr) : null;
   const doc = view.state.doc;
   for (const p of [pos, pos - 1, pos + 1]) {
     if (p < 0 || p > doc.content.size) continue;
@@ -558,19 +561,15 @@ export function resolveAtomPos(
     // A DOM that states an id must match the node's; a DOM that states none
     // (an older render, a kind with no id) falls back to the kind check rather
     // than refusing the grab outright — no over-gating a working gesture.
-    if (domId && node.attrs?.[meta.idAttr as string] !== domId) continue;
+    if (domId && cardAtomEntityId(node) !== domId) continue;
     return p;
   }
   return null;
 }
 
-/** The entity id of the atom at `pos`, or null for the id-less kinds. */
-function atomIdOf(
-  view: EditorView,
-  pos: number,
-  meta: AtomMeta,
-): string | null {
-  if (!meta.idAttr) return null;
-  const id = view.state.doc.nodeAt(pos)?.attrs?.[meta.idAttr];
-  return typeof id === "string" && id ? id : null;
+/** The entity id of the atom at `pos` — the registry's door, so the `linkId`
+ *  mirror counts (task 1636) — or null for the id-less kinds. */
+function atomIdOf(view: EditorView, pos: number): string | null {
+  const node = view.state.doc.nodeAt(pos);
+  return (node && cardAtomEntityId(node)) || null;
 }

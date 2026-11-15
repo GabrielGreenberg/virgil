@@ -51,6 +51,7 @@ import { insertNodesAdvancing } from "./mapped-insert";
 import { refuseOnThrow } from "../planned-spec";
 import { inlineCursorHostsNode, type InlineDropPayload } from "../inline-host";
 import { parseAnyKey } from "@/floats/float-key";
+import { cardAtomEntityId } from "@/lib/tiptap/atom-registry";
 import type {
   DropCtx,
   DropSpec,
@@ -667,14 +668,13 @@ function locateAtom(
   const mainEditor = ctx.mainEditor;
   if (!id || !opts.nodeName || !opts.idAttr) return null;
   const nodeName = opts.nodeName;
-  const idAttr = opts.idAttr;
   const editors: Editor[] = [];
   if (mainEditor) editors.push(mainEditor);
   for (const e of getEditorsOwnedBy(ctx.owner ?? null)) {
     if (e !== mainEditor) editors.push(e);
   }
   for (const editor of editors) {
-    const found = findAtomById(editor, nodeName, idAttr, id);
+    const found = findAtomById(editor, nodeName, id);
     if (found) return found;
   }
   return null;
@@ -693,18 +693,22 @@ function locateAtom(
  * id; their identity is their CONTENT ({@link atomContentEquals}, task 1574),
  * confirmed at the grab's FOLLOWED position (task 1635) — never re-found by a
  * nearest-match scan. The rule: id where the registry has one, content otherwise.
+ *
+ * "The id" is the registry's door, {@link cardAtomEntityId} — per-kind attr,
+ * else the `linkId` mirror (task 1636). A footnote whose `footnoteId` is empty
+ * but whose `linkId` names its card is FOUND here, so a card-header drag moves
+ * it rather than minting a second marker beside it.
  */
 export function findAtomById(
   editor: Editor,
   nodeName: string,
-  idAttr: string,
   id: string,
 ): AtomLocation | null {
   let found: AtomLocation | null = null;
   editor.state.doc.descendants((node, pos) => {
     if (found) return false;
     if (node.type.name !== nodeName) return true;
-    if (node.attrs?.[idAttr] !== id) return true;
+    if (cardAtomEntityId(node) !== id) return true;
     found = { editor, node, from: pos, to: pos + node.nodeSize };
     return false;
   });

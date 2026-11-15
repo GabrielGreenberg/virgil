@@ -15,7 +15,7 @@ import {
 // the atom SSOT instead of hardcoded literals, so a NodeView rename can't drift
 // from ATOM_REGISTRY (that would silently kill InlineAtomGrab for this kind).
 // Pinned by atom-selectable-parity.test.ts.
-import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import { ATOM_REGISTRY, cardAtomEntityId } from "@/lib/tiptap/atom-registry";
 import { createLeafNodeView } from "@/lib/tiptap/leaf-node-view";
 import { createViewLifetime, type ViewLifetime } from "@/lib/tiptap/view-lifetime";
 // The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
@@ -377,7 +377,9 @@ export const Footnote = Node.create<FootnoteOptions>({
           // The `data-footnote-id` SPELLING comes from the row, like `data-type`
           // and the class (task 645) — it is what the drag ghost strips and
           // the hover bridge reads, and both of those now read it from there too.
-          setAttrIfChanged(dom, FOOTNOTE_ATOM.domIdAttr, next.attrs.footnoteId || "");
+          // The VALUE is the registry's id door (task 1636): per-kind id, else
+          // the `linkId` mirror — what the grab compares it against.
+          setAttrIfChanged(dom, FOOTNOTE_ATOM.domIdAttr, cardAtomEntityId(next));
           setDataIfChanged(dom, "thanks", next.attrs.thanks ? "true" : null);
           setTextIfChanged(dom, footnoteLabel(next.attrs));
           setTitleIfChanged(dom, richJsonToPlainText(next.attrs.content));
