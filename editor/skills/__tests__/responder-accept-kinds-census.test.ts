@@ -17,36 +17,43 @@
 //   - the kinds a skill drains come from `/editor/review`'s dispatch table
 //     (`reviewRoutes()`, itself pinned to the routing manifest by
 //     `dispatch-coverage.test.ts`);
-//   - each builder's native accept set is read out of `create_card.py`'s own
-//     dict literals, so a door change re-shapes the census, not a copy here.
+//   - each builder's native accept set is the door's own LIVE value, dumped by
+//     importing `create_card.py` (task 1629: `WORKFLOW_A_KINDS` is DERIVED from
+//     the routing manifest now, so there is no literal left to parse), so a
+//     door change re-shapes the census, not a copy here.
 //
 // Scope: calls handed a REAL request id (`<requestId>` / `<id>`). A
 // `virtual:<panel>:<cardId>` id has no Task row, so its kind is never checked.
 
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 
-import { readRepo as read, reviewRoutes } from "./_review-routes";
+import { readRepo as read, repoRoot, reviewRoutes } from "./_review-routes";
 
 const CREATE_CARD = "editor/scripts/create_card.py";
 
-/** Parse a `NAME = { "k": {"a", "b"}, "k2": set(), … }` literal out of the door. */
-function pyKindTable(src: string, name: string): Record<string, Set<string>> {
-  const m = new RegExp(`^${name}\\s*=\\s*\\{([\\s\\S]*?)^\\}|^${name}\\s*=\\s*\\{(.*)\\}\\s*$`, "m").exec(src);
-  expect(m, `${name} not found in ${CREATE_CARD}`).toBeTruthy();
-  const body = m![1] ?? m![2];
-  const out: Record<string, Set<string>> = {};
-  for (const e of body.matchAll(/"([a-z-]+)"\s*:\s*(\{[^}]*\}|set\(\))/g)) {
-    out[e[1]] = new Set([...e[2].matchAll(/"([a-z-]+)"/g)].map((x) => x[1]));
-  }
-  expect(Object.keys(out).length, `${name} parsed empty`).toBeGreaterThan(0);
-  return out;
+/** The door's native accept sets, read from the imported module — not its source. */
+function nativeAcceptSets(): Record<string, Set<string>> {
+  const dumped = execFileSync(
+    "python3",
+    [
+      "-c",
+      [
+        `import sys, json; sys.path.insert(0, ${JSON.stringify(join(repoRoot, "editor/scripts"))})`,
+        "import create_card as CC",
+        "print(json.dumps({k: sorted(v) for t in (CC.WORKFLOW_A_KINDS, CC.RESPONDER_TASK_KINDS)",
+        "  for k, v in t.items()}))",
+      ].join("\n"),
+    ],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  const raw = JSON.parse(dumped) as Record<string, string[]>;
+  expect(Object.keys(raw).length, `${CREATE_CARD} accept sets dumped empty`).toBeGreaterThan(0);
+  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, new Set(v)]));
 }
 
-const door = read(CREATE_CARD);
-const NATIVE: Record<string, Set<string>> = {
-  ...pyKindTable(door, "WORKFLOW_A_KINDS"),
-  ...pyKindTable(door, "RESPONDER_TASK_KINDS"),
-};
+const NATIVE: Record<string, Set<string>> = nativeAcceptSets();
 
 interface Call {
   file: string;

@@ -628,11 +628,14 @@ def is_ai_request_kind(kind) -> bool:
 #: Task-less example block. Deliberately NOT the writeback table: `citations`
 #: is a PANEL_TO_SIDECAR row, but no citation card carries an `aiRequest` flag,
 #: so a virtual id naming it addresses nothing.
+#: The card-flag routing itself (card kind → `{kind, linkPanel}`), loaded once
+#: — the projection of `CARD_REGISTRY[kind].aiRequest`. create_card derives its
+#: card-kind → Task-kind tables from it (task 1629).
+AI_REQUEST_ROUTING: dict[str, dict] = json.loads(
+    Path(__file__).with_name("ai_request_routing.json").read_text(encoding="utf-8")
+)["routing"]
 AI_REQUEST_LINK_PANELS: frozenset[str] = frozenset(
-    row["linkPanel"]
-    for row in json.loads(
-        Path(__file__).with_name("ai_request_routing.json").read_text(encoding="utf-8")
-    )["routing"].values()
+    row["linkPanel"] for row in AI_REQUEST_ROUTING.values()
 )
 VIRTUAL_ID_PANELS: frozenset[str] = AI_REQUEST_LINK_PANELS | {"examples"}
 

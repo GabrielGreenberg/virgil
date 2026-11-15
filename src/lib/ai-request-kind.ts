@@ -30,7 +30,7 @@
  * the parity is pinned across the language line by `ai-request-open-parity.test.ts`.
  */
 
-import type { AiRequestKind, AiRequestKindOnDisk, AiRequestLink } from "@/lib/types";
+import type { AiRequest, AiRequestKind, AiRequestKindOnDisk, AiRequestLink } from "@/lib/types";
 
 /**
  * Every member of `AiRequestKind`, as a compile-time-exhaustive tuple.
@@ -68,6 +68,26 @@ const _kindExhaustive: _KindExhaustive = true;
 void _kindExhaustive;
 
 const KIND_SET: ReadonlySet<string> = new Set<string>(AI_REQUEST_KINDS);
+
+/**
+ * The `AiRequest.safetyLevel` values, as a runtime tuple (task 1629). The type
+ * is the owner; this is its readable spelling, so the Python executors'
+ * level → subcommand table (`card_tables.json` → `safetyLevels`, read by
+ * `apply_response.SAFETY_LEVEL_SUBCOMMAND`) can be pinned to it by
+ * card-tables-manifest.test.ts instead of restating `1 | 2 | 3` by hand.
+ */
+export const AI_REQUEST_SAFETY_LEVELS = [1, 2, 3] as const satisfies readonly NonNullable<
+  AiRequest["safetyLevel"]
+>[];
+
+type _LevelExhaustive = Exclude<
+  NonNullable<AiRequest["safetyLevel"]>,
+  (typeof AI_REQUEST_SAFETY_LEVELS)[number]
+> extends never
+  ? true
+  : ["AiRequest.safetyLevel grew a member — add it to AI_REQUEST_SAFETY_LEVELS"];
+const _levelExhaustive: _LevelExhaustive = true;
+void _levelExhaustive;
 
 /**
  * Is this on-disk `kind` one the app actually knows?

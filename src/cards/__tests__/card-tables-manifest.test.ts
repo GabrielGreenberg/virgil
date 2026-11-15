@@ -30,7 +30,13 @@ import {
 import type { CardKind } from "@/cards/types";
 import type { PanelKind } from "@/panels/_shared/types";
 import { ARCHIVE_ORIGIN_PANELS } from "@/lib/archive-origin";
-import { SUGGESTION_STATUSES, isResolvedSuggestionStatus } from "@/cards/suggestion-status";
+import {
+  RESOLVED_SUGGESTION_STATUSES,
+  SUGGESTION_STATUSES,
+  isResolvedSuggestionStatus,
+} from "@/cards/suggestion-status";
+import { AI_REQUEST_SAFETY_LEVELS } from "@/lib/ai-request-kind";
+import type { LinkedAnchorKind } from "@/links/links";
 import { SIDECAR_COLLECTIONS } from "@/lib/sidecar-merge";
 import { CARD_KIND_SIDECAR } from "@/lib/host-writability";
 import { LEGACY_SIDECAR_FILENAMES } from "@/lib/sidecar-value";
@@ -283,5 +289,47 @@ describe("card_tables.json atomBearingPanels ↔ CARD_ATOMS", () => {
     const want = CARD_ATOMS.map((m) => pyPanelOf(panelForCardKind(m.kind)));
     for (const [i, p] of want.entries()) expect(p, CARD_ATOMS[i]!.kind).toBeDefined();
     expect([...tables.atomBearingPanels].sort()).toEqual([...want].sort());
+  });
+});
+
+// Task 1629 — the executor tables editor/scripts used to spell by hand. Each is
+// now a card_tables.json row the Python READS, pinned here to its TS owner.
+describe("card_tables.json executor facts ↔ their TS owners", () => {
+  const t = JSON.parse(readFileSync(join(scripts, "card_tables.json"), "utf8")) as {
+    resolvedSuggestionStatuses: string[];
+    safetyLevels: Record<string, string>;
+    rangeKinds: string[];
+  };
+  const door = readFileSync(join(scripts, "apply_response.py"), "utf8");
+
+  it("resolvedSuggestionStatuses is RESOLVED_SUGGESTION_STATUSES, verbatim", () => {
+    expect(t.resolvedSuggestionStatuses).toEqual([...RESOLVED_SUGGESTION_STATUSES]);
+  });
+
+  it("apply_response spells no terminal-status pair of its own", () => {
+    expect(door).not.toMatch(/\(\s*"accepted"\s*,\s*"rejected"\s*\)/);
+  });
+
+  it("safetyLevels answers for exactly AI_REQUEST_SAFETY_LEVELS, each with a real subcommand", () => {
+    expect(Object.keys(t.safetyLevels).map(Number).sort()).toEqual([...AI_REQUEST_SAFETY_LEVELS].sort());
+    const subs = door.slice(door.indexOf("SUBCOMMANDS = {"), door.indexOf("}", door.indexOf("SUBCOMMANDS = {")));
+    for (const sub of Object.values(t.safetyLevels)) expect(subs, sub).toContain(`"${sub}"`);
+  });
+
+  it("every rangeKinds member is a LinkedAnchorKind (the app anchors it to a range)", () => {
+    // Exhaustive over the union: tsc fails this literal when LinkedAnchorKind
+    // gains or loses a member, so the set below is never a silent hand-copy.
+    const LINKED: Record<LinkedAnchorKind, true> = {
+      note: true,
+      highlight: true,
+      todo: true,
+      revision: true,
+      "cutter-comment": true,
+      "cutter-suggestion": true,
+      report: true,
+      "report-request": true,
+      "pending-ai-change": true,
+    };
+    for (const k of t.rangeKinds) expect(Object.keys(LINKED), k).toContain(k);
   });
 });
