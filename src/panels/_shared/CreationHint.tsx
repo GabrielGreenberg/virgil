@@ -30,6 +30,7 @@
  */
 
 import { Fragment, createContext, useContext } from "react";
+import { Kbd } from "@/components/Kbd";
 import type { ActionId } from "@/lib/actions/action-registry";
 import { creationRoutes, type CreationRoute } from "@/lib/actions/creation-routes";
 
@@ -43,17 +44,20 @@ const PanelAddContext = createContext(false);
 export const PanelAddProvider = PanelAddContext.Provider;
 
 function Token({ route }: { route: CreationRoute }) {
-  return route.tokenStyle === "code" ? (
-    <code className="text-xs bg-surface-muted-strong px-1 rounded">{route.token}</code>
-  ) : (
-    <span className="font-medium">{route.token}</span>
-  );
+  switch (route.tokenStyle) {
+    case "code":
+      return <code className="text-xs bg-surface-muted-strong px-1 rounded">{route.token}</code>;
+    case "keys":
+      return <Kbd keys={route.token} />;
+    case "control":
+      return <span className="font-medium">{route.token}</span>;
+  }
 }
 
 /**
  * Renders the same sentence `creationSentence()` produces in plain text, with
  * each token painted — a LaTeX literal as a code chip (matching the `\cite`
- * chip the Citations panel already shipped), an on-screen control in medium.
+ * chip the Citations panel already shipped), an on-screen control in medium, a chord as a `<Kbd>` chip.
  *
  * Renders nothing when the registry declares no reachable surface and the panel
  * has no "+": a kind with no way in teaches nothing, and inventing a clause for
