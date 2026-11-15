@@ -1,0 +1,108 @@
+{
+ "_doc": "Task 1628 — WHAT ARE THIS ENTRY'S FIELDS? ONE Python field grammar (library/scripts/_bib_parse.parse_fields; editor/scripts/bib_resolve.parse_fields delegates to it). Both silos answer `cases`: the library reads `entry` through parse_bib_text (library/scripts/tests/test_bib_field_parse_parity.py), the editor through bib_resolve.parse_fields (editor/scripts/tests/test_bib_field_parse_parity.py). `expect` is the exact field map; `app` records what the app's citation-js reading (src/lib/bib-parser.ts) shows for the same bytes where it differs or is notable.",
+ "cases": [
+  {
+   "name": "hash-concatenation",
+   "entry": "@book{a,\n  title = \"Part \" # \"Two\",\n  year = 2020\n}",
+   "expect": {
+    "title": "Part Two",
+    "year": "2020"
+   },
+   "app": "citation-js: title 'Part Two' (agrees)"
+  },
+  {
+   "name": "hash-braced-and-quoted",
+   "entry": "@book{a,\n  title = {The {B}ook} # \", Vol. \" # {2},\n  doi = {10.1/x}\n}",
+   "expect": {
+    "title": "The {B}ook, Vol. 2",
+    "doi": "10.1/x"
+   },
+   "app": "citation-js concatenates the same parts"
+  },
+  {
+   "name": "string-macro-kept-by-name",
+   "entry": "@article{a,\n  journal = jphil # \" (n.s.)\",\n  month = jan,\n  title = {X}\n}",
+   "expect": {
+    "journal": "jphil (n.s.)",
+    "month": "jan",
+    "title": "X"
+   },
+   "app": "citation-js EXPANDS the macro (journal 'Journal of Philosophy (n.s.)' given @string{jphil=...}); the Python grammar keeps the macro NAME verbatim, by design"
+  },
+  {
+   "name": "no-comma-between-fields",
+   "entry": "@article{a,\n  year = 2020\n  month = jan,\n  title = {X}\n}",
+   "expect": {
+    "year": "2020",
+    "month": "jan",
+    "title": "X"
+   },
+   "app": "citation-js REJECTS the entry (parse error); Python reads both fields rather than folding 'month = jan' into year"
+  },
+  {
+   "name": "inner-whitespace-preserved",
+   "entry": "@article{a,\n  title = {A\n   long   title},\n}",
+   "expect": {
+    "title": "A\n   long   title"
+   },
+   "app": "citation-js shows 'A long title' — the collapsed reading is _bib_parse.normalize_field_value, not the parse"
+  },
+  {
+   "name": "underscore-led-name",
+   "entry": "@misc{a,\n  _id = {7},\n  title = {X}\n}",
+   "expect": {
+    "_id": "7",
+    "title": "X"
+   }
+  },
+  {
+   "name": "crlf-line-endings",
+   "entry": "@misc{a,\r\n  title = {X},\r\n  year = 1999\r\n}",
+   "expect": {
+    "title": "X",
+    "year": "1999"
+   }
+  },
+  {
+   "name": "nested-braces",
+   "entry": "@misc{a,\n  title = {On {\\\"U}ber {and {deep} nesting}},\n  year = {2001}\n}",
+   "expect": {
+    "title": "On {\\\"U}ber {and {deep} nesting}",
+    "year": "2001"
+   }
+  },
+  {
+   "name": "trailing-comma",
+   "entry": "@misc{a,\n  title = {X},\n  year = {2001},\n}",
+   "expect": {
+    "title": "X",
+    "year": "2001"
+   }
+  },
+  {
+   "name": "quoted-with-braced-quote",
+   "entry": "@misc{a,\n  title = \"A {B} C\",\n  note = \"x {\\\"} y\",\n  doi = {10.1/q}\n}",
+   "expect": {
+    "title": "A {B} C",
+    "note": "x {\\\"} y",
+    "doi": "10.1/q"
+   }
+  },
+  {
+   "name": "uppercase-names-lowered",
+   "entry": "@misc{a,\n  Title = {X},\n  YEAR = 2002\n}",
+   "expect": {
+    "title": "X",
+    "year": "2002"
+   }
+  },
+  {
+   "name": "empty-value",
+   "entry": "@misc{a,\n  note = {},\n  title = {X}\n}",
+   "expect": {
+    "note": "",
+    "title": "X"
+   }
+  }
+ ]
+}

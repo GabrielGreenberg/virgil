@@ -17,72 +17,141 @@ from pathlib import Path
 from typing import Optional
 
 
-def parse_fields(body: str) -> dict[str, str]:
-    """Parse a comma-separated field block (the body of a bib entry, minus citekey)."""
-    out: dict[str, str] = {}
-    i = 0
-    while i < len(body):
-        while i < len(body) and body[i] in " \t\n\r,":
+# THE field grammar for the Python silos (task 1628). `bib_resolve.parse_fields`
+# and its splice door `_value_span` (editor/scripts) delegate here through the
+# `_silo_path` door, so "what are this entry's fields" and "where does this
+# field's value end" have ONE answer; `src/lib/__tests__/fixtures/
+# bib-field-parse-corpus.json` pins it from both silos.
+#
+# A value is a `#`-joined sequence of parts — `{…}` (brace-balanced), `"…"`
+# (ends at the depth-0 unescaped quote, Hazard 5(a)), or a bare token (a number
+# or an `@string` macro NAME, kept verbatim — never expanded) — ending at the
+# next top-level `,`, the entry close, or (comma-less) the next field's name.
+# The parsed value joins the parts' contents and strips only its ENDS: inner
+# whitespace is the source's bytes. A compare/display reading that collapses
+# whitespace (what the app shows) is `normalize_field_value`, never a second
+# parser.
+_WS = " \t\r\n"
+_NAME_STOP = set(_WS) | set('=,{}"#')
+_BARE_STOP = set(_WS) | set(',{}"#')
+
+
+def _quoted_part_end(text: str, quote: int) -> int:
+    """Index of the `"` closing the quoted part opened at `quote` (or len(text)
+    if it never closes): the first `"` at brace-depth 0 not backslash-escaped."""
+    j = quote + 1
+    depth = 0
+    while j < len(text):
+        c = text[j]
+        if c == "\\" and j + 1 < len(text):
+            j += 2  # escaped char (\" or \\) — never a delimiter
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            if depth > 0:
+                depth -= 1
+        elif c == '"' and depth == 0:
+            return j
+        j += 1
+    return len(text)
+
+
+def _scan_value(text: str, start: int) -> tuple[str, int]:
+    """Read the value beginning at `start` (whitespace before it allowed).
+    Returns (joined contents with ends stripped, end offset just past the last
+    part). An empty value (`title = ,`) ends where it began."""
+    parts: list[str] = []
+    i = start
+    end = start
+    n = len(text)
+    while True:
+        while i < n and text[i] in _WS:
             i += 1
-        if i >= len(body):
+        if i >= n:
             break
-        eq = body.find("=", i)
-        if eq == -1:
-            break
-        name = body[i:eq].strip().lower()
-        i = eq + 1
-        while i < len(body) and body[i] in " \t\n\r":
-            i += 1
-        if i >= len(body):
-            break
-        if body[i] == "{":
-            depth = 1
-            j = i + 1
-            while j < len(body) and depth > 0:
-                if body[j] == "{":
+        c = text[i]
+        if c == "{":
+            depth = 0
+            j = i
+            while j < n:
+                if text[j] == "{":
                     depth += 1
-                elif body[j] == "}":
+                elif text[j] == "}":
                     depth -= 1
+                    if depth == 0:
+                        break
                 j += 1
-            out[name] = body[i + 1:j - 1].strip()
-            i = j
-        elif body[i] == '"':
-            # Hazard 5(a): a `"`-quoted value's closing quote is the `"` that
-            # appears at brace-depth 0 and is not backslash-escaped. The old
-            # `body.find('"', i+1)` stopped at the FIRST inner quote, so a value
-            # like `title = "He said \"hi\""` (escaped) or one carrying a braced
-            # quote `title = "a {"} b"` truncated at the inner `"` — corrupting
-            # the field name of everything after it and DROPPING the entry's
-            # later fields (e.g. its doi). Walk instead, tracking brace depth and
-            # skipping `\"`, so the value ends at the true delimiter.
-            j = i + 1
-            qdepth = 0
-            while j < len(body):
-                c = body[j]
-                if c == "\\" and j + 1 < len(body):
-                    j += 2  # escaped char (\" or \\) — never a delimiter
-                    continue
-                if c == "{":
-                    qdepth += 1
-                elif c == "}":
-                    if qdepth > 0:
-                        qdepth -= 1
-                elif c == '"' and qdepth == 0:
-                    break
-                j += 1
-            if j >= len(body):
-                # No closing quote — take the rest (matches the old break's
-                # "stop parsing" outcome but keeps whatever value we have).
-                out[name] = body[i + 1:].strip()
-                break
-            out[name] = body[i + 1:j].strip()
-            i = j + 1
+            parts.append(text[i + 1:j])
+            end = min(j + 1, n)
+        elif c == '"':
+            j = _quoted_part_end(text, i)
+            parts.append(text[i + 1:j])
+            end = min(j + 1, n)
+        elif c in _BARE_STOP:
+            break
         else:
             j = i
-            while j < len(body) and body[j] not in ",\n":
+            while j < n and text[j] not in _BARE_STOP:
                 j += 1
-            out[name] = body[i:j].strip()
-            i = j
+            parts.append(text[i:j])
+            end = j
+        i = end
+        while i < n and text[i] in _WS:
+            i += 1
+        if i < n and text[i] == "#":
+            i += 1
+            continue
+        break
+    return "".join(parts).strip(), end
+
+
+def value_end(text: str, start: int) -> int:
+    """End offset of the WHOLE value beginning at `start` — every `#` part
+    included — so a splice that replaces a value cannot leave a dangling
+    `# "…"` tail. The surgical field editors' door."""
+    return _scan_value(text, start)[1]
+
+
+def normalize_field_value(value: str) -> str:
+    """The compare/display reading of a parsed value: whitespace runs collapse
+    to one space (what the app's citation-js shows). Never used to WRITE."""
+    return " ".join(value.split())
+
+
+def parse_fields(body: str) -> dict[str, str]:
+    """Parse a field block (the body of a bib entry: after `@type{key,`, before
+    — or including — the entry's closing `}`). Field names lower-case; a later
+    duplicate wins. Unreadable text is skipped up to the next `,`."""
+    out: dict[str, str] = {}
+    i = 0
+    n = len(body)
+    while i < n:
+        while i < n and (body[i] in _WS or body[i] in ",}"):
+            i += 1
+        if i >= n:
+            break
+        j = i
+        while j < n and body[j] not in _NAME_STOP:
+            j += 1
+        name = body[i:j].lower()
+        k = j
+        while k < n and body[k] in _WS:
+            k += 1
+        if not name or k >= n or body[k] != "=":
+            # Not `name =` — resync at the next top-level comma.
+            depth = 0
+            while k < n and not (body[k] == "," and depth == 0):
+                if body[k] == "{":
+                    depth += 1
+                elif body[k] == "}" and depth > 0:
+                    depth -= 1
+                k += 1
+            i = max(k, i + 1)
+            continue
+        value, end = _scan_value(body, k + 1)
+        out[name] = value
+        i = max(end, k + 1)
     return out
 
 

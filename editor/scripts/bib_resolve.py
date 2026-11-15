@@ -49,12 +49,6 @@ from _common import (
 )
 
 
-# Match `name = ` after a comma. We prepend a virtual comma to the entry
-# body before parsing so every field — including the first one — sits
-# behind a comma boundary, which sidesteps line-start anchoring problems.
-FIELD_LINE = re.compile(r",\s*([a-zA-Z][\w\-]*)\s*=\s*")
-
-
 # THE entry-head rule for editor/scripts (task 884) — every reader here
 # (`find_entry_span`, `all_citekeys`, `citekey_of`, `parse_fields`, the
 # preservation census, and `citekey_sidecars`' vbid binder) iterates entries
@@ -152,29 +146,6 @@ def find_entry_span(text: str, key: str) -> tuple[int, int] | None:
     return start + bom, end + bom
 
 
-def _quoted_end(text: str, quote: int) -> int:
-    """Index of the `"` that closes the quoted value opening at `quote`, or
-    len(text). The closer is the first `"` at brace depth 0 that isn't
-    backslash-escaped — `"Grundz{"u}ge"` is ONE value (the library's
-    `parse_fields` rule, Hazard 5(a))."""
-    j = quote + 1
-    depth = 0
-    while j < len(text):
-        c = text[j]
-        if c == "\\" and j + 1 < len(text):
-            j += 2
-            continue
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            if depth > 0:
-                depth -= 1
-        elif c == '"' and depth == 0:
-            return j
-        j += 1
-    return len(text)
-
-
 def assert_entries_preserved(old: str, new: str, replaced: str | None = None) -> None:
     """Measure a `.bib` write before it lands: every entry the file held before
     must still be there after — except ONE instance of `replaced`, the key a
@@ -223,33 +194,27 @@ def citekey_of(entry_text: str) -> str | None:
     return entries[0][0] if entries else None
 
 
+def _field_grammar():
+    """The library's `_bib_parse` — the ONE Python field grammar (task 1628:
+    this file's own parser read `#`, comma-less lines and whitespace
+    differently from the library's, so a verify compared the paper's entry
+    against master.bib through two readings of the same bytes). Imported
+    lazily through the `_silo_path` door, so the entry scanners here never
+    depend on the sibling silo."""
+    from _silo_path import import_path_for
+
+    import_path_for("library", needs=("_bib_parse.py",))
+    import _bib_parse
+
+    return _bib_parse
+
+
 def _value_span(text: str, start: int) -> int:
-    """Given `start` at a field value's first char, return the index just past
-    the value. Handles `{braced}` (brace-matched), `"quoted"` (escape-aware),
-    and bare values up to the next comma/newline. Mirrors the value scan in
-    `parse_fields`, factored out so the surgical field editor reuses it."""
-    i = start
-    while i < len(text) and text[i] in " \t":
-        i += 1
-    if i >= len(text):
-        return start
-    ch = text[i]
-    if ch == "{":
-        depth = 0
-        for j in range(i, len(text)):
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-                if depth == 0:
-                    return j + 1
-        return len(text)
-    if ch == '"':
-        return min(_quoted_end(text, i) + 1, len(text))
-    j = i
-    while j < len(text) and text[j] not in ",\n":
-        j += 1
-    return j
+    """Given `start` at a field value (whitespace before it allowed), return
+    the index just past the WHOLE value — every `#` part — so a surgical
+    replace cannot leave a dangling `# "…"` tail. The same scan
+    `parse_fields` reads by (`_bib_parse.value_end`)."""
+    return _field_grammar().value_end(text, start)
 
 
 def _set_field_in_entry(entry: str, name: str, value: str) -> str:
@@ -313,63 +278,16 @@ def append_entry(bib_text: str, entry_text: str) -> str:
 
 
 def parse_fields(entry: str) -> dict:
-    """Extract field=value pairs from an entry body. Tolerant of
-    quoted-string and braced-string forms."""
-    fields: dict[str, str] = {}
+    """Field=value pairs of one `@type{key, …}` entry block, read by the
+    library's `_bib_parse.parse_fields` (the shared grammar, pinned by
+    `bib-field-parse-corpus.json`). Values keep their inner whitespace; a
+    compare that wants the app's collapsed reading calls
+    `_bib_parse.normalize_field_value` on both sides."""
     body = entry
-    # Drop the @type{key, header.
     head = _ENTRY_START.search(body)
     if head:
-        body = body[head.end() :]
-    # Drop the trailing }.
-    if body.endswith("}"):
-        body = body[:-1]
-    # Prepend a virtual comma so the very first field sits behind a comma
-    # boundary, matching the rest. Offsets shift by 1 — accounted for below.
-    body = "," + body
-    # Walk fields.
-    pos = 0
-    while pos < len(body):
-        m = FIELD_LINE.search(body, pos)
-        if not m:
-            break
-        name = m.group(1).lower()
-        value_start = m.end()
-        # Detect value: braced, quoted, or bare-up-to-comma.
-        # Skip whitespace.
-        while value_start < len(body) and body[value_start] in " \t":
-            value_start += 1
-        if value_start >= len(body):
-            break
-        ch = body[value_start]
-        if ch == "{":
-            depth = 0
-            i = value_start
-            for j in range(value_start, len(body)):
-                if body[j] == "{":
-                    depth += 1
-                elif body[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        i = j + 1
-                        break
-            value = body[value_start + 1 : i - 1]
-            pos = i
-        elif ch == '"':
-            j = _quoted_end(body, value_start)
-            value = body[value_start + 1 : j]
-            pos = j + 1
-        else:
-            j = value_start
-            while j < len(body) and body[j] != ",":
-                j += 1
-            value = body[value_start:j].strip()
-            pos = j
-        # NOTE: do not skip the trailing comma — FIELD_LINE matches a
-        # comma boundary to find the next field, so leaving pos at the
-        # comma (or trailing space before one) is required.
-        fields[name] = " ".join(value.split())
-    return fields
+        body = body[head.end():]
+    return _field_grammar().parse_fields(body)
 
 
 # A bibliography-printing command at the START of a line (after indentation),
