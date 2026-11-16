@@ -60,7 +60,7 @@ import type { JSONContent } from "@tiptap/react";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 import { inlineAtoms, remintNestedAtomIds } from "@/lib/inline-content";
 import { generateShortId } from "@/lib/uuid";
-import { deferringParent } from "@/lib/node-attr-sets";
+import { isAnchorableNode, mayCarryBlockUuid } from "@/lib/marginalia";
 
 /** Every non-null block `uuid` live in `doc` (any depth — nested list items,
  *  example items and container bodies all carry one). */
@@ -102,24 +102,26 @@ export function collectLinkedAnchorIds(doc: PMNode): Set<string> {
  */
 function declaresBlockUuid(json: JSONContent, schema: Schema): boolean {
   const type = json.type ? schema.nodes[json.type] : undefined;
-  if (type) return type.spec.attrs?.uuid !== undefined;
+  if (type) return isAnchorableNode(type);
   const attrs = json.attrs as Record<string, unknown> | undefined;
   return !!attrs && "uuid" in attrs;
 }
 
 /**
- * The JSON reading of `mayCarryBlockUuid` (`@/lib/marginalia`, task 878): a
- * serialized node may carry a block uuid iff its type declares the attr
- * ({@link declaresBlockUuid}) and it is not a `paragraph` directly under a
- * deferring container. Same rule, the shape a payload blob arrives in.
+ * The JSON reading of `mayCarryBlockUuid` (`@/lib/marginalia`, task 878): the
+ * SAME predicate, asked of the destination schema's type for `json.type` and a
+ * parent stub by name — not a re-spelling of its clauses (task 1648). A type
+ * this schema does not know falls back to the key, as {@link declaresBlockUuid}
+ * does (it will not rehydrate anyway, and it cannot be a deferred `paragraph`).
  */
 function jsonMayCarryBlockUuid(
   json: JSONContent,
   schema: Schema,
   parentType: string | null,
 ): boolean {
-  if (!declaresBlockUuid(json, schema)) return false;
-  return !(json.type === "paragraph" && deferringParent(parentType));
+  const type = json.type ? schema.nodes[json.type] : undefined;
+  if (!type) return declaresBlockUuid(json, schema);
+  return mayCarryBlockUuid({ type }, parentType ? { type: { name: parentType } } : null);
 }
 
 /**

@@ -58,6 +58,34 @@ export interface ChangedRange {
 type AnyStep = Transaction["steps"][number];
 
 /**
+ * THE task-320 coordinate rule, stated once: a position in the coordinates
+ * reached after the first `fromStep` steps of `transactions[k]` (so `si` for a
+ * position in step si's PRE-doc, `si + 1` for one in its POST-doc) → the LAST
+ * transaction's document. Maps through the rest of transaction `k`
+ * (`mapping.slice(fromStep)`) and then every later transaction's mapping —
+ * never the full per-transaction `tr.mapping`, which re-applies earlier steps'
+ * maps to positions that already reflect them (see "Coordinates" above).
+ *
+ * Returns a mapper so a caller mapping several positions from one step slices
+ * the transaction's mapping once. `collect` here and both `BlockUuidBackfill`
+ * passes (the inserted-range scan and the reparent transfer) read this.
+ */
+export function mapFromStep(
+  transactions: readonly Transaction[],
+  k: number,
+  fromStep: number,
+): (pos: number, assoc: -1 | 1) => number {
+  const rest = transactions[k].mapping.slice(fromStep);
+  return (pos, assoc) => {
+    let out = rest.map(pos, assoc);
+    for (let j = k + 1; j < transactions.length; j++) {
+      out = transactions[j].mapping.map(out, assoc);
+    }
+    return out;
+  };
+}
+
+/**
  * The range a step reaches when its StepMap has no ranges of its own, or null
  * when the step names no position at all.
  *
@@ -105,14 +133,8 @@ function collect(
   trs.forEach((tr, ti) => {
     if (!tr.docChanged) return;
     const push = (si: number, newFrom: number, newTo: number) => {
-      const rest = tr.mapping.slice(si + 1);
-      let from = rest.map(newFrom, -1);
-      let to = rest.map(newTo, 1);
-      for (let k = ti + 1; k < trs.length; k++) {
-        from = trs[k].mapping.map(from, -1);
-        to = trs[k].mapping.map(to, 1);
-      }
-      out.push({ from, to });
+      const toFinal = mapFromStep(trs, ti, si + 1);
+      out.push({ from: toFinal(newFrom, -1), to: toFinal(newTo, 1) });
     };
     tr.steps.forEach((step, si) => {
       let hadRange = false;

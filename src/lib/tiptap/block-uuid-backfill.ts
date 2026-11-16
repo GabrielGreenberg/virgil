@@ -5,7 +5,7 @@ import { ReplaceAroundStep, ReplaceStep } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode, mayCarryBlockUuid } from "@/lib/marginalia";
 import { readDocStructure } from "@/lib/tiptap/doc-structure";
-import { nodesBetweenLocal } from "@/lib/tiptap/changed-ranges";
+import { mapFromStep, nodesBetweenLocal } from "@/lib/tiptap/changed-ranges";
 import { generateShortId } from "@/lib/uuid";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -707,8 +707,9 @@ function planBackfill(
       // to positions that already reflect them, which for a delete-then-insert
       // transaction collapses the inserted range to nothing — so a multi-block
       // range move's duplicated uuids reached the document with the net silent.
+      // The rule is stated once, as `mapFromStep` (changed-ranges.ts).
       const preDoc = trk.docs[si] ?? trk.before;
-      const stepOnward = trk.mapping.slice(si);
+      const stepOnward = mapFromStep(transactions, k, si);
       // Removed range, in this STEP's pre-doc coordinates.
       forEachAnchorableStart(preDoc, step.from, step.to, (node) => {
         const u = node.attrs?.uuid;
@@ -716,12 +717,8 @@ function planBackfill(
       });
       // Inserted range, mapped into final-doc coordinates: this step's own map
       // and the rest of the transaction's, then any later transaction's.
-      let from = stepOnward.map(step.from, -1);
-      let to = stepOnward.map(step.to, 1);
-      for (let j = k + 1; j < transactions.length; j++) {
-        from = transactions[j].mapping.map(from, -1);
-        to = transactions[j].mapping.map(to, 1);
-      }
+      const from = stepOnward(step.from, -1);
+      const to = stepOnward(step.to, 1);
       forEachAnchorableStart(newDoc, from, to, (node, pos, parent) => {
         const inserted = node.attrs?.uuid;
         if (typeof inserted === "string" && inserted) insertedUuids.add(inserted);
@@ -791,25 +788,18 @@ function planBackfill(
   // re-parent content and only it carries the gap that says WHICH content
   // survived; a plain keystroke produces none, so this costs nothing on the
   // typing path.
-  forEachReparentStep(transactions, (step, preDoc, postDoc, trk, k, si) => {
+  forEachReparentStep(transactions, (step, preDoc, postDoc, _trk, k, si) => {
     const plan = planReparentTransfer(step, preDoc, postDoc);
     if (!plan) return;
     // Post-step → final-doc coordinates, through the maps AFTER this step and
     // every later transaction's. A node START moves with the content after it,
     // hence assoc 1. A mapping that lands somewhere unexpected simply fails to
     // match a candidate, and the mint happens exactly as it did before.
-    const rest = trk.mapping.slice(si + 1);
-    const toFinal = (pos: number): number => {
-      let out = rest.map(pos, 1);
-      for (let j = k + 1; j < transactions.length; j++) {
-        out = transactions[j].mapping.map(out, 1);
-      }
-      return out;
-    };
+    const toFinal = mapFromStep(transactions, k, si + 1);
     transfers.push({
       ...plan,
-      receiverPos: toFinal(plan.receiverPos),
-      clearPos: plan.clearPos === undefined ? undefined : toFinal(plan.clearPos),
+      receiverPos: toFinal(plan.receiverPos, 1),
+      clearPos: plan.clearPos === undefined ? undefined : toFinal(plan.clearPos, 1),
     });
   });
 
