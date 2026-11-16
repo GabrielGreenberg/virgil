@@ -1050,7 +1050,10 @@ to `compressedLines`), so collapsed cards still show real inline atoms
 (citation / `\ref` / inline math) — not a flattened string. Sans-class
 cards keep the one-line summary. The empty-body placeholder is the single
 `CardEmptyText` component (one `text-ink-faint italic` style), not a
-hand-rolled span.
+hand-rolled span — and its WORDS are derived too (task 1655): pass
+`kind`, and it reads `cardEmptySentinel(kind)` = "empty <noun>" from the
+kind's one noun, the collapsed twin of the expanded `cardBodyPlaceholder`.
+There is no free-text label; `card-empty-sentinel-census` refuses one.
 
 ### A CAPTURED PASSAGE is main text (task 488)
 
