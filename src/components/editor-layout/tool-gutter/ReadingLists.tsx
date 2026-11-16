@@ -27,7 +27,7 @@ import {
 } from "@/panels/Bibliography/bib-library-flow";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
-import { countLabelRefs } from "@/lib/tiptap/label-rename";
+import { countAllLabelRefs } from "@/lib/tiptap/label-rename";
 import { downloadCitedBib } from "@/lib/bib-export-cited";
 import { startBibEntryDrag } from "@/components/bib-entry-drag";
 import { isCancelEscape, swallowRepeatsUntilKeyup } from "@/lib/key-intent";
@@ -177,7 +177,8 @@ export function ReadingList({
         return footnoteGroups(footnotes, data.orphanedFootnotes, data.unanchoredFootnotes, sections, fnView);
       case "examples": {
         const doc = snap?.doc ?? null;
-        return exampleGroups(examples, (label) => (doc ? countLabelRefs(doc, label) : 0));
+        const refs = doc && examples.length ? countAllLabelRefs(doc) : null;
+        return exampleGroups(examples, (label) => refs?.get(label) ?? 0);
       }
       case "bibliography":
         return filterBib(
