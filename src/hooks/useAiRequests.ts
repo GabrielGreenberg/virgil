@@ -17,7 +17,13 @@ import {
   reportAiRequestsReadFailure,
   reportAiRequestsWriteRefusal,
   type AiRequestsMutator,
+  type AiRequestsWriteResult,
 } from "@/lib/ai-requests-store";
+import {
+  claimedIds,
+  claimRequestRows,
+  type RequestClaim,
+} from "@/lib/migrate-ai-request-cards";
 import { closeRequestRow, isTerminalStatus } from "@/lib/ai-request-open";
 import { markReadStart } from "@/lib/sidecar-merged-write";
 import {
@@ -284,14 +290,23 @@ export function useAiRequests(docId: string | null) {
    * corrects once and must not reintroduce as a justification.
    */
   const applyMutation = useCallback(
-    (mutate: AiRequestsMutator) => {
-      setState((prev) => {
-        const next = mutate(prev.requests);
-        return next === null ? prev : { requests: next };
-      });
+    (
+      mutate: AiRequestsMutator,
+      { optimistic = true }: { optimistic?: boolean } = {},
+    ): Promise<AiRequestsWriteResult> => {
+      // `optimistic: false` (task 1642) — a CLAIM whose outcome is decided by
+      // the disk alone (the card migration's relink) must not paint a link the
+      // write may decline; the `written` publish carries it instead.
+      if (optimistic) {
+        setState((prev) => {
+          const next = mutate(prev.requests);
+          return next === null ? prev : { requests: next };
+        });
+      }
       inFlight.current += 1;
       writeGen.current.submits += 1;
-      void mutateAiRequests(docId, mutate)
+      const pending = mutateAiRequests(docId, mutate);
+      void pending
         .then((result) => {
           if (!isAiRequestsWriteRefused(result)) return;
           reportAiRequestsWriteRefusal(docId, result);
@@ -311,6 +326,7 @@ export function useAiRequests(docId: string | null) {
             readRef.current?.();
           }
         });
+      return pending;
     },
     [docId],
   );
@@ -400,20 +416,29 @@ export function useAiRequests(docId: string | null) {
   }, [applyMutation]);
 
   /**
-   * Merge a set of already-computed request objects back over the store by
-   * `id`, persisting the result. Used by the BUG #55b card-request migration
-   * to re-bridge converted note/todo requests in place (set `linkedTo` at the
-   * freshly-created card). Each entry REPLACES the matching request; ids with
-   * no match are ignored. No-op when `updated` is empty.
+   * CLAIM a set of requests for freshly-minted cards — the BUG #55b card
+   * migration's relink. Each claim is a FIELD PATCH with a precondition
+   * (`claimRequestRows`, task 1642): the RAW disk row gets `linkedTo` only if it
+   * is still unlinked and open, so a row a skill completed or a peer window
+   * already linked is left exactly as it is. Disk-first (no optimistic paint).
+   *
+   * Resolves the ids whose claim LANDED (an empty set when the write declined —
+   * every row was already taken), or `null` when the write did not happen at
+   * all (refused, or the doc switched under it). The caller appends a card only
+   * for a landed claim.
    */
-  const relinkRequests = useCallback((updated: AiRequest[]) => {
-    if (updated.length === 0) return;
-    const byId = new Map(updated.map((r) => [r.id, r]));
-    applyMutation((requests) => {
-      if (!requests.some((r) => byId.has(r.id))) return null;
-      return requests.map((r) => byId.get(r.id) ?? r);
-    });
-  }, [applyMutation]);
+  const relinkRequests = useCallback(
+    async (claims: RequestClaim[]): Promise<Set<string> | null> => {
+      if (claims.length === 0) return new Set();
+      const result = await applyMutation(
+        (requests) => claimRequestRows(requests, claims),
+        { optimistic: false },
+      );
+      if (result.kind === "written") return claimedIds(result.requests, claims);
+      return result.kind === "declined" ? new Set() : null;
+    },
+    [applyMutation],
+  );
 
   return useMemo(
     () => ({

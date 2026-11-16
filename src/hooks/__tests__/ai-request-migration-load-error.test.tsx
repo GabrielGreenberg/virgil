@@ -142,7 +142,10 @@ describe("useAiRequestCardMigration under a failed source read", () => {
   function mountMigration(sourcesAuthoritative: boolean) {
     const appendNotes = vi.fn();
     const appendTodos = vi.fn();
-    const relinkRequests = vi.fn();
+    // Every claim lands (task 1642: the append follows the claim).
+    const relinkRequests = vi.fn(
+      async (claims: { id: string }[]) => new Set(claims.map((c) => c.id)),
+    );
     const view = renderHook(() =>
       useAiRequestCardMigration({
         docId: DOC,
@@ -170,14 +173,14 @@ describe("useAiRequestCardMigration under a failed source read", () => {
     expect(relinkRequests).not.toHaveBeenCalled();
   });
 
-  it("does not burn the doc's one-per-session claim, so a later good read still migrates", () => {
+  it("does not burn the doc's one-per-session claim, so a later good read still migrates", async () => {
     const failed = mountMigration(false);
     expect(failed.appendNotes).not.toHaveBeenCalled();
     failed.view.unmount();
 
     // Same session, same doc — the read succeeded this time.
     const good = mountMigration(true);
-    expect(good.appendNotes).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(good.appendNotes).toHaveBeenCalledTimes(1));
     expect(good.appendNotes.mock.calls[0][0]).toHaveLength(1);
     expect(good.relinkRequests).toHaveBeenCalledTimes(1);
   });

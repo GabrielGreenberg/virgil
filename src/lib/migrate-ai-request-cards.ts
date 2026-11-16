@@ -37,6 +37,7 @@
 
 import type {
   AiRequest,
+  AiRequestLink,
   AiRequestStatus,
   TodoItem,
   UserNote,
@@ -161,4 +162,80 @@ export function migrateUnlinkedCardRequests(
     addedTodos,
     relinkedRequests,
   };
+}
+
+/**
+ * One request the migration wants to CLAIM for a freshly-minted card: the
+ * request's id and the link to set on it. A field patch, never a whole row
+ * (task 1642).
+ */
+export interface RequestClaim {
+  id: string;
+  linkedTo: AiRequestLink;
+}
+
+/** The claims a migration result proposes, in the shape `relinkRequests` takes. */
+export function claimsOf(result: MigrationResult): RequestClaim[] {
+  return result.relinkedRequests.flatMap((r) =>
+    r.linkedTo ? [{ id: r.id, linkedTo: r.linkedTo }] : [],
+  );
+}
+
+/**
+ * The relink as a pure MUTATOR over the inbox as it is ON DISK (task 1642).
+ *
+ * It used to REPLACE each matching disk row with the object the migration had
+ * built from the hook's in-memory list — so the CAS re-read was defeated for
+ * exactly the fields that mattered: a row a skill had completed meanwhile was
+ * written back open, a row another window had already linked was re-pointed
+ * at THIS window's card, and a normalised object (`kind: "unknown"`, a filled
+ * `createdAt`) was written over the raw bytes.
+ *
+ * Now each claim is a FIELD PATCH with a precondition: a raw row with the
+ * claimed id gets `linkedTo` (and the legacy open status normalised to
+ * `pending`, the bridge's shape) ONLY IF it is still convertible — unlinked,
+ * open, note/todo — judged on the RAW row by the same predicate that proposed
+ * it. Every other field is the raw row's own. Returns `null` when no claim
+ * lands (a declined write — nothing to persist).
+ */
+export function claimRequestRows(
+  rows: AiRequest[],
+  claims: readonly RequestClaim[],
+): AiRequest[] | null {
+  const byId = new Map(claims.map((c) => [c.id, c]));
+  let changed = false;
+  const next = rows.map((raw) => {
+    if (typeof raw !== "object" || raw === null) return raw;
+    const claim = typeof raw.id === "string" ? byId.get(raw.id) : undefined;
+    if (!claim || !isConvertible(raw)) return raw;
+    byId.delete(raw.id); // a duplicated id is claimed once, by its first row
+    changed = true;
+    return { ...raw, status: openStatus(raw.status), linkedTo: claim.linkedTo };
+  });
+  return changed ? next : null;
+}
+
+/**
+ * Which claims LANDED, read off the authoritative post-write list: a row whose
+ * `linkedTo` names the claim's card. Card ids are freshly minted per run, so a
+ * match can only be this run's own write — a peer window's claim names its
+ * own card and a completed row was never re-linked.
+ */
+export function claimedIds(
+  written: readonly AiRequest[],
+  claims: readonly RequestClaim[],
+): Set<string> {
+  const wanted = new Map(claims.map((c) => [c.id, c.linkedTo]));
+  const out = new Set<string>();
+  for (const r of written) {
+    const link = wanted.get(r.id);
+    if (
+      link &&
+      r.linkedTo?.panel === link.panel &&
+      r.linkedTo?.cardId === link.cardId
+    ) {
+      out.add(r.id);
+    }
+  }
+  return out;
 }

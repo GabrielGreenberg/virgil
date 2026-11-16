@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { registerDocForget } from "@/lib/doc-forget";
 import { generateEntityId } from "@/lib/uuid";
-import { migrateUnlinkedCardRequests } from "@/lib/migrate-ai-request-cards";
+import {
+  claimsOf,
+  migrateUnlinkedCardRequests,
+  type RequestClaim,
+} from "@/lib/migrate-ai-request-cards";
 import type { AiRequest, TodoItem, UserNote } from "@/lib/types";
 
 /**
@@ -88,7 +92,11 @@ export interface AiRequestCardMigrationApi {
   aiRequests: AiRequest[];
   appendNotes: (cards: UserNote[]) => void;
   appendTodos: (items: TodoItem[]) => void;
-  relinkRequests: (updated: AiRequest[]) => void;
+  /**
+   * Claim the requests on disk (task 1642). Resolves the ids whose claim
+   * LANDED, or `null` when the write did not happen at all.
+   */
+  relinkRequests: (claims: RequestClaim[]) => Promise<Set<string> | null>;
 }
 
 export function useAiRequestCardMigration({
@@ -99,6 +107,12 @@ export function useAiRequestCardMigration({
   appendTodos,
   relinkRequests,
 }: AiRequestCardMigrationApi): void {
+  // The doc the pane shows NOW — read after the async claim settles, so a
+  // claim that lands after a doc switch never appends into the next paper.
+  const docIdRef = useRef(docId);
+  useEffect(() => {
+    docIdRef.current = docId;
+  }, [docId]);
   useEffect(() => {
     // STAND DOWN before the claim, never after: a session that could not read
     // one of the three sources must not burn the doc's one-per-session
@@ -117,9 +131,39 @@ export function useAiRequestCardMigration({
     });
     if (!result.changed) return;
 
-    appendNotes(result.addedNotes);
-    appendTodos(result.addedTodos);
-    relinkRequests(result.relinkedRequests);
+    // card id → the request it was minted for.
+    const requestFor = new Map(
+      result.relinkedRequests.flatMap((r) =>
+        r.linkedTo ? [[r.linkedTo.cardId, r.id] as const] : [],
+      ),
+    );
+
+    // CLAIM FIRST, then append only what was claimed (task 1642). The relink
+    // is a conditional field patch over the disk rows, so the request — not
+    // this window's possibly-stale copy of it — decides: a row a skill
+    // completed meanwhile, or one a peer window (its own `migratedDocs`) has
+    // already linked to ITS card, is not claimed, and no card is minted for it.
+    // Two windows racing therefore converge on one card instead of two.
+    void relinkRequests(claimsOf(result)).then((claimed) => {
+      if (claimed === null) {
+        // The write never happened (refused / doc switched): nothing was
+        // claimed, so release the one-per-session claim and let a later good
+        // read retry — task 679's stand-down precedent.
+        migratedDocs.delete(docId);
+        return;
+      }
+      // The pane left this doc while the claim was in flight: the append doors
+      // now write another paper. Not released — the claim landed on disk.
+      if (docIdRef.current !== docId || claimed.size === 0) return;
+      const notes = result.addedNotes.filter((n) =>
+        claimed.has(requestFor.get(n.id) ?? ""),
+      );
+      const todos = result.addedTodos.filter((t) =>
+        claimed.has(requestFor.get(t.id) ?? ""),
+      );
+      if (notes.length > 0) appendNotes(notes);
+      if (todos.length > 0) appendTodos(todos);
+    });
   }, [
     docId,
     sourcesAuthoritative,
