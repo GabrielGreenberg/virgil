@@ -176,15 +176,37 @@ export function withFreshBlockUuids(
  */
 export function collectAtomIds(doc: PMNode): Set<string> {
   const ids = new Set<string>();
-  for (const hit of inlineAtoms(doc)) {
-    const meta = atomMetaForNodeName(hit.kind);
-    if (!meta?.idAttr) continue;
-    const own = hit.attrs[meta.idAttr];
-    if (typeof own === "string" && own) ids.add(own);
-    const linkId = hit.attrs.linkId;
-    if (typeof linkId === "string" && linkId) ids.add(linkId);
-  }
+  forEachAtomId(doc, (id) => ids.add(id));
   return ids;
+}
+
+/**
+ * THE one reading of "which Card-bearing atom ids does this node carry?" —
+ * every reader that asks it (`collectAtomIds`, the move pre-check `collides`)
+ * calls this, so a third reader cannot diverge again (task 1647: `collides`
+ * kept a hand-rolled `content.forEach` walk after task 1074 converted the
+ * collector, and so answered "clean" for a footnote-nested `\cite` whose id
+ * was live — the remint that would have caught it never ran).
+ *
+ * Visits `node` ITSELF (a payload may be a bare atom) and then every atom
+ * `inlineAtoms` yields beneath it, including those hidden in a body-bearing
+ * atom's `attrs.content` blob. Per atom: its ATOM_REGISTRY `idAttr` value, then
+ * its unified `linkId` mirror; kinds with `idAttr: null` (inlineMath /
+ * labelRef) own no Card identity and are skipped, exactly as the remint skips
+ * them. Calls `cb` once per non-empty value, duplicates included — a caller
+ * detecting intra-payload collisions needs to see the repeat.
+ */
+function forEachAtomId(node: PMNode, cb: (id: string) => void): void {
+  const visit = (typeName: string, attrs: Readonly<Record<string, unknown>>): void => {
+    const meta = atomMetaForNodeName(typeName);
+    if (!meta?.idAttr) return;
+    for (const key of [meta.idAttr, "linkId"]) {
+      const v = attrs[key];
+      if (typeof v === "string" && v) cb(v);
+    }
+  };
+  visit(node.type.name, node.attrs);
+  for (const hit of inlineAtoms(node)) visit(hit.kind, hit.attrs);
 }
 
 /**
@@ -245,7 +267,11 @@ export function inheritBlockUuid(
 
 /** True iff any node in `nodes` (at any depth) carries an id already in the
  *  live sets — the O(payload) pre-check that keeps a clean move allocation-free
- *  and, more importantly, byte-identical to what the caller built. */
+ *  and, more importantly, byte-identical to what the caller built. Atom ids are
+ *  read through `forEachAtomId`, the SAME walker the collector uses, so an id
+ *  nested in a footnote body is seen here exactly as the remint below sees it
+ *  (task 1647). Block uuids never hide in an atom blob (a footnote body is
+ *  minted fresh on mount), so their leg stays a plain `descendants` walk. */
 function collides(
   nodes: readonly PMNode[],
   liveUuids: ReadonlySet<string>,
@@ -254,25 +280,24 @@ function collides(
   const seenUuids = new Set<string>();
   const seenAtomIds = new Set<string>();
   let hit = false;
-  const visit = (node: PMNode): void => {
+  const visitUuid = (node: PMNode): void => {
     const u = node.attrs?.uuid;
     if (typeof u === "string" && u) {
       if (liveUuids.has(u) || seenUuids.has(u)) hit = true;
       seenUuids.add(u);
     }
-    const meta = atomMetaForNodeName(node.type.name);
-    if (meta?.idAttr) {
-      for (const key of [meta.idAttr, "linkId"]) {
-        const v = node.attrs[key];
-        if (typeof v === "string" && v) {
-          if (liveAtomIds.has(v) || seenAtomIds.has(v)) hit = true;
-          seenAtomIds.add(v);
-        }
-      }
-    }
-    node.content.forEach(visit);
   };
-  for (const n of nodes) visit(n);
+  const visitAtomId = (v: string): void => {
+    if (liveAtomIds.has(v) || seenAtomIds.has(v)) hit = true;
+    seenAtomIds.add(v);
+  };
+  for (const n of nodes) {
+    visitUuid(n);
+    n.descendants((d) => {
+      visitUuid(d);
+    });
+    forEachAtomId(n, visitAtomId);
+  }
   return hit;
 }
 
