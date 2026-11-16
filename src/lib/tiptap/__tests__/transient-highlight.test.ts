@@ -37,7 +37,7 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import {
-  transientHighlightKey,
+  transientHighlightKeyFor,
   setTransientHighlights,
   clearTransientHighlights,
   TRANSIENT_HIGHLIGHT_CLASS,
@@ -104,7 +104,7 @@ afterEach(() => {
 
 /** The live bands the plugin currently exposes. */
 function liveBands(editor: Editor): Array<{ from: number; to: number }> {
-  const set = transientHighlightKey.getState(editor.state);
+  const set = transientHighlightKeyFor("search").getState(editor.state);
   if (!set) return [];
   return set.find().map((d) => ({ from: d.from, to: d.to }));
 }

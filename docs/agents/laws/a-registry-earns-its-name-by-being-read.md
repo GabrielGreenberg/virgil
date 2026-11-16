@@ -5722,3 +5722,30 @@ is deleted, and `deleteMarginItem` reads the mark to strip off the CARD
 CI: `margin-markers-registry-census.test.ts` (sources ≡ the registry's
 margin-bearing kinds, once each; built `type` ≡ `markerType`; `entityKind` set;
 a todo's Mode-B mark stripped by the door).
+
+## The out-of-file half — an export read only by its own file (task 1649)
+
+Audit tick 531 found six PM-spine exports nothing outside their file reads
+(`guardWrapperShortcuts` / `guardWrapperInputRules`, `carryLabelRefs`,
+`VIRGIL_LIST_TYPES`, `DEFAULT_TRANSIENT_CHANNEL`, `TransientChannelTargets`)
+plus four block-uuid-backfill names behind its one door
+(`classifyBlockDepartures`) and `transientHighlightKey`, a test-only alias. All
+are un-exported or deleted now. **No census could have caught them, for two
+stated reasons:** no census covers `src/lib/tiptap/`, and
+[`_export-census.ts`](../../../src/lib/__tests__/_export-census.ts) counts
+IN-FILE use as alive (its header: "a dead mutually-recursive cluster is caught at
+its entry point") — every one of the six value names is used in its own file, so
+it reads ALIVE. An over-published name with a live in-file reader is a
+different defect from a dead one (the surface lies about its doors; nothing is
+unread), and the census asks only the second question.
+
+**Residual, measured rather than fixed here.** A whole-silo `src/lib/tiptap/`
+census run against the tree after this task reports eleven findings — three
+with no use anywhere (`archive-holdings.ts::holdingsApplyTo`,
+`source-pod-static.ts::SOURCE_POD_STATIC_CLASS`,
+`tex-block.ts::freshTexBlockAttrs`) and eight test-only
+(`__resetArchiveHoldingsForTests`, `BORROWED_INLINE_ATOM_NAMES`,
+`BORROWED_BLOCK_ATOM_NAMES`, `isClipboardHoldingId`,
+`__resetMaterializeCountForTest`, `insertFigureBlock`, `insertGraphicsBlock`,
+`transientHighlightKeyFor`). Wiring that census — and an out-of-file leg for
+the over-published shape — is its own task.

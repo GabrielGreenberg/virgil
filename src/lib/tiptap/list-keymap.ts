@@ -76,7 +76,7 @@ import type { EditorState } from "@tiptap/pm/state";
  */
 
 /** The list item types this keymap governs. Virgil ships no task lists. */
-export const VIRGIL_LIST_TYPES: ReadonlyArray<{
+const VIRGIL_LIST_TYPES: ReadonlyArray<{
   itemName: string;
   wrapperNames: string[];
 }> = [{ itemName: "listItem", wrapperNames: ["bulletList", "orderedList"] }];
@@ -144,11 +144,13 @@ export function listKeymapOwnsBackspace(
  * Virgil's replacement for `StarterKit`'s `listKeymap`.
  *
  * Registered by `buildCardBodySchema` for card/excerpt bodies (task 879), and
- * immediately after the `StarterKit` entry in
- * `buildEditorExtensions` so its keymap plugin sits where upstream's did in the
- * plugin order (TipTap reverses the extension array before sorting by priority,
- * so an earlier array position means a LATER keymap plugin — after `TabIndent`,
- * the expex handlers and the latex-comment handlers, exactly as before).
+ * in `buildEditorExtensions` just after `StarterKit` — behind only
+ * `DocStructureObserver` + `BlockUuidBackfill`, neither of which binds a key —
+ * so among the KEYMAP plugins it sits where upstream's `listKeymap` did (TipTap
+ * reverses the extension array before sorting by priority, so an earlier array
+ * position means a LATER keymap plugin — after `TabIndent`, the expex handlers
+ * and the latex-comment handlers, exactly as before). Why that slot is not
+ * load-bearing for the in-an-item branch is stated at the registration site.
  */
 export const VirgilListKeymap = Extension.create({
   name: "virgilListKeymap",

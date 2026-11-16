@@ -204,9 +204,9 @@ interface BackfillFix {
  *   `defer`           — direction 2, read off the RESULT: a block that stopped
  *                       being a text object hands its id to its bare container.
  */
-export type ReparentKind = "retype" | "unwrap" | "defer";
+type ReparentKind = "retype" | "unwrap" | "defer";
 
-export interface ReparentTransfer {
+interface ReparentTransfer {
   kind: ReparentKind;
   /** POST-STEP position of the node that must receive `uuid`. */
   receiverPos: number;
@@ -389,7 +389,8 @@ function forEachReparentStep(
  * own opening token was stripped off the front of content that survived, so
  * that node is gone whether or not a successor was available to take its id.
  *
- * Read by `MarginaliaAnchorGuard`, whose whole job is to put a vanished
+ * Read — through the one door, `classifyBlockDepartures` — by
+ * `MarginaliaAnchorGuard` (`linked-anchor.ts`), whose whole job is to put a vanished
  * anchored block's uuid back, and which must NOT do so here. It is the sibling
  * of task 367's `resurrectionWouldBeANoOp` stand-down: there the resurrection
  * reproduced the removal (a silent veto of the user's own gesture), here it
@@ -414,7 +415,7 @@ function forEachReparentStep(
  * Computed from the transactions' OWN steps, so it is independent of plugin
  * order. O(re-parenting steps × depth); a plain keystroke produces none.
  */
-export function dissolvedByReparent(
+function dissolvedByReparent(
   transactions: readonly Transaction[],
 ): ReadonlySet<string> {
   const out = new Set<string>();
@@ -473,7 +474,7 @@ export interface DepartedBlock {
 }
 
 /** What this batch did to the blocks it removed. See the header above. */
-export interface BlockDepartures {
+interface BlockDepartures {
   /** Containers whose own opening token was stripped off surviving content. */
   dissolved: ReadonlySet<string>;
   /** absorbed uuid → the SURVIVOR its content merged into. */
@@ -586,7 +587,7 @@ function resolveAbsorptionChains(
  * plain keystroke never reaches it (both callers bail first on an empty
  * `removedBlocks`).
  */
-export function absorbedByJoin(
+function absorbedByJoin(
   transactions: readonly Transaction[],
 ): ReadonlyMap<string, DepartedBlock> {
   const direct = new Map<string, DepartedBlock>();

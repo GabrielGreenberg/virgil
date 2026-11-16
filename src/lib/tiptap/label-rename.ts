@@ -147,7 +147,7 @@ export interface LabelRenameOptions {
 /** Retarget every `labelRef` naming `oldLabel` — top-level AND inside a
  *  footnote body — into `tr`; with `tr: null`, only COUNT them. One walk for
  *  both, so the confirm's number and the rewrite cannot drift. */
-export function carryLabelRefs(
+function carryLabelRefs(
   doc: PMNode,
   tr: Transaction | null,
   oldLabel: string,
