@@ -24,7 +24,7 @@ import {
 } from "@/lib/editor-extensions";
 import { parseLatex } from "@/lib/latex-parser";
 import { inlineAtoms } from "@/lib/inline-content";
-import { collectAtomIds } from "@/lib/tiptap/node-identity";
+import { collectAtomIds, remintCollidingIdentity } from "@/lib/tiptap/node-identity";
 
 function ctx(
   surface: "main" | "float",
@@ -167,5 +167,36 @@ describe("float paste — asks MAIN which ids are live", () => {
     pasteAt(float, 1, copyFirstParagraph(source));
     expect(allIds(float, "footnote")).toHaveLength(1);
     expect(allIds(float, "footnote")[0]).not.toBe(fn);
+  });
+});
+
+// Task 1647 — the move pre-check (`collides`) must ask the SAME walker. It kept
+// a hand-rolled `content.forEach` walk after 1074 converted the collector, so a
+// payload whose footnote id was free but whose nested `\cite` id was live
+// answered "clean" — and `remintCollidingIdentity` returned it untouched.
+describe("remintCollidingIdentity — the pre-check sees nested atoms", () => {
+  it("re-mints a footnote-nested cite whose id is live, keeping the free footnote id", () => {
+    const editor = mount(parseLatex(NESTED));
+    const [fn] = allIds(editor, "footnote");
+    const [cite] = allIds(editor, "citation");
+    const payload = [editor.state.doc.child(0)];
+    // The footnote's id is free in the target; only the nested cite's is live.
+    const liveAtomIds = new Set<string>([cite]);
+    const out = remintCollidingIdentity(payload, editor.schema, new Set<string>(), liveAtomIds);
+    expect(out).not.toBe(payload);
+    const hits = [...inlineAtoms(out[0])];
+    const outFn = hits.find((h) => h.kind === "footnote")!;
+    const outCite = hits.find((h) => h.kind === "citation")!;
+    expect(outFn.id).toBe(fn);
+    expect(outCite.id).toBeTruthy();
+    expect(outCite.id).not.toBe(cite);
+    expect(outCite.nestedInId).toBe(fn);
+  });
+
+  it("a payload with no live id at any depth comes back as the SAME array", () => {
+    const editor = mount(parseLatex(NESTED));
+    const payload = [editor.state.doc.child(0)];
+    const out = remintCollidingIdentity(payload, editor.schema, new Set<string>(), new Set<string>());
+    expect(out).toBe(payload);
   });
 });
