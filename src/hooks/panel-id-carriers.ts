@@ -2,7 +2,7 @@
  * THE CENSUS: which `ViewPrefs` fields carry panel ids, how each one holds
  * them, and which live registry decides whether an id it holds is still real.
  *
- * A pure module — it imports only TYPES — so both of its readers can value-
+ * A pure module — it imports only TYPES — so each of its readers can value-
  * import it with no cycle, and both of their suites run in the bare node env
  * with no mocks.
  *
@@ -157,3 +157,23 @@ export const LEGACY_ID_CARRIERS: Readonly<
 > = {
   omniCategories: "sided-id-list",
 };
+
+/**
+ * Legacy per-side SCALARS that hold a single panel id — the ≤2-panel split
+ * model's "active panel" markers (pre-`dockStack`, task 273). Named ONCE, here,
+ * beside the other legacy carriers: `applyPanelRenames` renames each (an
+ * ancient blob with no `dockStack` derives its whole open layout from them, so
+ * they must be renamed before `loadPrefs` folds them), and `useViewPrefs`
+ * spreads them into `RETIRED_LAYOUT_KEYS` so the fold deletes the same four.
+ *
+ * All FOUR are covered. The pre-275 inline template rewrote only the two
+ * top-slot keys, so a legacy split layout whose SECOND band was the renamed
+ * panel lost that band on upgrade — the defect a hand copy of this list could
+ * reintroduce by drifting from the fold's (task 1640).
+ */
+export const LEGACY_ACTIVE_PANEL_KEYS = [
+  "activeLeft",
+  "activeRight",
+  "activeLeftBottom",
+  "activeRightBottom",
+] as const;

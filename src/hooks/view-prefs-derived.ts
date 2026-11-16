@@ -30,12 +30,6 @@ export function dockedSideOf(prefs: ViewPrefs, id: PanelId): Side | null {
   return null;
 }
 
-/** The top (first) docked panel on `side`, or null — the nearest analog
- *  to the retired `activeLeft`/`activeRight` "active panel" markers. */
-export function dockStackTop(prefs: ViewPrefs, side: Side): PanelId | null {
-  return (side === "left" ? prefs.dockStack?.left : prefs.dockStack?.right)?.[0] ?? null;
-}
-
 /** True when `id` is docked in either side's stack. */
 export function isPanelDocked(prefs: ViewPrefs, id: PanelId): boolean {
   return dockedSideOf(prefs, id) !== null;

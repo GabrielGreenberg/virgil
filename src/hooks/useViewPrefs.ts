@@ -72,6 +72,7 @@ import {
   scrubUnknownPanelIds,
 } from "./dropUnknownPanelIds";
 import { applyPanelRenames, PANEL_RENAMES } from "./rename-panel-id";
+import { LEGACY_ACTIVE_PANEL_KEYS } from "./panel-id-carriers";
 import {
   confirmSuppressionsUntouched,
   suppressConfirm,
@@ -261,7 +262,7 @@ export type CardArchiveView = (typeof CARD_ARCHIVE_VIEWS)[number];
  * can pull these helpers without dragging the hook runtime + its
  * @/lib/storage chain into their graph). Re-exported here for the many
  * consumers that already import from `@/hooks/useViewPrefs`. */
-export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived";
+export { dockedSideOf, isPanelDocked } from "./view-prefs-derived";
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
 // promotion pipeline can rewrite them without touching TS source.
@@ -342,7 +343,7 @@ const RETIRED_LEGACY_STORAGE_KEYS = ["virgil-omni-hide-all-cards"] as const;
 /** The ≤2-panel split model's keys (pre-`dockStack`, task 273). `loadPrefs`
  *  folds them into `dockStack`/`collapsed*` and deletes them. */
 const RETIRED_LAYOUT_KEYS = [
-  "activeLeft", "activeRight", "activeLeftBottom", "activeRightBottom",
+  ...LEGACY_ACTIVE_PANEL_KEYS,
   "splitLeftRatio", "splitRightRatio", "splitLeftOrigin", "splitRightOrigin",
   "_stashedLeft", "_stashedRight", "dockSlots",
 ] as const;

@@ -29,7 +29,7 @@ import {
 import {
   REGISTRY_DEFAULTS,
   VIEW_PREF_REGISTRY,
-  toggleRowsInMenuGroup,
+  menuEntriesInGroup,
 } from "@/lib/view-prefs/registry";
 import { projectViewPrefs } from "@/lib/view-prefs/projection";
 import {
@@ -112,8 +112,11 @@ describe("one registry row, zero MenuBar edits", () => {
   });
 
   it("…and it reaches the View menu through the derived Display rows", () => {
-    const rows = toggleRowsInMenuGroup("display");
-    const row = rows.find((r) => r.key === "checkSpelling");
+    // `menuEntriesInGroup` is the door MenuBar renders every View-menu group
+    // from (task 1317) — assert on what the menu renders, not a side slice.
+    const row = menuEntriesInGroup("display")
+      .flatMap((e) => (e.kind === "toggle" ? [e] : []))
+      .find((e) => e.key === "checkSpelling");
     expect(row).toBeTruthy();
     expect(row!.id).toBe(VIEW_PREF_REGISTRY.checkSpelling.menuRowId);
     expect(row!.label).toBe("Check spelling");

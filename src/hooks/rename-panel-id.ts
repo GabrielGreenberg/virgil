@@ -88,6 +88,7 @@
 import {
   PANEL_ID_CARRIERS,
   LEGACY_ID_CARRIERS,
+  LEGACY_ACTIVE_PANEL_KEYS,
   type CarrierShape,
 } from "./panel-id-carriers";
 
@@ -124,22 +125,6 @@ export const PANEL_RENAMES: readonly PanelRename[] = [
   // cards now live alongside comment cards in one panel). A pure fold: no new
   // panel came into existence, so no `alsoPlace`.
   { from: "suggestions", to: "revisions" },
-] as const;
-
-/**
- * Legacy per-side scalars that hold a single panel id. Deleted by `loadPrefs`
- * AFTER they seed `legacyStack`, so they must be renamed before that — an
- * ancient blob with no `dockStack` derives its whole open layout from them.
- *
- * All FOUR are covered. The pre-275 inline template rewrote only the two
- * top-slot keys, so a legacy split layout whose SECOND band was the renamed
- * panel lost that band on upgrade — the same defect one field over.
- */
-const LEGACY_ACTIVE_PANEL_KEYS = [
-  "activeLeft",
-  "activeRight",
-  "activeLeftBottom",
-  "activeRightBottom",
 ] as const;
 
 /* ── The carrier census ───────────────────────────────────────────────── */
