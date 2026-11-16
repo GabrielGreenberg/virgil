@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { locateMasterEntryBlock } from "../bib-raw-entry";
+import { locateMasterEntryBlock, parseBibEntryBlock } from "../bib-raw-entry";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SCRIPTS = path.join(REPO_ROOT, "library/scripts");
@@ -57,12 +57,38 @@ const CASES: Array<{ name: string; text: string; key: string }> = [
     key: "k",
     text: `% bib.state = authenticated\n@incollection{k,\n  title = {The {GB} \\emph{X}},\n  booktitle = {B}\n}\n`,
   },
+  // Task 1644: one lexical model — a `%` line is blank to both locators.
+  {
+    name: "% line holding an unbalanced { inside the entry",
+    key: "pct",
+    text: `@article{pct,\n  title = {T},\n  % checked {against print\n  year = {2001}\n}\n\n@book{after,\n  title = {A}\n}\n`,
+  },
+  {
+    name: "% line holding a stray } inside the entry",
+    key: "pct2",
+    text: `@article{pct2,\n  % } stray\n  title = {T}\n}\n`,
+  },
+  {
+    name: "commented-out field before the last one",
+    key: "cmt",
+    text: `@article{cmt,\n  title = {T},\n  % doi = {10.1/x},\n  year = {2001}\n}\n`,
+  },
   {
     name: "absent key",
     key: "nope",
     text: `@article{a,\n  t = {x}\n}\n`,
   },
 ];
+
+const PY_FIELDS = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(SCRIPTS)})
+from _tools import read_master_bib
+from pathlib import Path
+c = json.load(sys.stdin)
+e = read_master_bib(Path("/nonexistent"), text=c["text"])[c["key"]]
+print(json.dumps(e["fields"]))
+`;
 
 describe("master.bib entry locator — TS ↔ Python parity", () => {
   it("locateMasterEntryBlock returns the span locate_master_entry names", () => {
@@ -82,5 +108,19 @@ describe("master.bib entry locator — TS ↔ Python parity", () => {
         block: py[i],
       });
     });
+  });
+
+  it("a % line is not a field to either reader (task 1644)", () => {
+    const text = `@article{cmt,\n  title = {T},\n  % doi = {10.1/x},\n  % checked {against print\n  year = {2001}\n}\n`;
+    const py = JSON.parse(
+      execFileSync("python3", ["-c", PY_FIELDS], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        input: JSON.stringify({ text, key: "cmt" }),
+      }),
+    ) as Record<string, string>;
+    expect(py).toEqual({ title: "T", year: "2001" });
+    const block = locateMasterEntryBlock(text, "cmt");
+    expect(parseBibEntryBlock(block!)?.fields).toEqual({ title: "T", year: "2001" });
   });
 });

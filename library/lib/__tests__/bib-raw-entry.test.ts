@@ -8,6 +8,7 @@ import { parseBibFile } from "@/lib/bib-parser";
 import { buildBibEditDiff, isEmptyBibEditDiff } from "../bib-edit";
 import {
   bibEditBase,
+  isBibEditBaseUnreadable,
   locateMasterEntryBlock,
   parseBibEntryBlock,
 } from "../bib-raw-entry";
@@ -137,5 +138,55 @@ describe("locateMasterEntryBlock — the Python locator's rule", () => {
   it("still finds an indented opener and one with a newline before its comma", () => {
     expect(locateMasterEntryBlock(`  @article{ind,\n  t = {x}\n}\n`, "ind")).toContain("@article{ind");
     expect(locateMasterEntryBlock(`@article{nl\n,\n  t = {x}\n}\n`, "nl")).toContain("@article{nl");
+  });
+});
+
+// TASK 1644: the library parser shares the paper side's lexical model (task
+// 1519) — a `%` line is a comment, blank to every brace count and field read.
+describe("% comment lines (task 1644)", () => {
+  const COMMENTED = `@article{pct2001,
+  author = {Doe, Jane},
+  % doi = {10.1/old},
+  % checked {against print
+  title = {The {GB} \\emph{Title}},
+  abstract = {line one
+% kept inside the value
+line two},
+  year = {2001}
+}`;
+
+  it("parses an entry with commented-out fields; values stay verbatim", () => {
+    const parsed = parseBibEntryBlock(COMMENTED);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.type).toBe("article");
+    expect(Object.keys(parsed!.fields)).toEqual(["author", "title", "abstract", "year"]);
+    expect(parsed!.fields.title).toBe("The {GB} \\emph{Title}");
+    // A `%` line inside a braced value is sliced from the ORIGINAL bytes.
+    expect(parsed!.fields.abstract).toBe("line one\n% kept inside the value\nline two");
+  });
+
+  it("the edit base is read from raw, so an untouched field is not a change", () => {
+    const text = `${COMMENTED}\n`;
+    const block = locateMasterEntryBlock(text, "pct2001");
+    expect(block).toBe(COMMENTED);
+    const [projected] = parseBibFile(text);
+    const entry = { ...projected, raw: block! };
+    expect(isBibEditBaseUnreadable(entry)).toBe(false);
+    const base = bibEditBase(entry);
+    const diff = buildBibEditDiff(entry, base.type, { ...base.fields, year: "2002" });
+    expect(diff.set).toEqual({ year: "2002" });
+    expect(diff.remove).toEqual([]);
+  });
+
+  it("a % brace inside the entry does not throw its extent", () => {
+    const text = `@article{a,\n  % }\n  title = {A}\n}\n\n@book{b,\n  title = {B}\n}\n`;
+    expect(locateMasterEntryBlock(text, "a")).toBe(`@article{a,\n  % }\n  title = {A}\n}`);
+  });
+
+  it("an unparseable disk block is REFUSED, never diffed against the projection", () => {
+    const raw = `@article{bad,\n  title = {T},\n  = {orphan}\n}`;
+    const entry = { ...shown(`@article{bad,\n  title = {T}\n}\n`), raw };
+    expect(isBibEditBaseUnreadable(entry)).toBe(true);
+    expect(() => buildBibEditDiff(entry, "article", { title: "T" })).toThrow(/can't be read/);
   });
 });
