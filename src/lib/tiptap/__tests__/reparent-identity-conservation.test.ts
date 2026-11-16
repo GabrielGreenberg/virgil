@@ -840,7 +840,9 @@ describe("499 CENSUS: every re-parenting command family is swept", () => {
     const fastPath = src.indexOf("if (candidates.length === 0 &&");
     // The CALL inside `planBackfill`, not `dissolvedByReparent`'s own (which is
     // defined above it and takes the same door).
-    const pass = src.indexOf("forEachReparentStep(transactions, (step, preDoc, postDoc, trk, k, si)");
+    // (Keyed on the callback's leading params only: the tx param is unused since
+    // task 1648 routed the coordinate mapping through `mapFromStep`.)
+    const pass = src.indexOf("forEachReparentStep(transactions, (step, preDoc, postDoc, ");
     expect(fastPath, "the keystroke fast path is gone").toBeGreaterThan(-1);
     expect(pass, "the direction-1 pass is gone").toBeGreaterThan(-1);
     expect(pass, "the transfer pass runs BEFORE the fast path").toBeGreaterThan(fastPath);

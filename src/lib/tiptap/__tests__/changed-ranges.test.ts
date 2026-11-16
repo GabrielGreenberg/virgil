@@ -17,8 +17,11 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   contentChangedRanges,
+  mapFromStep,
   stepTouches,
   touchedRanges,
   touchedTextblocks,
@@ -151,5 +154,35 @@ describe("touchedTextblocks", () => {
     const blocks = touchedTextblocks(tr.doc, touchedRanges([tr]));
     const texts = [...blocks.values()].map((n) => n.textContent);
     expect(texts.some((t) => t.includes("ZZZ"))).toBe(true);
+  });
+});
+
+describe("mapFromStep — the task-320 coordinate rule, stated once (task 1648)", () => {
+  it("maps a step's pre-doc position through the rest of its transaction and every later one", () => {
+    const ed = mount("<p>alpha</p><p>beta</p>");
+    const t1 = ed.state.tr;
+    t1.insertText("XX", 1); // step 0
+    t1.insertText("YYY", 1); // step 1
+    const t2 = ed.state.apply(t1).tr;
+    t2.insertText("Z", 1);
+    // Position 1 in step 1's pre-doc (after "XX" landed), assoc 1 → shifted by
+    // step 1's "YYY" and t2's "Z"; reading it through the FULL t1 mapping
+    // would also re-apply step 0's "XX".
+    expect(mapFromStep([t1, t2], 0, 1)(1, 1)).toBe(1 + 3 + 1);
+    expect(mapFromStep([t1, t2], 0, 0)(1, 1)).toBe(1 + 2 + 3 + 1);
+    // Post-step-1 coordinates: only the later transaction moves it.
+    expect(mapFromStep([t1, t2], 0, 2)(1, 1)).toBe(1 + 1);
+  });
+
+  it("CENSUS: no reader of a multi-transaction batch re-spells the rule by hand", () => {
+    // The hand-coded shape was a per-later-transaction `.mapping.map` loop.
+    const root = join(__dirname, "..");
+    for (const f of ["block-uuid-backfill.ts", "changed-ranges.ts"]) {
+      const src = readFileSync(join(root, f), "utf8");
+      const handLoops = src.match(/(?:transactions|trs)\[\w+\]\.mapping\.map\(/g) ?? [];
+      // changed-ranges.ts holds the ONE statement (inside mapFromStep).
+      expect({ f, n: handLoops.length }).toEqual({ f, n: f === "changed-ranges.ts" ? 1 : 0 });
+    }
+    expect(readFileSync(join(root, "block-uuid-backfill.ts"), "utf8")).toMatch(/mapFromStep\(/);
   });
 });
