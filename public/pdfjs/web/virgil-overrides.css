@@ -11,12 +11,14 @@
  * SEPARATE document that does NOT inherit the parent app's globals.css, nor
  * the user's Colors preferences written onto the parent's :root at runtime.
  * So this file names NO colour of its own: the wrapper
- * (src/components/PdfViewer.tsx, `applyViewerPalette`) copies each LIVE
+ * (src/components/PdfViewer.tsx, `applyViewerTokens`) copies each LIVE
  * Virgil token onto this document's root as `--virgil-<name>` on every open
  * and on every palette change, and the rules below consume only those. Each
  * var() carries the shipped default as its fallback, for the frame before the
- * first copy lands. The token list is `VIEWER_PALETTE_TOKENS`; a census test
- * fails on a bare hex here or a --virgil-* name missing from that list.
+ * first copy lands. The token list is `VIEWER_TOKENS`; a census test
+ * fails on a bare hex here, a --virgil-* name missing from that list, or a
+ * fallback that is not the token's shipped value in globals.css. Corners are
+ * tokens too (the radius guard scans this file): no literal radius here.
  *
  * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px strip on the page's
  * sand, keeping only page navigation + zoom, and hiding the annotate / editor /
@@ -26,15 +28,18 @@
  */
 
 :root {
-  /* The live Virgil palette, copied in by PdfView.applyViewerPalette. The
-     fallbacks are the shipped defaults (globals.css promote-defaults block). */
+  /* The live Virgil tokens, copied in by PdfViewer.applyViewerTokens. The
+     fallbacks are the shipped defaults (globals.css cascade-winning :root
+     value), pinned by the census. */
   --v-ground: var(--virgil-background, #ede3de);
   --v-hairline: var(--virgil-border-light, #dcd3cb);
   --v-ink: var(--virgil-foreground, #1a1a1a);
   --v-surface: var(--virgil-surface, #ffffff);
-  --v-muted: var(--virgil-muted, #8a8580);
+  --v-muted: var(--virgil-muted, #625a53);
   --v-accent: var(--virgil-control-selected, #167bb6);
   --v-sheet: var(--virgil-pod-panel, #fffdfa);
+  /* Control corner (STYLE_GUIDE "Radius scale": inputs, segmented controls). */
+  --v-control-radius: var(--virgil-radius-md, 8px);
   --v-accent-hover: color-mix(in srgb, var(--v-accent) 16%, transparent);
   --v-accent-active: color-mix(in srgb, var(--v-accent) 28%, transparent);
   /* This document has no next/font faces, so the toolbar takes the system's. */
@@ -123,18 +128,18 @@ progress {
 }
 
 #toolbarContainer #toolbarViewer #pageNumber {
-  border-radius: 6px;
+  border-radius: var(--v-control-radius);
   font: 12px/16px var(--v-sans);
   font-variant-numeric: tabular-nums;
 }
 
 .dropdownToolbarButton {
-  border-radius: 6px;
+  border-radius: var(--v-control-radius);
 }
 
 .dropdownToolbarButton > select {
   font-family: var(--v-sans);
-  border-radius: 6px;
+  border-radius: var(--v-control-radius);
 }
 
 /*

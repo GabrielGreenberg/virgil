@@ -2624,7 +2624,7 @@ Outline Edit/Focus) are not a choice and stay as above.
 
 ## Inputs
 
-`bg-surface border-edge-subtle rounded-md` (6px). Focus thickens the
+`bg-surface border-edge-subtle rounded-md` (8px). Focus thickens the
 border to `edge-strong`; no ring on inputs. Placeholder is
 `text-ink-muted`.
 
@@ -2651,7 +2651,7 @@ property are resolved by *stylesheet* order, not class order:
 | Prop | Values | When |
 |---|---|---|
 | `tone` | `surface` (default) · `muted` · `transparent` | The field's background. |
-| `density` | `control` (default, `rounded-md` 6px) · `dense` (`rounded-sm` 4px) | Which rung of the radius scale — see "Radius scale": a primary control is 6px, a "form input inside a popover" (card micro-field, popover, inline card row) is 4px. |
+| `density` | `control` (default, `rounded-md` 8px) · `dense` (`rounded-sm` 4px) | Which rung of the radius scale — see "Radius scale": a primary control is 8px, a "form input inside a popover" (card micro-field, popover, inline card row) is 4px. |
 | `invalid` | boolean | Conflict state: border + text flip to `--danger`. Never hand-spell a red. |
 
 **The `library/` silo takes the primitive too, box inline** (task 1012).

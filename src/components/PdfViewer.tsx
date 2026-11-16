@@ -134,7 +134,7 @@ const SIDEBAR_VIEW_NONE = 0;
  *
  * It states five things: a PDF's external links open in a new window, a compiled
  * paper prints at 300 dpi, the viewer is pinned LIGHT, its chrome is painted
- * from Virgil's LIVE palette (`applyViewerPalette`, task 890 — all four below
+ * from Virgil's LIVE palette (`applyViewerTokens`, task 890 — all four below
  * the sidebar lines), and — the long story here — **the sidebar
  * (outline/thumbnails) opens CLOSED.**
  * pdf.js resolves "sidebar view on load" in three tiers (`viewer.mjs` ~:13946),
@@ -239,7 +239,7 @@ export function applyViewerDefaults(
   } catch {
     // Torn-down viewer mid-switch — the next open re-applies.
   }
-  applyViewerPalette(win);
+  applyViewerTokens(win);
 }
 
 /** pdf.js `viewerCssTheme` value for "always light" (0 = follow OS, 2 = dark). */
@@ -305,9 +305,12 @@ export function carryCompiledPlace(app: PdfViewerApplication, id: string): void 
  * `--virgil-<name>` on the iframe's root, and `virgil-overrides.css` consumes
  * only those (each with a fallback for the pre-copy frame). One list, read by
  * both sides: the census in `PdfView.viewerDefaults.test.ts` fails if the CSS
- * names a `--virgil-*` token that is not here, or carries a bare hex.
+ * names a `--virgil-*` token that is not here, carries a bare hex, or carries
+ * a fallback that is not the token's SHIPPED value. Palette tokens plus the
+ * one radius step the toolbar's fields need (task 1651) — a corner crosses the
+ * iframe boundary the same way a colour does.
  */
-export const VIEWER_PALETTE_TOKENS = [
+export const VIEWER_TOKENS = [
   "--background",
   "--border-light",
   "--foreground",
@@ -315,21 +318,22 @@ export const VIEWER_PALETTE_TOKENS = [
   "--muted",
   "--control-selected",
   "--pod-panel",
+  "--radius-md",
 ] as const;
 
 /** `--background` → `--virgil-background`: the name a token goes by in the iframe. */
-export function viewerPaletteVar(token: (typeof VIEWER_PALETTE_TOKENS)[number]): string {
+export function viewerTokenVar(token: (typeof VIEWER_TOKENS)[number]): string {
   return `--virgil-${token.slice(2)}`;
 }
 
 /**
- * Copy the parent's LIVE palette onto the viewer's root. Called on every open
+ * Copy the parent's LIVE tokens onto the viewer's root. Called on every open
  * (from `applyViewerDefaults`) and whenever the palette changes
  * (`subscribeChromePalette`) — event-driven, O(token count), never per frame.
  * A token the parent leaves empty is REMOVED in the iframe, so the CSS fallback
  * applies rather than an empty value. `source` is injectable for tests.
  */
-export function applyViewerPalette(
+export function applyViewerTokens(
   win: PdfViewerWindow | null | undefined,
   source: Pick<CSSStyleDeclaration, "getPropertyValue"> | null = typeof document !== "undefined"
     ? getComputedStyle(document.documentElement)
@@ -343,9 +347,9 @@ export function applyViewerPalette(
     return; // Torn-down viewer mid-switch.
   }
   if (!style) return;
-  for (const token of VIEWER_PALETTE_TOKENS) {
+  for (const token of VIEWER_TOKENS) {
     const value = source.getPropertyValue(token).trim();
-    const name = viewerPaletteVar(token);
+    const name = viewerTokenVar(token);
     if (value) {
       if (style.getPropertyValue(name) !== value) style.setProperty(name, value);
     } else {
@@ -431,7 +435,7 @@ export default function PdfViewer({
   useEffect(
     () =>
       subscribeChromePalette(() => {
-        applyViewerPalette(iframeRef.current?.contentWindow as PdfViewerWindow | null);
+        applyViewerTokens(iframeRef.current?.contentWindow as PdfViewerWindow | null);
       }),
     [],
   );
