@@ -3,6 +3,15 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FONT_PARTITLE } from "@/lib/font-stacks";
 import { commentsStripped, cssCommentsStripped, walkFiles } from "@/lib/__tests__/_source-scan";
+import {
+  fallbackReads,
+  rootDeclarations,
+  rootLiteralValues,
+  sameValue,
+  shippedRootValues,
+  SHIPPED_STYLESHEETS,
+  topLevelRootBodies,
+} from "@/lib/__tests__/_root-css";
 
 /**
  * PHANTOM CSS VARIABLES — a `var(--token)` is a CLAIM that the token exists
@@ -68,7 +77,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");
 
 /** Every stylesheet the app ships. `globals.css` `@import`s the library one. */
-const STYLESHEETS = ["src/app/globals.css", "library/styles/library.css"];
+const STYLESHEETS = SHIPPED_STYLESHEETS;
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -645,75 +654,7 @@ describe("the census can see", () => {
  * pod reset) is conditional, not the token's value, and is not read.
  */
 
-/** The bodies of the TOP-LEVEL `:root` rules in comment-stripped `css`. */
-function topLevelRootBodies(css: string): string[] {
-  const bodies: string[] = [];
-  let depth = 0;
-  let selStart = 0;
-  for (let i = 0; i < css.length; i++) {
-    if (css[i] === "}") {
-      depth = Math.max(0, depth - 1);
-      selStart = i + 1;
-    } else if (css[i] === "{") {
-      const selector = css.slice(selStart, i).split(";").pop()!.trim();
-      if (depth === 0 && selector === ":root") {
-        let j = i + 1;
-        for (let d = 1; j < css.length && d > 0; j++) {
-          if (css[j] === "{") d++;
-          else if (css[j] === "}") d--;
-        }
-        bodies.push(css.slice(i + 1, j - 1));
-        i = j - 1;
-        selStart = j;
-      } else {
-        depth++;
-        selStart = i + 1;
-      }
-    }
-  }
-  return bodies;
-}
-
-/** Every `--tok: value;` declaration in a rule body, in source order. */
-const rootDeclarations = (body: string) =>
-  [...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((d) => ({ tok: d[1], value: d[2].trim() }));
-
-/** token → its cascade-winning `:root` literal, over comment-stripped `css`. */
-function rootLiteralValues(css: string): Map<string, string> {
-  const volatile = (v: string) => /var\(|env\(|\b(?:inherit|initial|unset)\b/.test(v);
-  const values = new Map<string, string>();
-  for (const body of topLevelRootBodies(css))
-    for (const d of rootDeclarations(body)) values.set(d.tok, d.value); // last wins
-  const literal = new Map<string, string>();
-  for (const [tok, v] of values) {
-    if (volatile(v)) continue;
-    const decls = [...css.matchAll(new RegExp(`(?<![\\w-])${tok}\\s*:\\s*([^;}]+)`, "g"))];
-    if (decls.some((d) => volatile(d[1]))) continue;
-    literal.set(tok, v);
-  }
-  return literal;
-}
-
-const ROOT_CSS = STYLESHEETS.map((f) => stripCssComments(read(f))).join("\n");
-const ROOT_VALUES = rootLiteralValues(ROOT_CSS);
-
-/** Every `var(--tok, <fallback>)` in `text`, the fallback balanced on parens. */
-function fallbackReads(text: string): { tok: string; fallback: string; at: number }[] {
-  const out: { tok: string; fallback: string; at: number }[] = [];
-  const re = /var\(\s*(--[\w-]+)\s*,/g;
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    let i = re.lastIndex;
-    for (let depth = 1; i < text.length && depth > 0; i++) {
-      if (text[i] === "(") depth++;
-      else if (text[i] === ")") depth--;
-    }
-    out.push({ tok: m[1], fallback: text.slice(re.lastIndex, i - 1).trim(), at: m.index });
-  }
-  return out;
-}
-
-const sameValue = (a: string, b: string) =>
-  a.toLowerCase().replace(/\s+/g, "") === b.toLowerCase().replace(/\s+/g, "");
+const ROOT_VALUES = shippedRootValues();
 
 /** Every fallback in `sources` that contradicts its token's `:root` literal. */
 function fallbackLies(

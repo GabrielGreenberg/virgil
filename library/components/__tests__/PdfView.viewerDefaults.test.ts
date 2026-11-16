@@ -33,12 +33,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
   applyViewerDefaults,
-  applyViewerPalette,
+  applyViewerTokens,
   COMPILED_VIEWER_CLASS,
-  VIEWER_PALETTE_TOKENS,
-  viewerPaletteVar,
+  VIEWER_TOKENS,
+  viewerTokenVar,
   type PdfViewerWindow,
 } from "@/components/PdfViewer";
+import { fallbackReads, sameValue, shippedRootDefaults } from "@/lib/__tests__/_root-css";
 
 // ---------------------------------------------------------------------------
 // The door
@@ -201,56 +202,76 @@ describe("applyViewerDefaults — the viewer is pinned light (task 890)", () => 
   });
 });
 
-describe("applyViewerPalette — the parent's LIVE tokens reach the iframe", () => {
+describe("applyViewerTokens — the parent's LIVE tokens reach the iframe", () => {
   it("copies every listed token onto the iframe root as --virgil-<name>", () => {
     const { win, style } = fakeViewerDoc();
     const values = Object.fromEntries(
-      VIEWER_PALETTE_TOKENS.map((t, i) => [t, ` #00000${i} `]),
+      VIEWER_TOKENS.map((t, i) => [t, ` #00000${i} `]),
     );
-    applyViewerPalette(win, parentStyle(values));
-    for (const [i, t] of VIEWER_PALETTE_TOKENS.entries()) {
-      expect(style.props.get(viewerPaletteVar(t))).toBe(`#00000${i}`);
+    applyViewerTokens(win, parentStyle(values));
+    for (const [i, t] of VIEWER_TOKENS.entries()) {
+      expect(style.props.get(viewerTokenVar(t))).toBe(`#00000${i}`);
     }
   });
 
   it("follows a palette CHANGE and leaves an unchanged token unwritten", () => {
     const { win, style } = fakeViewerDoc();
-    applyViewerPalette(win, parentStyle({ "--background": "#ede3de", "--muted": "#8a8580" }));
+    applyViewerTokens(win, parentStyle({ "--background": "#ede3de", "--muted": "#8a8580" }));
     style.setProperty.mockClear();
-    applyViewerPalette(win, parentStyle({ "--background": "#ff0000", "--muted": "#8a8580" }));
+    applyViewerTokens(win, parentStyle({ "--background": "#ff0000", "--muted": "#8a8580" }));
     expect(style.props.get("--virgil-background")).toBe("#ff0000");
     expect(style.setProperty).toHaveBeenCalledTimes(1);
   });
 
   it("removes a token the parent leaves empty, so the CSS fallback applies", () => {
     const { win, style } = fakeViewerDoc();
-    applyViewerPalette(win, parentStyle({ "--background": "#ede3de" }));
-    applyViewerPalette(win, parentStyle({}));
+    applyViewerTokens(win, parentStyle({ "--background": "#ede3de" }));
+    applyViewerTokens(win, parentStyle({}));
     expect(style.props.has("--virgil-background")).toBe(false);
   });
 
   it("is a no-op on a window that is not there yet", () => {
-    expect(() => applyViewerPalette(null, parentStyle({}))).not.toThrow();
-    expect(() => applyViewerPalette({} as PdfViewerWindow, parentStyle({}))).not.toThrow();
+    expect(() => applyViewerTokens(null, parentStyle({}))).not.toThrow();
+    expect(() => applyViewerTokens({} as PdfViewerWindow, parentStyle({}))).not.toThrow();
   });
 });
 
-describe("virgil-overrides.css — names no colour of its own", () => {
+describe("virgil-overrides.css — names no colour or corner of its own", () => {
   const CSS = readFileSync(
     join(__dirname, "..", "..", "..", "public", "pdfjs", "web", "virgil-overrides.css"),
     "utf8",
   ).replace(/\/\*[\s\S]*?\*\//g, "");
 
-  it("every --virgil-* it reads is in VIEWER_PALETTE_TOKENS, read with a fallback", () => {
-    const listed = new Set<string>(VIEWER_PALETTE_TOKENS.map(viewerPaletteVar));
+  it("every --virgil-* it reads is in VIEWER_TOKENS, read with a fallback", () => {
+    const listed = new Set<string>(VIEWER_TOKENS.map(viewerTokenVar));
     const reads = [...CSS.matchAll(/var\(\s*(--virgil-[\w-]+)\s*(,)?/g)];
     expect(reads.length).toBeGreaterThan(0);
     for (const [, name, comma] of reads) {
-      expect(listed.has(name), `${name} is not a VIEWER_PALETTE_TOKENS token`).toBe(true);
+      expect(listed.has(name), `${name} is not a VIEWER_TOKENS token`).toBe(true);
       expect(comma, `${name} is read without a fallback`).toBe(",");
     }
     // …and every listed token is actually consumed (a registry is read).
     for (const name of listed) expect(CSS).toContain(name);
+  });
+
+  it("every --virgil-* fallback is its token's SHIPPED value (task 1651)", () => {
+    // The pre-copy frame paints the fallback, so it must be what globals.css
+    // ships at the root — the cascade-winning top-level `:root` declaration,
+    // read by the same resolver as the app's own fallback-agreement guard
+    // (task 1417), paired through the ONE list.
+    const shipped = shippedRootDefaults();
+    const byIframeName = new Map(VIEWER_TOKENS.map((t) => [viewerTokenVar(t), t]));
+    const reads = fallbackReads(CSS).filter((r) => byIframeName.has(r.tok));
+    expect(reads.length).toBe(VIEWER_TOKENS.length);
+    for (const r of reads) {
+      const token = byIframeName.get(r.tok)!;
+      const value = shipped.get(token);
+      expect(value, `${token} has no literal shipped :root value to pin ${r.tok} to`).toBeDefined();
+      expect(
+        sameValue(r.fallback, value!),
+        `var(${r.tok}, ${r.fallback}) but ${token} ships as ${value}`,
+      ).toBe(true);
+    }
   });
 
   it("carries no bare hex / rgb() colour outside a var(--virgil-*, fallback)", () => {

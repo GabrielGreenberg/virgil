@@ -85,7 +85,7 @@ globals.css" by prose; that sync had already drifted (manila `#dcdbd7` under the
 shipped blue `#c5dbe2` bar) and could never follow the user's Colors prefs, which
 live on the PARENT's `:root` and do not cross into an iframe. Now:
 
-- **One token list**, `VIEWER_PALETTE_TOKENS` in `PdfViewer.tsx`. `applyViewerPalette`
+- **One token list**, `VIEWER_TOKENS` in `PdfViewer.tsx`. `applyViewerTokens`
   copies each LIVE parent value (`getComputedStyle(:root)`) onto the iframe root
   as `--virgil-<name>`, equality-bailed; an empty parent value is removed so the
   CSS fallback applies.
