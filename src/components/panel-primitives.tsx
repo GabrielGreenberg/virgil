@@ -76,7 +76,7 @@ import { useTrailingClickGuard } from "@/hooks/useTrailingClickGuard";
 import { pulseCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
 import { pressFromInteractiveControl, isEditableEventTarget } from "@/lib/drag-blocklist";
-import { cardTypeLabel } from "@/panels/panel-registry";
+import { cardEmptySentinel, cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -1040,9 +1040,16 @@ export function CardTypeLabel({
 /** A9 §C3: the single empty-body placeholder for a compressed / empty card.
  *  Replaces the ~5 hand-rolled `<span className="text-ink-faint italic">empty
  *  …</span>` literals scattered across the cards (which had drifted between
- *  `text-ink-faint` and `text-ink-muted`). One style, optional label. */
-export function CardEmptyText({ label = "empty" }: { label?: string }) {
-  return <span className="text-ink-faint italic">{label}</span>;
+ *  `text-ink-faint` and `text-ink-muted`). One style — and, since task 1655,
+ *  one WORDING: the text is DERIVED from `kind` (`cardEmptySentinel`, "empty
+ *  <noun>"), never passed in. Omit `kind` only where the empty thing is not a
+ *  card body (an example's per-line gloss row) — that reads a bare "empty". */
+export function CardEmptyText({ kind }: { kind?: CardKind }) {
+  return (
+    <span className="text-ink-faint italic">
+      {kind ? cardEmptySentinel(kind) : "empty"}
+    </span>
+  );
 }
 
 /** In-card META tier label (UI-consistency sweep): 11px / 500 /
@@ -2139,7 +2146,7 @@ export function EditableCard({
                   />
                 )
               ) : (
-                <CardEmptyText />
+                <CardEmptyText kind={kind} />
               )
             ) : (
               // C24 (REP-F1-01 / OMNI-F1-03): `??` only fires on null/undefined,
@@ -2147,7 +2154,7 @@ export function EditableCard({
               // empty body arrived as `''` and `??` never substituted the
               // sentinel — the card showed a blank line. `||` falls through on
               // the falsy empty string too, so an empty body now shows "empty".
-              compressedSummary || <CardEmptyText />
+              compressedSummary || <CardEmptyText kind={kind} />
             )}
           </div>
         </div>

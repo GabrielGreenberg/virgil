@@ -542,14 +542,14 @@ export function ExampleCard({
               style={{ ...bodyStyle, ...compressedBodyStyle(compressedLines) }}
             >
               <span className="mr-2">({example.number || "?"})</span>
-              {firstBodyLine(example) || <CardEmptyText />}
+              {firstBodyLine(example) || <CardEmptyText kind="example" />}
             </div>
           ) : (
             <div style={{ ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
               <span className="card-mono mr-2">
                 ({example.number || "?"})
               </span>
-              {firstBodyLine(example) || <CardEmptyText />}
+              {firstBodyLine(example) || <CardEmptyText kind="example" />}
             </div>
           )}
         </div>
@@ -641,7 +641,7 @@ export function ExampleCard({
             </div>
           </div>
         ) : (
-          <CardEmptyText label="Empty example" />
+          <CardEmptyText kind="example" />
         )}
       </div>
       </>

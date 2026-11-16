@@ -233,6 +233,16 @@ export function cardBodyPlaceholder(kind: CardKind): string {
   return CARD_REGISTRY[kind].bodyPlaceholder ?? `${CARD_TYPE_LABELS[kind]} text…`;
 }
 
+/** The COLLAPSED twin of `cardBodyPlaceholder` (task 1655): the muted italic
+ *  sentinel a compressed card shows for an empty body — `"empty <noun>"`, the
+ *  kind's one noun (`cardKindNoun`). Before this, each caller hand-spelled it
+ *  ("empty highlight", "Empty example", "empty suggestion", bare "empty"), so a
+ *  collapsed empty note read "empty" beside an "empty highlight". Rendered only
+ *  through `CardEmptyText kind=…`, which takes no free-text label. */
+export function cardEmptySentinel(kind: CardKind): string {
+  return `empty ${cardKindNoun(kind, 1)}`;
+}
+
 /** THE noun for a card kind (task 1581): its registry label, lower-cased,
  *  pluralized with a plain `s` when `count !== 1` — "note"/"notes", "report
  *  request"/"report requests" — unless the registry DECLARES the kind's

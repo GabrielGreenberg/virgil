@@ -130,7 +130,7 @@ export function HighlightCard({
       {compressed ? (
         <div className="px-3 pt-1.5 pb-1.5">
           <div style={cueStyle}>
-            {compressedSnippet || <CardEmptyText label="empty highlight" />}
+            {compressedSnippet || <CardEmptyText kind="highlight" />}
           </div>
         </div>
       ) : (
@@ -146,7 +146,7 @@ export function HighlightCard({
               className="py-1 break-words"
             />
           ) : (
-            <CardEmptyText label="empty highlight" />
+            <CardEmptyText kind="highlight" />
           )}
 
           {/* R14: the one-way "+ note" morph button is gone — note ↔ highlight

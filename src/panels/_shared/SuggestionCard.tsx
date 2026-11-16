@@ -261,7 +261,7 @@ export function SuggestionCard({
             ) : card.original_text ? (
               <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{capturedPassageOneLine({ latex: card.original_text, content: card.selectedContent })}</span></span>
             ) : (
-              <CardEmptyText label="empty suggestion" />
+              <CardEmptyText kind={family} />
             )}
           </div>
         </div>
