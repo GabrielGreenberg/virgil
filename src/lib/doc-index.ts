@@ -454,6 +454,13 @@ export async function deleteGeneralBibHandle(id: string): Promise<void> {
  * store cannot silently survive a reset (task 1277's compile record did, and
  * the pristine example reopened showing the discarded version's PDF).
  *
+ * Browser-storage per-doc state (outline folds, card floats, the collab
+ * session record) registers the same way, but is DURABLE — it outlives the page
+ * that wrote it — so `purgeDoc` first loads `doc-forget-durable.ts`, which
+ * imports each such store so its forget is registered even when its UI never
+ * mounted this session (task 1645). The same census classifies every module
+ * that touches localStorage/sessionStorage.
+ *
  * Deliberately NOT touched:
  *   - `doc-owner/<id>` (multi-window/doc-ownership.ts) — it shadows a live
  *     Web Lock and is cleared by that lock's own release; deleting it here
@@ -469,6 +476,10 @@ export async function purgeDoc(
   id: string,
   mode: "remove" | "reset" = "remove",
 ): Promise<void> {
+  // The browser-storage stores register their forgets on import — load them
+  // all first, so a store whose UI never mounted this session is still
+  // forgotten (task 1645, doc-forget-durable.ts).
+  await import("@/lib/doc-forget-durable");
   forgetDocInMemory(id, mode);
   await Promise.all([
     mode === "remove"

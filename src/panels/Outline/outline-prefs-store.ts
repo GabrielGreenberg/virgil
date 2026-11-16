@@ -60,6 +60,7 @@ export interface OutlinePrefs {
 }
 
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+import { registerDocForget } from "@/lib/doc-forget";
 
 const STORAGE_KEY = "virgil-outline-prefs";
 
@@ -239,3 +240,25 @@ export function setOutlineCollapsedForDoc(
   writeToStorage(current);
   emit();
 }
+
+/**
+ * Forget one document's folds (task 1645) — `purgeDoc`'s door, so "Reset
+ * example" (same fixed id, same seed block uuids) cannot reopen the pristine
+ * paper with the discarded copy's folds, and a removed paper's bucket does not
+ * sit in the LRU until evicted. A reset leaves an EMPTY bucket when a legacy
+ * flat set exists, so the pristine paper does not fall back to it either; a
+ * remove just drops the bucket. Registered here, beside the store; loaded on
+ * every purge by `doc-forget-durable.ts`, since the folds outlive the page.
+ */
+export function forgetOutlineFoldsForDoc(docId: string, mode: "remove" | "reset"): void {
+  const keepEmpty = mode === "reset" && current.legacyCollapsed !== null;
+  if (!current.folds.has(docId) && !keepEmpty) return;
+  const folds = new Map(current.folds);
+  folds.delete(docId);
+  if (keepEmpty) folds.set(docId, []);
+  current = { ...current, folds };
+  writeToStorage(current);
+  emit();
+}
+
+registerDocForget("outline-folds", forgetOutlineFoldsForDoc);

@@ -23,6 +23,7 @@
 
 import { claimWindowIdentity } from "@/lib/multi-window/window-liveness";
 import { getWindowId } from "@/lib/multi-window/window-id";
+import { registerDocForget } from "@/lib/doc-forget";
 
 const RECORD_PREFIX = "virgil:collab-sessions:";
 /** A paper's remembered sessions per window — more than any pane count. */
@@ -115,6 +116,30 @@ export function forgetCollabSession(docId: string, session: string): void {
   else delete record[docId];
   writeRecord(id, record);
 }
+
+/**
+ * Forget the DEAD sessions this window remembers for `docId` (task 1645) —
+ * `purgeDoc`'s door. After a reset (same fixed id) a pane opening the fresh
+ * paper must not adopt the discarded identity's dead predecessors; after a
+ * remove the record has nothing to adopt into. A session LIVE in this page is
+ * kept: its own clean leave drops it. Reaches only this tab's record —
+ * sessionStorage is per tab, and a peer tab's record names sessions it
+ * adopts only on its own reload.
+ */
+export function forgetDeadCollabSessions(docId: string): void {
+  if (typeof window === "undefined") return;
+  const id = getWindowId();
+  const record = readRecord(id);
+  const prior = record[docId];
+  if (!prior) return;
+  const kept = prior.filter((s) => live.has(s));
+  if (kept.length === prior.length) return;
+  if (kept.length) record[docId] = kept;
+  else delete record[docId];
+  writeRecord(id, record);
+}
+
+registerDocForget("collab-sessions", (docId) => forgetDeadCollabSessions(docId));
 
 /** Test seam. */
 export function __resetCollabSessionsForTest(): void {
