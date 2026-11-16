@@ -17,7 +17,8 @@
  * the file kind is how six untokenized drag-ghost radii hid in `.tsx` cssText
  * strings for a full release cycle (task 2026-07-18-169).
  *
- * The guard FLAGS, in `src/` + `library/`:
+ * The guard FLAGS, in `src/` + `library/` (+ the SCAN_FILES Virgil ships
+ * outside them — the pdf.js viewer's overrides stylesheet):
  *   - CSS `border-radius` / `border-<corner>-radius:` — in `.css` files AND in
  *     CSS authored inside `.ts`/`.tsx` strings
  *   - inline `borderRadius` / `border<Corner>Radius:` in a style object
@@ -47,6 +48,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCAN_DIRS = ["src", "library"];
+// Hand-authored stylesheets Virgil ships OUTSIDE those trees, named one by one
+// (task 1651). The rest of public/pdfjs/ is the unmodified Mozilla dist, so the
+// directory is never walked — only the one file Virgil writes there.
+const SCAN_FILES = ["public/pdfjs/web/virgil-overrides.css"];
 const EXTS = new Set([".css", ".ts", ".tsx"]);
 
 // Whole-file exceptions (path substring match).
@@ -253,18 +258,31 @@ function walk(dir) {
 // Explicit paths (files or dirs) override the default sweep — the contract test
 // uses this to point the guard at a planted fixture.
 const targets = process.argv.slice(2);
-for (const t of targets.length ? targets : SCAN_DIRS) {
+for (const t of targets.length ? targets : [...SCAN_DIRS, ...SCAN_FILES]) {
   const abs = path.resolve(ROOT, t);
   if (!fs.existsSync(abs)) continue;
   if (fs.statSync(abs).isDirectory()) walk(abs);
   else if (EXTS.has(path.extname(abs))) scanFile(abs);
 }
 
+/**
+ * The live scale, as `src/app/globals.css` declares it — read, never
+ * hand-written, so the message cannot teach a retired step (task 1651: it
+ * printed the pre-Sand 3/4/6/8/14 ladder for months after the re-token).
+ */
+function radiusScale() {
+  const css = fs.readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
+  const seen = new Map();
+  for (const m of css.matchAll(/^\s*(--(?:radius-[\w-]+|pod-radius|panel-radius))\s*:\s*([^;]+);/gm)) {
+    if (!seen.has(m[1]) && !m[2].includes("var(") && m[2].trim() !== "initial") seen.set(m[1], m[2].trim());
+  }
+  return [...seen].map(([tok, v]) => `var(${tok}) ${v}`).join(" · ");
+}
+
 if (violations.length) {
   console.error(`\n✖ Radius-token guard: ${violations.length} literal radius${violations.length === 1 ? "" : "es"} found.\n`);
   console.error("  Use a token from the scale (src/STYLE_GUIDE.md \"Radius scale\"):");
-  console.error("    var(--radius-sm) 3 · var(--radius-sm) 4 · var(--radius-md) 6 ·");
-  console.error("    var(--pod-radius) 8 · var(--panel-radius) 14 · var(--radius-pill).");
+  console.error(`    ${radiusScale()}.`);
   console.error("  Hairline bars (1px), circles (50%) and resets (0) are allowed as-is.");
   console.error("  A genuine exception can carry a `radius-allow` comment on the line.\n");
   for (const [file, ln, val, kind] of violations) {

@@ -97,6 +97,14 @@ live on the PARENT's `:root` and do not cross into an iframe. Now:
   alpha tints derived by `color-mix`. The census fails on a bare hex/`rgb()` in a
   declaration value, a `--virgil-*` not in the list, a read without a fallback, or
   a listed token nobody reads.
+- **Fallbacks are pinned to what ships** (task 1651). Each `var(--virgil-<name>,
+  <fallback>)` must equal `--<name>`'s cascade-winning top-level `:root` value in
+  `globals.css`, read by the SAME resolver the app's own fallback-agreement guard
+  uses (`src/lib/__tests__/_root-css.ts`, `shippedRootDefaults`). The file sat
+  outside every token guard (they walk `src/` + `library/`), so the Sand re-token
+  left `--virgil-muted` falling back to the pre-Sand grey. Corners cross the same
+  way: `--radius-md` is in `VIEWER_TOKENS`, and `scripts/check-radius-tokens.mjs`
+  scans this one file by name (`SCAN_FILES`) — never the rest of the dist.
 - **Pinned light.** `viewerCssTheme` is set to 1 for the record, but it is read
   once inside `initialize()` before the door can run, so the root class swap
   (`is-dark` → `is-light`) is what lands; every dark rule in `viewer.css` is gated
