@@ -309,8 +309,21 @@ export function runAutoApplyPass(args: {
       if (anchor) inFlight.add(anchor);
     }
   }
+  // An applied change's STORED uuid can be a dead record after a re-mint,
+  // while targets are keyed by the LIVE block (task 1506) — so the one-applied-
+  // per-paragraph rule also holds each applied card's live block (task 1641).
+  // Lazily, once: a pass with nothing pending builds no anchor index.
+  let liveApplied = false;
   for (const target of collectPendingAiSuggestions(revisions, cutter, passOf)) {
     if (onlyAnchor !== undefined && target.anchorUuid !== onlyAnchor) continue;
+    if (!liveApplied) {
+      liveApplied = true;
+      for (const c of live) {
+        if (!isAppliedPendingSuggestion(c)) continue;
+        const anchor = suggestionAnchorBlock(c, passOf());
+        if (anchor) inFlight.add(anchor);
+      }
+    }
     applyOne(editor, target, caretParagraphUuid, inFlight, dispatched, passOf());
   }
 }

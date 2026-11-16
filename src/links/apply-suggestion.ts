@@ -41,13 +41,16 @@
  * REUSE, don't reinvent: `findNodeByUuid` + `editStructuredNodeByUuid`
  * (structural-edit.ts) address + replace the paragraph by uuid;
  * `serializeParagraphInline` (latex-serializer.ts) + `parseInlineContent`
- * (latex-parser.ts) are the round-trip pair; `reanchorByText` +
- * `removeLinkedAnchor` (links.ts) stamp / unstamp the blue mark.
+ * (latex-parser.ts) are the round-trip pair. The blue mark is stamped by that
+ * same round trip — `\vlid{id}…\vlidend{id}` written around the spliced bytes —
+ * and every later verb addresses the change by that pair (task 1641; see
+ * "The mark IS the address" below), never by searching for its text.
  */
 
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { CardKind } from "@/panels/_shared/types";
-import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
+import { Fragment } from "@tiptap/pm/model";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import {
   findNodeByUuid,
   editStructuredNodeByUuid,
@@ -62,7 +65,13 @@ import {
   parseInlineContent,
   applyLinkedAnchorBoundaries,
 } from "@/lib/latex-parser";
-import { reanchorByText, removeLinkedAnchor } from "@/links/links";
+import {
+  removeLinkedAnchor,
+  resolveTextRangeByAnchorId,
+  writeLinkedAnchorMark,
+} from "@/links/links";
+import { linkCardKeyFromToken } from "@/links/link-dom-contract";
+import { VIRGIL_MARKERS, emitMarker } from "@/lib/latex-markers";
 import { captureRangeLatex } from "@/lib/tiptap/slice-capture";
 import {
   defaultTintForLinkedAnchorKind,
@@ -372,23 +381,24 @@ function plainProjection(
 }
 
 /**
- * Splice `originalText → replacement` in the paragraph's serialized inline
- * LaTeX (first verbatim occurrence only) and replace the paragraph's inner
- * content with the re-parsed result, preserving the block node + its uuid.
- * Returns true on a dispatched edit, false on any no-op (uuid gone, schema
- * rejection). `addToHistory: true` — a genuine user-undoable text splice.
+ * Replace the uuid-addressed paragraph's inner content with the re-parse of
+ * `newLatex` (a whole spliced inline-LaTeX paragraph string), preserving the
+ * block node + its uuid. `addToHistory: true` — a genuine user-undoable text
+ * splice. `ownAnchor`, when given, is the pending mark this splice is ALSO
+ * stamping through `\vlid` markers it placed in `newLatex`: its full attrs ride
+ * the same reparse, and the splice REFUSES (dispatching nothing) unless that
+ * mark actually landed — an unmarked splice is the defect task 1641 closed.
  *
- * This is the shared text-mutation half of apply (replace) / keep (delete) —
- * both run the identical serialize → string-replace → reparse → replace-inner
- * pipeline; only the (originalText, replacement) pair differs.
+ * This is the ONE text-mutation half of every pending-change verb — apply
+ * (replace), keep (delete), revert, and the reload/delete-mode stamp's
+ * fallback all run serialize → string-splice → reparse → replace-inner; only
+ * the bytes differ.
  */
 function spliceParagraphInner(
   editor: Editor,
   anchorUuid: string,
-  serialized: string,
-  index: number,
-  originalText: string,
-  replacement: string,
+  newLatex: string,
+  ownAnchor?: { anchorId: string; attrs: LinkedAnchorAttrs },
 ): boolean {
   // Capture the LIVE linkedAnchor mark attrs (tint / card / kind) of any
   // pre-existing in-paragraph anchor BEFORE the reparse, so `inlineFragmentFromLatex`
@@ -398,18 +408,233 @@ function spliceParagraphInner(
   const hit = findNodeByUuid(editor, anchorUuid);
   if (!hit || hit.node.type.name !== "paragraph") return false;
   const liveAnchorAttrs = captureLiveAnchorAttrs(hit.node);
+  if (ownAnchor) liveAnchorAttrs.set(ownAnchor.anchorId, ownAnchor.attrs);
 
-  const newLatex =
-    serialized.slice(0, index) +
-    replacement +
-    serialized.slice(index + originalText.length);
   const nextFrag = inlineFragmentFromLatex(editor, newLatex, liveAnchorAttrs);
   if (!nextFrag) return false;
+  if (ownAnchor && !fragmentCarriesAnchor(nextFrag, ownAnchor.anchorId)) return false;
   return editStructuredNodeByUuid(editor, anchorUuid, {
     assertType: "paragraph",
     editInlineContent: () => nextFrag,
   });
 }
+
+/** Does any inline node of `frag` carry the `linkedAnchor` `anchorId`? */
+function fragmentCarriesAnchor(frag: Fragment, anchorId: string): boolean {
+  let found = false;
+  frag.forEach((n) => {
+    if (found) return;
+    found = n.marks.some(
+      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
+    );
+  });
+  return found;
+}
+
+// ── The mark IS the address (task 1641) ───────────────────────────────────
+//
+// Until 1641 every verb after the splice RE-FOUND the change by searching for
+// its text: the apply stamped its mark with `reanchorByText` (a PLAIN-text
+// search for a LaTeX string, so a replacement carrying `\emph{…}`, `\%` or a
+// `\vcid{…}` was never marked at all), and Dismiss / Keep removed the mark
+// FIRST — discarding the only exact range — then spliced the first
+// `indexOf` occurrence, which in "the cat sat. The dog ran." is the wrong cat.
+//
+// Now the change has ONE address, in BOTH dialects. In the document it is the
+// mark; in the paragraph's serialization it is the `\vlid{id}…\vlidend{id}`
+// pair the serializer emits for that mark. Apply WRITES the pair around the
+// bytes it splices (so the mark comes out of the same reparse that lands the
+// text — no search), and every later verb READS the pair: it splices exactly
+// the bytes between the markers and nothing else.
+
+/** The full attrs of the blue pending mark — the same set `reanchorByText`
+ *  stamped, so a reload re-stamp and an apply agree byte for byte. */
+export function pendingMarkAttrs(args: {
+  anchorId: string;
+  cardId: string;
+  family: PendingChangeFamily;
+  pendingDelete: boolean;
+}): LinkedAnchorAttrs {
+  return {
+    anchorId: args.anchorId,
+    kind: PENDING_KIND,
+    linkId: args.anchorId,
+    linkKind: "anchor",
+    linkCard: linkCardKeyFromToken(args.family, args.cardId),
+    tintColor: PENDING_TINT,
+    pendingDelete: args.pendingDelete ? true : null,
+  };
+}
+
+const VLID_OPEN = VIRGIL_MARKERS.linkedRangeOpen;
+const VLID_CLOSE = VIRGIL_MARKERS.linkedRangeClose;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Every `\vlid{…}` / `\vlidend{…}` call, capturing the id. */
+const ANY_RANGE_MARKER = new RegExp(
+  `(?:${escapeRe(VLID_CLOSE.macro)}|${escapeRe(VLID_OPEN.macro)})\\{([^}]*)\\}`,
+  "g",
+);
+
+/** `latex` with every linked-range marker call removed. */
+function stripRangeMarkers(latex: string): string {
+  return latex.replace(ANY_RANGE_MARKER, "");
+}
+
+/** `latex` wrapped in the `\vlid{id}…\vlidend{id}` pair. */
+function wrapInRangeMarkers(latex: string, anchorId: string): string {
+  return emitMarker(VLID_OPEN, anchorId) + latex + emitMarker(VLID_CLOSE, anchorId);
+}
+
+/**
+ * The bytes a span serializes to INSIDE a paragraph, with the range markers
+ * stripped — the comparison currency of {@link markedRegionHolds}. Re-cutting
+ * through the round-trip pair is what lets an unedited `\emph{x}` compare equal
+ * to itself even where the serializer spells it back differently.
+ */
+function canonicalInline(editor: Editor, latex: string): string | null {
+  const frag = inlineFragmentFromLatex(editor, stripRangeMarkers(latex), new Map());
+  if (!frag) return null;
+  const json = editor.state.schema.nodes.paragraph.create(null, frag).toJSON();
+  return stripRangeMarkers(serializeParagraphInline(json));
+}
+
+/** The located blue range of a pending change, in the serialization of the
+ *  ONE paragraph that holds it. `start`/`end` bound the slice from the first
+ *  `\vlid{id}` to the end of the last `\vlidend{id}` (a mark a user's note
+ *  split into several runs is still one region). `others` are the OTHER
+ *  anchors' marker calls that fell inside it — carried through any splice so a
+ *  neighbouring anchor that overlaps the region keeps its boundary. */
+interface MarkedRegion {
+  uuid: string;
+  serialized: string;
+  start: number;
+  end: number;
+  inner: string;
+  others: string;
+}
+
+/**
+ * Resolve the pending change `anchorId` FROM ITS MARK: the live range → the
+ * paragraph containing it → that paragraph's serialization → the marker pair.
+ * `null` when the mark is gone (an original-preview, a lost mark), spans more
+ * than one block, or sits in a paragraph with no uuid — the caller's
+ * descriptor fallback then decides.
+ */
+function resolveMarkedRegion(editor: Editor, anchorId: string): MarkedRegion | null {
+  const range = resolveTextRangeByAnchorId(editor, anchorId);
+  if (!range) return null;
+  const $from = editor.state.doc.resolve(range.from);
+  let depth = $from.depth;
+  while (depth > 0 && $from.node(depth).type.name !== "paragraph") depth--;
+  if (depth === 0) return null;
+  const para = $from.node(depth);
+  const paraPos = $from.before(depth);
+  if (range.to > paraPos + para.nodeSize - 1) return null;
+  const uuid = para.attrs?.uuid as string | undefined;
+  if (!uuid) return null;
+  const serialized = serializeParagraphInline(para.toJSON());
+  const open = emitMarker(VLID_OPEN, anchorId);
+  const close = emitMarker(VLID_CLOSE, anchorId);
+  const start = serialized.indexOf(open);
+  const closeAt = serialized.lastIndexOf(close);
+  if (start === -1 || closeAt === -1 || closeAt < start) return null;
+  const end = closeAt + close.length;
+  const region = serialized.slice(start, end);
+  let others = "";
+  for (const m of region.matchAll(ANY_RANGE_MARKER)) {
+    if (m[1] !== anchorId) others += m[0];
+  }
+  return { uuid, serialized, start, end, inner: stripRangeMarkers(region), others };
+}
+
+/** Does the marked region still hold exactly `expected` (marker-blind)? The
+ *  "did the user edit inside the blue range?" question every destructive verb
+ *  asks before splicing it. */
+function markedRegionHolds(
+  editor: Editor,
+  region: MarkedRegion,
+  expected: string,
+): boolean {
+  const want = stripRangeMarkers(expected);
+  if (region.inner === want) return true;
+  const a = canonicalInline(editor, region.inner);
+  return a !== null && a === canonicalInline(editor, want);
+}
+
+/** Splice `region` → `bytes` (the region's own markers dropped, any OTHER
+ *  anchor's markers carried after the new bytes). */
+function spliceMarkedRegion(
+  editor: Editor,
+  region: MarkedRegion,
+  bytes: string,
+): boolean {
+  const newLatex =
+    region.serialized.slice(0, region.start) +
+    bytes +
+    region.others +
+    region.serialized.slice(region.end);
+  return spliceParagraphInner(editor, region.uuid, newLatex);
+}
+
+/**
+ * Stamp the pending mark over a LOCATED span without changing its text — the
+ * delete-mode apply (the struck preview) and the reload re-stamp. The span is
+ * wrapped in its marker pair and re-parsed, so the mark lands over exactly the
+ * located bytes, LaTeX and all. Where the re-parse reproduces the live
+ * paragraph exactly (the normal case), only the mark is written — through the
+ * `linkedAnchor` write door, off the undo stack, like every lifecycle stamp;
+ * otherwise the re-parsed paragraph replaces the old one.
+ */
+function stampLocatedSpan(
+  editor: Editor,
+  anchorUuid: string,
+  located: LocatedSpan,
+  attrs: LinkedAnchorAttrs,
+): boolean {
+  const anchorId = attrs.anchorId as string;
+  const hit = findNodeByUuid(editor, anchorUuid);
+  if (!hit || hit.node.type.name !== "paragraph") return false;
+  const newLatex =
+    located.serialized.slice(0, located.index) +
+    wrapInRangeMarkers(located.match, anchorId) +
+    located.serialized.slice(located.index + located.match.length);
+  const live = captureLiveAnchorAttrs(hit.node);
+  live.set(anchorId, attrs);
+  const frag = inlineFragmentFromLatex(editor, newLatex, live);
+  if (!frag || !fragmentCarriesAnchor(frag, anchorId)) return false;
+
+  // Mark-only path: the re-parse minus our mark IS the live content, so the
+  // marked offsets are live offsets.
+  let from = -1;
+  let to = -1;
+  const stripped: PMNode[] = [];
+  let offset = 0;
+  frag.forEach((n) => {
+    const own = n.marks.find(
+      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
+    );
+    if (own) {
+      if (from === -1) from = offset;
+      to = offset + n.nodeSize;
+    }
+    stripped.push(own ? n.mark(own.removeFromSet(n.marks)) : n);
+    offset += n.nodeSize;
+  });
+  const contentStart = hit.pos + 1;
+  if (hit.node.content.eq(Fragment.from(stripped)) && from !== -1) {
+    const tr = editor.state.tr;
+    if (!writeLinkedAnchorMark(tr, { from: contentStart + from, to: contentStart + to }, attrs))
+      return false;
+    tr.setMeta("addToHistory", false);
+    if (tr.docChanged) editor.view.dispatch(tr);
+    return true;
+  }
+  return editStructuredNodeByUuid(editor, anchorUuid, {
+    assertType: "paragraph",
+    editInlineContent: () => frag,
+  });
+}
+
 
 /**
  * Insert a NEW paragraph directly AFTER the block anchored by `anchorUuid`,
@@ -451,13 +676,16 @@ export function insertParagraphAfter(
 /**
  * Apply a pending AI change.
  *
- * - **replace**: stale-guard `originalText`, splice `originalText → replacement`
- *   into the paragraph (undoable text edit), then stamp the blue
- *   `pending-ai-change` mark over the INSERTED `replacement` region (mark stamp
- *   is NOT undoable — `addToHistory:false`, inside `reanchorByText`).
+ * - **replace**: stale-guard `originalText`, then splice
+ *   `originalText → \vlid{id}replacement\vlidend{id}` into the paragraph — ONE
+ *   undoable edit that lands the text AND the blue `pending-ai-change` mark over
+ *   exactly the inserted bytes (task 1641: no text search, so a LaTeX-bearing
+ *   replacement is marked like any other). Refuses `stale`, dispatching
+ *   nothing, if the mark would not land (a replacement with no text to carry it).
  * - **delete** (replacement === ""): does NOT mutate text. Stale-guards
- *   `originalText`, then stamps the blue mark over the ORIGINAL region (a
- *   pending-delete preview). `keepPendingChange` later removes the text.
+ *   `originalText`, then stamps the blue mark over the LOCATED span (a
+ *   pending-delete preview) — again by marker, not by search.
+ *   `keepPendingChange` later removes the text.
  *
  * Returns `{ ok:false, reason:"stale" }` WITHOUT touching the doc when
  * `originalText` isn't present verbatim (also covers a marker-straddling span),
@@ -486,56 +714,50 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
     return { ok: false, reason: "stale", markerViolation };
   }
 
+  const attrs = pendingMarkAttrs({
+    anchorId,
+    cardId,
+    family,
+    pendingDelete: mode === "delete",
+  });
+
   if (mode === "delete") {
-    // No text mutation — stamp the blue mark over the ORIGINAL region so the
-    // user previews exactly what Keep will remove. `pendingDelete:true` so CSS
-    // renders the struck-through-in-blue deletion preview (Part B); `family` so
-    // the linkCard token carries the real family (Part A).
-    reanchorByText(
-      editor,
-      PENDING_KIND,
-      originalText,
-      anchorId,
-      cardId,
-      PENDING_TINT,
-      anchorUuid,
-      { linkCardToken: family, pendingDelete: true },
-    );
+    // No text mutation — mark the ORIGINAL region so the user previews exactly
+    // what Keep will remove (`pendingDelete` → the struck-in-blue rendering).
+    if (!stampLocatedSpan(editor, anchorUuid, located, attrs))
+      return { ok: false, reason: "stale" };
     return { ok: true, anchorId, originalText: located.match };
   }
 
-  // replace: splice the text first (undoable), then mark the inserted region.
-  const spliced = spliceParagraphInner(
-    editor,
-    anchorUuid,
-    located.serialized,
-    located.index,
+  // replace: the text and its mark land in ONE splice.
+  const newLatex =
+    located.serialized.slice(0, located.index) +
+    wrapInRangeMarkers(replacement, anchorId) +
     // `located.match`, never the argument: on the repair rung these differ,
     // and slicing by the wrong length would cut the wrong bytes.
-    located.match,
-    replacement,
-  );
-  if (!spliced) return { ok: false, reason: "stale" };
-
-  // Stamp the blue mark over the freshly-inserted `replacement` text, scoped to
-  // the anchored paragraph (reanchorByText's uuid-scoped path) so a span that
-  // happens to recur elsewhere isn't mis-marked. `family` so the linkCard token
-  // carries the real family (Part A); NOT a delete (a replacement renders as the
-  // plain blue highlight, no strikethrough).
-  reanchorByText(
-    editor,
-    PENDING_KIND,
-    replacement,
-    anchorId,
-    cardId,
-    PENDING_TINT,
-    anchorUuid,
-    { linkCardToken: family },
-  );
+    located.serialized.slice(located.index + located.match.length);
+  if (!spliceParagraphInner(editor, anchorUuid, newLatex, { anchorId, attrs }))
+    return { ok: false, reason: "stale" };
   return { ok: true, anchorId, originalText: located.match };
 }
 
+/** Why a resolving verb (Keep / Revert) did NOT settle the change:
+ *  - `not-found` — neither the mark nor the descriptor's bytes can be found
+ *    (the user deleted the passage, or it is ambiguous without the mark);
+ *  - `edited`    — the blue range no longer holds what the change put there,
+ *    so splicing it would overwrite the user's own edit. */
+export type PendingVerbRefusal = "not-found" | "edited";
+
+/** What a resolving verb did. `ok` ONLY when the document now reflects the
+ *  verb — the caller flips card status on nothing else (task 1641). */
+export type PendingVerbResult =
+  | { ok: true }
+  | { ok: false; reason: PendingVerbRefusal };
+
 export interface RevertArgs {
+  /** The block to fall back to when the change has NO mark (resolved by the
+   *  caller through the anchor authority) — never consulted while the mark
+   *  exists, because the mark carries its own block. */
   anchorUuid: string;
   originalText: string;
   replacement: string;
@@ -544,37 +766,67 @@ export interface RevertArgs {
 }
 
 /**
- * Revert a pending AI change (the Revert action).
+ * Revert a pending AI change (Dismiss, and the Original preview).
  *
- * - **replace**: remove the blue mark, then splice `replacement → originalText`
- *   to restore the paragraph byte-for-byte. (Mark removal first so a stray mark
- *   never lingers on the restored text.)
+ * - **replace**: resolve the change FROM ITS MARK, confirm the blue range still
+ *   holds `replacement` (else `edited` — the user's own edit is never
+ *   overwritten), and splice exactly that range back to `originalText`; the
+ *   mark goes with the bytes it wrapped. Mark-less (a lost mark): splice the
+ *   replacement only where it occurs EXACTLY ONCE in the fallback block —
+ *   ambiguity is `not-found`, never a guess at the first occurrence.
  * - **delete**: the text was never mutated — just remove the blue mark.
  */
-export function revertPendingChange(editor: Editor, args: RevertArgs): void {
+export function revertPendingChange(
+  editor: Editor,
+  args: RevertArgs,
+): PendingVerbResult {
   const { anchorUuid, originalText, replacement, mode, anchorId } = args;
 
-  // Drop the pending mark in both modes.
+  if (mode === "delete") {
+    removeLinkedAnchor(editor, anchorId); // text was never touched
+    return { ok: true };
+  }
+
+  const region = resolveMarkedRegion(editor, anchorId);
+  if (region) {
+    if (!markedRegionHolds(editor, region, replacement))
+      return { ok: false, reason: "edited" };
+    return spliceMarkedRegion(editor, region, originalText)
+      ? { ok: true }
+      : { ok: false, reason: "not-found" };
+  }
+
+  // Mark-less fallback.
   removeLinkedAnchor(editor, anchorId);
+  const located = locateUniqueSpan(editor, anchorUuid, replacement);
+  if (!located) return { ok: false, reason: "not-found" };
+  const newLatex =
+    located.serialized.slice(0, located.index) +
+    originalText +
+    located.serialized.slice(located.index + located.match.length);
+  return spliceParagraphInner(editor, anchorUuid, newLatex)
+    ? { ok: true }
+    : { ok: false, reason: "not-found" };
+}
 
-  if (mode === "delete") return; // text was never touched
-
-  // replace: restore the original text. Splice `replacement → originalText` in
-  // the (now mark-free) paragraph serialization. Locate the replacement that
-  // apply inserted; if it's gone (user already edited), this is a safe no-op.
-  const located = locateSpan(editor, anchorUuid, replacement);
-  if (!located) return;
-  spliceParagraphInner(
-    editor,
-    anchorUuid,
-    located.serialized,
-    located.index,
+/** {@link locateSpan}, but only when the verbatim needle occurs exactly once —
+ *  the mark-less fallback's guard against restoring at the wrong copy. */
+function locateUniqueSpan(
+  editor: Editor,
+  anchorUuid: string,
+  needle: string,
+): LocatedSpan | null {
+  const located = locateSpan(editor, anchorUuid, needle);
+  if (!located) return null;
+  const again = located.serialized.indexOf(
     located.match,
-    originalText,
+    located.index + Math.max(1, located.match.length),
   );
+  return again === -1 ? located : null;
 }
 
 export interface KeepArgs {
+  /** The mark-less fallback block — see {@link RevertArgs.anchorUuid}. */
   anchorUuid: string;
   mode: ApplyMode;
   anchorId: string;
@@ -586,35 +838,65 @@ export interface KeepArgs {
  * Finalize a pending AI change (the Keep action). Must leave NO residual blue
  * marker, so the serialized `.tex` byte-matches the headless Python accept.
  *
- * - **replace**: the text is already spliced — just unset the blue mark over the
- *   range. Nothing else to do.
- * - **delete**: remove the struck `originalText` (splice `originalText → ""` via
- *   the same serialize/parse/replace-inner path) AND unset the mark.
+ * - **replace**: the text is already spliced — unset the blue mark. Mark-less,
+ *   the replacement must still be in the fallback block, or `not-found`.
+ * - **delete**: resolve the struck range FROM ITS MARK, confirm it still holds
+ *   `originalText` (else `edited`), and splice exactly that range out — the
+ *   mark goes with it. Mark-less there is nothing that says what to remove:
+ *   `not-found`.
  */
-export function keepPendingChange(editor: Editor, args: KeepArgs): void {
-  const { anchorUuid, mode, anchorId, originalText } = args;
+export function keepPendingChange(editor: Editor, args: KeepArgs): PendingVerbResult {
+  const { anchorUuid, mode, anchorId, originalText, replacement } = args;
 
-  // Drop the blue mark FIRST in both modes. This both leaves no residual
-  // `\vlid` marker in the `.tex` AND — crucially for delete mode — clears the
-  // mark before the splice serializes the paragraph, so the serialization is
-  // clean inline LaTeX (no `\vlid…\vlidend` boundary markers, which the
-  // inline reparse would otherwise surface as un-schema'd sentinel nodes).
-  removeLinkedAnchor(editor, anchorId);
-
-  if (mode === "delete") {
-    // Remove the struck text via the same serialize → splice → reparse path.
-    // The mark is already gone, so the serialization is plain text. If the span
-    // is gone (the user edited it away), this is a safe no-op.
-    const located = locateSpan(editor, anchorUuid, originalText);
-    if (located) {
-      spliceParagraphInner(
-        editor,
-        anchorUuid,
-        located.serialized,
-        located.index,
-        located.match,
-        "",
-      );
+  if (mode === "replace") {
+    if (resolveTextRangeByAnchorId(editor, anchorId)) {
+      removeLinkedAnchor(editor, anchorId);
+      return { ok: true };
     }
+    return locateSpan(editor, anchorUuid, replacement)
+      ? { ok: true }
+      : { ok: false, reason: "not-found" };
   }
+
+  const region = resolveMarkedRegion(editor, anchorId);
+  if (!region) return { ok: false, reason: "not-found" };
+  if (!markedRegionHolds(editor, region, originalText))
+    return { ok: false, reason: "edited" };
+  return spliceMarkedRegion(editor, region, "")
+    ? { ok: true }
+    : { ok: false, reason: "not-found" };
+}
+
+/**
+ * Re-stamp the pending mark for an applied change after a load (task 1641's
+ * reload half). The persisted `.tex` carries the `\vlid` pair of a live mark,
+ * so the mark normally SURVIVES the parse with placeholder attrs — then only
+ * its attrs are restored, over the range the mark already names. Only a mark
+ * genuinely lost across the parse is re-found, and then in the SERIALIZED
+ * (LaTeX) paragraph through `locateSpan` — the same locator apply used, so a
+ * LaTeX-bearing span is found in the dialect it is written in.
+ */
+export function restampPendingMark(
+  editor: Editor,
+  args: {
+    anchorId: string;
+    anchorUuid: string;
+    cardId: string;
+    family: PendingChangeFamily;
+    text: string;
+    pendingDelete: boolean;
+  },
+): boolean {
+  const attrs = pendingMarkAttrs(args);
+  const range = resolveTextRangeByAnchorId(editor, args.anchorId);
+  if (range) {
+    const tr = editor.state.tr;
+    if (!writeLinkedAnchorMark(tr, range, attrs)) return false;
+    tr.setMeta("addToHistory", false);
+    if (tr.docChanged) editor.view.dispatch(tr);
+    return true;
+  }
+  const located = locateSpan(editor, args.anchorUuid, args.text);
+  if (!located) return false;
+  return stampLocatedSpan(editor, args.anchorUuid, located, attrs);
 }

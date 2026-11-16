@@ -21,19 +21,23 @@
  * in the SAME load phase (right after the Mode-B reapply, before the per-panel
  * reconciles and the orphan reaper).
  *
- * Re-stamping reuses the EXACT primitive the applicator uses — `reanchorByText`
- * with kind `"pending-ai-change"` and the crosswalk-derived blue tint — so the
- * reloaded mark is byte-identical to the one apply originally stamped (same
- * `#bfdbfe` tint, same `<family>:<cardId>` linkCard token, same delete-mode
- * `data-pending-delete` strikethrough signal). The family — `revision-suggestion`
- * or `cutter-suggestion` — is NOT recoverable from the shared `pending-ai-change`
+ * Re-stamping reuses the applicator's OWN stamp — `restampPendingMark`
+ * (apply-suggestion.ts), over the same `pendingMarkAttrs` — so the reloaded mark
+ * is byte-identical to the one apply stamped (same `#bfdbfe` tint, same
+ * `<family>:<cardId>` linkCard token, same delete-mode `data-pending-delete`
+ * strikethrough signal). The family — `revision-suggestion` or
+ * `cutter-suggestion` — is NOT recoverable from the shared `pending-ai-change`
  * kind, so the CALLER (EditorPane, which knows revision vs cutter cards) tags each
- * card's family; the re-stamp threads it into `reanchorByText`'s explicit
- * `linkCardToken` so the cutter halo resolves on reload too (Phase 4, Part A). The
- * search is uuid-scoped to `appliedChange.anchorUuid`, so a span that recurs
- * elsewhere isn't mis-marked; if the stored text no longer matches (the user
- * edited it post-apply), `reanchorByText` returns null and the re-stamp is a
- * graceful no-op (no blue) — acceptable per the feature spec.
+ * card's family (Phase 4, Part A).
+ *
+ * TASK 1641 — the mark is the address. The persisted `.tex` carries the
+ * `\vlid{id}…\vlidend{id}` pair of a live pending mark, so the mark normally
+ * SURVIVES the parse (with placeholder attrs) and the re-stamp only restores its
+ * attrs over the range it already names — no search at all. Only a mark lost
+ * across the parse is re-found, uuid-scoped to `appliedChange.anchorUuid`, in the
+ * paragraph's LaTeX serialization (the locator apply itself used); the old
+ * plain-text `reanchorByText` search could never find a LaTeX-bearing span. A
+ * lost mark whose text no longer matches is a graceful no-op (no blue).
  *
  * LOAD-ONLY / keystroke-safe. Invoked once per doc-open from the EditorPane
  * load-reconcile effect (latched on `modeAReconciledDocRef`), NOT a keystroke
@@ -51,21 +55,11 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import { reanchorByText } from "../links";
 import {
-  defaultTintForLinkedAnchorKind,
-  PENDING_AI_CHANGE_KIND,
-} from "@/cards/legacy-token-crosswalk";
-import type { PendingChangeFamily } from "@/links/apply-suggestion";
+  restampPendingMark,
+  type PendingChangeFamily,
+} from "@/links/apply-suggestion";
 import { isAppliedPendingSuggestion } from "@/cards/suggestion-status";
-
-/** The legacy `linkedAnchor.kind` namespace value for a pending AI change — the
- *  same constant the applicator stamps (apply-suggestion.ts `PENDING_KIND`). */
-const PENDING_KIND = PENDING_AI_CHANGE_KIND;
-
-/** The blue tint, single-sourced from the crosswalk so apply / keep / revert and
- *  this reload re-stamp all agree (`#bfdbfe`). */
-const PENDING_TINT = defaultTintForLinkedAnchorKind(PENDING_KIND);
 
 /** The applied-splice descriptor a `status:"applied"` suggestion card carries.
  *  Structurally identical to `RevisionSuggestionCard.appliedChange` ≡
@@ -94,7 +88,7 @@ export interface PendingMarkReapplyRecord {
   /** The anchorId to stamp on the re-applied mark (so Keep/Revert resolve the
    *  same range the original apply created). */
   anchorId: string;
-  /** The containing-paragraph uuid — scopes `reanchorByText`'s text search. */
+  /** The containing-paragraph uuid — scopes the lost-mark re-find. */
   anchorUuid: string;
   /** The owning card id — stamped into the mark's `linkCard` token, paired with
    *  `family` to form `<family>:<cardId>` (same as apply). */
@@ -175,12 +169,12 @@ export function buildPendingMarkReapplyRecords(
 
 /**
  * Re-stamp the `pending-ai-change` mark for every applied suggestion in `groups`,
- * via the SAME `reanchorByText` primitive the applicator uses — threading each
+ * via the SAME mark stamp the applicator uses (`restampPendingMark`) — threading each
  * record's `family` (the explicit `linkCard` token) and the `pendingDelete`
  * strikethrough signal so the reloaded mark is byte-identical to apply's. Returns
  * the number of records processed (for no-op short-circuits / tests). A record
  * whose stored text no longer matches the live paragraph is a graceful no-op
- * (reanchorByText → null). Gated on `status:"applied"` alone (task 716).
+ * (restampPendingMark → false). Gated on `status:"applied"` alone (task 716).
  */
 export function reapplyPendingMarks(
   editor: Editor,
@@ -188,17 +182,10 @@ export function reapplyPendingMarks(
 ): number {
   if (!editor || editor.isDestroyed) return 0;
   const records = buildPendingMarkReapplyRecords(groups);
-  for (const rec of records) {
-    reanchorByText(
-      editor,
-      PENDING_KIND,
-      rec.text,
-      rec.anchorId,
-      rec.cardId,
-      PENDING_TINT,
-      rec.anchorUuid,
-      { linkCardToken: rec.family, pendingDelete: rec.pendingDelete },
-    );
-  }
+  // Task 1641: through apply's OWN stamp (`restampPendingMark`) — a mark that
+  // survived the parse keeps its range and gets its attrs back; only a lost one
+  // is re-found, in the LaTeX serialization (the old plain-text
+  // `reanchorByText` search could never find a LaTeX-bearing span).
+  for (const rec of records) restampPendingMark(editor, rec);
   return records.length;
 }
