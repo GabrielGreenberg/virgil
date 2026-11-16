@@ -100,7 +100,7 @@ beforeEach(() => {
 
 describe("relinkRequests is a conditional field patch over the RAW disk row", () => {
   it("a row a skill COMPLETED meanwhile stays complete, and no card is minted", async () => {
-    DISK.requests = [{ ...STALE, status: "complete", result: "done" } as AiRequest];
+    DISK.requests = [{ ...STALE, status: "complete" }];
     const { appendNotes } = await runMigration([STALE]);
     expect(DISK.requests[0].status).toBe("complete");
     expect(DISK.requests[0].linkedTo).toBeUndefined();
