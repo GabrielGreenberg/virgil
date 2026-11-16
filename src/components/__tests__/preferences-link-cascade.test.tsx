@@ -257,6 +257,18 @@ describe("Reset to defaults is undoable (task 903)", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
+  it("a retired offer stays retired when the state returns to what reset produced (task 1652)", async () => {
+    const { read, store, prefsMod } = await mountDialog();
+    resetAll();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    act(() => store().updatePref("editorFontSize", 1.37));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    // Back to EXACTLY the defaults reset produced — the old offer must not resurrect.
+    act(() => store().updatePref("editorFontSize", prefsMod.DEFAULT_PREFS.editorFontSize));
+    expect(read().editorFontSize).toBe(prefsMod.DEFAULT_PREFS.editorFontSize);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
   it("the destructive action stays out of sight until its menu opens", async () => {
     await mountDialog();
     expect(screen.queryByText("Reset to defaults")).toBeNull();
@@ -342,6 +354,17 @@ describe("whole-settings operations span every store the dialog renders (task 14
     act(() => { fireEvent.click(screen.getByRole("button", { name: "Undo" })); });
     expect(read().topbarBackground).toBe(PARENT_HEX);
     s.expectSet();
+  });
+
+  it("a retired preset-load offer stays retired when the edit is reversed (task 1652)", async () => {
+    const { store, prefsMod } = await mountDialog();
+    act(() => store().updatePref("topbarBackground", PARENT_HEX));
+    act(() => { fireEvent.change(presetPicker(), { target: { value: "Default" } }); });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    act(() => store().updatePref("editorFontSize", 1.37));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    act(() => store().updatePref("editorFontSize", prefsMod.DEFAULT_PREFS.editorFontSize));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
   it("loading a preset that changes nothing offers no Undo", async () => {

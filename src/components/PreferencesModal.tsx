@@ -59,11 +59,41 @@ interface UndoLiveState {
  *  dialog, and a peer window's storage sync): an Undo pressed after either
  *  silently reverted their edits too — a second destructive action. Asking the
  *  state, not the route, retires the offer for every writer, present or
- *  future. */
+ *  future.
+ *
+ *  Retirement is a LATCH (task 1652): once an offer has been shown, the first
+ *  render where `stillCurrent` reads false clears the slot for good. Merely
+ *  hiding it let a state that later RETURNED to exactly what the action
+ *  produced (toggle a pref and back; a peer writing the value back) resurrect
+ *  a stale Undo, possibly minutes later. The latch lives in ONE place —
+ *  `useLatchedOffer` — so no future offer kind can forget it. */
 interface PendingUndo {
   message: string;
   undo: () => void;
   stillCurrent: (live: UndoLiveState) => boolean;
+}
+
+/** The one-slot undo offer with latched retirement (task 1652). Returns the
+ *  offer to SHOW (null unless still current) and the slot's setter.
+ *
+ *  The latch arms only once the offer has been seen current: an action's own
+ *  writes may land a render after the offer is set (a store that notifies on
+ *  its own schedule), and that lag must not retire an offer before it was ever
+ *  shown. After arming, the first false is final. The adjustment is a
+ *  render-time state update — React's sanctioned "adjust state when inputs
+ *  change" pattern — so a retired offer never paints. */
+function useLatchedOffer(live: UndoLiveState): [PendingUndo | null, (offer: PendingUndo | null) => void] {
+  const [slot, setSlot] = useState<{ offer: PendingUndo; armed: boolean } | null>(null);
+  const current = slot !== null && slot.offer.stillCurrent(live);
+  if (slot) {
+    if (current && !slot.armed) setSlot({ offer: slot.offer, armed: true });
+    else if (!current && slot.armed) setSlot(null);
+  }
+  const offer = useCallback(
+    (next: PendingUndo | null) => setSlot(next ? { offer: next, armed: false } : null),
+    [],
+  );
+  return [current ? slot.offer : null, offer];
 }
 
 /** The live user preset of that name, if any (built-ins are derived, never
@@ -344,17 +374,18 @@ export default function PreferencesModal({
   onRestoreSettings,
   onRestorePreset,
 }: PreferencesModalProps) {
-  const [offeredUndo, setPendingUndo] = useState<PendingUndo | null>(null);
   // DERIVED (task 1121): the offer shows only while the live state is still
-  // what its action produced — any writer's change retires it by construction.
-  // Every store the dialog renders (task 1489): prefs + transforms from the
-  // host, plus the Smart section's panel colours / typography / link deltas.
+  // what its action produced — any writer's change retires it by construction,
+  // and retirement is latched (task 1652): a later return to that state does
+  // not bring it back. Every store the dialog renders (task 1489): prefs +
+  // transforms from the host, plus the Smart section's panel colours /
+  // typography / link deltas.
   const side = useSideSettings();
   const settings: ResolvedSettings = useMemo(
     () => ({ prefs, transforms, ...side }),
     [prefs, transforms, side],
   );
-  const pendingUndo = offeredUndo?.stillCurrent({ settings, presets }) ? offeredUndo : null;
+  const [pendingUndo, setPendingUndo] = useLatchedOffer({ settings, presets });
 
   // "Reset to defaults" wipes every setting — every store above — in one
   // click. It stays one click — a confirm in front of an UNDOABLE action is
@@ -369,13 +400,13 @@ export default function PreferencesModal({
       // `onReset` makes the settings exactly the shipped defaults.
       stillCurrent: ({ settings: live }) => settingsEqual(live, DEFAULT_SETTINGS_SNAPSHOT),
     });
-  }, [settings, onReset, onRestoreSettings]);
+  }, [settings, onReset, onRestoreSettings, setPendingUndo]);
 
   const runUndo = useCallback(() => {
     if (!pendingUndo) return;
     setPendingUndo(null);
     pendingUndo.undo();
-  }, [pendingUndo]);
+  }, [pendingUndo, setPendingUndo]);
 
   const [sectionId, setSectionId] = useState<string>(THEME_SECTION);
   const smartSection = SMART_PREFERENCES.find((s) => s.id === sectionId);
