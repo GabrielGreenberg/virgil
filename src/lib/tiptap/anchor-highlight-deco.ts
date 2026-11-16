@@ -22,7 +22,7 @@ import { DATA_CARD_SELECTED, DATA_CARD_HOVERED } from "@/lib/view-only-chrome";
  * (`uuid-attr.ts`), which already paints `data-uuid` as a decoration for
  * exactly this reason.
  *
- * SCOPE — NODE/ATOM ONLY. This plugin paints exactly the two target shapes
+ * SCOPE — NODE/ATOM ONLY. The `anchor` channel paints exactly the two target shapes
  * that suffer the `Decoration.node` redraw:
  *   - paragraph / Mode-A block → `Decoration.node(pos, pos+nodeSize, attrs)`
  *   - inline atom (footnote / citation) → `Decoration.node(pos, pos+nodeSize)`
@@ -40,7 +40,7 @@ import { DATA_CARD_SELECTED, DATA_CARD_HOVERED } from "@/lib/view-only-chrome";
  * causes no redraw AND satisfies the CSS. Mode-B therefore stays on the
  * reconciler's raw-setAttribute path (`useAnchorHighlightReconciler.ts`), the
  * same path it used pre-decoration; it was never part of the redraw root
- * cause. (The plugin's target type is node-only for this reason.)
+ * cause. (The channel's target type is node-only for this reason.)
  *
  * Panel cards (`[data-card-key]`) are NOT touched here — they are React DOM,
  * not PM nodes, so a raw `setAttribute` there causes no redraw and stays in
@@ -68,7 +68,7 @@ const DATA_MARGIN_SIDE = "data-margin-side";
 /** One in-editor NODE/ATOM highlight target — already resolved to live PM
  *  coordinates by the reconciler (the anchor authority's `paintRows`, and
  *  `resolveInlineAtomLink` for atoms). The reconciler owns the
- *  selection-vs-hover precedence and the attr VALUES; this plugin only paints
+ *  selection-vs-hover precedence and the attr VALUES; the channel only paints
  *  what it is handed. Mode-B text ranges are intentionally NOT representable
  *  here (see the module docstring) — they are painted by the reconciler's raw
  *  `.linked-anchor` setAttribute path. */
@@ -84,7 +84,7 @@ export type AnchorHighlightTarget = {
   attrs: Record<string, string>;
 };
 
-/** The four attrs this plugin owns, in the value vocabulary the CSS reads. */
+/** The four attrs the `anchor` channel owns, in the value vocabulary the CSS reads. */
 export interface AnchorHighlightAttrs {
   /** `"paragraph"` for a Mode-A block halo, `"true"` for atoms / ranges. */
   value: "paragraph" | "true";

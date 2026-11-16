@@ -64,18 +64,22 @@ import {
  * harmless here: the only thing being painted is a background color, not an
  * `attr`+`class` pair the CSS needs on one element.)
  *
- * KEYSTROKE SANCTITY. The set is rebuilt ONLY on a transaction carrying the
- * `transientHighlightKey` meta. Every other transaction — a plain keystroke
- * included — does `DecorationSet.map(tr.mapping, tr.doc)` on a set that holds at
- * most one decoration, then returns. No doc walk, no structural emit, and the
- * meta dispatch itself never sets `docChanged`, so `emitCount` stays flat.
+ * KEYSTROKE SANCTITY. A channel's set is rebuilt ONLY on a transaction
+ * carrying THAT channel's meta. Every other transaction — a plain keystroke
+ * included — returns an empty set untouched, or does
+ * `DecorationSet.map(tr.mapping, tr.doc)` over that channel's own targets (the
+ * `search` band is at most one; the `ai-request` and `anchor` channels hold one
+ * per open request / painted anchor), then returns. No doc walk, no structural
+ * emit, and the meta dispatch itself never sets `docChanged`, so `emitCount`
+ * stays flat.
  */
 
 /** Geometry class for the painted span; the COLOR rides an inline style because
  *  it varies per consumer. Mirrors `.tiptap mark` in globals.css so the swap
  *  from mark → decoration is pixel-neutral — which holds only because the
  *  decoration always builds its OWN wrapper element (see `nodeName` below), so
- *  the class can never land on a document node's element. */
+ *  the class can never land on a document node's element. Exported for the
+ *  tests, which locate the painted wrapper by it. */
 export const TRANSIENT_HIGHLIGHT_CLASS = "virgil-transient-highlight";
 
 /** The amber every transient band uses today. Was inlined at three call sites
@@ -130,7 +134,7 @@ export type TransientHighlightChannel = "search" | "ai-request" | "anchor";
 /** What each channel paints: the band channels take inline ranges, the
  *  `anchor` channel node targets. Typing the setter through this keeps a node
  *  target off a band channel at compile time. */
-export interface TransientChannelTargets {
+interface TransientChannelTargets {
   search: TransientHighlightTarget;
   "ai-request": TransientHighlightTarget;
   anchor: AnchorHighlightTarget;
@@ -140,7 +144,7 @@ export interface TransientChannelTargets {
 type TransientTarget = TransientHighlightTarget | AnchorHighlightTarget;
 
 /** The channel a caller gets when it does not name one. */
-export const DEFAULT_TRANSIENT_CHANNEL: TransientHighlightChannel = "search";
+const DEFAULT_TRANSIENT_CHANNEL: TransientHighlightChannel = "search";
 
 /** Every channel, in ONE place: the plugin list is built from this, so a new
  *  channel is a single union member + a key, never a second plugin to remember
@@ -164,10 +168,6 @@ const CHANNEL_KEYS: Record<
  *  The channel's plugin replaces its whole set from it — callers are idempotent
  *  and always send the full picture. */
 type TransientHighlightMeta = { targets: readonly TransientTarget[] };
-
-/** The DEFAULT channel's key, kept under its original name for the callers and
- *  guards that predate channels. */
-export const transientHighlightKey = CHANNEL_KEYS[DEFAULT_TRANSIENT_CHANNEL];
 
 /** The plugin key for an explicit channel (test/inspection door). */
 export function transientHighlightKeyFor(

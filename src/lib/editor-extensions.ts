@@ -1628,15 +1628,20 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // floats sync uuid-bearing content from main, and the move/re-sync identity
     // guard keeps those uuids stable (see block-uuid-backfill.ts).
     BlockUuidBackfill,
-    // Task 418's replacement for the `listKeymap` disabled above. Its slot in
-    // the array is not load-bearing: when the gate DECLINES it returns false and
-    // every later Backspace owner still runs, exactly as if it were absent; and
-    // when it ALLOWS, the caret is by construction inside the item's FIRST
-    // child, which `listItem`'s content model pins to `paragraph | graphicsBlock`
-    // — so it can never be inside an `exampleItem`, a `latexComment` or a
-    // `codeBlock`, the only other blocks in this stack that own Backspace. It
-    // sits after the observer + backfill so their two position comments above
-    // stay true.
+    // Task 418's replacement for the `listKeymap` disabled above. When the
+    // gate DECLINES it returns false and every later Backspace owner still
+    // runs, exactly as if it were absent. When it ALLOWS inside an item, the
+    // caret is by construction inside the item's FIRST child, which
+    // `listItem`'s content model pins to `paragraph | graphicsBlock` — so it
+    // can never be inside an `exampleItem`, a `latexComment` or a `codeBlock`,
+    // the only other blocks in this stack that own Backspace; for that branch
+    // the slot is not load-bearing. OUTSIDE an item the gate also allows
+    // (`listKeymapOwnsBackspace`), handing upstream's paragraph-after-a-list
+    // branch any textblock that directly follows a list; there the slot DOES
+    // order it against those other Backspace owners, and it keeps upstream's
+    // place among the keymaps because the observer + backfill ahead of it bind
+    // no keys. It sits after them so their two position comments above stay
+    // true.
     VirgilListKeymap,
     createParagraphWithTitle(
       isFloat

@@ -27,8 +27,8 @@
  *   • **container** — can the wrapper be placed AROUND those blocks at all, or
  *     would ProseMirror lift them out of a container that cannot host it (an
  *     expex `exampleItem`)? The third member of the container family beside
- *     `posHostsBlockInsert` / `posHostsInlineAtom` (`text-object-registry`,
- *     which re-exports it from here).
+ *     `posHostsBlockInsert` / `posHostsInlineAtom` (`text-object-registry`);
+ *     it lives here, and its consumers import it from here directly.
  *
  * Both are answered by `selectionHostsWrapper`, which asks the COMMIT's own
  * predicate (`wrapInList` for a list, `findWrapping` for the quote) and then
@@ -44,9 +44,9 @@
  * (`wrapper-gate-derived-identity.test.ts` proves the round trip per kind).
  *
  * `wrapperSafeInState` is the WHOLE question. Every surface asks it and nothing
- * else: the registry rows (affordance + commit), the three `.extend()`ed
- * factories' chords and input rules (`guardWrapperShortcuts` /
- * `guardWrapperInputRules`), and the card-body toolbar. CI
+ * else: the registry rows (affordance + commit), every wrapper node's chord and
+ * input rule — reached ONLY through `withWrapperGate` (task 731), which every
+ * stack mounts — and the card-body toolbar. CI
  * (`wrapper-surfaces-guard.test.ts`) censuses every production call of the
  * three toggles against this door, allowlist EMPTY.
  *
@@ -228,7 +228,7 @@ export function wrapperSafeInState(
  * `getState` is read at PRESS time, never captured: an extension's `this.editor`
  * is not available when `addKeyboardShortcuts()` runs.
  */
-export function guardWrapperShortcuts(
+function guardWrapperShortcuts(
   shortcuts: Record<string, KeyboardShortcutCommand>,
   wrapperNodeName: WrapperNodeName,
   getState: () => EditorState | undefined,
@@ -254,7 +254,7 @@ export function guardWrapperShortcuts(
  * list-coercion refusal (a heading, a title field) and any future rung land here
  * without anyone remembering the input rules exist.
  */
-export function guardWrapperInputRules(
+function guardWrapperInputRules(
   rules: InputRule[],
   wrapperNodeName: WrapperNodeName,
 ): InputRule[] {
