@@ -19,6 +19,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
+const REGISTRY_JSON = "src/lib/dev-prefs-registry.json";
+// Defaults paths come from the registry rows (task 1654) — never hand-listed.
+const REGISTRY_ROWS: { id: string; defaultsFile: string }[] = JSON.parse(
+  readFileSync(join(repoRoot, REGISTRY_JSON), "utf-8"),
+).promotable;
+const defaultsOf = (id: string) => {
+  const row = REGISTRY_ROWS.find((r) => r.id === id);
+  if (!row) throw new Error(`dev-prefs-registry.json has no row "${id}"`);
+  return row.defaultsFile;
+};
+
 const COPIED = [
   "tools/sync-defaults.sh",
   "tools/promote-defaults.mjs",
@@ -27,18 +38,13 @@ const COPIED = [
   "src/lib/pref-css-table.mjs",
   "src/lib/color-transform-math.mjs",
   "src/lib/retired-pref-defaults.mjs",
-  "src/lib/dev-prefs-registry.json",
-  "src/hooks/useViewPrefs.defaults.json",
-  "src/hooks/usePreferences.defaults.json",
-  "src/lib/panel-theme.defaults.json",
-  "src/lib/print.defaults.json",
-  "library/lib/list-columns.defaults.json",
+  REGISTRY_JSON,
+  ...new Set(REGISTRY_ROWS.map((r) => r.defaultsFile)),
   "src/app/globals.css",
 ];
-const EDITOR_JSON = "src/hooks/usePreferences.defaults.json";
-const PANEL_JSON = "src/lib/panel-theme.defaults.json";
-const LIST_COL_JSON = "library/lib/list-columns.defaults.json";
-const REGISTRY_JSON = "src/lib/dev-prefs-registry.json";
+const EDITOR_JSON = defaultsOf("editor-prefs");
+const PANEL_JSON = defaultsOf("panel-colors");
+const LIST_COL_JSON = defaultsOf("library-columns");
 const CSS = "src/app/globals.css";
 const WIP_MARK = "/* live WIP — not the promoter's */";
 

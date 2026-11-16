@@ -6,17 +6,22 @@
  * (The first-paint CSS seed is NOT here: it is rendered from the ONE
  * pref→CSS table, `pref-css-table.mjs` — task 902.)
  *
- * The JSON is consumed by both the browser-side mirror
- * (`dev-prefs-mirror.ts`) and the Node-side promoter
- * (`tools/promote-defaults.mjs`). Keep them in sync by editing the JSON
- * — never duplicate the list.
+ * The JSON is read by the browser-side mirror (`dev-prefs-mirror.ts`,
+ * through this loader) and by the Node-side tools — `promote-defaults.mjs`,
+ * `check-prefs-coverage.mjs`, `sync-defaults.sh` — which find a row by its
+ * `id`, never by a restated key or path. Each row's `storageKey` is pinned
+ * to its runtime owner's exported constant by
+ * `__tests__/dev-prefs-registry-keys-census.test.ts` (task 1654). Edit the JSON —
+ * never duplicate the list.
  */
 
 import registry from "./dev-prefs-registry.json";
 
-export type PromotionStrategy = "replace-all" | "whitelist" | "print-options" | "bake-transforms";
+type PromotionStrategy = "replace-all" | "whitelist" | "print-options" | "bake-transforms";
 
-export interface PromotablePref {
+interface PromotablePref {
+  /** Stable row handle the Node tools and the key census look rows up by. */
+  id: string;
   /** localStorage key whose JSON value flows into the snapshot. */
   storageKey: string;
   /** Optional sub-path inside the parsed JSON to extract before
@@ -36,7 +41,7 @@ export interface PromotablePref {
   rawFrom?: string;
 }
 
-export const PROMOTABLE_PREFS: PromotablePref[] =
+const PROMOTABLE_PREFS: PromotablePref[] =
   registry.promotable as PromotablePref[];
 
 /** Distinct localStorage keys that the mirror should snapshot. */

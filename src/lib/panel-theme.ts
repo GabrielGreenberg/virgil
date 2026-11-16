@@ -398,7 +398,7 @@ export function themeFromAccent(accent: string): CardTheme {
 
 /* ── Mutable override registry + subscriptions ───────────────────── */
 
-const STORAGE_KEY = "virgil-panel-colors";
+export const PANEL_COLORS_STORAGE_KEY = "virgil-panel-colors";
 
 let overrides: Partial<Record<PanelThemeKey, string>> = {};
 let loaded = false;
@@ -422,7 +422,7 @@ function notify() {
 
 function persist() {
   if (typeof window === "undefined") return;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides)); }
+  try { localStorage.setItem(PANEL_COLORS_STORAGE_KEY, JSON.stringify(overrides)); }
   catch { /* ignore */ }
 }
 
@@ -451,7 +451,7 @@ export function normalizePanelColorOverrides(parsed: unknown): Partial<Record<Pa
 function readOverridesFromStorage(): Partial<Record<PanelThemeKey, string>> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(PANEL_COLORS_STORAGE_KEY);
     if (!raw) return {};
     return normalizePanelColorOverrides(JSON.parse(raw));
   } catch { return {}; }
@@ -473,7 +473,7 @@ export function loadPanelColors(): void {
 // this is the peer channel only. Unconditional re-read + `notify()`: a peer
 // CLEARING an override must propagate too, and every card re-tints for free
 // because they all read through `useCardTheme` → `subscribePanelColors`.
-subscribeToStorageKey(STORAGE_KEY, () => {
+subscribeToStorageKey(PANEL_COLORS_STORAGE_KEY, () => {
   overrides = readOverridesFromStorage();
   notify();
 });

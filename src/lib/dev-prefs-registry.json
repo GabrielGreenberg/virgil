@@ -1,7 +1,8 @@
 {
-  "_comment": "Single source of truth for the personal-prefs promotion pipeline. Both src/lib/dev-prefs-mirror.ts (browser) and tools/promote-defaults.mjs (Node) read this file. Edit here when adding a promotable pref — never duplicate the list elsewhere.",
+  "_comment": "Single source of truth for the personal-prefs promotion pipeline. Read by src/lib/dev-prefs-mirror.ts + dev-prefs-snapshot.ts (browser / dev route), tools/promote-defaults.mjs, tools/check-prefs-coverage.mjs and tools/sync-defaults.sh (Node), which look rows up by their `id` — never by a restated key or path. Each row's storageKey is PINNED to its runtime owner's exported constant by src/lib/__tests__/dev-prefs-registry-keys-census.test.ts (task 1654). Edit here when adding a promotable pref — never duplicate the list elsewhere.",
   "promotable": [
     {
+      "id": "view-prefs",
       "storageKey": "virgil-view-prefs/global",
       "defaultsFile": "src/hooks/useViewPrefs.defaults.json",
       "strategy": "whitelist",
@@ -29,29 +30,34 @@
       ]
     },
     {
+      "id": "editor-prefs",
       "storageKey": "virgil-editor-prefs",
       "defaultsFile": "src/hooks/usePreferences.defaults.json",
       "strategy": "replace-all"
     },
     {
       "_comment": "Must follow the virgil-editor-prefs entry: bakes the user's global colour transforms into the colour rows it just promoted, computed from the RAW colours in that blob (task 902).",
+      "id": "editor-transforms",
       "storageKey": "virgil-editor-transforms",
       "defaultsFile": "src/hooks/usePreferences.defaults.json",
       "strategy": "bake-transforms",
       "rawFrom": "virgil-editor-prefs"
     },
     {
+      "id": "panel-colors",
       "storageKey": "virgil-panel-colors",
       "defaultsFile": "src/lib/panel-theme.defaults.json",
       "strategy": "replace-all"
     },
     {
+      "id": "print-options",
       "storageKey": "virgil-view-prefs/global",
       "subPath": "printOptions",
       "defaultsFile": "src/lib/print.defaults.json",
       "strategy": "print-options"
     },
     {
+      "id": "library-columns",
       "storageKey": "virgil-library-view-session",
       "subPath": "layout",
       "defaultsFile": "library/lib/list-columns.defaults.json",

@@ -63,7 +63,7 @@ describe("ViewMenu — no hand-rolled useState feeds a view toggle", () => {
 
 describe("promotion whitelist ⇔ the derived promoted set (both halves, both ways)", () => {
   const promotable = devPrefsRegistry.promotable.find(
-    (p) => p.storageKey === "virgil-view-prefs/global" && p.strategy === "whitelist",
+    (p) => p.id === "view-prefs",
   );
   const whitelistArr = (promotable as { whitelist: string[] } | undefined)?.whitelist ?? [];
   const whitelist = new Set(whitelistArr);

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_PREFS } from "@/hooks/preferences-defaults";
+import devPrefsRegistry from "@/lib/dev-prefs-registry.json";
 import { applyTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
 import { PREF_TO_CSS, resolvePrefCssVars } from "@/lib/preferences-tree";
 import {
@@ -142,13 +143,10 @@ describe("pre-paint bootstrap", () => {
 });
 
 describe("promoter bakes colour transforms into the shipped palette", () => {
+  // Defaults paths come from the registry rows (task 1654) — never hand-listed.
   const FILES = [
     "src/lib/dev-prefs-registry.json",
-    "src/hooks/useViewPrefs.defaults.json",
-    "src/hooks/usePreferences.defaults.json",
-    "src/lib/panel-theme.defaults.json",
-    "src/lib/print.defaults.json",
-    "library/lib/list-columns.defaults.json",
+    ...new Set(devPrefsRegistry.promotable.map((e) => e.defaultsFile)),
     "src/app/globals.css",
   ];
   let tmp: string;
