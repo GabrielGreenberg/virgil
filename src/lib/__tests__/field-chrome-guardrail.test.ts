@@ -169,8 +169,9 @@ describe("field-chrome census — the walk works", () => {
     // Anchored on a floor rather than a list so ordinary refactors don't churn
     // it, but high enough that a walk which stopped working can't pass.
     // (40 → 30 and 25 → 20 at task 1012, which moved ten library fields onto the primitive;
-    // 20 → 18 at task 1593, which moved the math + figure popover textareas onto it.)
-    expect(SITES.length).toBeGreaterThanOrEqual(30);
+    // 20 → 18 at task 1593, which moved the math + figure popover textareas onto it;
+    // 30 → 26 at task 1653, which folded four hand-rolled sliders into one RangeField.)
+    expect(SITES.length).toBeGreaterThanOrEqual(26);
     expect(TEXT_SITES.length).toBeGreaterThanOrEqual(18);
     expect(new Set(SITES.map((s) => s.rel.split("/")[0]))).toEqual(
       new Set(["src", "library"]),
