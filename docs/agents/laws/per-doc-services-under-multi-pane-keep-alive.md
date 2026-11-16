@@ -770,6 +770,17 @@ identity. Guard: `doc-forget-census.test.ts` classifies every empty,
 string-keyed module-level `Map`/`Set` in `src/`, so the next new per-doc store
 cannot skip the question.
 
+Browser storage is the DURABLE exception to "a module never imported holds
+nothing" (task 1645): outline folds, card floats and the collab session record
+live in `localStorage`/`sessionStorage` and outlive the page, so a forget that
+registers only when its panel mounts missed a reset from a fresh page — the
+pristine example reopened with the discarded copy's folds. `purgeDoc` now loads
+`src/lib/doc-forget-durable.ts` first (dynamic import — no graph or cycle cost
+to `doc-index`), which imports each such store so its forget is registered. The
+same census classifies EVERY module that names `localStorage`/`sessionStorage`
+in code: DURABLE_FORGOTTEN (registers + imported by the durable index) or
+STORAGE_EXCLUDED with its reason.
+
 ### The SWEEP half: a per-pane DOM sweep strips only its own pane's stamps (task 1639)
 
 The DOM form of "a departing owner removes only its OWN entry." Every mounted

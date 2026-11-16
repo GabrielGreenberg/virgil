@@ -13,7 +13,10 @@
  * So the census is inverted: each module that holds per-doc state registers
  * its OWN forget here, at module scope, beside the map it forgets. A module
  * never imported this session has registered nothing — and holds nothing, so
- * there is nothing to forget. Which module-level maps must register (and which
+ * there is nothing to forget — EXCEPT a store kept in localStorage /
+ * sessionStorage, which outlives the page: those are imported by
+ * `doc-forget-durable.ts`, which `purgeDoc` loads first (task 1645). Which
+ * module-level maps and which browser-storage modules must register (and which
  * are deliberately excluded, with their reason) is enforced by
  * `doc-forget-census.test.ts`, so the next per-doc store cannot be added
  * outside the census.

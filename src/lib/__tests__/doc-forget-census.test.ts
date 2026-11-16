@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * DOC-FORGET CENSUS (task 1465) — every module-level map that could hold a
  * paper's state is either FORGOTTEN by `purgeDoc` (its module registers with
@@ -16,8 +17,16 @@
  * `…DocKey` — the shapes a doc id can be stored under. A non-doc string key
  * (a font, a word, a pref) is excluded with that reason; the list is the
  * record that someone looked.
+ *
+ * BROWSER-STORAGE half (task 1645): a map in `localStorage`/`sessionStorage`
+ * is not a `new Map` declaration, and it OUTLIVES the page — so the module's
+ * registration must happen even when its UI never mounted. Population: every
+ * production module that names `localStorage`/`sessionStorage` in code. Each is
+ * DURABLE_FORGOTTEN (registers a forget AND is imported by
+ * `doc-forget-durable.ts`, which `purgeDoc` loads first) or STORAGE_EXCLUDED
+ * with the reason its storage is not per-document.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT, walkFiles } from "./_source-scan";
@@ -105,6 +114,44 @@ const EXCLUDED: Readonly<Record<string, string>> = {
   "src/text-objects/block-frame.ts::warnedMarginTokens": NOT_DOC,
 };
 
+/** Browser-storage modules whose per-doc state `purgeDoc` forgets. */
+const DURABLE_FORGOTTEN: readonly string[] = [
+  "src/hooks/useViewPrefs.ts", // cardFloats in the window blobs (task 1491)
+  "src/lib/collab-session.ts", // the window's remembered collab sessions per paper
+  "src/panels/Outline/outline-prefs-store.ts", // per-paper fold buckets
+];
+
+const GLOBAL_PREF = "an app-global preference — how the user likes the app, not a fact about one paper";
+
+/** Browser-storage module → why its storage is not per-document state. */
+const STORAGE_EXCLUDED: Readonly<Record<string, string>> = {
+  "src/components/ActionsMenuPanel.tsx": GLOBAL_PREF,
+  "src/components/InstallPwaPrompt.tsx": GLOBAL_PREF,
+  "src/components/confirm-suppression.ts": GLOBAL_PREF,
+  "src/hooks/useHelperMode.ts": GLOBAL_PREF,
+  "src/hooks/usePreferences.ts": GLOBAL_PREF,
+  "src/hooks/useZenMode.ts": GLOBAL_PREF,
+  "src/lib/panel-theme.ts": GLOBAL_PREF,
+  "src/lib/panel-typography.ts": GLOBAL_PREF,
+  "src/lib/pref-css-bootstrap.ts": GLOBAL_PREF,
+  "src/lib/pref-links.ts": GLOBAL_PREF,
+  "src/lib/style-library.ts": GLOBAL_PREF,
+  "src/lib/feature-flags.ts": "developer switches, keyed by flag name",
+  "src/lib/dev-prefs-mirror.ts": "the dev prefs mirror's source id and its copies of the global prefs",
+  "src/lib/collab.ts": "the user's collab identity (name/colour) — who you are, on every paper",
+  "src/lib/multi-window/window-id.ts": "the window's identity — per tab, not per paper",
+  "src/hooks/useStack.ts":
+    "the cross-paper clipboard: an item names its source paper as provenance, and a copy outliving its source is the point",
+  "src/lib/cross-window-storage.ts": "the `storage`-event subscription plumbing — it holds no state",
+  "src/lib/stored-state.ts": "the storage diagnostic — reads every key, owns none",
+};
+
+/** Does `src` name browser storage in CODE (comments stripped)? */
+function touchesBrowserStorage(src: string): boolean {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return /\b(?:localStorage|sessionStorage)\b/.test(code);
+}
+
 const DECL = /^(?:export )?(?:const|let) (\w+)(?:\s*:[^=\n]+)?\s*=\s*new (Map|Set)\s*</gm;
 
 /** The census population of one source text: `name`s of empty, string-keyed
@@ -131,17 +178,19 @@ function perDocCandidates(src: string): string[] {
   return out;
 }
 
-function census(): { found: Set<string>; registering: Set<string> } {
+function census(): { found: Set<string>; registering: Set<string>; storage: Set<string> } {
   const found = new Set<string>();
   const registering = new Set<string>();
+  const storage = new Set<string>();
   for (const abs of walkFiles(path.join(REPO_ROOT, "src"), { skipDirs: ["__tests__"] })) {
     if (!/\.tsx?$/.test(abs) || /\.test\.tsx?$/.test(abs)) continue;
     const rel = path.relative(REPO_ROOT, abs);
     const src = readFileSync(abs, "utf8");
     for (const name of perDocCandidates(src)) found.add(`${rel}::${name}`);
     if (/\bregisterDocForget\(/.test(src)) registering.add(rel);
+    if (touchesBrowserStorage(src)) storage.add(rel);
   }
-  return { found, registering };
+  return { found, registering, storage };
 }
 
 describe("doc-forget CENSUS (task 1465)", () => {
@@ -176,6 +225,107 @@ describe("doc-forget CENSUS (task 1465)", () => {
       "const seen = new Set<string>();",
     ].join("\n");
     expect(perDocCandidates(fixture)).toEqual(["byDoc", "listenersByDoc", "seen"]);
+  });
+});
+
+describe("doc-forget CENSUS — browser storage (task 1645)", () => {
+  const { registering, storage } = census();
+  const durableIndex = readFileSync(path.join(REPO_ROOT, "src/lib/doc-forget-durable.ts"), "utf8");
+  const imported = new Set(
+    [...durableIndex.matchAll(/^import\s+"@\/([^"]+)";/gm)].map((m) => `src/${m[1]}`),
+  );
+  const importedFile = (rel: string) => imported.has(rel.replace(/\.tsx?$/, ""));
+
+  it("every module touching localStorage/sessionStorage is forgotten or excluded with a reason", () => {
+    const unclassified = [...storage].filter(
+      (k) => !DURABLE_FORGOTTEN.includes(k) && !(k in STORAGE_EXCLUDED),
+    );
+    expect(
+      unclassified,
+      "UNCLASSIFIED browser-storage module(s). If it keeps state keyed by a document id, register " +
+        "a forget beside its reader (`registerDocForget`), import it from src/lib/doc-forget-durable.ts, " +
+        "and add it to DURABLE_FORGOTTEN; otherwise add it to STORAGE_EXCLUDED with the reason.",
+    ).toEqual([]);
+  });
+
+  it("every DURABLE_FORGOTTEN module registers a forget AND is loaded by purgeDoc's durable index", () => {
+    expect(DURABLE_FORGOTTEN.filter((k) => !registering.has(k)), "never calls registerDocForget").toEqual([]);
+    expect(
+      DURABLE_FORGOTTEN.filter((k) => !importedFile(k)),
+      "not imported by doc-forget-durable.ts — its forget would register only if its UI mounted",
+    ).toEqual([]);
+    expect(
+      [...imported].filter((m) => !DURABLE_FORGOTTEN.some((k) => k.replace(/\.tsx?$/, "") === m)),
+      "doc-forget-durable.ts imports a module the census does not list as DURABLE_FORGOTTEN",
+    ).toEqual([]);
+  });
+
+  it("no stale browser-storage census entries", () => {
+    const stale = [...DURABLE_FORGOTTEN, ...Object.keys(STORAGE_EXCLUDED)].filter((k) => !storage.has(k));
+    expect(stale, "names a module that no longer touches browser storage — remove it").toEqual([]);
+  });
+
+  it("the storage scanner ignores a comment and sees code", () => {
+    expect(touchesBrowserStorage('// localStorage.setItem("x", "1")\nconst a = 1;')).toBe(false);
+    expect(touchesBrowserStorage('/* sessionStorage */ const a = 1;')).toBe(false);
+    expect(touchesBrowserStorage('window.localStorage.getItem("x");')).toBe(true);
+  });
+});
+
+describe("purgeDoc forgets the browser-storage per-doc stores (task 1645)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it("a reset drops the paper's outline folds — even with the Outline never imported first", async () => {
+    vi.resetModules();
+    const id = "example-doc";
+    localStorage.setItem(
+      "virgil-outline-prefs",
+      JSON.stringify({ folds: [[id, ["a1b2"]], ["other", ["c3d4"]]] }),
+    );
+    const { forgetDocInMemory } = await import("@/lib/doc-forget");
+    await import("@/lib/doc-forget-durable"); // what purgeDoc loads first
+    forgetDocInMemory(id, "reset");
+
+    const store = await import("@/panels/Outline/outline-prefs-store");
+    const snap = store.getOutlinePrefsSnapshot();
+    expect(store.getOutlineCollapsedForDoc(snap, id)).toEqual([]);
+    expect(store.getOutlineCollapsedForDoc(snap, "other")).toEqual(["c3d4"]);
+    const persisted = JSON.parse(localStorage.getItem("virgil-outline-prefs")!);
+    expect(persisted.folds).toEqual([["other", ["c3d4"]]]);
+  });
+
+  it("a reset under a legacy flat fold set leaves an EMPTY bucket, so the pristine paper does not fall back to it", async () => {
+    vi.resetModules();
+    const id = "example-doc";
+    localStorage.setItem(
+      "virgil-outline-prefs",
+      JSON.stringify({ folds: [[id, ["a1b2"]]], legacyCollapsed: ["a1b2"] }),
+    );
+    const { forgetDocInMemory } = await import("@/lib/doc-forget");
+    const store = await import("@/panels/Outline/outline-prefs-store");
+    forgetDocInMemory(id, "reset");
+    expect(store.getOutlineCollapsedForDoc(store.getOutlinePrefsSnapshot(), id)).toEqual([]);
+    forgetDocInMemory(id, "remove");
+    expect(store.getOutlinePrefsSnapshot().folds.has(id)).toBe(false);
+  });
+
+  it("drops the window's DEAD collab sessions for the paper and keeps a live one", async () => {
+    vi.resetModules();
+    const { getWindowId } = await import("@/lib/multi-window/window-id");
+    const cs = await import("@/lib/collab-session");
+    const { forgetDocInMemory } = await import("@/lib/doc-forget");
+    const key = "virgil:collab-sessions:" + getWindowId();
+    sessionStorage.setItem(key, JSON.stringify({ "example-doc": ["dead", "alive"], other: ["x"] }));
+    const release = cs.holdLiveSession("alive");
+
+    forgetDocInMemory("example-doc", "reset");
+    expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual({ "example-doc": ["alive"], other: ["x"] });
+    release();
+    forgetDocInMemory("example-doc", "remove");
+    expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual({ other: ["x"] });
   });
 });
 
