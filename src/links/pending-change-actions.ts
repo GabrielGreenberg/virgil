@@ -46,7 +46,9 @@ import {
   revertPendingChange,
   insertParagraphAfter,
   type PendingChangeFamily,
+  type PendingVerbResult,
 } from "@/links/apply-suggestion";
+import { announceEditRefused, editRefusalNotice } from "@/lib/edit-refusal";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 import type { SuggestionStatus } from "@/cards/suggestion-status";
 import type { MarkerConservationViolation } from "@/lib/marker-conservation";
@@ -78,6 +80,11 @@ export interface AppliedChangeDescriptor {
   replacement: string;
   mode: "replace" | "delete";
   appliedAt: string;
+  /** Who wrote `replacement` (task 1426's rule), recorded at apply so a
+   *  preview re-apply holds the SAME rule the first apply did (task 1641 —
+   *  re-applying a human's text under the strict AI rule refused it). Absent
+   *  on descriptors written before 1641: re-derived from the card. */
+  replacementAuthor?: "human" | "ai";
 }
 
 /** The card-state mutators + lookup the commit / preview sequence drives. Both
@@ -94,6 +101,12 @@ export interface PendingChangeCardDeps {
   setSuggestionStatus: (id: string, status: SuggestionStatus) => void;
   setArchived: (id: string, archived: boolean) => void;
   setAppliedChange: (id: string, appliedChange: undefined) => void;
+  /** The suggestion card itself, by id — read only when the change has NO
+   *  mark (an original-preview, a lost mark) to find its block through the
+   *  anchor authority (task 1506) rather than the uuid stored at apply time,
+   *  and to re-derive a pre-1641 descriptor's `replacementAuthor`. Omitted →
+   *  the stored uuid and the strict rule. */
+  getCard?: (id: string) => SuggestionLike | undefined;
   /** The card's suggestion family — needed to RE-STAMP the blue mark when a
    *  commit / preview re-applies the suggested view (so a cutter change tokens
    *  `cutter-suggestion:<id>`, a revision `revision-suggestion:<id>`). */
@@ -108,16 +121,54 @@ function reapplySuggested(
   id: string,
   ac: AppliedChangeDescriptor,
   deps: PendingChangeCardDeps,
-): void {
-  applyPendingChange(editor, {
-    anchorUuid: ac.anchorUuid,
+): boolean {
+  const card = deps.getCard?.(id);
+  return applyPendingChange(editor, {
+    anchorUuid: fallbackBlock(editor, id, ac, deps),
     originalText: ac.originalText,
     replacement: ac.replacement,
     mode: ac.mode,
     cardId: id,
     anchorId: ac.anchorId,
     family: deps.family,
-  });
+    replacementAuthor:
+      ac.replacementAuthor ?? (card ? replacementAuthor(card) : undefined),
+  }).ok;
+}
+
+/** The block a MARK-LESS change is addressed by: the card's live anchor block
+ *  from the authority (task 1506), else the uuid stored at apply time. Never
+ *  consulted while the mark exists — the mark carries its own block. */
+function fallbackBlock(
+  editor: Editor,
+  id: string,
+  ac: AppliedChangeDescriptor,
+  deps: PendingChangeCardDeps,
+): string {
+  const card = deps.getCard?.(id);
+  return (card && suggestionAnchorBlock(card, buildCardAnchorPass(editor))) || ac.anchorUuid;
+}
+
+/** Say that a pending change could not be settled, and leave it applied. */
+function announcePendingRefused(
+  verb: "keep" | "revert" | "preview",
+  reason: "not-found" | "edited" | "refused",
+): void {
+  const title =
+    verb === "keep"
+      ? "Couldn't keep the change"
+      : verb === "revert"
+        ? "Couldn't dismiss the change"
+        : "Couldn't switch the preview";
+  const detail =
+    reason === "edited"
+      ? "the highlighted text was edited after the change was applied, so restoring it would overwrite your edit. Undo your edit, or keep the change and revise it by hand."
+      : reason === "not-found"
+        ? "the changed passage could not be found in the paragraph any more."
+        : "the suggestion no longer fits the paragraph.";
+  announceEditRefused(
+    editRefusalNotice({ title, what: "suggestion", reason: "failed", detail }),
+  );
 }
 
 /** Which way a live applied splice is settled: finalize the suggested text, or
@@ -151,26 +202,43 @@ function commitAppliedChange(
   deps: PendingChangeCardDeps,
   resolution: SettleResolution,
   alsoArchive: boolean,
-): void {
+): boolean {
   const ac = deps.getAppliedChange(id);
-  if (!ac) return;
+  if (!ac) return true;
+  const previewingOriginal = getPreviewDir(docId, id) === "original";
+  // TASK 1641 — the card settles ONLY on what the document did. Both verbs
+  // report an outcome; a refusal leaves the card applied (its descriptor, its
+  // status, its place in the list) and says why, instead of archiving a card
+  // whose text is still in the paper.
+  let result: PendingVerbResult;
   if (resolution === "keep") {
-    if (getPreviewDir(docId, id) === "original") reapplySuggested(editor, id, ac, deps);
-    keepPendingChange(editor, {
-      anchorUuid: ac.anchorUuid,
+    if (previewingOriginal && !reapplySuggested(editor, id, ac, deps)) {
+      announcePendingRefused("keep", "refused");
+      return false;
+    }
+    result = keepPendingChange(editor, {
+      anchorUuid: fallbackBlock(editor, id, ac, deps),
       mode: ac.mode,
       anchorId: ac.anchorId,
       originalText: ac.originalText,
       replacement: ac.replacement,
     });
+  } else if (previewingOriginal) {
+    // The original-preview already put the original back (and dropped the
+    // mark): the document IS the dismissed state.
+    result = { ok: true };
   } else {
-    revertPendingChange(editor, {
-      anchorUuid: ac.anchorUuid,
+    result = revertPendingChange(editor, {
+      anchorUuid: fallbackBlock(editor, id, ac, deps),
       originalText: ac.originalText,
       replacement: ac.replacement,
       mode: ac.mode,
       anchorId: ac.anchorId,
     });
+  }
+  if (!result.ok) {
+    announcePendingRefused(resolution, result.reason);
+    return false;
   }
   resetPreviewDir(docId, id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
@@ -180,6 +248,7 @@ function commitAppliedChange(
   );
   if (alsoArchive) deps.setArchived(id, true);
   deps.setAppliedChange(id, undefined);
+  return true;
 }
 
 /**
@@ -202,8 +271,8 @@ export function settleAppliedChangeForLifecycle(
   docId: string | null,
   deps: PendingChangeCardDeps,
   resolution: SettleResolution,
-): void {
-  commitAppliedChange(editor, id, docId, deps, resolution, false);
+): boolean {
+  return commitAppliedChange(editor, id, docId, deps, resolution, false);
 }
 
 /**
@@ -257,13 +326,19 @@ export function previewOriginal(
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
   if (getPreviewDir(docId, id) === "original") return;
-  revertPendingChange(editor, {
-    anchorUuid: ac.anchorUuid,
+  const result = revertPendingChange(editor, {
+    anchorUuid: fallbackBlock(editor, id, ac, deps),
     originalText: ac.originalText,
     replacement: ac.replacement,
     mode: ac.mode,
     anchorId: ac.anchorId,
   });
+  // A refused flip leaves the preview where it was — the store never names a
+  // view the document is not showing (task 1641).
+  if (!result.ok) {
+    announcePendingRefused("preview", result.reason);
+    return;
+  }
   setPreviewDir(docId, id, "original");
   if (docId) void flushPendingForDoc(docId).catch(() => {});
 }
@@ -283,7 +358,10 @@ export function previewSuggested(
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
   if (getPreviewDir(docId, id) === "suggested") return;
-  reapplySuggested(editor, id, ac, deps);
+  if (!reapplySuggested(editor, id, ac, deps)) {
+    announcePendingRefused("preview", "refused");
+    return;
+  }
   setPreviewDir(docId, id, "suggested");
   if (docId) void flushPendingForDoc(docId).catch(() => {});
 }
@@ -715,6 +793,7 @@ export function applySuggestion(
     replacement,
     mode,
     appliedAt: new Date().toISOString(),
+    replacementAuthor: replacementAuthor(card),
   };
   deps.setSuggestionStatus(card.id, "applied");
   deps.setAppliedChange(card.id, appliedChange);

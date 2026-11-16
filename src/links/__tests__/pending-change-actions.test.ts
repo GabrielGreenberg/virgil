@@ -26,8 +26,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const keepPendingChange = vi.fn<(editor: unknown, args: unknown) => void>();
-const revertPendingChange = vi.fn<(editor: unknown, args: unknown) => void>();
+type VerbResult = { ok: true } | { ok: false; reason: "not-found" | "edited" };
+const keepPendingChange = vi.fn<(editor: unknown, args: unknown) => VerbResult>();
+const revertPendingChange = vi.fn<(editor: unknown, args: unknown) => VerbResult>();
 // applyPendingChange is mocked so the `applySuggestion` orchestration tests
 // assert the SEQUENCE (anchor/mode compute → applyPendingChange → card-state
 // flip) without the real doc splice. Default: a successful replace.
@@ -127,7 +128,9 @@ function makeDeps(
 
 beforeEach(() => {
   keepPendingChange.mockClear();
+  keepPendingChange.mockImplementation(() => ({ ok: true }));
   revertPendingChange.mockClear();
+  revertPendingChange.mockImplementation(() => ({ ok: true }));
   flushPendingForDoc.mockClear();
   applyPendingChange.mockClear();
   applyPendingChange.mockImplementation(() => ({
@@ -373,18 +376,15 @@ describe("commit determinism reads appliedChange, not the transient preview", ()
     expect(keepPendingChange).toHaveBeenCalledTimes(1);
   });
 
-  it("Cross while previewing ORIGINAL still restores the original deterministically (delete mode)", () => {
+  it("Cross while previewing ORIGINAL settles on the original already in the doc (delete mode)", () => {
     setPreviewDir("doc-9", "c1", "original");
     const deps = makeDeps(true, deleteAc);
     dismissSuggestion(editor, "c1", "doc-9", deps);
 
-    expect(revertPendingChange).toHaveBeenCalledWith(editor, {
-      anchorUuid: "P1",
-      originalText: "old text",
-      replacement: "",
-      mode: "delete",
-      anchorId: "anc-1",
-    });
+    // Task 1641: the original-preview already IS the dismissed state (original
+    // text, no mark) — there is nothing left to splice, and a mark-less revert
+    // would only search for text that is not there.
+    expect(revertPendingChange).not.toHaveBeenCalled();
     expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "rejected");
     expect(getPreviewDir("doc-9", "c1")).toBe("suggested");
   });

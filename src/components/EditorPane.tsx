@@ -1608,6 +1608,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         revisionsHookRaw.getCards().find(
           (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
         )?.appliedChange,
+      getCard: (cid) =>
+        revisionsHookRaw.getCards().find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        ),
       setSuggestionStatus: revisionsHookRaw.setSuggestionStatus,
       setArchived: revisionsHookRaw.setArchived,
       setAppliedChange: revisionsHookRaw.setAppliedChange,
@@ -1621,6 +1625,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         cutterHookRaw.getCards().find(
           (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
         )?.appliedChange,
+      getCard: (cid) =>
+        cutterHookRaw.getCards().find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        ),
       setSuggestionStatus: cutterHookRaw.setSuggestionStatus,
       setArchived: cutterHookRaw.setArchived,
       setAppliedChange: cutterHookRaw.setAppliedChange,
@@ -1701,7 +1709,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // leaves the applied card exactly as it was — recoverable — instead of
         // ending its record over a range nothing can then manage.
         if (!ed) return false;
-        settleAppliedChangeForLifecycle(
+        // A settle the document refused (task 1641 — the blue range was
+        // edited, or is gone) aborts the event the same way: the card keeps
+        // managing its range rather than being ended over it.
+        return settleAppliedChangeForLifecycle(
           ed,
           id,
           docId,
@@ -1710,7 +1721,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             : cutterPendingDeps(),
           resolution,
         );
-        return true;
       },
     }),
     [

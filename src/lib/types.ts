@@ -134,6 +134,7 @@ export interface RevisionSuggestionCard {
     replacement: string; // "" for a pure deletion
     mode: "replace" | "delete";
     appliedAt: string; // ISO timestamp
+    replacementAuthor?: "human" | "ai"; // task 1641 — the rule a preview re-apply holds
   };
   selectedText?: string;
   /** The RICH capture of the same passage, taken at anchor time (task 488).
@@ -814,6 +815,7 @@ export interface CutterSuggestionCard {
     replacement: string; // "" for a pure deletion
     mode: "replace" | "delete";
     appliedAt: string; // ISO timestamp
+    replacementAuthor?: "human" | "ai"; // task 1641 — the rule a preview re-apply holds
   };
   selectedText?: string;
   /** The RICH capture of the same passage, taken at anchor time (task 488).
