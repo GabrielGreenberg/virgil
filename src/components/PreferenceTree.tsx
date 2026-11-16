@@ -5,6 +5,7 @@ import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, Pref
 import { isLeaf } from "@/lib/preferences-tree";
 import { Field, Select, type FieldIds } from "./field-primitives";
 import { ResetButton } from "./ResetButton";
+import { RangeField } from "./RangeField";
 import { PodDisclosure } from "./PodDisclosure";
 import { withCurrent, type FontGroup } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
@@ -73,20 +74,17 @@ export function SliderPref({
     <PrefField label={label} description={description}>
       {({ id, descriptionId }) => (
         <>
-          <input
+          <RangeField
             id={id}
             aria-describedby={descriptionId}
-            type="range"
+            value={value}
             min={min}
             max={max}
             step={step}
-            value={value}
-            onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="w-28 shrink-0 h-1 accent-[var(--accent)]"
+            onChange={onChange}
+            format={(v) => `${v}${unit}`}
+            track="md"
           />
-          <span className="text-2xs text-ink-muted w-12 shrink-0 text-right tabular-nums">
-            {value}{unit}
-          </span>
           {defaultValue !== undefined && (
             <ResetButton
               onReset={() => onChange(defaultValue)}

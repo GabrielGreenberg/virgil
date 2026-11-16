@@ -2712,6 +2712,14 @@ compile error). The **numeric steppers** (`SizeStepper`,
 `PanelTextSizeRow`) are NOT exceptions: they are ordinary fields with
 `tabular-nums`, and they dropped their rings to match this spec.
 
+**A slider is `RangeField`** (`src/components/RangeField.tsx`, task 1653):
+the range input plus its `tabular-nums` readout (muted, width derived from
+the widest printable value; `after` the track, or `corner` on a stacked
+field's caption line), track width from a stated set (`xs`/`sm`/`md`/`fill`).
+Its fill is the root `accent-color` (`--control-selected`) — no slider or
+checkbox repaints itself `--accent`. `range-field-census.test.ts` fails a raw
+`type="range"` elsewhere and any `--accent` control fill.
+
 Card title input is borderless except a 1px `var(--ink-strong)` underline
 on focus — drawn as an inset `box-shadow`, so focus never shifts the card
 (one rule in `globals.css`, `.card-title-input` / `.card-title-focus`, task

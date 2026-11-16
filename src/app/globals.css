@@ -7666,7 +7666,6 @@ body.perf-contain .static-borrowed-text {
 .tool-gutter-check {
   /* aligns: the row text's 2px padding plus its first line's cap height, so the box sits on the text's baseline */
   margin: 5px 0 0;
-  accent-color: var(--accent);
 }
 .tool-gutter-row-text {
   min-width: 0;

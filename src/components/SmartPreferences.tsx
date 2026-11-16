@@ -3,6 +3,7 @@
 import type { SmartSection, SmartItem } from "@/lib/smart-preferences";
 import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
 import { Select } from "./field-primitives";
+import { RangeField, signed } from "./RangeField";
 import { withCurrent } from "@/lib/font-catalogue";
 import { HexColorField } from "./HexColorField";
 import { ResetButton } from "./ResetButton";
@@ -160,17 +161,16 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         ))}
       </Select>
       <div className="flex items-center gap-1">
-        <input
+        <RangeField
           aria-label={`${panelLabel} size`}
-          type="range"
+          value={typo.fontSize}
           min={10}
           max={20}
           step={1}
-          value={typo.fontSize}
-          onChange={(e) => setField("fontSize", parseInt(e.target.value, 10))}
-          className="w-14 h-1 accent-[var(--accent)]"
+          onChange={(v) => setField("fontSize", v)}
+          format={(v) => `${v}px`}
+          track="xs"
         />
-        <span className="text-2xs text-ink-muted tabular-nums w-6 text-right">{typo.fontSize}px</span>
       </div>
       {/* The shared swatch+hex control (task 532). This cell used to hand-roll
           a second copy with a fully-controlled `value={typo.color}` and an
@@ -271,20 +271,17 @@ function LinkEdgeRow({
         )}
       </button>
       <span className={`flex-1 truncate ${locked ? "text-ink-subtle" : ""}`}>{label}</span>
-      <input
+      <RangeField
         aria-label={`${label} lightness offset`}
-        type="range"
+        value={pct}
         min={-40}
         max={40}
         step={1}
-        value={pct}
-        onChange={(e) => handleDeltaChange(parseInt(e.target.value, 10))}
+        onChange={handleDeltaChange}
         disabled={!locked}
-        className={`w-20 h-1 accent-[var(--accent)] ${locked ? "" : "opacity-40"}`}
+        format={signed("%")}
+        track="sm"
       />
-      <span className="text-2xs tabular-nums w-9 text-right">
-        {pct > 0 ? "+" : ""}{pct}%
-      </span>
     </div>
   );
 }

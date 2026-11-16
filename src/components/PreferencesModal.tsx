@@ -14,6 +14,7 @@ import { PREFERENCES_TREE, isLeaf } from "@/lib/preferences-tree";
 import { SMART_PREFERENCES } from "@/lib/smart-preferences";
 import PreferenceTree from "./PreferenceTree";
 import { Field, Input, Select } from "./field-primitives";
+import { RangeField, signed } from "./RangeField";
 import { Button } from "./Button";
 import SmartPreferencesSection from "./SmartPreferences";
 import SystemDialog, { SystemDialogSidebarLayout, type SystemDialogSection } from "./system-dialog";
@@ -120,8 +121,7 @@ function TransformSlider({
   onChange: (v: number) => void;
 }) {
   const rafRef = useRef<number>(0);
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
+  const handleChange = useCallback((v: number) => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => onChange(v));
   }, [onChange]);
@@ -131,21 +131,17 @@ function TransformSlider({
   return (
     <Field label={label} className="flex-1 min-w-0 relative">
       {({ id }) => (
-        <>
-          <span className="absolute right-0 top-0 text-2xs text-ink-muted tabular-nums w-8 text-right">
-            {value > 0 ? `+${value}` : value}
-          </span>
-          <input
-            id={id}
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={value}
-            onChange={handleChange}
-            className="w-full h-1 accent-[var(--accent)]"
-          />
-        </>
+        <RangeField
+          id={id}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={handleChange}
+          format={signed()}
+          track="fill"
+          readout="corner"
+        />
       )}
     </Field>
   );
