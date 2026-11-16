@@ -57,6 +57,7 @@
 import { mutateBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFileAgainst } from "@/lib/bib-parser";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { trackDocWrite } from "@/lib/unsaved-work";
 import { bibUidsOf, mintBibUid } from "@/lib/bib-uid";
 import {
   BIB_NO_MATCH,
@@ -333,6 +334,15 @@ export async function mutateProjectBib(
   mutate: BibMutator,
 ): Promise<BibWriteResult> {
   if (!docId) return { kind: "no-handle" };
+  // The door is a member of the document's unsaved-work channel for as long
+  // as its write is in flight (task 1643) — every caller covered at once.
+  return trackDocWrite(docId, () => writeProjectBib(docId, mutate));
+}
+
+async function writeProjectBib(
+  docId: string,
+  mutate: BibMutator,
+): Promise<BibWriteResult> {
   const handle = getActiveHandle(docId);
   if (!handle) return { kind: "no-handle" };
 

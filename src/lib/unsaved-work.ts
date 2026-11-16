@@ -290,6 +290,40 @@ export function createSidecarWorkPublisher(): SidecarWorkPublisher {
   };
 }
 
+/**
+ * Task 1643 — a doc-scoped write DOOR's own membership: the door's write is a
+ * pending sidecar writer of `docId` from the moment the door is entered until
+ * it settles, whatever the outcome. Each call is its own member (a fresh
+ * token), so overlapping writes through one door are counted the way
+ * {@link noteSidecarWork}'s set counts any two writers.
+ *
+ * Why the DOOR and not its callers: `mutateAiRequests` / `mutateProjectBib`
+ * are the one authority for their files, reached from hooks AND from lib-level
+ * callers (the card-flag bridge) — membership opted into per hook missed both
+ * hooks the doors serve (the task-1503 census found three writers; these were
+ * the two it did not). Registration is SYNCHRONOUS on entry, so a caller that
+ * paints optimistically and then calls the door is published in the same tick.
+ *
+ * Only the in-flight half is the door's to say. What happens after a write
+ * that did not land is the CALLER's: both of today's callers reconcile memory
+ * from disk on a refusal (the optimistic row/entry goes), so nothing unlanded
+ * remains to guard; a caller that instead KEEPS the unlanded edit in memory
+ * must publish that itself (`createSidecarWorkPublisher`, as
+ * `usePersistentState` does for a failed card write).
+ */
+export async function trackDocWrite<T>(
+  docId: string,
+  write: () => Promise<T>,
+): Promise<T> {
+  const token = {};
+  noteSidecarWork(docId, token, true);
+  try {
+    return await write();
+  } finally {
+    noteSidecarWork(docId, token, false);
+  }
+}
+
 /** Does the document's state hold work of EITHER kind? */
 function isDirty(s: UnsavedWorkState): boolean {
   return s.dirtySince !== null || s.sidecarDirtySince !== null;
