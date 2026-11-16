@@ -400,13 +400,13 @@ export default function PreferencesModal({
       // `onReset` makes the settings exactly the shipped defaults.
       stillCurrent: ({ settings: live }) => settingsEqual(live, DEFAULT_SETTINGS_SNAPSHOT),
     });
-  }, [settings, onReset, onRestoreSettings]);
+  }, [settings, onReset, onRestoreSettings, setPendingUndo]);
 
   const runUndo = useCallback(() => {
     if (!pendingUndo) return;
     setPendingUndo(null);
     pendingUndo.undo();
-  }, [pendingUndo]);
+  }, [pendingUndo, setPendingUndo]);
 
   const [sectionId, setSectionId] = useState<string>(THEME_SECTION);
   const smartSection = SMART_PREFERENCES.find((s) => s.id === sectionId);
