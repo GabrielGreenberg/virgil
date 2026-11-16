@@ -6,7 +6,9 @@
  *
  * Reads the snapshot and iterates the registry at
  * src/lib/dev-prefs-registry.json — the same file the browser mirror
- * imports. Per-entry strategy decides how the source merges onto the
+ * imports. Rows are looked up by `id`, never by a restated storage key or
+ * defaults path (task 1654 — the key census pins each row's key to its
+ * runtime owner). Per-entry strategy decides how the source merges onto the
  * existing default JSON sidecar. Also regenerates the marker-comment
  * block inside src/app/globals.css from the ONE pref→CSS table
  * (src/lib/pref-css-table.mjs) so first-paint CSS is exactly what the
@@ -72,7 +74,18 @@ const SNAPSHOT_PATH = OPTS.snapshot;
 const REGISTRY_PATH = path.join(REPO_ROOT, "src", "lib", "dev-prefs-registry.json");
 const GLOBALS_CSS = path.join(REPO_ROOT, "src", "app", "globals.css");
 
-const EDITOR_PREFS_JSON_REL = "src/hooks/usePreferences.defaults.json";
+const REGISTRY = readJson(REGISTRY_PATH);
+
+/** The registry row with `id` — throws if a rename left a tool behind. */
+function registryRow(id) {
+  const row = REGISTRY.promotable.find((e) => e.id === id);
+  if (!row) throw new Error(`dev-prefs-registry.json has no row with id "${id}"`);
+  return row;
+}
+
+const EDITOR_PREFS_ROW = registryRow("editor-prefs");
+const EDITOR_PREFS_KEY = EDITOR_PREFS_ROW.storageKey;
+const EDITOR_PREFS_JSON_REL = EDITOR_PREFS_ROW.defaultsFile;
 
 /* ── Utilities ──────────────────────────────────────────────────── */
 
@@ -170,8 +183,9 @@ function applyWhitelist(target, source, whitelist, label) {
  * every source key therefore RESURRECTS a retired preference into the shipped
  * defaults on the next promote tick, which the interface ⊆ defaults net
  * cannot see (an extra key in the JSON is not a failure) and `sync-defaults.sh`
- * cannot see (its gates — stated once, in its header — check JSON syntax and
- * the View registry contract, not vocabulary) — and it lands on local main
+ * cannot see (its gates — stated once, in its header — are JSON syntax, the
+ * `check-prefs-coverage.mjs` validator and the registry's `contractSuites`,
+ * none of which closes a target's vocabulary) — and it lands on local main
  * unattended.
  *
  * That is not hypothetical: `aiMarkerText`/`aiMarkerBg`/`aiMarkerBorder` were
@@ -296,13 +310,13 @@ function main() {
   const snapshot = readJson(SNAPSHOT_PATH);
   // A stale snapshot may still carry a default we retired on purpose. Promoting
   // it would revert that change, so it never reaches a strategy below.
-  const prefsBlob = snapshot["virgil-editor-prefs"];
+  const prefsBlob = snapshot[EDITOR_PREFS_KEY];
   if (isPlainObject(prefsBlob)) {
     const { next, dropped } = dropRetiredDefaults(prefsBlob);
-    snapshot["virgil-editor-prefs"] = next;
+    snapshot[EDITOR_PREFS_KEY] = next;
     if (dropped.length) console.log(`  snapshot: ignored retired default(s) — ${dropped.join(", ")}`);
   }
-  const registry = readJson(REGISTRY_PATH);
+  const registry = REGISTRY;
 
   /** Root-relative paths this run changed (or, dry, WOULD change). */
   const changed = [];

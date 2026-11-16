@@ -204,9 +204,7 @@ describe("census — the preference has one row and three agreeing spellings", (
 
   it("it participates in the promotion pipeline, like its sibling", () => {
     const reg = JSON.parse(read("src/lib/dev-prefs-registry.json"));
-    const viewPrefs = reg.promotable.find(
-      (e: { storageKey: string }) => e.storageKey === "virgil-view-prefs/global",
-    );
+    const viewPrefs = reg.promotable.find((e: { id: string }) => e.id === "view-prefs");
     expect(viewPrefs.whitelist).toContain("autocorrectTypos");
   });
 });

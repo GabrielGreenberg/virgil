@@ -21,13 +21,11 @@
  *  - Only registry keys (`MIRRORABLE_STORAGE_KEYS`) are accepted.
  *
  * File shape: the blobs stay at the TOP level keyed by storage key (what the
- * promoter reads), beside three meta keys — {@link SNAPSHOT_META_KEYS}.
+ * promoter reads), beside three bookkeeping keys — `source`, `savedAt`,
+ * `blobSavedAt`.
  */
 
 import { MIRRORABLE_STORAGE_KEYS } from "./dev-prefs-registry";
-
-/** Top-level snapshot keys that are bookkeeping, not prefs blobs. */
-export const SNAPSHOT_META_KEYS = ["source", "savedAt", "blobSavedAt"] as const;
 
 /** The body the mirror POSTs. */
 export interface SnapshotPost {

@@ -13,15 +13,18 @@
  * subsumed too: those keys are `RegistryPrefs`, which `ViewPrefs` extends, so
  * the same compile-time coverage reaches them.
  *
- *   3. Every entry in the registry's `whitelist` arrays resolves to a
+ *   1. Every entry in the registry's `whitelist` arrays resolves to a
  *      key in the corresponding defaults file.
- *   4. Every row of the ONE pref→CSS table (`src/lib/pref-css-table.mjs`,
+ *   2. Every row of the ONE pref→CSS table (`src/lib/pref-css-table.mjs`,
  *      task 902) resolves to a key in the editor defaults JSON, AND the
  *      first-paint seed block in `globals.css` (PROMOTE-DEFAULTS) is exactly
  *      that table rendered at the defaults — so a runtime row the seed lacks,
  *      or a seed value that differs from what the runtime paints at the
  *      defaults, fails here instead of flashing on load.
- *   5. The Library column-order default is a permutation of its union.
+ *   3. The Library column-order default is a permutation of its union.
+ *
+ * Defaults paths come from the registry rows, looked up
+ * by `id` — never restated here (task 1654).
  *
  * Fails fast with a human-readable list of missing keys. No deps.
  *
@@ -56,11 +59,8 @@ function rootArg(argv) {
 
 const REPO_ROOT = rootArg(process.argv.slice(2));
 
-const EDITOR_DEFAULTS = path.join(REPO_ROOT, "src/hooks/usePreferences.defaults.json");
 const REGISTRY = path.join(REPO_ROOT, "src/lib/dev-prefs-registry.json");
 const GLOBALS_CSS = path.join(REPO_ROOT, "src/app/globals.css");
-// F#13: the Library column-order shipped default (rides promote-defaults).
-const LIST_COL_DEFAULTS = path.join(REPO_ROOT, "library/lib/list-columns.defaults.json");
 const LIST_COLUMNS_TS = path.join(REPO_ROOT, "library/lib/list-columns.ts");
 
 /* ── Checks ──────────────────────────────────────────────────────── */
@@ -75,7 +75,18 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf-8"));
 }
 
-// 3 + 4. Registry consistency.
+/** The registry row with `id` — throws if a rename left this tool behind. */
+function registryRow(id) {
+  const row = readJson(REGISTRY).promotable.find((e) => e.id === id);
+  if (!row) throw new Error(`dev-prefs-registry.json has no row with id "${id}"`);
+  return row;
+}
+
+const EDITOR_DEFAULTS = path.join(REPO_ROOT, registryRow("editor-prefs").defaultsFile);
+// F#13: the Library column-order shipped default (rides promote-defaults).
+const LIST_COL_DEFAULTS = path.join(REPO_ROOT, registryRow("library-columns").defaultsFile);
+
+// 1 + 2. Registry consistency.
 {
   const registry = readJson(REGISTRY);
   const editorDefaults = readJson(EDITOR_DEFAULTS);
@@ -132,7 +143,7 @@ function readJson(file) {
   }
 }
 
-// 5. F#13 — library column-order shipped default must be a valid PERMUTATION
+// 3. F#13 — library column-order shipped default must be a valid PERMUTATION
 //    of the ReorderableColId union. The default rides promote-defaults (check
 //    3 already confirms "colOrder" exists in the file via the whitelist entry);
 //    this guards the *value* against a typo'd or incomplete promotion that

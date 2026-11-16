@@ -84,7 +84,7 @@ export const SIDE_SETTINGS_STORES = {
 };
 
 type Stores = typeof SIDE_SETTINGS_STORES;
-export type SideSettingsKey = keyof Stores;
+type SideSettingsKey = keyof Stores;
 export type SideSettings = {
   [K in SideSettingsKey]: ReturnType<Stores[K]["read"]>;
 };
