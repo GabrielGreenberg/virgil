@@ -1916,7 +1916,30 @@ def append_inbox_item(library: Path, item: dict, *, cap: int = 200) -> None:
 # ── master.bib ───────────────────────────────────────────────────────
 
 
-def _parse_bib_fields(body: str) -> dict[str, str]:
+def mask_bib_comments(text: str) -> str:
+    """Blank every `%` COMMENT line (first non-blank char is `%`) to spaces.
+
+    THE lexical rule for a .bib body (task 1519 for the paper side, task 1644
+    here): a comment line is invisible to every brace count, opener search and
+    field read. Length-preserving, so an offset found in the masked view slices
+    the ORIGINAL text — values stay verbatim. Only line-anchored comments: a
+    `%` mid-line inside a value (`{100% sure}`) is text. Twin of
+    `maskBibComments` in `src/lib/bib-source.ts`; the TS library locator reads
+    through it too, and `bib-raw-entry-parity.test.ts` pins the two.
+    """
+    if "%" not in text:
+        return text
+    return "\n".join(
+        " " * len(line) if line.lstrip().startswith("%") else line
+        for line in text.split("\n")
+    )
+
+
+def _parse_bib_fields(body: str, orig: str | None = None) -> dict[str, str]:
+    """Read `name = value` pairs from an entry body. `body` is the comment-
+    masked view, which delimits; values are sliced from `orig` (the same span
+    of the original text) when given, so a `%` line inside a value survives."""
+    src = body if orig is None else orig
     out: dict[str, str] = {}
     i = 0
     while i < len(body):
@@ -1942,7 +1965,7 @@ def _parse_bib_fields(body: str) -> dict[str, str]:
                 elif body[j] == "}":
                     depth -= 1
                 j += 1
-            out[name] = body[i + 1:j - 1].strip()
+            out[name] = src[i + 1:j - 1].strip()
             i = j
         elif body[i] == '"':
             # Hazard 5(a): a `"`-quoted value's closing quote is the `"` at
@@ -1968,15 +1991,15 @@ def _parse_bib_fields(body: str) -> dict[str, str]:
                     break
                 j += 1
             if j >= len(body):
-                out[name] = body[i + 1:].strip()
+                out[name] = src[i + 1:].strip()
                 break
-            out[name] = body[i + 1:j].strip()
+            out[name] = src[i + 1:j].strip()
             i = j + 1
         else:
             j = i
             while j < len(body) and body[j] not in ",\n":
                 j += 1
-            out[name] = body[i:j].strip()
+            out[name] = src[i:j].strip()
             i = j
     return out
 
@@ -2005,19 +2028,22 @@ def read_master_bib(path: Path, *, text: str | None = None) -> dict[str, dict]:
             return {}
         text = path.read_text()
     entries: dict[str, dict] = {}
-    for m, citekey, j, balanced in _iter_master_entry_spans(text):
+    # Structure is read in the comment-masked view (masked ONCE); raw and
+    # values slice the original bytes (task 1644).
+    masked = mask_bib_comments(text)
+    for m, citekey, j, balanced in _iter_master_entry_spans(text, masked):
         entry_type = m.group(1).lower()
-        brace = text.find("{", m.start())
+        brace = masked.find("{", m.start())
         raw = text[m.start():j]
-        body_start = text.find(",", brace) + 1
-        body = text[body_start:(j - 1) if balanced else j]
-        fields = _parse_bib_fields(body)
+        body_start = masked.find(",", brace) + 1
+        body_end = (j - 1) if balanced else j
+        fields = _parse_bib_fields(masked[body_start:body_end], text[body_start:body_end])
         if citekey:
             entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
     return entries
 
 
-def _iter_master_entry_spans(text: str):
+def _iter_master_entry_spans(text: str, masked: str | None = None):
     """Yield `(opener_match, citekey, end, balanced)` for every REAL entry.
 
     THE enumeration of master.bib entries — `read_master_bib` reads through it
@@ -2028,14 +2054,21 @@ def _iter_master_entry_spans(text: str):
     is skipped — it was a value (a column-0 `@article{...}` inside a
     `note = {...}`), not a real entry. Containment for genuinely malformed
     (unbalanced) entries comes from `bib_entry_extent`'s capped pass.
+
+    Openers and extents are read in the comment-MASKED view
+    (`mask_bib_comments`, task 1644): a `% {` note does not unbalance an entry.
+    The view is offset-identical, so the spans index the original `text`.
+    A caller that already masked passes `masked` to avoid a second pass.
     """
+    if masked is None:
+        masked = mask_bib_comments(text)
     consumed_until = 0  # end offset of the last brace-balanced entry
-    for m in _BIB_ENTRY_START_RE.finditer(text):
+    for m in _BIB_ENTRY_START_RE.finditer(masked):
         if m.start() < consumed_until:
             continue
         citekey = m.group(2).strip()
         # ONE extent rule — see `bib_entry_extent`.
-        j, balanced = bib_entry_extent(text, m.start())
+        j, balanced = bib_entry_extent(masked, m.start())
         if balanced:
             consumed_until = j
         if citekey:

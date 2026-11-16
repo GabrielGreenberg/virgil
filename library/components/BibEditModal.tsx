@@ -15,6 +15,7 @@ import {
   ANNOTATION_FIELDS,
   BIB_ENTRY_TYPES,
   CORE_FIELDS,
+  BIB_EDIT_BASE_UNREADABLE,
   IDENTIFIER_FIELDS,
   PUBLICATION_FIELDS_BY_TYPE,
   buildBibEditDiff,
@@ -23,7 +24,7 @@ import {
   knownFieldsForType,
 } from "@library/lib/bib-edit";
 import type { BibEditDiffPayload } from "@library/lib/queue";
-import { bibEditBase, parseBibEntryBlock } from "@library/lib/bib-raw-entry";
+import { bibEditBase, isBibEditBaseUnreadable, parseBibEntryBlock } from "@library/lib/bib-raw-entry";
 import SystemDialog, {
   SYSTEM_DIALOG_TOKENS,
   SystemDialogButton,
@@ -54,10 +55,12 @@ type Mode = "form" | "raw";
 /** What Save would do RIGHT NOW: queue this diff, or refuse on a raw block
  *  that does not parse. One answer for Save AND for the dismissal guard, so
  *  "would closing lose anything?" is the literal question "would Save have
- *  written anything?" (task 820), never a parallel dirty heuristic. */
+ *  written anything?" (task 820), never a parallel dirty heuristic. `refused`:
+ *  the disk block itself is unreadable, so nothing can be saved (task 1644). */
 type PendingEdit =
   | { kind: "diff"; diff: BibEditDiffPayload }
-  | { kind: "unparseable" };
+  | { kind: "unparseable" }
+  | { kind: "refused" };
 
 export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
   // The entry this edit is a diff AGAINST: the disk block (`raw`) read
@@ -67,6 +70,10 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
   // `incollection`), stripped the LaTeX of any field the user touched, and
   // re-keyed `booktitle` as `journal`. Fixed at mount, like the form state.
   const [entry] = useState<BibEntry>(() => bibEditBase(shown));
+  // A disk block that does not parse leaves no faithful base: the modal opens
+  // for reading but REFUSES to save (task 1644) — a diff against the display
+  // projection would queue changes to fields the user never touched.
+  const [baseUnreadable] = useState<boolean>(() => isBibEditBaseUnreadable(shown));
   const [mode, setMode] = useState<Mode>("form");
   // One seed at mount feeds the fields, the initial rows AND the id allocator,
   // so they never diverge (task 128) and every key has ONE editor (task 1209).
@@ -142,6 +149,7 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
   };
 
   const pendingEdit = (): PendingEdit => {
+    if (baseUnreadable) return { kind: "refused" };
     if (mode === "raw") {
       const parsed = parseBibEntryBlock(raw);
       if (!parsed) return { kind: "unparseable" };
@@ -181,6 +189,11 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
     setSaveError(null);
     try {
       const pending = pendingEdit();
+      if (pending.kind === "refused") {
+        setSaveError(BIB_EDIT_BASE_UNREADABLE);
+        setSaving(false);
+        return;
+      }
       if (pending.kind === "unparseable") {
         setRawError("Couldn't parse this BibTeX. Fix syntax before saving.");
         setSaving(false);
@@ -208,7 +221,11 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
      keeps the draft. */
   const systemDialog = useSystemDialog();
   const pending = pendingEdit();
-  const dirty = pending.kind === "unparseable" || !isEmptyBibEditDiff(pending.diff);
+  // A refused edit can save nothing, so closing loses nothing it could keep.
+  const dirty =
+    pending.kind === "refused"
+      ? false
+      : pending.kind === "unparseable" || !isEmptyBibEditDiff(pending.diff);
   const confirmDiscard = useCallback(async () => {
     if (!dirty) return true;
     return systemDialog.confirm({
@@ -277,8 +294,10 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
         <div style={{ fontSize: 12, color: "var(--muted)", marginRight: "auto" }}>
           Saved edits queue for the <code style={{ fontFamily: FONT_MONO }}>/apply-bib-edit</code> skill.
         </div>
-        {saveError && (
-          <span role="alert" style={{ fontSize: 12, color: ERROR_INK }}>{saveError}</span>
+        {(saveError || baseUnreadable) && (
+          <span role="alert" style={{ fontSize: 12, color: ERROR_INK }}>
+            {saveError ?? BIB_EDIT_BASE_UNREADABLE}
+          </span>
         )}
         <SystemDialogButton
           variant="secondary"
@@ -290,7 +309,7 @@ export default function BibEditModal({ entry: shown, onSave, onClose }: Props) {
         <SystemDialogButton
           variant="primary"
           onClick={() => void handleSave()}
-          disabled={saving}
+          disabled={saving || baseUnreadable}
           autoFocus
         >
           {saving ? "Saving…" : "Save"}

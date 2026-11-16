@@ -20,7 +20,18 @@
 //     written (lower-cased), every field value VERBATIM (braces, LaTeX, and
 //     all), every field under its own key.
 //   - `bibEditBase` — the entry the Edit modal opens on and diffs against.
+//
+// One LEXICAL model with the paper-side scanner (task 1519 → 1644): a line
+// whose first non-blank character is `%` is a comment, blank to every brace
+// count and field read here — `maskBibComments` from `bib-source.ts`, the same
+// length-preserving mask, so positions read in the masked view slice the
+// ORIGINAL text and every value stays verbatim. Before this, one
+// `% doi = {…},` line made the parse fail and the Edit modal diffed against
+// the CSL projection (task 795's fabricated-change class); a `% {` note threw
+// the entry's extent. The Python locator (`_tools.mask_bib_comments`) applies
+// the identical rule; `bib-raw-entry-parity.test.ts` pins the two together.
 
+import { maskBibComments } from "@/lib/bib-source"; // cross-silo: one .bib lexical model (task 1644)
 import type { BibEntry } from "./types";
 
 /** An entry opener at the start of a line: `@type{key,`. The Python twin is
@@ -31,7 +42,8 @@ import type { BibEntry } from "./types";
 const ENTRY_OPENER_RE = /^[ \t]*@(\w+)\s*\{\s*([^,\s]+)\s*,/gm;
 
 /** `bib_entry_extent`: end offset (exclusive) of the entry opening at
- *  `openerStart`, plus whether its braces balanced. Pass 1 matches braces
+ *  `openerStart`, plus whether its braces balanced. `text` is the
+ *  comment-MASKED view (offsets equal the original's). Pass 1 matches braces
  *  with no cap (a value may hold a column-0 `@type{…}`); only if that never
  *  balances, pass 2 caps at the next opener so one bad entry cannot swallow
  *  the rest of the file. */
@@ -62,14 +74,17 @@ export function locateMasterEntryBlock(text: string, citekey: string): string | 
   type Span = { start: number; end: number; key: string };
   const spans: Span[] = [];
   let consumedUntil = 0;
+  // Openers and extents are read in the masked view (masked once, not per
+  // entry); the returned block is sliced from the original bytes.
+  const masked = maskBibComments(text);
   ENTRY_OPENER_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = ENTRY_OPENER_RE.exec(text)) !== null) {
+  while ((m = ENTRY_OPENER_RE.exec(masked)) !== null) {
     // The opener proper starts at its `@` (the match may begin with indentation).
     const start = m.index + m[0].indexOf("@");
     const resumeAt = ENTRY_OPENER_RE.lastIndex;
     if (start < consumedUntil) continue;
-    const { end, balanced } = entryExtent(text, start);
+    const { end, balanced } = entryExtent(masked, start);
     ENTRY_OPENER_RE.lastIndex = resumeAt;
     if (balanced) consumedUntil = end;
     spans.push({ start, end, key: m[2].trim() });
@@ -89,8 +104,10 @@ export function locateMasterEntryBlock(text: string, citekey: string): string | 
  *  (brace-aware: a `"` inside braces does not end it), or a bare token — and
  *  any `#` concatenation after it. Returns the value and the index after it.
  *  A single delimited value is returned without its outer delimiters, byte
- *  for byte; a concatenation or bare token is returned as written. */
-function readValue(body: string, i: number): { value: string; next: number } {
+ *  for byte; a concatenation or bare token is returned as written. `body` is
+ *  the comment-masked view, which delimits; `orig` (same length) is what the
+ *  value is sliced from, so a `%` line inside a value is kept verbatim. */
+function readValue(body: string, orig: string, i: number): { value: string; next: number } {
   const start = i;
   const pieces: string[] = [];
   for (;;) {
@@ -108,7 +125,7 @@ function readValue(body: string, i: number): { value: string; next: number } {
           }
         }
       }
-      pieces.push(body.slice(s + 1, i - 1));
+      pieces.push(orig.slice(s + 1, i - 1));
     } else if (body[i] === '"') {
       const s = ++i;
       let d = 0;
@@ -117,12 +134,12 @@ function readValue(body: string, i: number): { value: string; next: number } {
         else if (body[i] === "}") d--;
         i++;
       }
-      pieces.push(body.slice(s, i));
+      pieces.push(orig.slice(s, i));
       if (body[i] === '"') i++;
     } else {
       const s = i;
       while (i < body.length && !/[\s,#]/.test(body[i])) i++;
-      pieces.push(body.slice(s, i));
+      pieces.push(orig.slice(s, i));
     }
     let k = i;
     while (k < body.length && /\s/.test(body[k])) k++;
@@ -133,7 +150,7 @@ function readValue(body: string, i: number): { value: string; next: number } {
     break;
   }
   if (pieces.length === 1) return { value: pieces[0], next: i };
-  return { value: body.slice(start, i).trim(), next: i };
+  return { value: orig.slice(start, i).trim(), next: i };
 }
 
 /** Parse ONE BibTeX entry block (`@type{key, k = v, …}`) faithfully: the type
@@ -143,7 +160,9 @@ function readValue(body: string, i: number): { value: string; next: number } {
 export function parseBibEntryBlock(
   raw: string,
 ): { type: string; fields: Record<string, string> } | null {
-  const text = raw.trim();
+  const orig = raw.trim();
+  // Structure is read in the comment-masked view; values slice `orig`.
+  const text = maskBibComments(orig);
   const head = text.match(/^@(\w+)\s*\{\s*([^,]+),/);
   if (!head) return null;
   const type = head[1].toLowerCase();
@@ -166,6 +185,7 @@ export function parseBibEntryBlock(
   const afterKey = text.indexOf(",", openIdx);
   if (afterKey === -1 || afterKey > endIdx) return null;
   const body = text.slice(afterKey + 1, endIdx);
+  const origBody = orig.slice(afterKey + 1, endIdx);
 
   const fields: Record<string, string> = {};
   let i = 0;
@@ -179,11 +199,19 @@ export function parseBibEntryBlock(
     while (i < body.length && /\s/.test(body[i])) i++;
     if (body[i] !== "=") return null;
     i++;
-    const { value, next } = readValue(body, i);
+    const { value, next } = readValue(body, origBody, i);
     i = next;
     fields[name] = value;
   }
   return { type, fields };
+}
+
+/** True when `entry` HAS a disk block but it does not parse — so there is no
+ *  faithful base to diff an edit against. The Edit surface REFUSES such an
+ *  entry (task 1644) rather than diffing against the display projection,
+ *  which would queue fabricated changes to fields the user never touched. */
+export function isBibEditBaseUnreadable(entry: BibEntry): boolean {
+  return !!entry.raw && parseBibEntryBlock(entry.raw) === null;
 }
 
 /** The entry the Edit modal opens on and diffs against: `entry` with its type
@@ -191,7 +219,8 @@ export function parseBibEntryBlock(
  *  the full-entry fetch carries for display. An entry with no parseable raw is
  *  returned as-is, except that a readable `@type` in its raw still wins over
  *  the projected type — a mis-projected base type is exactly what fabricates a
- *  "type changed on disk" hold at apply time. */
+ *  "type changed on disk" hold at apply time. Such an entry is DISPLAY-only:
+ *  `isBibEditBaseUnreadable` names it, and the edit path refuses it. */
 export function bibEditBase(entry: BibEntry): BibEntry {
   if (!entry.raw) return entry;
   const parsed = parseBibEntryBlock(entry.raw);

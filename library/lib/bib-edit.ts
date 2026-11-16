@@ -15,7 +15,7 @@ import {
   type BibEditDiffPayload,
 } from "./queue";
 import type { BibEntry } from "./types";
-import { bibEditBase } from "./bib-raw-entry";
+import { bibEditBase, isBibEditBaseUnreadable } from "./bib-raw-entry";
 import { deleteFile, readJsonFile, SUBDIRS } from "./library-storage";
 
 // READS live in `queue-state-store.ts`, not here. This module owns the WRITE
@@ -41,6 +41,11 @@ export async function queueBibEdit(
   return writeQueueEntry(root, entry);
 }
 
+/** The refusal an unreadable base gets — one wording for the modal's notice
+ *  and the diff builder's throw. */
+export const BIB_EDIT_BASE_UNREADABLE =
+  "This entry's text in master.bib can't be read faithfully, so an edit can't be measured against it. Fix the entry in master.bib directly.";
+
 /** Reduce an edit to what the USER did: the diff between the entry the modal
  *  opened on (`base`) and the complete field set it ends with (`type`,
  *  `fields`). Keys compare case-insensitively (BibTeX field names are), values
@@ -52,12 +57,17 @@ export async function queueBibEdit(
  *  The base is re-read from its own `raw` (`bibEditBase`) — idempotent for a
  *  caller that already did, and the guarantee for one that did not: a diff
  *  against the CSL projection names a projected `baseType` and projected
- *  values, i.e. fabricates holds and re-keys fields (task 795). */
+ *  values, i.e. fabricates holds and re-keys fields (task 795). A disk block
+ *  that does not parse leaves no faithful base, so the diff is REFUSED
+ *  (throws) rather than measured against the projection (task 1644). */
 export function buildBibEditDiff(
   shown: BibEntry,
   type: string,
   fields: Record<string, string>,
 ): BibEditDiffPayload {
+  if (isBibEditBaseUnreadable(shown)) {
+    throw new Error(BIB_EDIT_BASE_UNREADABLE);
+  }
   const base = bibEditBase(shown);
   const baseByLower = new Map<string, string>();
   for (const [k, v] of Object.entries(base.fields)) {
