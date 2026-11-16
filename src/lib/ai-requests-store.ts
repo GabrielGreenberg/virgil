@@ -52,6 +52,7 @@ import { publishAiRequests } from "@/lib/ai-request-events";
 import { UNKNOWN_AI_REQUEST_KIND } from "@/lib/ai-request-kind";
 import { AI_REQUEST_STATUSES, isAiRequestStatus } from "@/lib/ai-request-open";
 import { recordSidecarRefusal } from "@/lib/sidecar-refusal";
+import { trackDocWrite } from "@/lib/unsaved-work";
 
 /**
  * The one spelling of the sidecar filename — deliberately module-PRIVATE.
@@ -325,6 +326,17 @@ export async function mutateAiRequests(
   mutate: AiRequestsMutator,
 ): Promise<AiRequestsWriteResult> {
   if (!docId) return { kind: "no-handle" };
+  // The door is a member of the document's unsaved-work channel for as long
+  // as its write is in flight (task 1643): a request the user just filed is
+  // not on disk yet, and the leave prompt must say so — for the inbox hook and
+  // the card-flag bridge alike.
+  return trackDocWrite(docId, () => writeAiRequests(docId, mutate));
+}
+
+async function writeAiRequests(
+  docId: string,
+  mutate: AiRequestsMutator,
+): Promise<AiRequestsWriteResult> {
   const handle = getActiveHandle(docId);
   if (!handle) return { kind: "no-handle" };
 

@@ -525,6 +525,17 @@ Four rules it earned:
   one whose card write FAILED — reported unlanded and NOT mirrored, honestly.
   STATED RESIDUAL: `RichTextField`'s 250 ms upstream coalescer has no docId in
   hand and is still covered only by its blur/unmount flush.
+  **Membership lives on the DOOR where there is one (task 1643).** Opt-in per
+  hook missed the two writers 1503 did not list (`useAiRequests`,
+  `useCitations`). The doc-scoped doors `mutateAiRequests` / `mutateProjectBib`
+  now wrap their write in `trackDocWrite` (a fresh set member from entry to
+  settle), covering the hooks AND the card-flag bridge at once. The door says
+  only "in flight": what follows a write that did not land is the CALLER's
+  (both callers re-read disk on a refusal, so nothing unlanded stays in
+  memory; a caller that KEEPS the edit must publish it, as `usePersistentState`
+  does). `unsaved-work-writer-census.test.ts` classifies every write primitive
+  (door / callers-publish / excluded-with-reason) and fails on a caller of a
+  callers-class primitive that owns no publisher and is not excluded.
   **The channel is the publisher's only memory (task 1516).** A publisher's
   private "already published for A" cache desynced the moment
   `clearUnsavedWork(A)` (the external-change Reload — doc and writer stay
