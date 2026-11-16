@@ -302,13 +302,33 @@ describe("census · a sidecar is read into hook memory only through a sanctioned
   // storage layer, with why it is not a raw refresh. A new one fails here: a
   // re-read of a record sidecar belongs in `useSidecarReread` (`rereadNow` for a
   // manual Refresh), never in a private `read → setState`.
-  const ALLOWED: Record<string, { count: number; why: string }> = {
-    "src/hooks/useSidecarReread.ts": { count: 1, why: "THE re-read door (watcher + manual)" },
+  //
+  // `rereadGuardedIn` marks a site that RE-reads disk into memory while the
+  // hook's own writes can land (a watcher, a poll, a manual Refresh): it names
+  // the file that applies the read, which must ask the ONE stale-read guard
+  // (the last leg below derives its list from here). A one-shot loader has no
+  // write to race and carries none. Task 1646: useCollab's 5 s poll was
+  // listed as "writes via mutate" — the WRITE was sanctioned, and the hand-
+  // listed guard leg never asked about its READ.
+  const ALLOWED: Record<string, { count: number; why: string; rereadGuardedIn?: string }> = {
+    "src/hooks/useSidecarReread.ts": {
+      count: 1,
+      why: "THE re-read door (watcher + manual)",
+      rereadGuardedIn: "src/hooks/useSidecarReread.ts",
+    },
     "src/hooks/usePersistentState.ts": { count: 1, why: "mount loader" },
     "src/hooks/useFootnotes.ts": { count: 1, why: "mount loader" },
     "src/hooks/useEditorUIState.ts": { count: 1, why: "per-view UI state, not a record sidecar" },
-    "src/hooks/useCollab.ts": { count: 1, why: "cowork pen/presence poll; writes via mutate" },
-    "src/lib/ai-requests-store.ts": { count: 1, why: "the inbox store's own guarded read" },
+    "src/hooks/useCollab.ts": {
+      count: 1,
+      why: "cowork pen/presence poll; writes via mutate",
+      rereadGuardedIn: "src/hooks/useCollab.ts",
+    },
+    "src/lib/ai-requests-store.ts": {
+      count: 1,
+      why: "the inbox store's own read",
+      rereadGuardedIn: "src/hooks/useAiRequests.ts",
+    },
     "src/lib/document-settings.ts": { count: 1, why: "one-shot settings load" },
   };
 
@@ -360,10 +380,28 @@ describe("census · a sidecar is read into hook memory only through a sanctioned
   });
 
   it("every disk re-read into memory asks the ONE stale-read guard", () => {
-    for (const rel of ["src/hooks/useSidecarReread.ts", "src/hooks/useAiRequests.ts"]) {
+    const guarded = Object.values(ALLOWED)
+      .map((v) => v.rereadGuardedIn)
+      .filter((rel): rel is string => !!rel);
+    expect(guarded.length).toBeGreaterThanOrEqual(3);
+    for (const rel of guarded) {
       const src = codeOnly(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
       expect(src, rel).toMatch(/\bmarkReadStart\s*\(/);
       expect(src, rel).toMatch(/\bovertaken\s*\(\s*\)/);
     }
+  });
+
+  it("the bib re-read keeps its ORDERING guard (task 1145) — a strict superset of the stale-read rule", () => {
+    // `refreshBib` may have several reads in flight at once (mount, re-hydrate
+    // requests), so it needs more than "has a write started since?": of two
+    // reads the later-STARTED must win whatever order they resolve in. One
+    // ticket counter shared by read starts and publishes answers both; folding
+    // it into `markReadStart` would drop the read-vs-read half (task 1646).
+    const src = codeOnly(
+      fs.readFileSync(path.join(REPO_ROOT, "src/hooks/useCitations.ts"), "utf8"),
+    );
+    expect(src).toMatch(/const ticket = \+\+bibTicket\.current;/);
+    expect(src).toMatch(/if \(adoptedBibTicket\.current > ticket\) return;/);
+    expect(src).toMatch(/adoptedBibTicket\.current = \+\+bibTicket\.current;/);
   });
 });

@@ -297,7 +297,11 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   // `adoptedBibTicket` is the ticket of the state now shown. A read adopts only
   // if nothing newer has been adopted since it started — so a publish beats an
   // older read, and of two reads the later-started one wins whatever order
-  // they resolve in.
+  // they resolve in. This is a SUPERSET of the shared stale-read guard
+  // (`markReadStart`, task 1504): that rule answers only "has a write started
+  // since?", and several bib reads can be in flight at once, so the
+  // read-vs-read half needs the ticket (task 1646; pinned by the census in
+  // sidecar-manual-reread.test.tsx).
   const bibTicket = useRef(0);
   const adoptedBibTicket = useRef(0);
 
