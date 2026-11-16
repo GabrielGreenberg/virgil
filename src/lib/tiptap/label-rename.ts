@@ -158,6 +158,22 @@ function carryLabelRefs(
   );
 }
 
+/** How many `labelRef`s in `doc` name each label, footnote bodies included —
+ *  ONE walk for every label (the same deep reach `carryLabelRefs` writes
+ *  through), so a list showing a count per label costs O(doc), not
+ *  O(labels × doc) (task 1650). */
+export function countAllLabelRefs(doc: PMNode): Map<string, number> {
+  const counts = new Map<string, number>();
+  rewriteInlineAtomsDeep({ doc, tr: null }, "labelRef", (attrs) => {
+    const label = attrs.label;
+    if (typeof label === "string" && label.length > 0) {
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return null;
+  });
+  return counts;
+}
+
 /** How many `labelRef`s in `doc` name `label`, footnote bodies included. */
 export function countLabelRefs(doc: PMNode, label: string): number {
   return carryLabelRefs(doc, null, label, label);

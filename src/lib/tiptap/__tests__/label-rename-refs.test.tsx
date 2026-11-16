@@ -57,6 +57,7 @@ import {
 import {
   renameLabelWithRefs,
   countLabelRefs,
+  countAllLabelRefs,
   labelRenameConfirmCopy,
   labelClearConfirmCopy,
   type LabelRenameConfirm,
@@ -1194,6 +1195,31 @@ describe("task 606 — refs held inside footnote bodies", () => {
       expect(await renameLabelWithRefs(editor, {
         locate: locateByUuid(editor, FN_FIG), newLabel: "fn:x", confirm: async () => "confirm" as const,
       })).toBe("conflict");
+    } finally { c(); }
+  });
+});
+
+// TASK 1650 — the reading list's per-example ref counts come from ONE walk.
+// The map must agree with the single-label door for every label it holds,
+// footnote-held refs included, and answer nothing for an unreferred label.
+describe("task 1650 — countAllLabelRefs agrees with countLabelRefs", () => {
+  it("one pass counts every label, top-level and footnote-held", () => {
+    for (const doc of [content(), footnoteContent()]) {
+      const { editor, cleanup: c } = mount(undefined, doc);
+      try {
+        const all = countAllLabelRefs(editor.state.doc);
+        expect(all.size).toBeGreaterThan(0);
+        for (const [label, n] of all) {
+          expect(n).toBe(countLabelRefs(editor.state.doc, label));
+        }
+      } finally { c(); }
+    }
+    const { editor, cleanup: c } = mount(undefined, footnoteContent());
+    try {
+      const all = countAllLabelRefs(editor.state.doc);
+      expect(all.get("fig:a")).toBe(2);
+      expect(all.get("fig:other")).toBe(1);
+      expect(all.has("fn:x")).toBe(false);
     } finally { c(); }
   });
 });
