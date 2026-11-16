@@ -27,6 +27,7 @@ import {
   useState,
 } from "react";
 import { readSidecar, readTextFile } from "@/lib/storage";
+import { markReadStart } from "@/lib/sidecar-merged-write";
 import {
   activityMutator,
   adoptSessionsMutator,
@@ -235,6 +236,21 @@ export function useCollab(
    *  a NEWER optimistic update doesn't roll the UI back to its older result. */
   const mutateSeqRef = useRef(0);
 
+  /** The poll's STALE-READ guard (task 1646 — the one rule of task 1504,
+   *  `markReadStart`). `submits` is bumped as every mutation STARTS and
+   *  `inFlight` counts the ones not yet landed. A poll read that a mutation
+   *  overtook — or one that resolves while a mutation is still in flight —
+   *  holds pre-write disk; applying it would paint the pre-write pen/presence
+   *  (the pill flips back) until the next poll. Such a read is discarded and
+   *  re-issued — at once if the writes have landed, else by `onDrain` when the
+   *  last one does (the read also feeds the cowork-pen rung the autosave gate
+   *  reads, so it is replayed rather than left to the next 5 s tick). */
+  const writeGenRef = useRef<{
+    submits: number;
+    inFlight: number;
+    onDrain: (() => void) | null;
+  }>({ submits: 0, inFlight: 0, onDrain: null });
+
   /** Read-modify-write through the collab.json authority (task 872).
    *
    *  The read happens INSIDE the doc write queue (`mutateCollab` →
@@ -263,12 +279,25 @@ export function useCollab(
       // above would show the stale belief until the next poll. Reset per run:
       // the CAS may re-run `fn` on a newer base.
       let refusedBase: CollabSidecar | null = null;
-      const landed = await mutateCollab(id, (fresh) => {
-        const base = mergeKeepingSelf(fresh, sidecarRef.current, selfRef.current());
-        const next = fn(base);
-        refusedBase = next === null ? base : null;
-        return next;
-      });
+      const gen = writeGenRef.current;
+      gen.submits += 1;
+      gen.inFlight += 1;
+      let landed: CollabSidecar | null;
+      try {
+        landed = await mutateCollab(id, (fresh) => {
+          const base = mergeKeepingSelf(fresh, sidecarRef.current, selfRef.current());
+          const next = fn(base);
+          refusedBase = next === null ? base : null;
+          return next;
+        });
+      } finally {
+        gen.inFlight -= 1;
+        if (gen.inFlight === 0 && gen.onDrain) {
+          const replay = gen.onDrain;
+          gen.onDrain = null;
+          replay();
+        }
+      }
       const truth = landed ?? refusedBase;
       if (!truth || seq !== mutateSeqRef.current || docIdRef.current !== id) return;
       sidecarRef.current = truth;
@@ -356,13 +385,24 @@ export function useCollab(
       lastPenKey = key;
       setCoworkPen(next);
     };
-    const load = async () => {
+    const load = async (): Promise<void> => {
+      const gen = writeGenRef.current;
+      const overtaken = markReadStart(gen);
       try {
         const fresh = await readSidecar<CollabSidecar>(
           docId,
           COLLAB_SIDECAR_FILE,
           EMPTY_COLLAB_SIDECAR,
         );
+        if (cancelled) return;
+        // Task 1646 — the stale-read guard (see `writeGenRef`). This read
+        // holds pre-write disk if a mutation is still in flight (replay when
+        // it drains) or started AND landed inside it (read again now).
+        if (gen.inFlight > 0) {
+          gen.onDrain = () => void load();
+          return;
+        }
+        if (overtaken()) return load();
         void loadCoworkPen(fresh.pen ?? null);
         // Task 1281 — a rename only migrated the papers mounted at the time;
         // this one may still carry a released name (pen, presence, roster).
@@ -393,11 +433,12 @@ export function useCollab(
         void loadCoworkPen(null);
       }
     };
-    load();
+    void load();
     const interval = setInterval(load, COLLAB_TIMINGS.pollMs);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      writeGenRef.current.onDrain = null;
       // Nothing is polling this doc any more, so a retained answer could only
       // go stale — and a stale "Virgil is editing" would wedge the pause for a
       // doc whose pane is gone.
