@@ -39,7 +39,7 @@ import path from "node:path";
 import {
   VIEW_PREF_REGISTRY,
   VIEW_PREF_KEYS,
-  toggleRowsInMenuGroup,
+  menuEntriesInGroup,
   type ViewPrefKey,
   type SetViewPrefKey,
 } from "@/lib/view-prefs/registry";
@@ -317,9 +317,12 @@ describe("every menu-bearing toggle declares a unique menuRowId", () => {
   });
 
   it("the Display block is derived from the registry, in declaration order", () => {
-    // The rows the View menu renders ARE this list; MenuBar hand-listed them
+    // The rows the View menu renders ARE this list — MenuBar renders every
+    // group off `menuEntriesInGroup` (task 1317); it hand-listed them
     // (id + key + label) before task 274.
-    const rows = toggleRowsInMenuGroup("display");
+    const rows = menuEntriesInGroup("display").flatMap((e) =>
+      e.kind === "toggle" ? [e] : [],
+    );
     const expected = VIEW_PREF_KEYS.filter((k) => {
       const d = VIEW_PREF_REGISTRY[k];
       return d.kind === "toggle" && d.menu === "display";

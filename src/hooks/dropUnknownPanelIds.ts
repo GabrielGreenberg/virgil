@@ -102,7 +102,7 @@ const scrubSidedIdList: Scrub = (value, live) => {
 };
 
 /** `Record<PanelId, V>` — drop dead KEYS, keeping the order and value of every
- *  survivor. This is the leg the five unscrubbed carriers needed. */
+ *  survivor. This is the leg the four unscrubbed carriers needed. */
 const scrubIdRecord: Scrub = (value, live) => {
   if (!isPlainObject(value)) return undefined;
   const entries = Object.entries(value);
@@ -156,7 +156,7 @@ const SCRUBS: Readonly<Record<PanelIdCarrier["shape"], Scrub>> = {
  *  - `clampStack` also dedupes within a side, excludes the other side's ids,
  *    strips the `omni`/`blank` layout sentinels and caps at `MAX_STACK`.
  *  - `validPanelId` additionally requires membership in the CLEANED placements.
- * Those stay. This one makes the carriers with no specialised pass — the five
+ * Those stay. This one makes the carriers with no specialised pass — the four
  * that simply passed through — no longer the exception.
  */
 export function scrubUnknownPanelIds<T extends Record<string, unknown>>(blob: T): T {

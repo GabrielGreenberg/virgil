@@ -433,15 +433,6 @@ export function menuEntriesInGroup(group: ViewPrefMenuGroup): ReadonlyArray<View
   return out;
 }
 
-/** A menu-group's toggle rows — the toggle slice of `menuEntriesInGroup`. */
-export function toggleRowsInMenuGroup(
-  group: ViewPrefMenuGroup,
-): ReadonlyArray<{ key: ToggleViewPrefKey; id: string; label: string; hint?: string }> {
-  return menuEntriesInGroup(group).flatMap((e) =>
-    e.kind === "toggle" ? [{ key: e.key, id: e.id, label: e.label, hint: e.hint }] : [],
-  );
-}
-
 /** Is `member`'s row CHECKED, given the set's stored value? The ONE reader of
  *  `SetDef.polarity` (task 1317): `present` → checked iff listed; `hidden` →
  *  checked iff NOT listed. */
