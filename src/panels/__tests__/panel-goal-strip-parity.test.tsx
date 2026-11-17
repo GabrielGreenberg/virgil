@@ -353,14 +353,22 @@ const TOKENIZED_1413: ReadonlyArray<readonly [string, string]> = [
   ["duration-200", "duration-(--motion-slow)"],
 ];
 
+/** Task 1659: `--edge-subtle` is a hairline, never a fill — the progress
+ *  TRACK reads its own `--track-bg` role (`bg-track`). Same grey today, by
+ *  name. */
+const TOKENIZED_1659: ReadonlyArray<readonly [string, string]> = [
+  ["rounded-full bg-edge-subtle overflow-hidden", "rounded-full bg-track overflow-hidden"],
+];
+
 function tokenized(html: string): {
   html: string;
   substitutions: number;
   a11y: number;
   motion: number;
+  track: number;
 } {
   let out = html;
-  const counts = [TOKENIZED, TOKENIZED_281, TOKENIZED_1413].map((table) => {
+  const counts = [TOKENIZED, TOKENIZED_281, TOKENIZED_1413, TOKENIZED_1659].map((table) => {
     let n = 0;
     for (const [from, to] of table) {
       const parts = out.split(from);
@@ -372,7 +380,7 @@ function tokenized(html: string): {
   // Counted per TABLE, not in one total: each sanctioned difference has to be
   // provable on its own, or a leg asserting "the emeralds were really there"
   // can be satisfied by an a11y class instead.
-  return { html: out, substitutions: counts[0], a11y: counts[1], motion: counts[2] };
+  return { html: out, substitutions: counts[0], a11y: counts[1], motion: counts[2], track: counts[3] };
 }
 
 /**
@@ -492,6 +500,8 @@ describe("the normalizations cannot hide a real difference", () => {
     expect(r.html).toBe('class="bg-[var(--positive)]" class="text-[var(--positive-strong)]"');
     const m = tokenized('class="duration-200"');
     expect([m.substitutions, m.a11y, m.motion]).toEqual([0, 0, 1]);
+    const t = tokenized('class="h-1.5 w-full rounded-full bg-edge-subtle overflow-hidden"');
+    expect([t.substitutions, t.motion, t.track]).toEqual([0, 0, 1]);
   });
 
   it("parity() compares two DIFFERENT renders as different", () => {

@@ -1226,7 +1226,7 @@ export function CitationCard({
               <button
                 type="button"
                 onClick={addRow}
-                className="mt-2 inline-flex items-center gap-1 text-xs text-ink-subtle hover:text-ink-body transition-colors"
+                className="mt-2 inline-flex items-center gap-1 text-2xs text-[var(--muted)] hover:text-ink-body transition-colors focus-ring rounded"
                 data-hint="Add another reference"
               >
                 <svg
@@ -1358,7 +1358,7 @@ export function CitationCard({
                     codeOriginalRef.current = cit.command;
                     setCodeDraft(cit.command);
                   }}
-                  className="text-2xs card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
+                  className="text-2xs card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover-on-light focus-ring"
                   {...iconHint({ label: "Edit raw LaTeX" })}
                 >
                   {cit.command || (
@@ -1740,7 +1740,7 @@ function CitationKeyRow({
               e.stopPropagation();
               onOpenPicker();
             }}
-            className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2 truncate min-w-0"
+            className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2 truncate min-w-0 rounded focus-ring"
             {...describedHint("Click to change")}
           >
             {trimmed}

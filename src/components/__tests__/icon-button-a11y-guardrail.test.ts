@@ -327,7 +327,9 @@ export function hasVisibleText(hit: JsxElementHit): boolean | null {
 
 /**
  * A PROPS spread this census cannot resolve — anything but an `iconHint(…)`
- * call — at ATTRIBUTE position only (task 2026-11-01-1411). A spread inside an
+ * or `describedHint(…)` call (neither stamps a name override, a className or a
+ * tabIndex; the second joined at task 2026-11-17-1660, when it hid the
+ * citation card's citekey button from leg F) — at ATTRIBUTE position only (task 2026-11-01-1411). A spread inside an
  * attribute's VALUE (`style={{ ...(cell ? {…} : {}) }}`) spreads a style
  * object, not unknown props; reading it as opaque dropped the marginalia
  * marker out of every leg above, so it shipped `focus:outline-none` with no
@@ -346,7 +348,7 @@ export function opaqueSpread(tag: string): boolean {
       continue;
     }
     if (c === "{") {
-      if (prev !== "=" && /^\{\s*\.\.\.\s*(?!iconHint\s*\()/.test(tag.slice(i))) return true;
+      if (prev !== "=" && /^\{\s*\.\.\.\s*(?!(?:iconHint|describedHint)\s*\()/.test(tag.slice(i))) return true;
       i = skipBraces(tag, i);
       prev = "}";
       continue;
@@ -431,9 +433,10 @@ function wrapperIsIconOnly(
 }
 
 /** Every `<button>` in both silos, located, with its two classifications. */
-function buttonSites(): { icon: Site[]; text: Site[] } {
+function buttonSites(): { icon: Site[]; text: Site[]; other: Site[] } {
   const icon: Site[] = [];
   const text: Site[] = [];
+  const other: Site[] = [];
   const all = sources();
   for (const { file, src, raw } of all) {
     // Advanced past each located tag so two BYTE-IDENTICAL open tags in one
@@ -463,6 +466,7 @@ function buttonSites(): { icon: Site[]; text: Site[] } {
       const before = rawAt >= 0 ? raw.slice(0, rawAt) : src.slice(0, hit.index);
       const site: Site = { ...hit, tag: resolveConsts(hit.tag, consts), file, line: before.split("\n").length };
       if (isIcon) icon.push(site);
+      else other.push(site);
       // NOT `!isIcon`: the two classifiers ask different questions and are
       // deliberately not complements. `isIconOnly` counts any child
       // expression as text, so a button whose only child is `{glyph}` is
@@ -471,7 +475,7 @@ function buttonSites(): { icon: Site[]; text: Site[] } {
       if (hasVisibleText(hit) === true) text.push(site);
     }
   }
-  return { icon, text };
+  return { icon, text, other };
 }
 
 const at = (s: Site) => `${s.file}:${s.line}`;
@@ -786,6 +790,90 @@ describe("a button with visible text does not override it with an aria-label", (
     // visually-hidden span), it does not replace it.
     expect(overridden.map(at)).toEqual([]);
   });
+
+});
+
+/* ── Leg F: a TEXT button takes the app's ring too (task 2026-11-17-1660) ─ */
+
+/**
+ * Leg C asked the focus-ring question of ICON-only buttons alone, so a text
+ * control — the citation card's "Add reference", its click-to-edit Code row,
+ * its citekey "Click to change" — fell back to the UA outline while every
+ * ringed sibling in the same row drew the house shadow. STYLE_GUIDE: "Never
+ * leave the UA default ring." The rule has no icon/text fork; only the
+ * census did.
+ *
+ * The population is every `<button>` leg C does NOT see (`!isIconOnly`) — not
+ * `ALL.text`, whose literal-text classifier skips a computed child
+ * (`{trimmed}`), which is exactly how the citekey button stayed invisible.
+ *
+ * Measured at landing: 29 app-wide sites beyond the five fixed here (the
+ * card's three, plus the slash-menu row and the bib review chip that the
+ * `describedHint` spread had hidden from every leg). They
+ * are a RATCHET, not an allowlist of reasons — per-file counts that may only
+ * shrink (the `audit-map-unowned.txt` precedent): a new unringed text button
+ * anywhere fails, and converting one obliges lowering its count. A file not
+ * listed has a count of zero.
+ */
+const UNRINGED_TEXT_BUTTON_RATCHET: Record<string, number> = {
+  "src/components/AIWindow.tsx": 1,
+  "src/components/DocumentInterruptionBanner.tsx": 2,
+  "src/components/EditorLayout.tsx": 1,
+  "src/components/FontPicker.tsx": 2,
+  "src/components/InstallPwaPrompt.tsx": 1,
+  "src/components/LabelRefPopover.tsx": 1,
+  "src/components/PodDisclosure.tsx": 1,
+  "src/components/TexFilePickerModal.tsx": 2,
+  "src/components/editor-layout/tool-gutter/BibOpenView.tsx": 1,
+  "src/components/editor-layout/tool-gutter/GutterList.tsx": 1,
+  "src/components/editor-layout/tool-gutter/ToolGutter.tsx": 1,
+  "src/components/library/open-library-entry.tsx": 1,
+  "src/components/panel-primitives.tsx": 1,
+  "src/components/status/BarStatusPill.tsx": 1,
+  "src/lib/float-sync.tsx": 1,
+  "src/panels/Outline/OutlinePanel.tsx": 2,
+  "library/components/BibCard.tsx": 1,
+  "library/components/LeftList.tsx": 2,
+  "library/components/LibraryCentralDashboard.tsx": 3,
+  "library/components/PaperHeader.tsx": 3,
+};
+
+function unringedTextButtons(): Site[] {
+  return ALL.other
+    .filter((s) => !opaqueSpread(s.tag) && !notATabStop(s.tag))
+    .filter((s) => !RING.test(literalClassName(s.tag) ?? s.tag));
+}
+
+describe("a text button carries the app's focus ring, not the UA default", () => {
+  it("sees a population worth censusing (self-check)", () => {
+    // Floor well under today's count, so a classifier that stopped matching
+    // can't make the ratchet below pass vacuously.
+    expect(ALL.other.length).toBeGreaterThan(60);
+    expect(ALL.other.some((s) => s.file.startsWith("library/"))).toBe(true);
+  });
+
+  it("no file holds more unringed text buttons than its ratchet allows", () => {
+    const byFile = new Map<string, Site[]>();
+    for (const s of unringedTextButtons()) byFile.set(s.file, [...(byFile.get(s.file) ?? []), s]);
+    const over = [...byFile]
+      .filter(([file, list]) => list.length > (UNRINGED_TEXT_BUTTON_RATCHET[file] ?? 0))
+      .flatMap(([, list]) => list.map(at));
+    // Fix: add `focus-ring` (or wear `iconbtn-*`/`topbarbtn`, or use `<Button>`).
+    expect(over).toEqual([]);
+  });
+
+  it("the ratchet only shrinks — a converted site lowers its count", () => {
+    const live = new Map<string, number>();
+    for (const s of unringedTextButtons()) live.set(s.file, (live.get(s.file) ?? 0) + 1);
+    const slack = Object.entries(UNRINGED_TEXT_BUTTON_RATCHET)
+      .filter(([file, n]) => (live.get(file) ?? 0) < n)
+      .map(([file, n]) => `${file}: ratchet ${n}, live ${live.get(file) ?? 0}`);
+    expect(slack).toEqual([]);
+  });
+
+  it("the citation card's text controls are ringed (task 1660)", () => {
+    expect(unringedTextButtons().filter((s) => s.file === "src/panels/Citations/CitationCard.tsx").map(at)).toEqual([]);
+  });
 });
 
 /* ── Leg E: no element hand-pairs its hint and its name (task 609) ──── */
@@ -927,6 +1015,7 @@ describe("the opaque-spread predicate (self-check, task 1411)", () => {
     expect(opaqueSpread(`<button {...props} type="button">`)).toBe(true);
     expect(opaqueSpread(`<button type="button" { ...rest }>`)).toBe(true);
     expect(opaqueSpread(`<button {...iconHint({ label: "x" })}>`)).toBe(false);
+    expect(opaqueSpread(`<button {...describedHint("Click to change")}>`)).toBe(false);
   });
 
   it("does not read a spread inside an attribute VALUE as opaque", () => {
