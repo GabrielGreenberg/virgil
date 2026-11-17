@@ -71,6 +71,18 @@ describe("useAnchoredCardShell — the anchored card's shell bundle", () => {
     expect(bare.result.current.shell.onTogglePopout).toBeUndefined();
   });
 
+  it("poppable:false drops the lift identity from the shell, even under a provider (task 1656)", () => {
+    const popped = { toggleAtAnchor: vi.fn() } as unknown as PoppedCardsValue;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <PoppedCardsContext.Provider value={popped}>{children}</PoppedCardsContext.Provider>
+    );
+    const { result } = renderHook(() => useAnchoredCardShell({ ...REF, poppable: false }), { wrapper });
+    expect(result.current.shell.cardKey).toBeUndefined();
+    expect(result.current.shell.onTogglePopout).toBeUndefined();
+    // The card keeps its identity; only the lift is withheld.
+    expect(result.current.cardKey).toBe(cardPopKey("note", "n1"));
+  });
+
   it("jump is offered iff there is a target; the body click selects and jumps from the card element", () => {
     const none = renderHook(() => useAnchoredCardShell(REF));
     expect(none.result.current.shell.canJump).toBe(false);

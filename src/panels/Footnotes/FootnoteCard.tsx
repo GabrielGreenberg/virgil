@@ -9,14 +9,11 @@ import {
   EditableCard,
   BadgeLabel,
   BadgeOrphaned,
-  makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { bodyVariantForCardKind } from "@/cards/predicates";
-import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardKindTheme } from "@/cards/use-card-kind-theme";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardBodyPlaceholder, popKey } from "@/panels/panel-registry";
-import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardBodyPlaceholder } from "@/panels/panel-registry";
 import { useAnchoredCardShell } from "@/panels/_shared/useAnchoredCardShell";
 
 // FN-F7-01 (audit-confirmed dead code, removed): `startFootnoteDrag` set up a
@@ -162,7 +159,9 @@ export interface OrphanedFootnoteCardProps {
  * callout the user deleted, offered for re-drop.
  *
  * Task 277 — it threads **no `cardKey`, deliberately**, and that omission is
- * the whole of its non-poppability. Popping this state out was declined
+ * the whole of its non-poppability. Since task 1656 the omission is an explicit
+ * shell option, `useAnchoredCardShell({ …, poppable: false })`, not an absent
+ * prop at this call site. Popping this state out was declined
  * (Gabriel, 2026-08-08: not worth building for an edge state), and
  * `registerCardFloatable("footnote")` resolves only the anchored (live atom)
  * and unanchored (`FootnoteRef` sidecar) halves — `CardFloatCtx` carries no
@@ -172,8 +171,8 @@ export interface OrphanedFootnoteCardProps {
  * painted here and the gesture died at its first gate, silently).
  *
  * If the decision is ever reversed, BOTH ends move together — a
- * `ctx.orphanedFootnotes` source + a third builder branch, and the `cardKey`
- * here. Threading the key alone reinstates the blank-window regression task
+ * `ctx.orphanedFootnotes` source + a third builder branch, and dropping
+ * `poppable: false` here. Threading the key alone reinstates the blank-window regression task
  * 316 fixed for the parked twin.
  */
 export function OrphanedFootnoteCard({
@@ -193,21 +192,23 @@ export function OrphanedFootnoteCard({
     [onEdit],
   );
   const theme = useCardKindTheme("footnote");
-  const compressedLines = useCompressedLines();
   // Backlog #12: orphans get a REAL expansion axis (the global store — the
   // footnoteId is stable and the `footnote` kind already has a slot), instead
   // of the old `compressed = !isSelected` weld. Header click toggles it like
-  // every other card; body click keeps select+expand (no jump — orphans have
-  // no in-text marker to jump to).
-  const ac = useAnchoredCard({ kind: "footnote", id: orphan.footnoteId });
+  // every other card; body click keeps select+expand. No `onJump` — orphans
+  // have no in-text marker — so the shell's body click is select-only.
+  const { ac, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "footnote",
+    id: orphan.footnoteId,
+    onSelect,
+    summaryContent: orphan.content,
+    poppable: false,
+  });
   const isHaloed = ac.selected || isSelected;
-  const compressed = !ac.expanded;
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(orphan.content, compressedLines) || "")
-    : undefined;
 
   return (
     <EditableCard
+      {...shell}
       id={orphan.footnoteId}
       cardKind="footnote"
       kind="footnote"
@@ -220,11 +221,6 @@ export function OrphanedFootnoteCard({
       footnoteBadge={<BadgeOrphaned theme={theme} />}
       bodyTitle={orphan.title}
       onBodyTitleChange={onEditTitle ?? undefined}
-      // C15: single body-click composition (store-backed select+expand; the
-      // monotonic onSelect mirrors it into the panel slot). Orphans have no
-      // in-text marker, so no jump.
-      onClick={() => ac.onBodyActivate({ onSelect })}
-      onSelectOnly={() => ac.onSelectOnly({ onSelect })}
       onDelete={onDelete}
       value={orphan.content}
       variant={bodyVariantForCardKind("footnote")}
@@ -239,8 +235,6 @@ export function OrphanedFootnoteCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={orphan.content}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
 }
@@ -298,20 +292,23 @@ export function UnanchoredFootnoteCard({
   );
   const content = normalizeRichContent(fn.content);
   const theme = useCardKindTheme("footnote");
-  const compressedLines = useCompressedLines();
-  const ac = useAnchoredCard({ kind: "footnote", id: fn.id });
-  const isHaloed = ac.selected || isSelected;
-  const compressed = !ac.expanded && !isPoppedOut;
-  // Same key the anchored twin builds (`cardPopKey("footnote", id)`); a
+  // No `onJump`: an atomless ref has no in-text marker, so the shell's body
+  // click is select+expand only — the citation parked twin's composition.
+  // `cardKey` is the anchored twin's own (`cardPopKey("footnote", id)`); a
   // `FootnoteRef.id` IS the footnoteId the atom would carry, so the key is
   // stable across park → re-anchor.
-  const cardKey = popKey("footnotes", fn.id);
-  const compressedSummary = compressed
-    ? (makeCompressedSummary(content, compressedLines) || "")
-    : undefined;
+  const { ac, cardKey, compressed, compressedSummary, shell } = useAnchoredCardShell({
+    kind: "footnote",
+    id: fn.id,
+    isPoppedOut,
+    onSelect,
+    summaryContent: content,
+  });
+  const isHaloed = ac.selected || isSelected;
 
   return (
     <EditableCard
+      {...shell}
       id={fn.id}
       cardKind="footnote"
       kind="footnote"
@@ -345,12 +342,6 @@ export function UnanchoredFootnoteCard({
       // showed — it lives on the ref, so it survives the park.
       bodyTitle={fn.title}
       onBodyTitleChange={onEditTitle ?? undefined}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      // No in-text marker for an atomless ref, so body click is select+expand
-      // only (no jump) — same composition as an orphan card.
-      onClick={() => ac.onBodyActivate({ onSelect })}
-      onSelectOnly={() => ac.onSelectOnly({ onSelect })}
       onDelete={onDelete}
       value={content}
       variant={bodyVariantForCardKind("footnote")}
@@ -365,8 +356,6 @@ export function UnanchoredFootnoteCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={content}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
     />
   );
 }
