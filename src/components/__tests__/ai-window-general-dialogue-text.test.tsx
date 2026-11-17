@@ -163,7 +163,7 @@ function props(over: Partial<AIWindowProps> = {}): AIWindowProps {
     withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
     resolveLinkedCard: () => LINKED_CARD_UNKNOWN, // task 697
-    requestBibReview: noop,
+    requestBibReview: () => ({ ok: true }),
     cancelBibReview: noop,
     addEntryRequest: noop,
     removeEntryRequest: noop,
