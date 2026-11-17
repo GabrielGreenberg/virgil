@@ -596,12 +596,16 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
   // A revision comment's state lives in its BRIDGED queue row, so resolve the
   // card→row map once for the whole list (O(n), no per-card scan).
   const bridgedComments = bridgedRevisionCommentRows(args.panelAiRequests);
-  // The card ids the comment branch actually EMITS — the panel loop below skips
-  // their bridged rows so one request is not rendered twice (see there). Keyed
+  // The ROW ids the comment branch actually CONSUMES — the panel loop below
+  // skips exactly those so one request is not rendered twice (see there). Keyed
   // on what was emitted, not on every comment: a comment the branch declines
   // (an emptied-out body over a live bridged row) keeps its panel row, which is
-  // a real, servable request and should stay visible.
-  const emittedCommentCardIds = new Set<string>();
+  // a real, servable request and should stay visible. And keyed on the ROW, not
+  // the card (task 1658): a card can carry two linked rows (an answered-L3 plus
+  // a fresh `pending`, task 043), the branch consumes only the one
+  // `bridgedRevisionCommentRows` chose, and the sibling — a responded proposal
+  // the user still owes accept/reject on — must fall through to its own bucket.
+  const consumedCommentRowIds = new Set<string>();
 
   for (const c of args.comments) {
     const hit = commentInboxRequest(c, bridgedComments);
@@ -609,7 +613,7 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
     const { status } = hit;
     const { card } = hit.record;
     const isAnchored = !!card.selectedText;
-    emittedCommentCardIds.add(card.id);
+    if (hit.record.bridged) consumedCommentRowIds.add(hit.record.bridged.id);
     out.push({
       id: `${isAnchored ? "txtrev" : "genrev"}:${card.id}`,
       kind: isAnchored ? "revision-text" : "revision-general",
@@ -633,13 +637,9 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
     // from this one), side by side. The comment branch wins: it knows the card,
     // so it has the anchored snippet and the revision chip, where this branch
     // could only say "suggestion".
-    if (
-      r.linkedTo &&
-      emittedCommentCardIds.has(r.linkedTo.cardId) &&
-      linkedCardKindFrom(r.kind, r.linkedTo.panel) === "revision-comment"
-    ) {
-      continue;
-    }
+    // Only the row the comment branch consumed is skipped (task 1658) — a
+    // second row linked to the same card is a different request.
+    if (consumedCommentRowIds.has(r.id)) continue;
     const status = FAMILY_STATE.panel(r);
     // The chip follows the card, not the coarser display kind (task 178).
     const linkedKind = r.linkedTo
