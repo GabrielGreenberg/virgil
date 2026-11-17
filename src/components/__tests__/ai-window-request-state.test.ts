@@ -301,6 +301,22 @@ describe("one request is ONE row (the bridged comment is not rendered twice)", (
     });
     expect(rows.map((r) => r.id)).toEqual(["panel:req-c1"]);
   });
+
+  it("dedups the CONSUMED row, not the card — an answered sibling stays Responded (task 1658)", () => {
+    // A card carrying an answered-L3 row AND a fresh pending row (task 043): the
+    // comment branch consumes the pending one; the answered one is a proposal
+    // the user still owes accept/reject on, so it must land in Responded rather
+    // than vanish with its sibling. Either array order.
+    const answered = bridged("c1", { id: "old", status: "in-progress", resultId: "sug-1" });
+    const fresh = bridged("c1", { id: "new", status: "pending" });
+    for (const order of [[answered, fresh], [fresh, answered]]) {
+      const rows = build({ comments: [comment()], panelAiRequests: order });
+      expect(rows.map((r) => [r.id, r.status]).sort()).toEqual([
+        ["genrev:c1", "open"],
+        ["panel:old", "responded"],
+      ]);
+    }
+  });
 });
 
 /* ── (d) the comment row can be retracted ──────────────────────────── */
