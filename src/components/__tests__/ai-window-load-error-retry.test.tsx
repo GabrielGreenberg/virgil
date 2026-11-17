@@ -37,7 +37,7 @@ function props(refreshAll: () => void): AIWindowProps {
     withdrawPanelAiRequest: noop,
     clearLinkedAiRequest: noop,
     resolveLinkedCard: () => LINKED_CARD_UNKNOWN,
-    requestBibReview: noop,
+    requestBibReview: () => ({ ok: true }),
     cancelBibReview: noop,
     addEntryRequest: noop,
     removeEntryRequest: noop,

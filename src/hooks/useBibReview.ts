@@ -349,11 +349,27 @@ export function useBibReview(
     (bibKey: string, type: "fields" | "notes", requestNotes?: string) => {
       const prev = stateRef.current;
       // Don't duplicate an existing pending request for same entry+type —
-      // the request the user is sending is already the one on file.
+      // the request the user is sending is already the one on file. But its
+      // NOTES are the user's latest intent (task 1657): answering `ok` while
+      // dropping them told the composer to clear a draft that was never
+      // stored. New notes are MERGED into the pending row and persisted, so
+      // the verdict the composer clears on is the write's own.
       const existing = prev.requests.find(
         (r) => matchesKey(r, bibKey) && r.type === type && r.status === "pending"
       );
-      if (existing) return Promise.resolve({ ok: true } as const);
+      if (existing) {
+        const notes = requestNotes || undefined;
+        if (!notes || notes === existing.requestNotes) {
+          return Promise.resolve({ ok: true } as const);
+        }
+        const next = {
+          requests: prev.requests.map((r) =>
+            r === existing ? { ...r, requestNotes: notes } : r,
+          ),
+        };
+        commit(next);
+        return persist(next);
+      }
       // ONE ROW PER IDENTITY (task 849). The file is keyed `(bibKey, type)` —
       // that is the merge's `idFields` — so a re-request REPLACES the entry's
       // completed row rather than sitting beside it. Two rows under one id were

@@ -66,6 +66,7 @@ import { CloseIcon } from "@/components/icons/CloseIcon";
 import type { StatusTone } from "./StatusDot";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { chordPress, FIELD_COMMIT_SHORTCUT } from "@/lib/portable-chord";
+import type { BibReviewWriteResult } from "@/hooks/useBibReview";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -778,11 +779,16 @@ export interface AIWindowProps {
   resolveLinkedCard: (kind: CardKind, cardId: string) => LinkedCardResolution;
 
   // Mutators
+  // Task 1657: the door's TRUE return — `useBibReview.requestReview` answers
+  // `Promise<BibReviewWriteResult>`, and the composer keeps the user's typed
+  // notes until that verdict is `ok` (task 1158's rule, which BibEntryCard
+  // already honoured). Typed `=> void`, the verdict was unreadable here and the
+  // composer cleared on the click — a refused write lost the notes.
   requestBibReview: (
     bibKey: string,
     type: "fields" | "notes",
     requestNotes?: string,
-  ) => void;
+  ) => BibReviewWriteResult | Promise<BibReviewWriteResult>;
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   addEntryRequest: (description: string) => void;
   removeEntryRequest: (id: string) => void;
@@ -798,6 +804,47 @@ export interface AIWindowProps {
 
   // Refresh on open
   refreshAll: () => void;
+}
+
+/**
+ * THE composer's validity predicate (task 1657) — read by BOTH the Submit
+ * button's `disabled` and `submitComposer`'s entry, so the keyboard path
+ * (⌘/Ctrl+Enter) cannot disagree with the button. It used to be two rules:
+ * the button gated every kind on its required field, while the keyboard went
+ * straight to `submitComposer`, whose panel-kind branch had no guard — an empty
+ * "Footnote request" + ⌘Enter filed an empty draft row the skill drain served.
+ *
+ * Bib-review kinds need an entry key (their text is optional notes); every
+ * other kind is nothing but its text.
+ */
+export function composerCanSubmit(
+  kind: AIRequestKind,
+  text: string,
+  bibKey: string,
+): boolean {
+  return composerNeedsBibKey(kind) ? bibKey.trim() !== "" : text.trim() !== "";
+}
+
+export function composerNeedsBibKey(kind: AIRequestKind): boolean {
+  return kind === "bib-fields" || kind === "bib-notes";
+}
+
+/**
+ * What a composer write answered, as the words to show beside the kept draft —
+ * or `null` when it landed. Mutators that carry no verdict (an optimistic
+ * store write whose refusal is reported on its own channel) answer `null`.
+ */
+async function composerRefusal(result: unknown): Promise<string | null> {
+  try {
+    const v = await result;
+    if (v && typeof v === "object" && (v as { ok?: unknown }).ok === false) {
+      const reason = (v as { reason?: unknown }).reason;
+      return typeof reason === "string" && reason ? reason : "Not sent.";
+    }
+    return null;
+  } catch (err) {
+    return `Not sent — ${err instanceof Error ? err.message : String(err)}`;
+  }
 }
 
 type AISection = "requests" | "connect" | "skills";
@@ -834,6 +881,10 @@ export default function AIWindow({
   const [composerKind, setComposerKind] = useState<AIRequestKind>("revision-general");
   const [composerText, setComposerText] = useState("");
   const [composerBibKey, setComposerBibKey] = useState("");
+  // The refusal a kept draft is shown beside, and the in-flight latch that
+  // makes a double ⌘Enter / click one submit (task 1657).
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const [composerSubmitting, setComposerSubmitting] = useState(false);
 
   // Refresh data once when the window is opened so users see the most
   // recent state without needing to wait for the next poll cycle.
@@ -886,29 +937,42 @@ export default function AIWindow({
     "panel-todo": "todo",
   };
 
-  const submitComposer = useCallback(() => {
+  // THE submit door (task 1657): one validity predicate at the entry, and the
+  // draft is cleared ONLY once the write says it landed. A refusal keeps the
+  // text + key and shows the reason in the composer.
+  const submitComposer = useCallback(async () => {
+    if (composerSubmitting) return;
+    if (!composerCanSubmit(composerKind, composerText, composerBibKey)) return;
     const text = composerText.trim();
+    let result: unknown;
     if (composerKind === "revision-general") {
-      if (!text) return;
-      addComment(text);
+      result = addComment(text);
     } else if (composerKind === "bib-entry") {
-      if (!text) return;
-      addEntryRequest(text);
-    } else if (composerKind === "bib-fields" || composerKind === "bib-notes") {
-      const key = composerBibKey.trim();
-      if (!key) return;
-      requestBibReview(
-        key,
+      result = addEntryRequest(text);
+    } else if (composerNeedsBibKey(composerKind)) {
+      result = requestBibReview(
+        composerBibKey.trim(),
         composerKind === "bib-fields" ? "fields" : "notes",
         text || undefined,
       );
     } else if (composerKind in PANEL_KIND_REVERSE) {
-      addPanelAiRequest(PANEL_KIND_REVERSE[composerKind], text);
+      result = addPanelAiRequest(PANEL_KIND_REVERSE[composerKind], text);
+    } else {
+      return;
+    }
+    setComposerSubmitting(true);
+    setComposerError(null);
+    const refusal = await composerRefusal(result);
+    setComposerSubmitting(false);
+    if (refusal) {
+      setComposerError(refusal);
+      return;
     }
     setComposerText("");
     setComposerBibKey("");
     setComposerOpen(false);
   }, [
+    composerSubmitting,
     composerKind,
     composerText,
     composerBibKey,
@@ -923,13 +987,12 @@ export default function AIWindow({
     if (!press) return;
     e.preventDefault();
     if (press === "held") return; // a held ⌘Enter submits once
-    submitComposer();
+    void submitComposer();
   });
 
   if (!open) return null;
 
-  const composerNeedsBibKey =
-    composerKind === "bib-fields" || composerKind === "bib-notes";
+  const needsBibKey = composerNeedsBibKey(composerKind);
 
   return (
     <SystemDialog
@@ -1015,6 +1078,7 @@ export default function AIWindow({
                           onChange={(e) => {
                             setComposerKind(e.target.value as AIRequestKind);
                             setComposerBibKey("");
+                            setComposerError(null);
                           }}
                           density="dense"
                           className="text-xs px-1.5 py-0.5"
@@ -1038,7 +1102,7 @@ export default function AIWindow({
                         </span>
                       </div>
 
-                      {composerNeedsBibKey && (
+                      {needsBibKey && (
                         <Field label="Entry key" register="row" className="mb-2">
                           {({ id }) => (
                             <>
@@ -1084,10 +1148,10 @@ export default function AIWindow({
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={submitComposer}
+                            onClick={() => void submitComposer()}
                             disabled={
-                              (composerNeedsBibKey && !composerBibKey.trim()) ||
-                              (!composerNeedsBibKey && !composerText.trim())
+                              composerSubmitting ||
+                              !composerCanSubmit(composerKind, composerText, composerBibKey)
                             }
                             {...iconHint({ label: "Submit", keys: FIELD_COMMIT_SHORTCUT })}
                           >
@@ -1096,12 +1160,17 @@ export default function AIWindow({
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
+                            onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); setComposerError(null); }}
                           >
                             Cancel
                           </Button>
                         </div>
                       </div>
+                      {composerError && (
+                        <p role="alert" className="mt-1.5 text-xs text-error">
+                          {composerError}
+                        </p>
+                      )}
                     </>
                   )}
                 </div>
