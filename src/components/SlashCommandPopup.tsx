@@ -292,7 +292,7 @@ function SlashCommandList({
             // task 1361): the selected row wears `--menu-roving-bg` like every
             // other menu's arrow cursor (it painted `bg-edge-subtle`, a grey no
             // other menu used), and the greyed / hover tones are the shared ones.
-            className={`flex w-full items-baseline gap-2 text-left px-3 font-mono text-xs ${menuRowToneClass("default", isDisabled)}`}
+            className={`focus-ring flex w-full items-baseline gap-2 text-left px-3 font-mono text-xs ${menuRowToneClass("default", isDisabled)}`}
             style={{
               height: ROW_HEIGHT,
               lineHeight: `${ROW_HEIGHT}px`,

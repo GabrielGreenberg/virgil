@@ -1350,7 +1350,10 @@ Five states. One implementation each.
   rule supplies the replacement — a `:focus`/`:focus-visible` rule over the same
   selector drawing a border, box-shadow or outline; a background swap is not
   one (CI: `icon-button-a11y-guardrail.test.ts` → "a stylesheet that strips the
-  outline supplies the replacement", task 1264). The stated exceptions are
+  outline supplies the replacement", task 1264). The rule has no icon/text
+  fork: a TEXT `<button>` takes `.focus-ring` exactly as an icon one does
+  (same file → "a text button carries the app's focus ring", a shrink-only
+  per-file ratchet, task 1660). The stated exceptions are
   document surfaces (the caret is the indicator) and TRANSIENT inline-rename
   inputs — mounted only for their edit session and focused on mount, so focus
   is the only state they ever have and their underline is the indicator. A
