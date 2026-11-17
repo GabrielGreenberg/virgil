@@ -1,4 +1,4 @@
-<!-- last-verified: ae364f68 2026-11-16 -->
+<!-- last-verified: 450ff97c 2026-11-17 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, virgil -->
 
@@ -51,7 +51,7 @@ Layer 3 — DERIVATIVE DOCS (each has a clear upstream)
 Every Layer-2 and Layer-3 doc carries a small header block of HTML comments at the very top of the file (before the first heading). Three fields, each on its own line, each independently greppable:
 
 ```markdown
-<!-- last-verified: ae364f68 2026-11-16 -->
+<!-- last-verified: 450ff97c 2026-11-17 -->
 <!-- derives-from: <repo-root-relative-path>#<anchor>[, <path>#<anchor>...] -->
 <!-- covers-code: <repo-root-relative-path>[, <path>...] -->
 ```
