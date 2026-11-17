@@ -1261,7 +1261,9 @@ Five states. One implementation each.
   If a surface genuinely needs a heavier hover, that is a new named role with
   its own token and its own declaration. CI reads this rule:
   `color-token-consumers.test.ts` → "the neutral hover has ONE spelling per
-  resting bg" (allowlist for `--edge-subtle`: EMPTY). **The rule holds in a
+  resting bg" (allowlist for `--edge-subtle`: EMPTY — and since task 1659 the
+  needle reads EVERY fill spelling, resting and pressed too, not only
+  `hover:`; a progress track takes its own `--track-bg` role). **The rule holds in a
   stylesheet too** (task 1438): a node-view control styled by its own class
   (the figure chrome's buttons and −/+) WEARS `hover-on-light` in its JSX and
   its `:hover` rule spells only the ink/border cue — never a fill. Its resting
@@ -4849,7 +4851,7 @@ controls), never taller, because the whole bar row shares one seam anchor and a
 tall resident reintroduces the two-baseline drift task 289 removed. Its ghost
 controls take `focus-ring` rather than the `iconbtn` geometry (20px is too big
 for the pill) and spell that class at each button, since the a11y census reads
-the literal `className`. Its progress track/fill is a 3px `--edge-subtle` /
+the literal `className`. Its progress track/fill is a 3px `--track-bg` /
 `--accent` pair, flipping to `--positive` on completion, with **no motion** — a
 pulse on the app's top bar outstays its welcome. Completion is SAID, not only
 shown: the pill passes `announce="Writing timer done"` (task 1390), which the

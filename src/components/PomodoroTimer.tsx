@@ -272,7 +272,7 @@ function PomodoroWidget({ state }: { state: PomodoroState }) {
 
           <span
             className="h-[3px] w-12 rounded-full overflow-hidden shrink-0"
-            style={{ background: "var(--edge-subtle)" }}
+            style={{ background: "var(--track-bg)" }}
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
