@@ -177,7 +177,7 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
           staged.map((key) => (
             <span
               key={key}
-              className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded bg-edge-subtle text-2xs text-ink-body font-mono"
+              className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded border border-edge-subtle bg-surface text-2xs text-ink-body card-mono"
             >
               {key}
               <button

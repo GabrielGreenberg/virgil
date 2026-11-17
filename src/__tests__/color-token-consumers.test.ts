@@ -216,9 +216,9 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
    *  205 was burned by. Line alignment is what lets the report name a site. */
   const scan = (src: string) => strip(src, true, true);
 
-  const hits = (needle: RegExp): string[] => {
+  const hits = (needle: RegExp, files: string[] = productionTsx()): string[] => {
     const out: string[] = [];
-    for (const abs of productionTsx()) {
+    for (const abs of files) {
       const rel = path.relative(REPO_ROOT, abs);
       scan(readFileSync(abs, "utf8"))
         .split("\n")
@@ -239,12 +239,27 @@ describe("the neutral hover has ONE spelling per resting bg", () => {
       "BUTTON_BASE owns `transition-all` (transform + filter), which is BROADER than the utility's property list",
   };
 
-  it("uses --edge-subtle as a BORDER token, never as a hover fill", () => {
+  it("uses --edge-subtle as a BORDER token, never as a fill (task 1659)", () => {
     // A hit is CONVERT-it. This allowlist stays EMPTY: there is no shape for
     // which a border token is the right surface fill, and if a surface needs a
     // heavier hover that is a new named role with its own token — not this one
-    // borrowed.
-    expect(hits(/hover:bg-edge-subtle/)).toEqual([]);
+    // borrowed. The needle used to be `hover:bg-edge-subtle` alone, so a
+    // RESTING or PRESSED fill passed unseen: the citation card's Bib toggle
+    // painted its "on" state with it, and the create-popover's staged chip its
+    // ground. It now reads every fill spelling — the utility under any variant
+    // prefix (`hover:`, `aria-pressed:`, none), and a `background(-color)`
+    // style-object value in `.tsx` AND `.ts`. A progress track is not a border
+    // either: it reads `--track-bg` (`bg-track`), its own role.
+    const files = [
+      ...productionTsx(),
+      ...[...trackedFiles("src", /\.ts$/), ...trackedFiles("library", /\.ts$/)].filter(
+        (p) => !p.includes("__tests__"),
+      ),
+    ];
+    expect(hits(/(?<![\w-])bg-edge-subtle\b/, files)).toEqual([]);
+    expect(
+      hits(/background(?:Color|-color)?["'`]?\s*:\s*["'`]?var\(\s*--edge-subtle\s*\)/, files),
+    ).toEqual([]);
   });
 
   it("spells no neutral hover as a raw black alpha (task 1381)", () => {

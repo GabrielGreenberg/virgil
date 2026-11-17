@@ -1805,9 +1805,9 @@ function CitationKeyRow({
                 onToggleBib();
               }}
               aria-pressed={bibExpanded}
-              className={`text-2xs px-1 py-0 rounded ${
+              className={`focus-ring text-2xs px-1 py-0 rounded ${
                 bibExpanded
-                  ? "text-ink-body bg-edge-subtle"
+                  ? "text-[var(--control-selected-ink)] bg-[var(--control-selected-tint)]"
                   : "text-[var(--muted)] hover:text-ink-body hover-on-light"
               }`}
               data-hint={bibExpanded ? "Hide bib entry" : "Show bib entry"}

@@ -667,6 +667,11 @@
   --edge-subtle: #e7e5e4;   /* card/input border, menu divider (≈ stone-200) */
   --edge-hover: #d6d3d1;    /* border hover (≈ stone-300) */
   --edge-strong: #a8a29e;   /* input focus border (≈ stone-400) */
+  /* A progress TRACK's unfilled ground (PanelGoalStrip, the Pomodoro pill).
+     Same value as --edge-subtle today, but its own ROLE: a border token is
+     never a fill (color-token-consumers census, task 1659), and a track is
+     not a border. */
+  --track-bg: var(--edge-subtle);
 
   /* Text scale */
   --ink-faint: #d6d3d1;     /* disabled (≈ stone-300) */
@@ -1011,6 +1016,7 @@ body[data-zen-mode="on"] {
   --color-edge-subtle: var(--edge-subtle);
   --color-edge-hover: var(--edge-hover);
   --color-edge-strong: var(--edge-strong);
+  --color-track: var(--track-bg);
   --color-ink-faint: var(--ink-faint);
   --color-ink-muted: var(--ink-muted);
   --color-ink-subtle: var(--ink-subtle);
