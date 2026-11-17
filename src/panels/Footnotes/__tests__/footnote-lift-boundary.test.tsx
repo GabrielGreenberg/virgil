@@ -38,13 +38,15 @@ class ResizeObserverStub {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, fireEvent } from "@testing-library/react";
 import type { ReactElement } from "react";
 // Side effect: registers every kind's `toFloatable` onto CARD_REGISTRY.
 import "@/cards/floats";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
+import { cardPopKey, popKey } from "@/panels/panel-registry";
 import {
   FootnoteCard,
   OrphanedFootnoteCard,
@@ -188,5 +190,49 @@ describe("footnote pop-out: the card offers exactly what the builder honors", ()
     // fork). Pinned here so "make the orphan honest" can't quietly flatten it.
     expect(CARD_REGISTRY.footnote.toFloatable(ANCHORED.footnoteId, CTX)!.canJump).toBe(true);
     expect(CARD_REGISTRY.footnote.toFloatable(PARKED.id, CTX)!.canJump).toBe(false);
+  });
+});
+
+// Task 1656 — the orphaned + parked twins now go through the ONE shell door
+// (`useAnchoredCardShell`) instead of hand-rolling `useAnchoredCard` glue, so
+// they gain the hover claim every other card has (task 1150), and the orphan's
+// non-poppability is the explicit `poppable: false` option.
+describe("orphaned + parked footnote twins ride the shell door (task 1656)", () => {
+  const TWINS = [
+    {
+      name: "orphaned",
+      id: ORPHAN.footnoteId,
+      card: () => <OrphanedFootnoteCard orphan={ORPHAN} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    },
+    {
+      name: "parked",
+      id: PARKED.id,
+      card: () => <UnanchoredFootnoteCard footnote={PARKED} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    },
+  ] as const;
+
+  for (const t of TWINS) {
+    it(`hovering the ${t.name} card publishes and releases a hover claim`, () => {
+      cardStore.setHover(null);
+      const { container } = render(
+        <PoppedCardsContext.Provider value={POPPED}>{t.card()}</PoppedCardsContext.Provider>,
+      );
+      const card = container.querySelector("[data-card]") as HTMLElement;
+      fireEvent.mouseEnter(card);
+      expect(cardStore.getState().hover).toEqual({ kind: "footnote", id: t.id });
+      fireEvent.mouseLeave(card);
+      expect(cardStore.getState().hover).toBeNull();
+    });
+  }
+
+  it("the parked card's key is the anchored twin's key (one grammar)", () => {
+    expect(popKey("footnotes", PARKED.id)).toBe(cardPopKey("footnote", PARKED.id));
+    const { container } = render(
+      <PoppedCardsContext.Provider value={POPPED}>
+        <UnanchoredFootnoteCard footnote={PARKED} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </PoppedCardsContext.Provider>,
+    );
+    const card = container.querySelector("[data-card]") as HTMLElement;
+    expect(card.getAttribute("data-card-key")).toBe(cardPopKey("footnote", PARKED.id));
   });
 });

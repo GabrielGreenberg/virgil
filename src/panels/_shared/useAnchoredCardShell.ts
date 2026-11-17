@@ -48,12 +48,20 @@ export interface AnchoredCardShellOptions {
    *  cue (an excerpt, a highlighted passage) omit it and build their own from
    *  `compressedLines`. */
   summaryContent?: unknown;
+  /** `false` for a card state the float system cannot render (task 1656: the
+   *  ORPHANED footnote — task 277 declined its pop-out). The shell then carries
+   *  no `cardKey` and no `onTogglePopout`, so `PanelCard.canLift` is false and
+   *  no grab grip paints: the card offers no lift rather than one that opens a
+   *  blank window. Stated HERE, as an option, so the ratified decision is never
+   *  re-hidden as a call site stripping keys off the spread. Default `true`. */
+  poppable?: boolean;
 }
 
 /** The prop bundle a card spreads onto `EditableCard` / `PanelCard`. Every
  *  member is a prop both shells accept under the same name. */
 export interface AnchoredCardShellProps {
-  cardKey: string;
+  /** Absent iff the card is not `poppable` — the lift's identity. */
+  cardKey?: string;
   isPoppedOut?: boolean;
   chromeless?: boolean;
   onTogglePopout?: (anchor: DOMRect) => void;
@@ -73,6 +81,8 @@ export interface AnchoredCardShellProps {
 
 export interface AnchoredCardShell {
   ac: UseAnchoredCardResult;
+  /** The card's float key, `cardPopKey(kind, id)` — its identity whether or
+   *  not it is `poppable` (only `shell.cardKey` follows that option). */
   cardKey: string;
   /** Collapsed body: neither expanded nor popped out. */
   compressed: boolean;
@@ -89,7 +99,7 @@ function cardElementOf(e: MouseEvent | undefined): HTMLElement | null {
 }
 
 export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCardShell {
-  const { kind, id, isPoppedOut, onSelect, onJump } = opts;
+  const { kind, id, isPoppedOut, onSelect, onJump, poppable = true } = opts;
   const ac = useAnchoredCard({ kind, id });
   const popped = usePoppedCards();
   const compressedLines = useCompressedLines();
@@ -103,7 +113,7 @@ export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCa
   // Through the claim door, so a card that unmounts while hovered (collapse
   // into a group, panel switch, morph) releases its hover — task 1150.
   const onHoverChange = useHoverClaim(ac.ref).setHovering;
-  const onTogglePopout = popped
+  const onTogglePopout = poppable && popped
     ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
     : undefined;
   const onClick = (e?: MouseEvent) => {
@@ -121,7 +131,7 @@ export function useAnchoredCardShell(opts: AnchoredCardShellOptions): AnchoredCa
     compressedLines,
     compressedSummary,
     shell: {
-      cardKey,
+      cardKey: poppable ? cardKey : undefined,
       isPoppedOut,
       chromeless: isPoppedOut,
       onTogglePopout,

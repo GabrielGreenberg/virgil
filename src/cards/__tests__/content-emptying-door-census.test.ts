@@ -121,8 +121,10 @@ const CENSUS: Record<string, Disposition> = {
   "footnote#card#onEditTitle": {
     exempt: "the `\\thanks` title input, edited in place — same reason as the body",
   },
-  "footnote#compressedSummary#onEditTitle": {
-    exempt: "the compressed body's title input, edited in place — same reason",
+  // Keyed by the twins' last top-level declaration (`isHaloed` since task 1656
+  // routed them through the shell door).
+  "footnote#isHaloed#onEditTitle": {
+    exempt: "the orphaned / parked twins' title input, edited in place — same reason",
   },
 };
 
